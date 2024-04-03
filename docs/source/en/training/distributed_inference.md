@@ -52,22 +52,22 @@ To learn more, take a look at the [Distributed Inference with 🤗 Accelerate](h
 
 </Tip>
 
-### Using `device_map`
+### Device placement
 
-<Tip warning={true}>
+> [!WARNING]
+> This feature is experimental and its APIs might change in the future. 
 
-🧪 This feature is experimental and its APIs might change in future. 
+With Accelerate, you can use the `device_map` to determine how to distribute the model-level components of a pipeline across multiple devices. This is useful in situations where you have more than one GPU.
 
-</Tip>
+For example, if you have two 8GB GPUs, then using [`~DiffusionPipeline.enable_model_cpu_offload`] may not work so well because:
 
-With 🤗 Accelerate, you can make use of a supported `device_map` strategy to distribute the model-level components of a pipeline across multiple devices. The section below explains a situation where performing distributed inference via `device_map` could be useful.
+* it only works on a single GPU
+* a single model might not fit on a single GPU ([`~DiffusionPipeline.enable_sequential_cpu_offload`] might work but it will be extremely slow and it is also limited to a single GPU)
 
-Let's say you have two consumer GPUs each having 8GBs of VRAM. Using `enable_model_cpu_offload()` might not work best here because -
+To make use of both GPUs, you can use the "balanced" device placement strategy which evenly splits the model across all available GPUs.
 
-* it works only on a single GPU
-* a single model might not fit on a single GPU `enable_sequential_cpu_offload()` might work but will be extremely slow. Here also we're limited to using a single GPU only.
-
-To use the "balanced" `device_map`, just pass `device_map="balanced"` when instantiating the pipeline:
+> [TIP]
+> Only the "balanced" strategy is supported at the moment, and we plan to support additional mapping strategies in the future.
 
 ```diff
 from diffusers import DiffusionPipeline
@@ -81,7 +81,7 @@ image = pipeline("a dog").images[0]
 image
 ```
 
-Pass a dictionary to enforce a restriction on the maximum GPU memory that can be used:
+You can also pass a dictionary to enforce the maximum GPU memory that can be used on each device:
 
 ```diff
 from diffusers import DiffusionPipeline
@@ -99,11 +99,12 @@ image = pipeline("a dog").images[0]
 image
 ```
 
-By default, Diffusers will use the maximum memory of all devices (i.e., all GPUs). If the models don't fit on the GPUs, they will be offloaded to the CPU. If the CPU doesn't have enough memory, you might see an error.
+By default, Diffusers uses the maximum memory of all devices. If the models don't fit on the GPUs, they are offloaded to the CPU. If the CPU doesn't have enough memory, then you might see an error.
 
-You can reset any `device_map` of a pipeline by calling `reset_device_map()` on the pipeline object.
+Call `reset_device_map` to reset the `device_map` of a pipeline. This is also necessary if you want to use methods like `to()`, [`~DiffusionPipeline.enable_sequential_cpu_offload`], and [`~DiffusionPipeline.enable_model_cpu_offload`] on a pipeline that was device-mapped.
 
-To use methods like `to()`, `enable_sequential_cpu_offload()`, and `enable_model_cpu_offload()` on a supported pipeline that has been device-mapped, first call `reset_device_map()` on it and then use these methods.
+```py
+pipeline.reset_device_map()
 
 > [!NOTE]  
 > Currently, we support only "balanced" `device_map`. We plan to support more device mapping strategies in future.

@@ -679,7 +679,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if device_map is not None and device_map in SUPPORTED_DEVICE_MAP:
             if is_accelerate_version("<", "0.28.0"):
-                raise NotImplementedError("Please upgrade your `accelerate` version to the latest one.")
+                raise NotImplementedError("Device placement requires `accelerate` version `0.28.0` or later.")
 
         if low_cpu_mem_usage is False and device_map is not None:
             raise ValueError(
