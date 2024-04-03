@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@ from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, is_torch_version, logging
+from ..utils.torch_utils import apply_freeu
+from .attention_processor import Attention, AttentionProcessor
 from .autoencoders import AutoencoderKL
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
@@ -52,6 +54,33 @@ class ControlNetXSOutput(BaseOutput):
     """
 
     sample: FloatTensor = None
+
+
+class ControlNetXSAddonDownBlockComponents(nn.Module):
+    """Components that together with corresponding components from the base model will form a `ControlNetXSCrossAttnDownBlock2D`"""
+    def __init__(self, resnets: nn.ModuleList, base_to_ctrl:nn.ModuleList, ctrl_to_base:nn.ModuleList, attentions: Optional[nn.ModuleList] = None,downsampler: Optional[nn.Conv2d] = None):
+        super().__init__()
+        self.resnets = resnets
+        self.base_to_ctrl = base_to_ctrl
+        self.ctrl_to_base = ctrl_to_base
+        self.attentions = attentions
+        self.downsamplers = downsampler
+
+
+class ControlNetXSAddonMidBlockComponents(nn.Module):
+    """Components that together with corresponding components from the base model will form a `ControlNetXSCrossAttnMidBlock2D`"""
+    def __init__(self, midblock: UNetMidBlock2DCrossAttn, base_to_ctrl:nn.ModuleList, ctrl_to_base:nn.ModuleList):
+        super().__init__()
+        self.midblock = midblock
+        self.base_to_ctrl = base_to_ctrl
+        self.ctrl_to_base = ctrl_to_base
+
+
+class ControlNetXSAddonUpBlockComponents(nn.Module):
+    """Components that together with corresponding components from the base model will form a `ControlNetXSCrossAttnUpBlock2D`"""
+    def __init__(self, ctrl_to_base:nn.ModuleList):
+        super().__init__()
+        self.ctrl_to_base = ctrl_to_base
 
 
 # copied from diffusers.models.controlnet.ControlNetConditioningEmbedding
@@ -230,7 +259,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             is_final_block = i == len(down_block_types) - 1
 
             self.down_blocks.append(
-                ControlNetXSAddon.get_down_block(
+                self.get_down_block(
                     base_in_channels=base_in_channels,
                     base_out_channels=base_out_channels,
                     ctrl_in_channels=ctrl_in_channels,
@@ -247,7 +276,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             )
 
         # mid
-        self.mid_block = ControlNetXSAddon.get_mid_block(
+        self.mid_block = self.get_mid_block(
             base_channels=base_block_out_channels[-1],
             ctrl_channels=block_out_channels[-1],
             temb_channels=time_embedding_dim,
@@ -275,7 +304,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             ctrl_skip_channels_ = [ctrl_skip_channels.pop() for _ in range(3)]
 
             self.up_connections.append(
-                ControlNetXSAddon.get_up_connections(
+                self.get_up_connections(
                     out_channels=base_out_channels,
                     prev_output_channel=prev_base_output_channel,
                     ctrl_skip_channels=ctrl_skip_channels_,
@@ -359,19 +388,18 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         else:
             downsamplers = None
 
-        module_dict = nn.ModuleDict(
-            {
-                "resnets": nn.ModuleList(resnets),
-                "base_to_ctrl": nn.ModuleList(base_to_ctrl),
-                "ctrl_to_base": nn.ModuleList(ctrl_to_base),
-            }
+        down_block_components = ControlNetXSAddonDownBlockComponents(
+            resnets=nn.ModuleList(resnets),
+            base_to_ctrl=nn.ModuleList(base_to_ctrl),
+            ctrl_to_base=nn.ModuleList(ctrl_to_base)
         )
-        if has_crossattn:
-            module_dict["attentions"] = nn.ModuleList(attentions)
-        if downsamplers is not None:
-            module_dict["downsamplers"] = downsamplers
 
-        return module_dict
+        if has_crossattn:
+            down_block_components.attentions = nn.ModuleList(attentions)
+        if downsamplers is not None:
+            down_block_components.downsamplers = downsamplers
+
+        return down_block_components
 
     @staticmethod
     def get_mid_block(
@@ -405,7 +433,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         # Addition requires change in number of channels
         ctrl_to_base = make_zero_conv(ctrl_channels, base_channels)
 
-        return nn.ModuleDict({"base_to_ctrl": base_to_ctrl, "midblock": midblock, "ctrl_to_base": ctrl_to_base})
+        return ControlNetXSAddonMidBlockComponents(base_to_ctrl=base_to_ctrl, midblock=midblock, ctrl_to_base=ctrl_to_base)
 
     @staticmethod
     def get_up_connections(
@@ -419,7 +447,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
             ctrl_to_base.append(make_zero_conv(ctrl_skip_channels[i], resnet_in_channels))
 
-        return nn.ModuleList(ctrl_to_base)
+        return ControlNetXSAddonUpBlockComponents(ctrl_to_base=nn.ModuleList(ctrl_to_base))
 
     @classmethod
     def from_unet(
@@ -677,6 +705,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                     prev_output_channel=prev_output_channel,
                     ctrl_skip_channels=ctrl_skip_channels_,
                     temb_channels=time_embed_dim,
+                    resolution_idx=i,
                     has_crossattn=has_crossattn,
                     transformer_layers_per_block=rev_transformer_layers_per_block[-1],
                     num_attention_heads=rev_num_attention_heads[-1],
@@ -844,6 +873,138 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
+
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    @property
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+        r"""
+        Returns:
+            `dict` of attention processors: A dictionary containing all attention processors used in the model with
+            indexed by its weight name.
+        """
+        # set recursively
+        processors = {}
+
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+
+            for sub_name, child in module.named_children():
+                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
+
+            return processors
+
+        for name, module in self.named_children():
+            fn_recursive_add_processors(name, module, processors)
+
+        return processors
+
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+        r"""
+        Sets the attention processor to use to compute attention.
+
+        Parameters:
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+                The instantiated processor class or a dictionary of processor classes that will be set as the processor
+                for **all** `Attention` layers.
+
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
+
+        """
+        count = len(self.attn_processors.keys())
+
+        if isinstance(processor, dict) and len(processor) != count:
+            raise ValueError(
+                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
+                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
+            )
+
+        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+            if hasattr(module, "set_processor"):
+                if not isinstance(processor, dict):
+                    module.set_processor(processor)
+                else:
+                    module.set_processor(processor.pop(f"{name}.processor"))
+
+            for sub_name, child in module.named_children():
+                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
+
+        for name, module in self.named_children():
+            fn_recursive_attn_processor(name, module, processor)
+
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
+        r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
+
+        The suffixes after the scaling factors represent the stage blocks where they are being applied.
+
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of values that
+        are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
+
+        Args:
+            s1 (`float`):
+                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
+                mitigate the "oversmoothing effect" in the enhanced denoising process.
+            s2 (`float`):
+                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
+                mitigate the "oversmoothing effect" in the enhanced denoising process.
+            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
+            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
+        """
+        for i, upsample_block in enumerate(self.up_blocks):
+            setattr(upsample_block, "s1", s1)
+            setattr(upsample_block, "s2", s2)
+            setattr(upsample_block, "b1", b1)
+            setattr(upsample_block, "b2", b2)
+
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    def disable_freeu(self):
+        """Disables the FreeU mechanism."""
+        freeu_keys = {"s1", "s2", "b1", "b2"}
+        for i, upsample_block in enumerate(self.up_blocks):
+            for k in freeu_keys:
+                if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
+                    setattr(upsample_block, k, None)
+
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    def fuse_qkv_projections(self):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+        """
+        self.original_attn_processors = None
+
+        for _, attn_processor in self.attn_processors.items():
+            if "Added" in str(attn_processor.__class__.__name__):
+                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+
+        self.original_attn_processors = self.attn_processors
+
+        for module in self.modules():
+            if isinstance(module, Attention):
+                module.fuse_projections(fuse=True)
+
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    def unfuse_qkv_projections(self):
+        """Disables the fused QKV projection if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        """
+        if self.original_attn_processors is not None:
+            self.set_attn_processor(self.original_attn_processors)
 
     def forward(
         self,
@@ -1162,7 +1323,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     @classmethod
-    def from_modules(cls, base_downblock: CrossAttnDownBlock2D, ctrl_downblock: nn.ModuleDict):
+    def from_modules(cls, base_downblock: CrossAttnDownBlock2D, ctrl_downblock: ControlNetXSAddonDownBlockComponents):
         # get params
         def get_first_cross_attention(block):
             return block.attentions[0].transformer_blocks[0].attn2
@@ -1170,11 +1331,11 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         base_in_channels = base_downblock.resnets[0].in_channels
         base_out_channels = base_downblock.resnets[0].out_channels
         ctrl_in_channels = (
-            ctrl_downblock["resnets"][0].in_channels - base_in_channels
+            ctrl_downblock.resnets[0].in_channels - base_in_channels
         )  # base channels are concatted to ctrl channels in init
-        ctrl_out_channels = ctrl_downblock["resnets"][0].out_channels
+        ctrl_out_channels = ctrl_downblock.resnets[0].out_channels
         temb_channels = base_downblock.resnets[0].time_emb_proj.in_features
-        num_groups = ctrl_downblock["resnets"][0].norm1.num_groups
+        num_groups = ctrl_downblock.resnets[0].norm1.num_groups
         if hasattr(base_downblock, "attentions"):
             has_crossattn = True
             transformer_layers_per_block = len(base_downblock.attentions[0].transformer_blocks)
@@ -1210,15 +1371,15 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
         # # load weights
         model.base_resnets.load_state_dict(base_downblock.resnets.state_dict())
-        model.ctrl_resnets.load_state_dict(ctrl_downblock["resnets"].state_dict())
+        model.ctrl_resnets.load_state_dict(ctrl_downblock.resnets.state_dict())
         if has_crossattn:
             model.base_attentions.load_state_dict(base_downblock.attentions.state_dict())
-            model.ctrl_attentions.load_state_dict(ctrl_downblock["attentions"].state_dict())
+            model.ctrl_attentions.load_state_dict(ctrl_downblock.attentions.state_dict())
         if add_downsample:
             model.base_downsamplers.load_state_dict(base_downblock.downsamplers[0].state_dict())
-            model.ctrl_downsamplers.load_state_dict(ctrl_downblock["downsamplers"].state_dict())
-        model.base_to_ctrl.load_state_dict(ctrl_downblock["base_to_ctrl"].state_dict())
-        model.ctrl_to_base.load_state_dict(ctrl_downblock["ctrl_to_base"].state_dict())
+            model.ctrl_downsamplers.load_state_dict(ctrl_downblock.downsamplers.state_dict())
+        model.base_to_ctrl.load_state_dict(ctrl_downblock.base_to_ctrl.state_dict())
+        model.ctrl_to_base.load_state_dict(ctrl_downblock.ctrl_to_base.state_dict())
 
         return model
 
@@ -1404,11 +1565,11 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
     def from_modules(
         cls,
         base_midblock: UNetMidBlock2DCrossAttn,
-        ctrl_midblock_dict: nn.ModuleDict,
+        ctrl_midblock: ControlNetXSAddonMidBlockComponents,
     ):
-        base_to_ctrl = ctrl_midblock_dict["base_to_ctrl"]
-        ctrl_to_base = ctrl_midblock_dict["ctrl_to_base"]
-        ctrl_midblock = ctrl_midblock_dict["midblock"]
+        base_to_ctrl = ctrl_midblock.base_to_ctrl
+        ctrl_to_base = ctrl_midblock.ctrl_to_base
+        ctrl_midblock = ctrl_midblock.midblock
 
         # get params
         def get_first_cross_attention(midblock):
@@ -1500,6 +1661,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         prev_output_channel: int,
         ctrl_skip_channels: List[int],
         temb_channels: int,
+        resolution_idx: Optional[int] = None,
         has_crossattn=True,
         transformer_layers_per_block: int = 1,
         num_attention_heads: int = 1,
@@ -1557,9 +1719,12 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     @classmethod
-    def from_modules(cls, base_upblock: CrossAttnUpBlock2D, ctrl_to_base_skip_connections: nn.ModuleList):
+    def from_modules(cls, base_upblock: CrossAttnUpBlock2D, ctrl_upblock: ControlNetXSAddonUpBlockComponents):
+        ctrl_to_base_skip_connections = ctrl_upblock.ctrl_to_base
+
         # get params
         def get_first_cross_attention(block):
             return block.attentions[0].transformer_blocks[0].attn2
@@ -1569,6 +1734,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         prev_output_channels = base_upblock.resnets[0].in_channels - out_channels
         ctrl_skip_channelss = [c.in_channels for c in ctrl_to_base_skip_connections]
         temb_channels = base_upblock.resnets[0].time_emb_proj.in_features
+        resolution_idx=base_upblock.resolution_idx
         if hasattr(base_upblock, "attentions"):
             has_crossattn = True
             transformer_layers_per_block = len(base_upblock.attentions[0].transformer_blocks)
@@ -1590,6 +1756,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             prev_output_channel=prev_output_channels,
             ctrl_skip_channels=ctrl_skip_channelss,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             has_crossattn=has_crossattn,
             transformer_layers_per_block=transformer_layers_per_block,
             num_attention_heads=num_attention_heads,
@@ -1642,7 +1809,14 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
 
-        # In ControlNet-XS, the last resnet/attention and the upsampler are treated as a group.
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
+
+        # In ControlNet-XS, the last resnet/attention and the upsampler are treated together as one group.
         # So we separate them to pass information from ctrl to base correctly.
         if self.upsamplers is None:
             resnets_without_upsampler = self.resnets
@@ -1662,6 +1836,21 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
 
             return custom_forward
 
+        def maybe_apply_freeu_to_subblock(hidden_states, res_h_base):
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                return apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_h_base,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+            else:
+                return hidden_states, res_h_base
+
         for resnet, attn, c2b, res_h_base, res_h_ctrl in zip(
             resnets_without_upsampler,
             attn_without_upsampler,
@@ -1672,6 +1861,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             if do_control:
                 hidden_states += c2b(res_h_ctrl) * conditioning_scale
 
+            hidden_states, res_h_base = maybe_apply_freeu_to_subblock(hidden_states, res_h_base)
             hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
 
             if self.training and self.gradient_checkpointing:
@@ -1701,6 +1891,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             res_h_ctrl = res_hidden_states_tuple_ctrl[0]
             if do_control:
                 hidden_states += c2b(res_h_ctrl) * conditioning_scale
+            hidden_states, res_h_base = maybe_apply_freeu_to_subblock(hidden_states, res_h_base)
             hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
 
             hidden_states = resnet_with_upsampler(hidden_states, temb)

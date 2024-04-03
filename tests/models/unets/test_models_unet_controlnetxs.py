@@ -164,21 +164,21 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         # down blocks
         assert len(controlnet.down_blocks) == len(model.down_blocks)
         for i, d in enumerate(controlnet.down_blocks):
-            assert_equal_weights(d["resnets"], f"down_blocks.{i}.ctrl_resnets")
-            assert_equal_weights(d["base_to_ctrl"], f"down_blocks.{i}.base_to_ctrl")
-            assert_equal_weights(d["ctrl_to_base"], f"down_blocks.{i}.ctrl_to_base")
-            if "attentions" in d:
-                assert_equal_weights(d["attentions"], f"down_blocks.{i}.ctrl_attentions")
-            if "downsamplers" in d:
-                assert_equal_weights(d["downsamplers"], f"down_blocks.{i}.ctrl_downsamplers")
+            assert_equal_weights(d.resnets, f"down_blocks.{i}.ctrl_resnets")
+            assert_equal_weights(d.base_to_ctrl, f"down_blocks.{i}.base_to_ctrl")
+            assert_equal_weights(d.ctrl_to_base, f"down_blocks.{i}.ctrl_to_base")
+            if d.attentions is not None:
+                assert_equal_weights(d.attentions, f"down_blocks.{i}.ctrl_attentions")
+            if d.downsamplers is not None:
+                assert_equal_weights(d.downsamplers, f"down_blocks.{i}.ctrl_downsamplers")
         # mid block
-        assert_equal_weights(controlnet.mid_block["base_to_ctrl"], "mid_block.base_to_ctrl")
-        assert_equal_weights(controlnet.mid_block["midblock"], "mid_block.ctrl_midblock")
-        assert_equal_weights(controlnet.mid_block["ctrl_to_base"], "mid_block.ctrl_to_base")
+        assert_equal_weights(controlnet.mid_block.base_to_ctrl, "mid_block.base_to_ctrl")
+        assert_equal_weights(controlnet.mid_block.midblock, "mid_block.ctrl_midblock")
+        assert_equal_weights(controlnet.mid_block.ctrl_to_base, "mid_block.ctrl_to_base")
         # up blocks
         assert len(controlnet.up_connections) == len(model.up_blocks)
         for i, u in enumerate(controlnet.up_connections):
-            assert_equal_weights(u, f"up_blocks.{i}.ctrl_to_base")
+            assert_equal_weights(u.ctrl_to_base, f"up_blocks.{i}.ctrl_to_base")
 
     def test_freeze_unet(self):
         def assert_frozen(module):

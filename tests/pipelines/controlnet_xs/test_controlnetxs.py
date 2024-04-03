@@ -62,6 +62,7 @@ from ..test_pipelines_common import (
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
+    SDFunctionTesterMixin,
 )
 
 
@@ -116,7 +117,11 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
 
 
 class ControlNetXSPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    SDFunctionTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionControlNetXSPipeline
     params = TEXT_TO_IMAGE_PARAMS
