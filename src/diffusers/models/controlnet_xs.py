@@ -23,9 +23,7 @@ from torch.nn import functional as F
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, is_torch_version, logging
 from .autoencoders import AutoencoderKL
-from .embeddings import (
-    TimestepEmbedding,
-)
+from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unets.unet_2d_blocks import (
     CrossAttnDownBlock2D,
@@ -537,7 +535,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         cross_attention_dim: Union[int, Tuple[int]] = 1024,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         num_attention_heads: Union[int, Tuple[int]] = 8,
-        class_embed_type: Optional[str] = None,
         addition_embed_type: Optional[str] = None,
         addition_time_embed_dim: Optional[int] = None,
         upcast_attention: bool = True,
@@ -562,6 +559,11 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                 "To use `time_embedding_mix` < 1, initialize `ctrl_addon` with `learn_time_embedding = True`"
             )
 
+        if addition_embed_type is not None and addition_embed_type != "text_time":
+            raise ValueError(
+                "As `UNetControlNetXSModel` currently only supports StableDiffusion and StableDiffusion-XL, `addition_embed_type` must be `None` or `'text_time'`."
+            )
+
         transformer_layers_per_block = repeat_if_not_list(
             transformer_layers_per_block, repetitions=len(down_block_types)
         )
@@ -569,55 +571,39 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         base_num_attention_heads = repeat_if_not_list(num_attention_heads, repetitions=len(down_block_types))
         ctrl_num_attention_heads = repeat_if_not_list(ctrl_num_attention_heads, repetitions=len(down_block_types))
 
-        # Create UNet and decompose it into subblocks, which we then save
-        base_model = UNet2DConditionModel(
-            sample_size=sample_size,
-            down_block_types=down_block_types,
-            up_block_types=up_block_types,
-            block_out_channels=block_out_channels,
-            norm_num_groups=norm_num_groups,
-            cross_attention_dim=cross_attention_dim,
-            transformer_layers_per_block=transformer_layers_per_block,
-            attention_head_dim=num_attention_heads,
-            use_linear_projection=True,
-            upcast_attention=upcast_attention,
-            class_embed_type=class_embed_type,
-            addition_embed_type=addition_embed_type,
-            time_cond_proj_dim=time_cond_proj_dim,
-            projection_class_embeddings_input_dim=projection_class_embeddings_input_dim,
-            addition_time_embed_dim=addition_time_embed_dim,
-        )
-
         self.in_channels = 4
 
-        time_embed_input_dim = block_out_channels[0]
-        time_embed_dim = block_out_channels[0] * 4
-
-        self.base_time_proj = base_model.time_proj
-        self.base_time_embedding = base_model.time_embedding
-        self.base_class_embedding = base_model.class_embedding
-        self.base_add_time_proj = base_model.add_time_proj if hasattr(base_model, "add_time_proj") else None
-        self.base_add_embedding = base_model.add_embedding if hasattr(base_model, "add_embedding") else None
-
-        self.base_conv_in = base_model.conv_in
-        self.base_conv_norm_out = base_model.conv_norm_out
-        self.base_conv_act = base_model.conv_act
-        self.base_conv_out = base_model.conv_out
-
+        # # Input
+        self.base_conv_in = nn.Conv2d(4, block_out_channels[0], kernel_size=3, padding=1)
         self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
             conditioning_embedding_channels=ctrl_block_out_channels[0],
             block_out_channels=ctrl_conditioning_embedding_out_channels,
             conditioning_channels=ctrl_conditioning_channels,
         )
         self.ctrl_conv_in = nn.Conv2d(4, ctrl_block_out_channels[0], kernel_size=3, padding=1)
-        self.ctrl_time_embedding = TimestepEmbedding(in_channels=time_embed_input_dim, time_embed_dim=time_embed_dim)
-
         self.control_to_base_for_conv_in = make_zero_conv(ctrl_block_out_channels[0], block_out_channels[0])
 
-        down_blocks = []
-        up_blocks = []
+        # # Time
+        time_embed_input_dim = block_out_channels[0]
+        time_embed_dim = block_out_channels[0] * 4
+
+        self.base_time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.base_time_embedding = TimestepEmbedding(
+            time_embed_input_dim,
+            time_embed_dim,
+            cond_proj_dim=time_cond_proj_dim,
+        )
+        self.ctrl_time_embedding = TimestepEmbedding(in_channels=time_embed_input_dim, time_embed_dim=time_embed_dim)
+
+        if addition_embed_type is None:
+            self.base_add_time_proj = None
+            self.base_add_embedding = None
+        else:
+            self.base_add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+            self.base_add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
 
         # # Create down blocks
+        down_blocks = []
         base_out_channels = block_out_channels[0]
         ctrl_out_channels = ctrl_block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
@@ -659,6 +645,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         )
 
         # # Create up blocks
+        up_blocks = []
         rev_transformer_layers_per_block = list(reversed(transformer_layers_per_block))
         rev_num_attention_heads = list(reversed(base_num_attention_heads))
         rev_cross_attention_dim = list(reversed(cross_attention_dim))
@@ -701,6 +688,10 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
 
         self.down_blocks = nn.ModuleList(down_blocks)
         self.up_blocks = nn.ModuleList(up_blocks)
+
+        self.base_conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups)
+        self.base_conv_act = nn.SiLU()
+        self.base_conv_out = nn.Conv2d(block_out_channels[0], 4, kernel_size=3, padding=1)
 
     @classmethod
     def from_unet(
@@ -748,7 +739,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             "norm_num_groups",
             "cross_attention_dim",
             "transformer_layers_per_block",
-            "class_embed_type",
             "addition_embed_type",
             "addition_time_embed_dim",
             "upcast_attention",
@@ -786,7 +776,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             getattr(model, "base_" + m).load_state_dict(getattr(unet, m).state_dict())
 
         optional_modules_from_unet = [
-            "class_embedding",
             "add_time_proj",
             "add_embedding",
         ]
@@ -827,7 +816,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         base_parts = [
             "base_time_proj",
             "base_time_embedding",
-            "base_class_embedding",
             "base_add_time_proj",
             "base_add_embedding",
             "base_conv_in",
@@ -955,16 +943,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
 
         # added time & text embeddings
         aug_emb = None
-
-        if self.base_class_embedding is not None:
-            if class_labels is None:
-                raise ValueError("class_labels should be provided when num_class_embeds > 0")
-
-            if self.config.class_embed_type == "timestep":
-                class_labels = self.base_time_proj(class_labels)
-
-            class_emb = self.base_class_embedding(class_labels).to(dtype=self.dtype)
-            temb = temb + class_emb
 
         if self.config.addition_embed_type is None:
             pass

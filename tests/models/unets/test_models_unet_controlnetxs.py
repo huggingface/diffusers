@@ -205,7 +205,6 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             assert_frozen(m)
 
         optional_modules_from_unet = [
-            model.base_class_embedding,
             model.base_add_time_proj,
             model.base_add_embedding,
         ]
