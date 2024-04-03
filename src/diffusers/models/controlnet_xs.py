@@ -49,16 +49,25 @@ class ControlNetXSOutput(BaseOutput):
 
     Args:
         sample (`FloatTensor` of shape `(batch_size, num_channels, height, width)`):
-            The output of the `UNetControlNetXSModel`. Unlike `ControlNetOutput` this is NOT to be added to the base model
-            output, but is already the final output.
+            The output of the `UNetControlNetXSModel`. Unlike `ControlNetOutput` this is NOT to be added to the base
+            model output, but is already the final output.
     """
 
     sample: FloatTensor = None
 
 
 class ControlNetXSAddonDownBlockComponents(nn.Module):
-    """Components that together with corresponding components from the base model will form a `ControlNetXSCrossAttnDownBlock2D`"""
-    def __init__(self, resnets: nn.ModuleList, base_to_ctrl:nn.ModuleList, ctrl_to_base:nn.ModuleList, attentions: Optional[nn.ModuleList] = None,downsampler: Optional[nn.Conv2d] = None):
+    """Components that together with corresponding components from the base model will form a
+    `ControlNetXSCrossAttnDownBlock2D`"""
+
+    def __init__(
+        self,
+        resnets: nn.ModuleList,
+        base_to_ctrl: nn.ModuleList,
+        ctrl_to_base: nn.ModuleList,
+        attentions: Optional[nn.ModuleList] = None,
+        downsampler: Optional[nn.Conv2d] = None,
+    ):
         super().__init__()
         self.resnets = resnets
         self.base_to_ctrl = base_to_ctrl
@@ -68,8 +77,10 @@ class ControlNetXSAddonDownBlockComponents(nn.Module):
 
 
 class ControlNetXSAddonMidBlockComponents(nn.Module):
-    """Components that together with corresponding components from the base model will form a `ControlNetXSCrossAttnMidBlock2D`"""
-    def __init__(self, midblock: UNetMidBlock2DCrossAttn, base_to_ctrl:nn.ModuleList, ctrl_to_base:nn.ModuleList):
+    """Components that together with corresponding components from the base model will form a
+    `ControlNetXSCrossAttnMidBlock2D`"""
+
+    def __init__(self, midblock: UNetMidBlock2DCrossAttn, base_to_ctrl: nn.ModuleList, ctrl_to_base: nn.ModuleList):
         super().__init__()
         self.midblock = midblock
         self.base_to_ctrl = base_to_ctrl
@@ -78,7 +89,8 @@ class ControlNetXSAddonMidBlockComponents(nn.Module):
 
 class ControlNetXSAddonUpBlockComponents(nn.Module):
     """Components that together with corresponding components from the base model will form a `ControlNetXSCrossAttnUpBlock2D`"""
-    def __init__(self, ctrl_to_base:nn.ModuleList):
+
+    def __init__(self, ctrl_to_base: nn.ModuleList):
         super().__init__()
         self.ctrl_to_base = ctrl_to_base
 
@@ -131,13 +143,14 @@ class ControlNetConditioningEmbedding(nn.Module):
 
 class ControlNetXSAddon(ModelMixin, ConfigMixin):
     r"""
-    A `ControlNetXSAddon` model. To use it, pass it into a `ControlNetXSModel` (together with a `UNet2DConditionModel` base model).
+    A `ControlNetXSAddon` model. To use it, pass it into a `ControlNetXSModel` (together with a `UNet2DConditionModel`
+    base model).
 
     This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
     methods implemented for all models (such as downloading or saving).
 
-    Like `ControlNetXSModel`, `ControlNetXSAddon` is compatible with StableDiffusion and StableDiffusion-XL.
-    It's default parameters are compatible with StableDiffusion.
+    Like `ControlNetXSModel`, `ControlNetXSAddon` is compatible with StableDiffusion and StableDiffusion-XL. It's
+    default parameters are compatible with StableDiffusion.
 
     Parameters:
         conditioning_channels (`int`, defaults to 3):
@@ -147,12 +160,11 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
             The tuple of output channels for each block in the `controlnet_cond_embedding` layer.
         time_embedding_mix (`float`, defaults to 1.0):
-            If 0, then only the control addon's time embedding is used.
-            If 1, then only the base unet's time embedding is used.
-            Otherwise, both are combined.
+            If 0, then only the control addon's time embedding is used. If 1, then only the base unet's time embedding
+            is used. Otherwise, both are combined.
         learn_time_embedding (`bool`, defaults to `False`):
-            Whether a time embedding should be learned. If yes, `ControlNetXSModel` will combine the time embeddings of the base model and the addon.
-            If no, `ControlNetXSModel` will use the base model's time embedding.
+            Whether a time embedding should be learned. If yes, `ControlNetXSModel` will combine the time embeddings of
+            the base model and the addon. If no, `ControlNetXSModel` will use the base model's time embedding.
         num_attention_heads (`list[int]`, defaults to `[4]`):
             The number of attention heads.
         block_out_channels (`list[int]`, defaults to `[4, 8, 16, 16]`):
@@ -171,7 +183,8 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         upcast_attention (`bool`, defaults to `True`):
             Whether the attention computation should always be upcasted.
         max_norm_num_groups (`int`, defaults to 32):
-            Maximum number of groups in group normal. The actual number will the the largest divisor of the respective channels, that is <= max_norm_num_groups.
+            Maximum number of groups in group normal. The actual number will the the largest divisor of the respective
+            channels, that is <= max_norm_num_groups.
     """
 
     @register_to_config
@@ -391,7 +404,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         down_block_components = ControlNetXSAddonDownBlockComponents(
             resnets=nn.ModuleList(resnets),
             base_to_ctrl=nn.ModuleList(base_to_ctrl),
-            ctrl_to_base=nn.ModuleList(ctrl_to_base)
+            ctrl_to_base=nn.ModuleList(ctrl_to_base),
         )
 
         if has_crossattn:
@@ -433,7 +446,9 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         # Addition requires change in number of channels
         ctrl_to_base = make_zero_conv(ctrl_channels, base_channels)
 
-        return ControlNetXSAddonMidBlockComponents(base_to_ctrl=base_to_ctrl, midblock=midblock, ctrl_to_base=ctrl_to_base)
+        return ControlNetXSAddonMidBlockComponents(
+            base_to_ctrl=base_to_ctrl, midblock=midblock, ctrl_to_base=ctrl_to_base
+        )
 
     @staticmethod
     def get_up_connections(
@@ -469,18 +484,18 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             unet (`UNet2DConditionModel`):
                 The UNet model we want to control. The dimensions of the ControlNetXSAddon will be adapted to it.
             size_ratio (float, *optional*, defaults to `None`):
-                When given, block_out_channels is set to a fraction of the base model's block_out_channels.
-                Either this or `block_out_channels` must be given.
+                When given, block_out_channels is set to a fraction of the base model's block_out_channels. Either this
+                or `block_out_channels` must be given.
             block_out_channels (`List[int]`, *optional*, defaults to `None`):
                 Down blocks output channels in control model. Either this or `size_ratio` must be given.
             num_attention_heads (`List[int]`, *optional*, defaults to `None`):
-                The dimension of the attention heads. The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
+                The dimension of the attention heads. The naming seems a bit confusing and it is, see
+                https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
             learn_time_embedding (`bool`, defaults to `False`):
                 Whether the `ControlNetXSAddon` should learn a time embedding.
             time_embedding_mix (`float`, defaults to 1.0):
-                If 0, then only the control addon's time embedding is used.
-                If 1, then only the base unet's time embedding is used.
-                Otherwise, both are combined.
+                If 0, then only the control addon's time embedding is used. If 1, then only the base unet's time
+                embedding is used. Otherwise, both are combined.
             conditioning_channels (`int`, defaults to 3):
                 Number of channels of conditioning input (e.g. an image)
             conditioning_channel_order (`str`, defaults to `"rgb"`):
@@ -538,10 +553,11 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
     This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
     methods implemented for all models (such as downloading or saving).
 
-    `UNetControlNetXSModel` is compatible with StableDiffusion and StableDiffusion-XL.
-    It's default parameters are compatible with StableDiffusion.
+    `UNetControlNetXSModel` is compatible with StableDiffusion and StableDiffusion-XL. It's default parameters are
+    compatible with StableDiffusion.
 
-    It's parameters are either passed to the underlying `UNet2DConditionModel` or used exactly like in `ControlNetXSAddon` . See their documentation for details.
+    It's parameters are either passed to the underlying `UNet2DConditionModel` or used exactly like in
+    `ControlNetXSAddon` . See their documentation for details.
     """
 
     _supports_gradient_checkpointing = True
@@ -739,11 +755,13 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             unet (`UNet2DConditionModel`):
                 The UNet model we want to control.
             controlnet (`ControlNetXSAddon`):
-                The ConntrolNet-XS addon with which the UNet will be fused. If none is given, a new ConntrolNet-XS addon will be created.
+                The ConntrolNet-XS addon with which the UNet will be fused. If none is given, a new ConntrolNet-XS
+                addon will be created.
             size_ratio (float, *optional*, defaults to `None`):
                 Used to contruct the controlnet if none is given. See [`ControlNetXSAddon.from_unet`] for details.
             ctrl_block_out_channels (`List[int]`, *optional*, defaults to `None`):
-                Used to contruct the controlnet if none is given. See [`ControlNetXSAddon.from_unet`] for details, where this parameter is called `block_out_channels`.
+                Used to contruct the controlnet if none is given. See [`ControlNetXSAddon.from_unet`] for details,
+                where this parameter is called `block_out_channels`.
             time_embedding_mix (`float`, *optional*, defaults to None):
                 Used to contruct the controlnet if none is given. See [`ControlNetXSAddon.from_unet`] for details.
             ctrl_optional_kwargs (`Dict`, *optional*, defaults to `None`):
@@ -836,7 +854,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         return model
 
     def freeze_unet_params(self) -> None:
-        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine tuning."""
+        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine
+        tuning."""
         # Freeze everything
         for param in self.parameters():
             param.requires_grad = True
@@ -971,8 +990,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
     # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
     def fuse_qkv_projections(self):
         """
-        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
-        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
+        are fused. For cross-attention modules, key and value projection matrices are fused.
 
         <Tip warning={true}>
 
@@ -1384,7 +1403,8 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         return model
 
     def freeze_base_params(self) -> None:
-        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine tuning."""
+        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine
+        tuning."""
         # Unfreeze everything
         for param in self.parameters():
             param.requires_grad = True
@@ -1607,7 +1627,8 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
         return model
 
     def freeze_base_params(self) -> None:
-        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine tuning."""
+        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine
+        tuning."""
         # Unfreeze everything
         for param in self.parameters():
             param.requires_grad = True
@@ -1734,7 +1755,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         prev_output_channels = base_upblock.resnets[0].in_channels - out_channels
         ctrl_skip_channelss = [c.in_channels for c in ctrl_to_base_skip_connections]
         temb_channels = base_upblock.resnets[0].time_emb_proj.in_features
-        resolution_idx=base_upblock.resolution_idx
+        resolution_idx = base_upblock.resolution_idx
         if hasattr(base_upblock, "attentions"):
             has_crossattn = True
             transformer_layers_per_block = len(base_upblock.attentions[0].transformer_blocks)
@@ -1776,7 +1797,8 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         return model
 
     def freeze_base_params(self) -> None:
-        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine tuning."""
+        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine
+        tuning."""
         # Unfreeze everything
         for param in self.parameters():
             param.requires_grad = True
