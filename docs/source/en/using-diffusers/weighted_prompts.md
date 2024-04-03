@@ -122,12 +122,12 @@ processor_list = LogitsProcessorList([processor])
 Combine the prompt and the `anime` style prompt defined in the `styles` dictionary earlier.
 
 ```py
-prompt = "a road beside a river with trees and a village, studio ghibli style"
-style = "anime"
+prompt = "a cat basking in the sun on a roof in Turkey"
+style = "cinematic"
 
 prompt = styles[style].format(prompt=prompt)
 prompt
-"anime artwork of a road beside a river with trees and a village, studio ghibli style, anime style, key visual, vibrant, studio anime, highly detailed"
+"cinematic film still of a cat basking in the sun on a roof in Turkey, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain"
 ```
 
 Load a GPT2 tokenizer and model from the [Gustavosta/MagicPrompt-Stable-Diffusion](https://huggingface.co/Gustavosta/MagicPrompt-Stable-Diffusion) checkpoint (this specific checkpoint is trained to generate prompts) to enhance the prompt.
@@ -141,7 +141,7 @@ model.eval()
 
 inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
 token_count = inputs["input_ids"].shape[1]
-max_new_tokens = 40 - token_count
+max_new_tokens = 50 - token_count
 
 generation_config = GenerationConfig(
     penalty_alpha=0.7,
@@ -171,7 +171,7 @@ pairs, words = find_and_order_pairs(generated_part, word_pairs)
 formatted_generated_part = pairs + ", " + words
 enhanced_prompt = input_part + ", " + formatted_generated_part
 enhanced_prompt
-"anime artwork of a road beside a river with trees and a village, studio ghibli style, anime style, key visual, vibrant, studio anime, highly detailed, high quality, beautiful, hyper, ultra"
+["cinematic film still of a cat basking in the sun on a roof in Turkey, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain quality sharp focus beautiful detailed intricate stunning amazing epic"]
 ```
 
 Finally, load a pipeline and the offset noise LoRA with a *low weight* to generate an image with the enhanced prompt.
