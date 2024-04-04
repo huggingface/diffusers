@@ -14,11 +14,12 @@
 import importlib
 import os
 
+import torch
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
-from ..utils import is_transformers_available, logging
+from ..utils import deprecate, is_transformers_available, logging
 from .single_file_utils import (
     create_diffusers_clip_model_from_ldm,
     fetch_diffusers_config,
@@ -32,7 +33,7 @@ logger = logging.get_logger(__name__)
 
 if is_transformers_available():
     import transformers
-    from transformers import AutoFeatureExtractor, PreTrainedModel
+    from transformers import AutoImageProcessor, PreTrainedModel
 
 
 def load_single_file_sub_model(
@@ -69,6 +70,7 @@ def load_single_file_sub_model(
 
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     is_diffusers_single_file_model = issubclass(class_obj, diffusers_module.FromOriginalModelMixin)
+    is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
     if is_diffusers_single_file_model:
         load_method = getattr(class_obj, "from_single_file")
@@ -91,7 +93,7 @@ def load_single_file_sub_model(
         )
 
     elif is_transformers_model and is_clip_model_in_single_file(class_obj, checkpoint):
-        config = class_obj.config_class.from_pretrained(pretrained_model_name_or_path, subfolder=name, **kwargs)
+        config = class_obj.config_class.from_pretrained(pretrained_model_name_or_path, subfolder=name)
         loaded_sub_model = create_diffusers_clip_model_from_ldm(
             class_obj,
             checkpoint=checkpoint,
@@ -99,16 +101,38 @@ def load_single_file_sub_model(
             config=config,
             torch_dtype=torch_dtype,
             local_files_only=local_files_only,
-            **kwargs,
         )
 
     else:
+        if not hasattr(class_obj, "from_pretrained"):
+            raise ValueError(
+                (
+                    f"The component {class_obj.__name__} cannot be loaded as it does not seem to have"
+                    " a supported loading method."
+                )
+            )
+
+        if is_diffusers_model:
+            logger.warning(
+                (
+                    f"{name} weights do not appear to be included in the checkpoint"
+                    f"or {class_obj.__name__} does not currently support single file loading."
+                    f"Attempting to load the component using `from_pretrained` and the inferred model repository: {pretrained_model_name_or_path}."
+                )
+            )
+
+        # Schedulers and Tokenizers don't make use of torch_dtype
+        # Skip passing it to those objects
+        loading_kwargs = {}
+        if issubclass(class_obj, torch.nn.Module):
+            loading_kwargs["torch_dtype"] = torch_dtype
+
         load_method = getattr(class_obj, "from_pretrained")
         loaded_sub_model = load_method(
             pretrained_model_name_or_path,
             subfolder=name,
             local_files_only=local_files_only,
-            torch_dtype=torch_dtype,
+            **loading_kwargs,
         )
 
     return loaded_sub_model
@@ -120,7 +144,7 @@ def _legacy_load_safety_checker(local_files_only, torch_dtype):
 
     from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
-    feature_extractor = AutoFeatureExtractor.from_pretrained(
+    feature_extractor = AutoImageProcessor.from_pretrained(
         "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
     )
     safety_checker = StableDiffusionSafetyChecker.from_pretrained(
@@ -197,6 +221,16 @@ class FromSingleFileMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
+            local_dir (`str`, *optional*):
+                If provided, the downloaded file will be placed under this directory, either as a symlink (default) or
+                a regular file.
+            local_dir_use_symlinks (`str` or `bool`, *optional*):
+                To be used with local_dir. If set to “auto”, the cache directory will be used and the file will either
+                be duplicated or symlinked to the local directory depending on its size. It set to True, a symlink will
+                be created, no matter the file size. If set to False, the file will either be duplicated from cache (if
+                already exists) or downloaded from the Hub and not cached. Find more information in the
+                `huggingface_hub`
+                [documentation](https://huggingface.co/docs/huggingface_hub/package_reference/file_download#huggingface_hub.hf_hub_download.local_dir_use_symlinks).
             token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
@@ -271,6 +305,22 @@ class FromSingleFileMixin:
 
         if config is not None and original_config_file is not None:
             raise ValueError("Only one of `config` and `original_config_file` can be provided.")
+
+        # We shouldn't allow configuring individual models components through a Pipeline creation method
+        # These model kwargs should be deprecated
+        scaling_factor = kwargs.get("scaling_factor", None)
+        if scaling_factor is not None:
+            deprecation_message = (
+                "Passing the `scaling_factor` argument is deprecated and will be ignored in future versions."
+            )
+            deprecate("scaling_factor", "1.0.0", deprecation_message)
+
+        prediction_type = kwargs.get("prediction_type", None)
+        if prediction_type is not None:
+            deprecation_message = (
+                "Passing the `prediction_type` argument is deprecated and will be ignored in future versions."
+            )
+            deprecate("prediction_type", "1.0.0", deprecation_message)
 
         checkpoint = load_single_file_checkpoint(
             pretrained_model_link_or_path,
@@ -387,27 +437,26 @@ class FromSingleFileMixin:
         # deprecated kwargs
         load_safety_checker = kwargs.pop("load_safety_checker", None)
         if load_safety_checker is not None:
-            logger.warning(
-                (
-                    "The `load_safety_checker` argument is deprecated and will be removed in a future version. "
-                    "Please pass the arguments `safety_checker` and `feature_extractor` directly to `from_single_file`"
-                    "If no safety checker components are provided, the safety checker will be loaded based"
-                    f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
-                )
+            deprecation_message = (
+                "Please pass instances of `StableDiffusionSafetyChecker` and `AutoImageProcessor`"
+                "using the `safety_checker` and `feature_extractor` arguments in `from_single_file`"
+                "If no safety checker components are provided, the safety checker will be loaded based"
+                f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
             )
+            deprecate("load_safety_checker", "1.0.0", deprecation_message)
+
             safety_checker_components = _legacy_load_safety_checker(local_files_only, torch_dtype)
             init_kwargs.update(safety_checker_components)
 
         scheduler_type = kwargs.pop("scheduler_type", None)
         if scheduler_type is not None:
-            logger.warning(
-                (
-                    "The `scheduler_type` argument is deprecated and will be ignored. "
-                    "Please pass an instance of a Scheduler object directly to the `scheduler` in `from_single_file`."
-                    "If no scheduler is provided, it will be loaded based"
-                    f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
-                )
+            deprecation_message = (
+                "The `scheduler_type` argument is deprecated and will be ignored. "
+                "Please pass an instance of a Scheduler object directly to the `scheduler` argument in `from_single_file`."
+                "If no scheduler is provided, it will be loaded based"
+                f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
             )
+            deprecate("scheduler_type", "1.0.0", deprecation_message)
 
         pipe = pipeline_class(**init_kwargs)
         if torch_dtype is not None:

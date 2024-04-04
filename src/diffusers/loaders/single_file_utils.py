@@ -78,6 +78,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     },
 }
 
+# Use to configure model sample size when original config is provided
 DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP = {
     "xl_base": 1024,
     "xl_refiner": 1024,
@@ -88,16 +89,9 @@ DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP = {
     "inpainting_v2": 512,
     "controlnet": 512,
     "v2": 768,
-    "v2_base": 512,
     "v1": 512,
 }
 
-STABLE_CASCADE_DEFAULT_CONFIGS = {
-    "stage_c": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior"},
-    "stage_c_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior_lite"},
-    "stage_b": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder"},
-    "stage_b_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder_lite"},
-}
 
 DIFFUSERS_TO_LDM_MAPPING = {
     "unet": {
@@ -239,6 +233,7 @@ def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
         pretrained_model_name_or_path = pretrained_model_name_or_path.replace(prefix, "")
     match = re.match(pattern, pretrained_model_name_or_path)
     if not match:
+        logger.warning("Unable to identify the repo_id and weights_name from the provided URL.")
         return repo_id, weights_name
 
     repo_id = f"{match.group(1)}/{match.group(2)}"
@@ -295,7 +290,7 @@ def fetch_original_config(original_config_file, local_files_only=False):
     elif is_valid_url(original_config_file):
         if local_files_only:
             raise ValueError(
-                "Local files only flag is set to True, but a URL was provided as `original_config_file`. "
+                "`local_files_only` is set to True, but a URL was provided as `original_config_file`. "
                 "Please provide a valid local file path."
             )
 
@@ -500,22 +495,6 @@ def convert_stable_cascade_unet_single_file_to_diffusers(original_state_dict):
     return state_dict
 
 
-def infer_stable_cascade_single_file_config(checkpoint):
-    is_stage_c = "clip_txt_mapper.weight" in checkpoint
-    is_stage_b = "down_blocks.1.0.channelwise.0.weight" in checkpoint
-
-    if is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 1536):
-        config_type = "stage_c_lite"
-    elif is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 2048):
-        config_type = "stage_c"
-    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 576:
-        config_type = "stage_b_lite"
-    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 640:
-        config_type = "stage_b"
-
-    return STABLE_CASCADE_DEFAULT_CONFIGS[config_type]
-
-
 def create_unet_diffusers_config_from_ldm(original_config, image_size: int):
     """
     Creates a config for the diffusers based on the config of the LDM model.
@@ -708,8 +687,8 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False):
 
     # at least a 100 parameters have to start with `model_ema` in order for the checkpoint to be EMA
     if sum(k.startswith("model_ema") for k in keys) > 100 and extract_ema:
-        logger.warning("Checkpoint has both EMA and non-EMA weights.")
-        logger.warning(
+        logger.warninging("Checkpoint has both EMA and non-EMA weights.")
+        logger.warninging(
             "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
             " weights (useful to continue fine-tuning), please make sure to remove the `--extract_ema` flag."
         )
@@ -719,7 +698,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False):
                 unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
     else:
         if sum(k.startswith("model_ema") for k in keys) > 100:
-            logger.warning(
+            logger.warninging(
                 "In this conversion only the non-EMA weights are extracted. If you want to instead extract the EMA"
                 " weights (usually better for inference), please make sure to add the `--extract_ema` flag."
             )
@@ -1210,7 +1189,7 @@ def create_diffusers_unet_from_stable_cascade(
     **kwargs,
 ):
     if config is None:
-        config = infer_stable_cascade_single_file_config(checkpoint)
+        config = fetch_diffusers_config(checkpoint)
         model_config = cls.load_config(**config, **kwargs)
     else:
         model_config = config
@@ -1223,7 +1202,7 @@ def create_diffusers_unet_from_stable_cascade(
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
@@ -1251,6 +1230,10 @@ def create_diffusers_unet_from_ldm(
 
     if original_config is not None:
         image_size = kwargs.get("image_size", None)
+        if image_size is not None:
+            deprecation_message = "Configuring UNet2DConditionModel with the `image_size` argument is deprecated and will be ignored in future versions."
+            deprecate("image_size", "1.0.0", deprecation_message)
+
         image_size = set_image_size(checkpoint, image_size=image_size)
         model_config = create_unet_diffusers_config_from_ldm(original_config, image_size=image_size)
 
@@ -1262,7 +1245,8 @@ def create_diffusers_unet_from_ldm(
         model_config = cls.load_config(**config, subfolder="unet")
 
     if num_in_channels is not None:
-        deprecate("num_in_channels", "in_channels", "1.0.0")
+        deprecation_message = "Configuring the UNet2DConditionModel with the `num_in_channels` argument is deprecated and will be ignored in future versions."
+        deprecate("num_in_channels", "1.0.0", deprecation_message)
         model_config["in_channels"] = num_in_channels
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
@@ -1277,7 +1261,7 @@ def create_diffusers_unet_from_ldm(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
@@ -1304,8 +1288,11 @@ def create_diffusers_controlnet_from_ldm(
 
     if original_config is not None:
         image_size = kwargs.get("image_size", None)
-        image_size = set_image_size(cls, config, checkpoint, image_size=image_size)
+        if image_size is not None:
+            deprecation_message = "Configuring ControlNetModel with the `image_size` argument is deprecated and will be ignored in future versions."
+            deprecate("image_size", "1.0.0", deprecation_message)
 
+        image_size = set_image_size(checkpoint, image_size=image_size)
         model_config = create_controlnet_diffusers_config_from_ldm(original_config, image_size=image_size)
 
     elif config is not None:
@@ -1316,7 +1303,8 @@ def create_diffusers_controlnet_from_ldm(
         model_config = cls.load_config(**config)
 
     if num_in_channels is not None:
-        # TODO: Add deprecation warning
+        deprecation_message = "Configuring the ControlNetModel with the `num_in_channels` argument is deprecated and will be ignored in future versions."
+        deprecate("num_in_channels", "1.0.0", deprecation_message)
         model_config["in_channels"] = num_in_channels
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
@@ -1331,7 +1319,7 @@ def create_diffusers_controlnet_from_ldm(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
@@ -1357,6 +1345,10 @@ def create_diffusers_vae_from_ldm(
     if original_config is not None:
         scaling_factor = kwargs.get("scaling_factor", None)
         image_size = kwargs.get("image_size", None)
+        if image_size is not None:
+            deprecation_message = "Configuring AutoencoderKL with the `image_size` argument is deprecated and will be ignored in future versions."
+            deprecate("image_size", "1.0.0", deprecation_message)
+
         image_size = set_image_size(checkpoint, image_size=image_size)
 
         if "edm_mean" in checkpoint and "edm_std" in checkpoint:
@@ -1393,7 +1385,7 @@ def create_diffusers_vae_from_ldm(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
@@ -1463,7 +1455,7 @@ def create_diffusers_clip_model_from_ldm(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
