@@ -439,66 +439,19 @@ def conv_attn_to_linear(checkpoint):
                 checkpoint[key] = checkpoint[key][:, :, 0]
 
 
-def convert_stable_cascade_unet_single_file_to_diffusers(original_state_dict):
-    is_stage_c = "clip_txt_mapper.weight" in original_state_dict
-
-    if is_stage_c:
-        state_dict = {}
-        for key in original_state_dict.keys():
-            if key.endswith("in_proj_weight"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
-                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
-                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
-            elif key.endswith("in_proj_bias"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
-                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
-                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
-            elif key.endswith("out_proj.weight"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
-            elif key.endswith("out_proj.bias"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
-            else:
-                state_dict[key] = original_state_dict[key]
-    else:
-        state_dict = {}
-        for key in original_state_dict.keys():
-            if key.endswith("in_proj_weight"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
-                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
-                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
-            elif key.endswith("in_proj_bias"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
-                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
-                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
-            elif key.endswith("out_proj.weight"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
-            elif key.endswith("out_proj.bias"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
-            # rename clip_mapper to clip_txt_pooled_mapper
-            elif key.endswith("clip_mapper.weight"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("clip_mapper.weight", "clip_txt_pooled_mapper.weight")] = weights
-            elif key.endswith("clip_mapper.bias"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
-            else:
-                state_dict[key] = original_state_dict[key]
-
-    return state_dict
-
-
-def create_unet_diffusers_config_from_ldm(original_config, image_size: int):
+def create_unet_diffusers_config_from_ldm(original_config, checkpoint, image_size=None):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
+    if image_size is not None:
+        deprecation_message = (
+            "Configuring UNet2DConditionModel with the `image_size` argument"
+            "is deprecated and will be ignored in future versions."
+        )
+        deprecate("image_size", "1.0.0", deprecation_message)
+
+    image_size = set_image_size(checkpoint, image_size=image_size)
+
     if (
         "unet_config" in original_config["model"]["params"]
         and original_config["model"]["params"]["unet_config"] is not None
@@ -597,7 +550,16 @@ def create_unet_diffusers_config_from_ldm(original_config, image_size: int):
     return config
 
 
-def create_controlnet_diffusers_config_from_ldm(original_config, image_size: int):
+def create_controlnet_diffusers_config_from_ldm(original_config, checkpoint, image_size=None, **kwargs):
+    if image_size is not None:
+        deprecation_message = (
+            "Configuring ControlNetModel with the `image_size` argument"
+            "is deprecated and will be ignored in future versions."
+        )
+        deprecate("image_size", "1.0.0", deprecation_message)
+
+    image_size = set_image_size(checkpoint, image_size=image_size)
+
     unet_params = original_config["model"]["params"]["control_stage_config"]["params"]
     diffusers_unet_config = create_unet_diffusers_config_from_ldm(original_config, image_size=image_size)
 
@@ -620,17 +582,33 @@ def create_controlnet_diffusers_config_from_ldm(original_config, image_size: int
     return controlnet_config
 
 
-def create_vae_diffusers_config_from_ldm(
-    original_config, image_size, scaling_factor=None, latents_mean=None, latents_std=None
-):
+def create_vae_diffusers_config_from_ldm(original_config, checkpoint, image_size=None, scaling_factor=None):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
+    if image_size is not None:
+        deprecation_message = (
+            "Configuring AutoencoderKL with the `image_size` argument"
+            "is deprecated and will be ignored in future versions."
+        )
+        deprecate("image_size", "1.0.0", deprecation_message)
+
+        image_size = set_image_size(checkpoint, image_size=image_size)
+
+    if "edm_mean" in checkpoint and "edm_std" in checkpoint:
+        latents_mean = checkpoint["edm_mean"]
+        latents_std = checkpoint["edm_std"]
+    else:
+        latents_mean = None
+        latents_std = None
+
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
     if (scaling_factor is None) and (latents_mean is not None) and (latents_std is not None):
         scaling_factor = PLAYGROUND_VAE_SCALING_FACTOR
+
     elif (scaling_factor is None) and ("scale_factor" in original_config["model"]["params"]):
         scaling_factor = original_config["model"]["params"]["scale_factor"]
+
     elif scaling_factor is None:
         scaling_factor = LDM_VAE_DEFAULT_SCALING_FACTOR
 
@@ -676,7 +654,95 @@ def update_unet_attention_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint,
         new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
 
 
-def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False):
+def update_vae_resnet_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
+    for ldm_key in keys:
+        diffusers_key = ldm_key.replace(mapping["old"], mapping["new"]).replace("nin_shortcut", "conv_shortcut")
+        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+
+
+def update_vae_attentions_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
+    for ldm_key in keys:
+        diffusers_key = (
+            ldm_key.replace(mapping["old"], mapping["new"])
+            .replace("norm.weight", "group_norm.weight")
+            .replace("norm.bias", "group_norm.bias")
+            .replace("q.weight", "to_q.weight")
+            .replace("q.bias", "to_q.bias")
+            .replace("k.weight", "to_k.weight")
+            .replace("k.bias", "to_k.bias")
+            .replace("v.weight", "to_v.weight")
+            .replace("v.bias", "to_v.bias")
+            .replace("proj_out.weight", "to_out.0.weight")
+            .replace("proj_out.bias", "to_out.0.bias")
+        )
+        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+
+        # proj_attn.weight has to be converted from conv 1D to linear
+        shape = new_checkpoint[diffusers_key].shape
+
+        if len(shape) == 3:
+            new_checkpoint[diffusers_key] = new_checkpoint[diffusers_key][:, :, 0]
+        elif len(shape) == 4:
+            new_checkpoint[diffusers_key] = new_checkpoint[diffusers_key][:, :, 0, 0]
+
+
+def convert_stable_cascade_unet_single_file_to_diffusers(checkpoint, **kwargs):
+    is_stage_c = "clip_txt_mapper.weight" in checkpoint
+
+    if is_stage_c:
+        state_dict = {}
+        for key in checkpoint.keys():
+            if key.endswith("in_proj_weight"):
+                weights = checkpoint[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
+                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
+                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
+            elif key.endswith("in_proj_bias"):
+                weights = checkpoint[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
+                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
+                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
+            elif key.endswith("out_proj.weight"):
+                weights = checkpoint[key]
+                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
+            elif key.endswith("out_proj.bias"):
+                weights = checkpoint[key]
+                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
+            else:
+                state_dict[key] = checkpoint[key]
+    else:
+        state_dict = {}
+        for key in checkpoint.keys():
+            if key.endswith("in_proj_weight"):
+                weights = checkpoint[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
+                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
+                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
+            elif key.endswith("in_proj_bias"):
+                weights = checkpoint[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
+                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
+                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
+            elif key.endswith("out_proj.weight"):
+                weights = checkpoint[key]
+                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
+            elif key.endswith("out_proj.bias"):
+                weights = checkpoint[key]
+                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
+            # rename clip_mapper to clip_txt_pooled_mapper
+            elif key.endswith("clip_mapper.weight"):
+                weights = checkpoint[key]
+                state_dict[key.replace("clip_mapper.weight", "clip_txt_pooled_mapper.weight")] = weights
+            elif key.endswith("clip_mapper.bias"):
+                weights = checkpoint[key]
+                state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
+            else:
+                state_dict[key] = checkpoint[key]
+
+    return state_dict
+
+
+def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False, **kwargs):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
     """
@@ -843,6 +909,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False):
 def convert_controlnet_checkpoint(
     checkpoint,
     config,
+    **kwargs,
 ):
     # Some controlnet ckpt files are distributed independently from the rest of the
     # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
@@ -966,38 +1033,6 @@ def convert_controlnet_checkpoint(
         )
 
     return new_checkpoint
-
-
-def update_vae_resnet_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
-    for ldm_key in keys:
-        diffusers_key = ldm_key.replace(mapping["old"], mapping["new"]).replace("nin_shortcut", "conv_shortcut")
-        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
-
-
-def update_vae_attentions_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
-    for ldm_key in keys:
-        diffusers_key = (
-            ldm_key.replace(mapping["old"], mapping["new"])
-            .replace("norm.weight", "group_norm.weight")
-            .replace("norm.bias", "group_norm.bias")
-            .replace("q.weight", "to_q.weight")
-            .replace("q.bias", "to_q.bias")
-            .replace("k.weight", "to_k.weight")
-            .replace("k.bias", "to_k.bias")
-            .replace("v.weight", "to_v.weight")
-            .replace("v.bias", "to_v.bias")
-            .replace("proj_out.weight", "to_out.0.weight")
-            .replace("proj_out.bias", "to_out.0.bias")
-        )
-        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
-
-        # proj_attn.weight has to be converted from conv 1D to linear
-        shape = new_checkpoint[diffusers_key].shape
-
-        if len(shape) == 3:
-            new_checkpoint[diffusers_key] = new_checkpoint[diffusers_key][:, :, 0]
-        elif len(shape) == 4:
-            new_checkpoint[diffusers_key] = new_checkpoint[diffusers_key][:, :, 0, 0]
 
 
 def convert_ldm_vae_checkpoint(checkpoint, config):
@@ -1179,248 +1214,6 @@ def convert_open_clip_checkpoint(
         text_model_dict.pop("text_model.embeddings.position_ids", None)
 
     return text_model_dict
-
-
-def create_diffusers_unet_from_stable_cascade(
-    cls,
-    checkpoint,
-    config,
-    torch_dtype,
-    **kwargs,
-):
-    if config is None:
-        config = fetch_diffusers_config(checkpoint)
-        model_config = cls.load_config(**config, **kwargs)
-    else:
-        model_config = config
-
-    ctx = init_empty_weights if is_accelerate_available() else nullcontext
-    with ctx():
-        model = cls.from_config(model_config, **kwargs)
-
-    diffusers_format_checkpoint = convert_stable_cascade_unet_single_file_to_diffusers(checkpoint)
-    if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
-    else:
-        model.load_state_dict(diffusers_format_checkpoint)
-
-    if torch_dtype is not None:
-        model.to(torch_dtype)
-
-    model.eval()
-
-    return model
-
-
-def create_diffusers_unet_from_ldm(
-    cls,
-    checkpoint,
-    subfolder=None,
-    config=None,
-    original_config=None,
-    torch_dtype=None,
-    **kwargs,
-):
-    subfolder = subfolder if subfolder is None else "unet"
-
-    num_in_channels = kwargs.pop("num_in_channels", None)
-    extract_ema = kwargs.pop("extract_ema", False)
-
-    if original_config is not None:
-        image_size = kwargs.get("image_size", None)
-        if image_size is not None:
-            deprecation_message = (
-                "Configuring UNet2DConditionModel with the `image_size` argument"
-                "is deprecated and will be ignored in future versions."
-            )
-            deprecate("image_size", "1.0.0", deprecation_message)
-
-        image_size = set_image_size(checkpoint, image_size=image_size)
-        model_config = create_unet_diffusers_config_from_ldm(original_config, image_size=image_size)
-
-    elif config is not None:
-        model_config = config
-
-    else:
-        config = fetch_diffusers_config(checkpoint)
-
-        expected_kwargs = cls._get_signature_keys()
-        model_kwargs = {k: kwargs.pop(k) for k in kwargs if k in expected_kwargs}
-
-        model_config = cls.load_config(**config, subfolder=subfolder, **model_kwargs)
-
-    if num_in_channels is not None:
-        deprecation_message = (
-            "Configuring the UNet2DConditionModel with the `num_in_channels` argument"
-            "is deprecated and will be ignored in future versions."
-        )
-        deprecate("num_in_channels", "1.0.0", deprecation_message)
-        model_config["in_channels"] = num_in_channels
-
-    ctx = init_empty_weights if is_accelerate_available() else nullcontext
-    with ctx():
-        model = cls.from_config(model_config, **kwargs)
-
-    diffusers_format_checkpoint = convert_ldm_unet_checkpoint(checkpoint, model_config, extract_ema=extract_ema)
-    if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        if model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
-    else:
-        model.load_state_dict(diffusers_format_checkpoint)
-
-    if torch_dtype is not None:
-        model.to(torch_dtype)
-
-    model.eval()
-
-    return model
-
-
-def create_diffusers_controlnet_from_ldm(
-    cls,
-    checkpoint,
-    config=None,
-    original_config=None,
-    torch_dtype=None,
-    **kwargs,
-):
-    num_in_channels = kwargs.get("num_in_channels", None)
-
-    if original_config is not None:
-        image_size = kwargs.get("image_size", None)
-        if image_size is not None:
-            deprecation_message = "Configuring ControlNetModel with the `image_size` argument is deprecated and will be ignored in future versions."
-            deprecate("image_size", "1.0.0", deprecation_message)
-
-        image_size = set_image_size(checkpoint, image_size=image_size)
-        model_config = create_controlnet_diffusers_config_from_ldm(original_config, image_size=image_size)
-
-    elif config is not None:
-        model_config = config
-
-    else:
-        config = fetch_diffusers_config(checkpoint)
-        model_config = cls.load_config(**config)
-
-    if num_in_channels is not None:
-        deprecation_message = "Configuring the ControlNetModel with the `num_in_channels` argument is deprecated and will be ignored in future versions."
-        deprecate("num_in_channels", "1.0.0", deprecation_message)
-        model_config["in_channels"] = num_in_channels
-
-    ctx = init_empty_weights if is_accelerate_available() else nullcontext
-    with ctx():
-        model = cls.from_config(model_config, **kwargs)
-
-    diffusers_format_checkpoint = convert_controlnet_checkpoint(checkpoint, model_config)
-    if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        if model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
-    else:
-        model.load_state_dict(diffusers_format_checkpoint)
-
-    if torch_dtype is not None:
-        model.to(torch_dtype)
-
-    model.eval()
-
-    return model
-
-
-def create_diffusers_vae_from_ldm(
-    cls,
-    checkpoint,
-    subfolder=None,
-    config=None,
-    original_config=None,
-    torch_dtype=None,
-    **kwargs,
-):
-    subfolder = subfolder if subfolder is None else "vae"
-
-    if original_config is not None:
-        scaling_factor = kwargs.get("scaling_factor", None)
-        image_size = kwargs.get("image_size", None)
-        if image_size is not None:
-            deprecation_message = (
-                "Configuring AutoencoderKL with the `image_size` argument"
-                "is deprecated and will be ignored in future versions."
-            )
-            deprecate("image_size", "1.0.0", deprecation_message)
-
-        image_size = set_image_size(checkpoint, image_size=image_size)
-
-        if "edm_mean" in checkpoint and "edm_std" in checkpoint:
-            latent_mean = checkpoint["edm_mean"]
-            latent_std = checkpoint["edm_std"]
-        else:
-            latent_mean = None
-            latent_std = None
-
-        model_config = create_vae_diffusers_config_from_ldm(
-            original_config,
-            image_size=image_size,
-            scaling_factor=scaling_factor,
-            latents_mean=latent_mean,
-            latents_std=latent_std,
-        )
-
-    elif config is not None:
-        model_config = config
-
-    else:
-        config = fetch_diffusers_config(checkpoint)
-
-        expected_kwargs = cls._get_signature_keys()
-        model_kwargs = {k: kwargs.pop(k) for k in kwargs if k in expected_kwargs}
-
-        model_config = cls.load_config(**config, subfolder=subfolder, **model_kwargs)
-
-    ctx = init_empty_weights if is_accelerate_available() else nullcontext
-    with ctx():
-        model = cls.from_config(model_config, **kwargs)
-
-    diffusers_format_checkpoint = convert_ldm_vae_checkpoint(checkpoint, model_config)
-    if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        if model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
-    else:
-        model.load_state_dict(diffusers_format_checkpoint)
-
-    if torch_dtype is not None:
-        model.to(torch_dtype)
-
-    model.eval()
-
-    return model
 
 
 def create_diffusers_clip_model_from_ldm(

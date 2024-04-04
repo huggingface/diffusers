@@ -296,6 +296,7 @@ class FromSingleFileMixin:
         """
         original_config_file = kwargs.pop("original_config_file", None)
         config = kwargs.pop("config", None)
+
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -324,6 +325,15 @@ class FromSingleFileMixin:
             )
             deprecate("prediction_type", "1.0.0", deprecation_message)
 
+        if original_config_file is not None:
+            original_config = fetch_original_config(original_config_file, local_files_only=local_files_only)
+        else:
+            original_config = None
+
+        from ..pipelines.pipeline_utils import _get_pipeline_class
+
+        pipeline_class = _get_pipeline_class(cls, config=None)
+
         checkpoint = load_single_file_checkpoint(
             pretrained_model_link_or_path,
             resume_download=resume_download,
@@ -336,29 +346,27 @@ class FromSingleFileMixin:
             local_dir=local_dir,
             local_dir_use_symlinks=local_dir_use_symlinks,
         )
-        if original_config_file is not None:
-            original_config = fetch_original_config(original_config_file, local_files_only=local_files_only)
-        else:
-            original_config = None
-
-        from ..pipelines.pipeline_utils import _get_pipeline_class
-
-        pipeline_class = _get_pipeline_class(cls, config=None)
 
         if original_config is not None and local_files_only:
             # If operating in a state where local_files_only=True and an original config file is provided
             # we cannot fetch the model_index.json from the hub to create the Pipeline config dict
             # In such a case we dynamically create the config dict based on the type hints of the components
+            config = fetch_diffusers_config(checkpoint)
+            default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
 
             # We should deprecate this behavior as it is not very reliable and can lead to errors
             component_types = pipeline_class._get_signature_types()
             config_dict = _map_component_types_to_config_dict(component_types)
             config_dict["_class_name"] = pipeline_class.__name__
 
-        if config is None:
+        elif config is not None:
+            default_pretrained_model_name_or_path = config
+            config_file = os.path.join(default_pretrained_model_name_or_path, cls.config_name)
+            config_dict = pipeline_class._dict_from_json_file(config_file)
+
+        else:
             config = fetch_diffusers_config(checkpoint)
             default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
-
             config_file = hf_hub_download(
                 default_pretrained_model_name_or_path,
                 filename=cls.config_name,
@@ -370,12 +378,9 @@ class FromSingleFileMixin:
                 resume_download=resume_download,
                 token=token,
             )
-        else:
-            default_pretrained_model_name_or_path = config
-            config_file = os.path.join(default_pretrained_model_name_or_path, cls.config_name)
+            config_dict = pipeline_class._dict_from_json_file(config_file)
 
-        config_dict = pipeline_class._dict_from_json_file(config_file)
-        # pop out "_ignore_files" as it is only needed for download
+        #   pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
 
         expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
