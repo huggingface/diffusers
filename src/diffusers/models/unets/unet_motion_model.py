@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from ...configuration_utils import ConfigMixin, register_to_config
+from ...configuration_utils import ConfigMixin, FrozenDict, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
 from ...utils import logging
 from ..attention_processor import (
@@ -393,8 +393,11 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     ):
         has_motion_adapter = motion_adapter is not None
 
+        if has_motion_adapter:
+            motion_adapter.to(device=unet.device)
+
         # based on https://github.com/guoyww/AnimateDiff/blob/895f3220c06318ea0760131ec70408b466c49333/animatediff/models/unet.py#L459
-        config = unet.config
+        config = dict(unet.config)
         config["_class_name"] = cls.__name__
 
         down_blocks = []
@@ -427,6 +430,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if not config.get("num_attention_heads"):
             config["num_attention_heads"] = config["attention_head_dim"]
 
+        config = FrozenDict(config)
         model = cls.from_config(config)
 
         if not load_weights:
@@ -705,8 +709,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
     def fuse_qkv_projections(self):
         """
-        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
-        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
+        are fused. For cross-attention modules, key and value projection matrices are fused.
 
         <Tip warning={true}>
 

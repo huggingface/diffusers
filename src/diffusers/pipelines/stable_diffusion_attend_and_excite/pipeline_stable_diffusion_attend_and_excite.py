@@ -902,6 +902,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, StableDiffusionM
         if attn_res is None:
             attn_res = int(np.ceil(width / 32)), int(np.ceil(height / 32))
         self.attention_store = AttentionStore(attn_res)
+        original_attn_proc = self.unet.attn_processors
         self.register_attention_control()
 
         # default config for step size from original repo
@@ -1016,6 +1017,8 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, StableDiffusionM
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
         self.maybe_free_model_hooks()
+        # make sure to set the original attention processors back
+        self.unet.set_attn_processor(original_attn_proc)
 
         if not return_dict:
             return (image, has_nsfw_concept)
