@@ -509,8 +509,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     timestep, class_labels, hidden_dtype=hidden_states.dtype
                 )
                 shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
-                hidden_states = self.norm_out(hidden_states) * (
-                            1 + scale[:, None]) + shift[:, None]
+                hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
                 hidden_states = self.proj_out_2(hidden_states)
 
             # unpatchify
