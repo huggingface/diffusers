@@ -102,6 +102,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
             accelerate_version = accelerate.__version__
             # Get the default from the config file.
+            # Taken from `transformers`.
             if self._accelerate_config_file is not None or os.path.isfile(default_config_file):
                 accelerate_config = load_config_from_file(self._accelerate_config_file).to_dict()
 
