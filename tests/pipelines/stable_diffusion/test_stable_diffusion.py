@@ -56,6 +56,7 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
     require_torch_multi_gpu,
     run_test_in_subprocess,
+    skip_mps,
     slow,
     torch_device,
 )
@@ -641,6 +642,8 @@ class StableDiffusionPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    # MPS currently doesn't support ComplexFloats, which are required for freeU - see https://github.com/huggingface/diffusers/issues/7569.
+    @skip_mps
     def test_freeu_enabled(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
