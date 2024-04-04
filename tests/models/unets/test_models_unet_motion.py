@@ -65,8 +65,8 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (8, 16),
-            "norm_num_groups": 8,
+            "block_out_channels": (16, 32),
+            "norm_num_groups": 16,
             "down_block_types": ("CrossAttnDownBlockMotion", "DownBlockMotion"),
             "up_block_types": ("UpBlockMotion", "CrossAttnUpBlockMotion"),
             "cross_attention_dim": 16,
