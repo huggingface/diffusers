@@ -29,22 +29,22 @@ jobs:
         config:
           - name: Fast PyTorch CPU tests on Ubuntu
             framework: pytorch
-            runner: docker-cpu
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu
           - name: Fast Flax CPU tests on Ubuntu
             framework: flax
-            runner: docker-cpu
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-flax-cpu
             report: flax_cpu
           - name: Fast ONNXRuntime CPU tests on Ubuntu
             framework: onnxruntime
-            runner: docker-cpu
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-onnxruntime-cpu
             report: onnx_cpu
           - name: PyTorch Example CPU tests on Ubuntu
             framework: pytorch_examples
-            runner: docker-cpu
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-pytorch-cpu
             report: torch_example_cpu
 
@@ -81,7 +81,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
@@ -90,7 +90,7 @@ jobs:
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
@@ -99,7 +99,7 @@ jobs:
       if: ${{ matrix.config.framework == 'onnxruntime' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
@@ -109,7 +109,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install peft
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
 
