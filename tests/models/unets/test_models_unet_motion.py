@@ -46,35 +46,35 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
     def dummy_input(self):
         batch_size = 4
         num_channels = 4
-        num_frames = 8
-        sizes = (32, 32)
+        num_frames = 4
+        sizes = (16, 16)
 
         noise = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 8)).to(torch_device)
 
         return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
 
     @property
     def input_shape(self):
-        return (4, 8, 32, 32)
+        return (4, 4, 16, 16)
 
     @property
     def output_shape(self):
-        return (4, 8, 32, 32)
+        return (4, 4, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (16, 32),
-            "norm_num_groups": 16,
+            "block_out_channels": (4, 8),
+            "norm_num_groups": 4,
             "down_block_types": ("CrossAttnDownBlockMotion", "DownBlockMotion"),
             "up_block_types": ("UpBlockMotion", "CrossAttnUpBlockMotion"),
-            "cross_attention_dim": 32,
+            "cross_attention_dim": 8,
             "num_attention_heads": 2,
             "out_channels": 4,
             "in_channels": 4,
             "layers_per_block": 1,
-            "sample_size": 32,
+            "sample_size": 16,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
