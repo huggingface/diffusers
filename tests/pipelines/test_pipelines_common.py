@@ -125,7 +125,6 @@ class SDFunctionTesterMixin:
                 zeros = torch.zeros(shape).to(torch_device)
                 pipe.vae.decode(zeros)
 
-    # empty commit
     # MPS currently doesn't support ComplexFloats, which are required for freeU - see https://github.com/huggingface/diffusers/issues/7569.
     @skip_mps
     def test_freeu_enabled(self):
