@@ -2569,7 +2569,7 @@ class LDMTextToImageControlNetPipeline(StableDiffusionControlNetPipeline):
         self._cross_attention_kwargs = cross_attention_kwargs
 
         # 2. Define call parameters
-        if prompt is not None and isinstance(prompt, int):
+        if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)

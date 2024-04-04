@@ -569,6 +569,10 @@ class LDMTextToImagePipeline(DiffusionPipeline):
 
         # scale and decode the image latents with vae
         latents = 1 / self.vqvae.config.scaling_factor * latents
+        
+        if output_type == 'latent':
+             return latents
+        
         image = self.vqvae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
