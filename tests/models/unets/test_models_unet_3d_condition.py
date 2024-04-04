@@ -141,6 +141,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_model_attention_slicing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = 8
 
         model = self.model_class(**init_dict)
