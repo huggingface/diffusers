@@ -621,6 +621,51 @@ def register_to_config(init):
                 "not inherit from `ConfigMixin`."
             )
 
+        # deprecate `attention_head_dim`
+        def maybe_correct_attention_head_dim(attention_head_dim):
+            down_block_types = init_kwargs.get("down_block_types", None)
+            up_block_types = init_kwargs.get("up_block_types", None)
+            mid_block_type = init_kwargs.get("mid_block_type", None)
+            block_out_channels = init_kwargs.get("block_out_channels", None)
+
+            if (
+                "CrossAttnDownBlock2D" in down_block_types
+                or "CrossAttnUpBlock2D" in up_block_types
+                or mid_block_type == "UNetMidBlock2DCrossAttn"
+            ):
+                incorrect_attention_head_dim_name = True
+            else:
+                incorrect_attention_head_dim_name = False
+
+            if incorrect_attention_head_dim_name:
+                num_attention_heads = attention_head_dim
+            else:
+                # we use attention_head_dim to calculate num_attention_heads
+                if isinstance(attention_head_dim, int):
+                    num_attention_heads = [out_channels // attention_head_dim for out_channels in block_out_channels]
+                else:
+                    num_attention_heads = [
+                        out_channels // attn_dim
+                        for out_channels, attn_dim in zip(block_out_channels, attention_head_dim)
+                    ]
+            return num_attention_heads
+
+        if self.__class__.__name__ == "UNet2DConditionModel":
+            # As of now it is not possible to define a UNet2DConditionModel via `attention_head_dim`
+            # If `attention_head_dim` is defined we simply transfer the value to the "correct"
+            # `num_attention_heads` config name (see: https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131)
+            attention_head_dim = init_kwargs.pop("attention_head_dim", None)
+            num_attention_heads = init_kwargs.get("num_attention_heads", None)
+            if attention_head_dim is not None:
+                deprecation_message = " `attention_head_dim` is deprecated and will be removed in a future version. Use `num_attention_heads` instead."
+                deprecate("attention_head_dim not None", "1.0.0", deprecation_message, standard_warn=False)
+
+                num_attention_heads = maybe_correct_attention_head_dim(attention_head_dim)
+                logger.info(
+                    f"Changing `attention_head_dim = {attention_head_dim}` to `num_attention_heads = {num_attention_heads}`..."
+                )
+                init_kwargs["num_attention_heads"] = num_attention_heads
+
         ignore = getattr(self, "ignore_for_config", [])
         # Get positional arguments aligned with kwargs
         new_kwargs = {}
@@ -645,49 +690,6 @@ def register_to_config(init):
             new_kwargs["_use_default_values"] = list(set(new_kwargs.keys()) - set(init_kwargs))
 
         new_kwargs = {**config_init_kwargs, **new_kwargs}
-        
-        # deprecate `attention_head_dim`
-        def maybe_correct_attention_head_dim(attention_head_dim):
-            
-            down_block_types = new_kwargs.get("down_block_types", None)
-            up_block_types = new_kwargs.get("up_block_types", None)
-            mid_block_type = new_kwargs.get("mid_block_type", None)
-            block_out_channels = new_kwargs.get("block_out_channels", None)
-
-            if (
-                "CrossAttnDownBlock2D" in down_block_types
-                or "CrossAttnUpBlock2D" in up_block_types
-                or mid_block_type == "UNetMidBlock2DCrossAttn"
-            ):
-                incorrect_attention_head_dim_name = True
-            else:
-                incorrect_attention_head_dim_name = False
-
-            if incorrect_attention_head_dim_name:
-                num_attention_heads = attention_head_dim
-            else:
-                # we use attention_head_dim to calculate num_attention_heads
-                if isinstance(attention_head_dim, int):
-                    num_attention_heads = [out_channels // attention_head_dim for out_channels in block_out_channels]
-                else:
-                    num_attention_heads = [
-                        out_channels // attn_dim for out_channels, attn_dim in zip(block_out_channels, attention_head_dim)
-                    ]
-            return num_attention_heads
-
-        if self.__class__.__name__ == "UNet2DConditionModel":
-            # As of now it is not possible to define a UNet2DConditionModel via `attention_head_dim`
-            # If `attention_head_dim` is defined we simply transfer the value to the "correct"
-            # `num_attention_heads` config name (see: https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131)
-            attention_head_dim = new_kwargs.pop("attention_head_dim", None)
-            num_attention_heads = new_kwargs.get("num_attention_heads", None)
-            if num_attention_heads is None and attention_head_dim is not None:
-                logger.info("Renaming `attention_head_dim` to `num_attention_heads`...")
-                new_kwargs["num_attention_heads"] = maybe_correct_attention_head_dim(attention_head_dim)
-                new_kwargs["attention_head_dim"] = None
-                # TODO(Yiyi, Dhruv): Eventually we should throw a deprecation warning here
-            elif num_attention_heads is not None and attention_head_dim is not None:
-                logger.warn(f"The config parameter `attention_head_dim` {attention_head_dim} is not yet supported and will be ignored.")
 
         getattr(self, "register_to_config")(**new_kwargs)
 
