@@ -27,8 +27,8 @@ https://github.com/huggingface/transformers/blob/main/utils/update_metadata.py
 import argparse
 import os
 import tempfile
-import pandas as pd
 
+import pandas as pd
 from datasets import Dataset
 from huggingface_hub import upload_folder
 
@@ -46,13 +46,16 @@ def get_supported_pipeline_table() -> dict:
     """
     # All supported pipelines for automatic mapping.
     all_supported_pipeline_classes = [
-        (class_name.__name__, "text-to-image", "AutoPipelineForText2Image") for _, class_name in AUTO_TEXT2IMAGE_PIPELINES_MAPPING.items()
+        (class_name.__name__, "text-to-image", "AutoPipelineForText2Image")
+        for _, class_name in AUTO_TEXT2IMAGE_PIPELINES_MAPPING.items()
     ]
     all_supported_pipeline_classes += [
-        (class_name.__name__, "image-to-image", "AutoPipelineForImage2Image") for _, class_name in AUTO_IMAGE2IMAGE_PIPELINES_MAPPING.items()
+        (class_name.__name__, "image-to-image", "AutoPipelineForImage2Image")
+        for _, class_name in AUTO_IMAGE2IMAGE_PIPELINES_MAPPING.items()
     ]
     all_supported_pipeline_classes += [
-        (class_name.__name__, "image-to-image", "AutoPipelineForInpainting") for _, class_name in AUTO_INPAINT_PIPELINES_MAPPING.items()
+        (class_name.__name__, "image-to-image", "AutoPipelineForInpainting")
+        for _, class_name in AUTO_INPAINT_PIPELINES_MAPPING.items()
     ]
     all_supported_pipeline_classes.sort(key=lambda x: x[0])
     all_supported_pipeline_classes = list(set(all_supported_pipeline_classes))
@@ -61,7 +64,7 @@ def get_supported_pipeline_table() -> dict:
     data["pipeline_class"] = [sample[0] for sample in all_supported_pipeline_classes]
     data["pipeline_tag"] = [sample[1] for sample in all_supported_pipeline_classes]
     data["auto_class"] = [sample[2] for sample in all_supported_pipeline_classes]
-    
+
     return data
 
 
