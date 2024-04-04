@@ -61,7 +61,7 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
 
     @property
     def output_shape(self):
-        return (4, 4, 32, 32)
+        return (4, 4, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
