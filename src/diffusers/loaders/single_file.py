@@ -310,15 +310,13 @@ class FromSingleFileMixin:
         # These model kwargs should be deprecated
         scaling_factor = kwargs.get("scaling_factor", None)
         if scaling_factor is not None:
-            deprecation_message = (
-                "Passing the `scaling_factor` argument is deprecated and will be ignored in future versions."
-            )
+            deprecation_message = "The `scaling_factor` argument is deprecated and will be ignored in future versions."
             deprecate("scaling_factor", "1.0.0", deprecation_message)
 
         prediction_type = kwargs.get("prediction_type", None)
         if prediction_type is not None:
             deprecation_message = (
-                "Passing the `prediction_type` argument is deprecated and will be ignored in future versions."
+                "The `prediction_type` argument is deprecated and will be ignored in future versions."
             )
             deprecate("prediction_type", "1.0.0", deprecation_message)
 
