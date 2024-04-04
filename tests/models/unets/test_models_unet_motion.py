@@ -70,7 +70,6 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
             "down_block_types": ("CrossAttnDownBlockMotion", "DownBlockMotion"),
             "up_block_types": ("UpBlockMotion", "CrossAttnUpBlockMotion"),
             "cross_attention_dim": 8,
-            "attention_head_dim": 2,
             "num_attention_heads": 2,
             "out_channels": 4,
             "in_channels": 4,
