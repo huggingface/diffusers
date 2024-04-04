@@ -1017,6 +1017,12 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
 
 @slow
 class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -1118,8 +1124,10 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         assert torch_all_close(actual_output, expected_output, atol=5e-3)
 
     def test_vae_tiling(self):
-        vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None)
+        vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder", torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None, torch_dtype=torch.float16
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -1143,6 +1151,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
 
         # test that tiled decode works with various shapes
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
-        for shape in shapes:
-            image = torch.zeros(shape, device=torch_device)
-            pipe.vae.decode(image)
+        with torch.no_grad():
+            for shape in shapes:
+                image = torch.zeros(shape, device=torch_device)
+                pipe.vae.decode(image)
