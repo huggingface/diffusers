@@ -295,8 +295,7 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
-# Taken from https://stackoverflow.com/a/39662359.
-# Adapted to make it work with Google colab as well.
+# Taken from huggingface_hub.
 _is_notebook = False
 try:
     shell_class = get_ipython().__class__  # type: ignore # noqa: F821
