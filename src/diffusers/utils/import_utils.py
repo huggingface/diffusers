@@ -295,7 +295,7 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
-# Taken from huggingface_hub.
+# Taken from `huggingface_hub`.
 _is_notebook = False
 try:
     shell_class = get_ipython().__class__  # type: ignore # noqa: F821
