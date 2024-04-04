@@ -1220,18 +1220,24 @@ def create_diffusers_unet_from_stable_cascade(
 def create_diffusers_unet_from_ldm(
     cls,
     checkpoint,
+    subfolder=None,
     config=None,
     original_config=None,
     torch_dtype=None,
     **kwargs,
 ):
+    subfolder = subfolder if subfolder is None else "unet"
+
     num_in_channels = kwargs.pop("num_in_channels", None)
     extract_ema = kwargs.pop("extract_ema", False)
 
     if original_config is not None:
         image_size = kwargs.get("image_size", None)
         if image_size is not None:
-            deprecation_message = "Configuring UNet2DConditionModel with the `image_size` argument is deprecated and will be ignored in future versions."
+            deprecation_message = (
+                "Configuring UNet2DConditionModel with the `image_size` argument"
+                "is deprecated and will be ignored in future versions."
+            )
             deprecate("image_size", "1.0.0", deprecation_message)
 
         image_size = set_image_size(checkpoint, image_size=image_size)
@@ -1242,10 +1248,17 @@ def create_diffusers_unet_from_ldm(
 
     else:
         config = fetch_diffusers_config(checkpoint)
-        model_config = cls.load_config(**config, subfolder="unet")
+
+        expected_kwargs = cls._get_signature_keys()
+        model_kwargs = {k: kwargs.pop(k) for k in kwargs if k in expected_kwargs}
+
+        model_config = cls.load_config(**config, subfolder=subfolder, **model_kwargs)
 
     if num_in_channels is not None:
-        deprecation_message = "Configuring the UNet2DConditionModel with the `num_in_channels` argument is deprecated and will be ignored in future versions."
+        deprecation_message = (
+            "Configuring the UNet2DConditionModel with the `num_in_channels` argument"
+            "is deprecated and will be ignored in future versions."
+        )
         deprecate("num_in_channels", "1.0.0", deprecation_message)
         model_config["in_channels"] = num_in_channels
 
@@ -1337,16 +1350,22 @@ def create_diffusers_controlnet_from_ldm(
 def create_diffusers_vae_from_ldm(
     cls,
     checkpoint,
+    subfolder=None,
     config=None,
     original_config=None,
     torch_dtype=None,
     **kwargs,
 ):
+    subfolder = subfolder if subfolder is None else "vae"
+
     if original_config is not None:
         scaling_factor = kwargs.get("scaling_factor", None)
         image_size = kwargs.get("image_size", None)
         if image_size is not None:
-            deprecation_message = "Configuring AutoencoderKL with the `image_size` argument is deprecated and will be ignored in future versions."
+            deprecation_message = (
+                "Configuring AutoencoderKL with the `image_size` argument"
+                "is deprecated and will be ignored in future versions."
+            )
             deprecate("image_size", "1.0.0", deprecation_message)
 
         image_size = set_image_size(checkpoint, image_size=image_size)
@@ -1371,7 +1390,11 @@ def create_diffusers_vae_from_ldm(
 
     else:
         config = fetch_diffusers_config(checkpoint)
-        model_config = cls.load_config(**config, subfolder="vae")
+
+        expected_kwargs = cls._get_signature_keys()
+        model_kwargs = {k: kwargs.pop(k) for k in kwargs if k in expected_kwargs}
+
+        model_config = cls.load_config(**config, subfolder=subfolder, **model_kwargs)
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
@@ -1406,11 +1429,10 @@ def create_diffusers_clip_model_from_ldm(
     subfolder=None,
     config=None,
     torch_dtype=None,
-    **kwargs,
 ):
     if config is None:
         config = fetch_diffusers_config(checkpoint)
-        model_config = cls.config_class.from_pretrained(**config, **kwargs)
+        model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder)
 
     else:
         model_config = config

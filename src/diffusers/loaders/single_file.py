@@ -115,8 +115,8 @@ def load_single_file_sub_model(
         if is_diffusers_model:
             logger.warning(
                 (
-                    f"{name} weights do not appear to be included in the checkpoint"
-                    f"or {class_obj.__name__} does not currently support single file loading."
+                    f"The {name} component weights do not appear to be included in the checkpoint"
+                    f" or {class_obj.__name__} does not currently support single file loading."
                     f"Attempting to load the component using `from_pretrained` and the inferred model repository: {pretrained_model_name_or_path}."
                 )
             )
@@ -241,7 +241,11 @@ class FromSingleFileMixin:
                 The path to the original config file that was used to train the model. If not provided, the config file
                 will be inferred from the checkpoint file.
             config (`str`, *optional*):
-                A path to a folder containing model config files in Diffusers format.
+                Can be either:
+                    - A string, the *repo id* (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline
+                      hosted on the Hub.
+                    - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline
+                      component configs in Diffusers format.
             model_type (`str`, *optional*):
                 The type of model to load. If not provided, the model type will be inferred from the checkpoint file.
             image_size (`int`, *optional*):
@@ -358,6 +362,7 @@ class FromSingleFileMixin:
             config_file = hf_hub_download(
                 default_pretrained_model_name_or_path,
                 filename=cls.config_name,
+                local_files_only=local_files_only,
                 cache_dir=cache_dir,
                 revision=revision,
                 proxies=proxies,
