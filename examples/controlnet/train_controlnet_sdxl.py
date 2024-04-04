@@ -22,7 +22,11 @@ import math
 import os
 import random
 import shutil
+from utils.train_utils import read_config_from_file
 from pathlib import Path
+import random
+import pandas as pd
+from torchvision import transforms
 
 import accelerate
 import numpy as np
@@ -47,14 +51,18 @@ from diffusers import (
     ControlNetModel,
     DDPMScheduler,
     StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLControlNetInpaintPipeline,
     UNet2DConditionModel,
     UniPCMultistepScheduler,
+    StableDiffusionXLPipeline
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
+import warnings
+warnings.filterwarnings("ignore")
 
 
 if is_wandb_available():
@@ -65,13 +73,22 @@ check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
+def make_inpaint_condition(image, image_mask):
+    image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
+    image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
+
+    assert image.shape[0:1] == image_mask.shape[0:1]
+    image[image_mask > 0.5] = -1.0  # set as masked pixel
+    image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
+    image = torch.from_numpy(image)
+    return image
 
 def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step, is_final_validation=False):
     logger.info("Running validation... ")
 
     if not is_final_validation:
         controlnet = accelerator.unwrap_model(controlnet)
-        pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
+        pipeline = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             vae=vae,
             unet=unet,
@@ -89,7 +106,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
                 args.pretrained_model_name_or_path, subfolder="vae", torch_dtype=weight_dtype
             )
 
-        pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
+        pipeline = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             vae=vae,
             controlnet=controlnet,
@@ -131,28 +148,44 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         else torch.autocast("cuda")
     )
 
-    for validation_prompt, validation_image in zip(validation_prompts, validation_images):
-        validation_image = Image.open(validation_image).convert("RGB")
-        validation_image = validation_image.resize((args.resolution, args.resolution))
+    validation_index_list = random.sample(range(args.num_validation_images), 4)
+    dataroot = '/home/gkalstn000/dataset/inpainting'
+    metadata = pd.read_json(os.path.join(dataroot, 'test.jsonl'), lines=True)
+    for validation_index in validation_index_list:
+        image_path, text, mask_path = metadata.iloc[validation_index]
+
+        init_image = Image.open(image_path).convert("RGB")
+        init_image = init_image.resize((args.resolution, args.resolution))
+
+        mask_image = Image.open(mask_path)
+        mask_image = mask_image.resize((args.resolution, args.resolution))
+
+        control_image = make_inpaint_condition(init_image, mask_image)
 
         images = []
 
-        for _ in range(args.num_validation_images):
+        for _ in range(3):
             with inference_ctx:
-                image = pipeline(
-                    prompt=validation_prompt, image=validation_image, num_inference_steps=20, generator=generator
+                image = pipeline(prompt= text,
+                                 num_inference_steps=20,
+                                 generator=generator,
+                                 image=init_image,
+                                 mask_image=mask_image,
+                                 control_image=control_image,
                 ).images[0]
             images.append(image)
 
+        to_pil = transforms.ToPILImage()
+        val_images = [x.resize((args.resolution//2, args.resolution//2)) for x in [init_image, mask_image, to_pil(control_image.squeeze(0))] + images]
+        grid = make_image_grid(val_images, rows=1, cols=6)
+
         image_logs.append(
-            {"validation_image": validation_image, "images": images, "validation_prompt": validation_prompt}
+            {"validation_image": grid, "validation_prompt": text}
         )
 
-    tracker_key = "test" if is_final_validation else "validation"
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             for log in image_logs:
-                images = log["images"]
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
 
@@ -169,18 +202,13 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         elif tracker.name == "wandb":
             formatted_images = []
 
-            for log in image_logs:
-                images = log["images"]
+            for i, log in enumerate(image_logs):
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
 
-                formatted_images.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
+                image = wandb.Image(validation_image, caption=validation_prompt)
 
-                for image in images:
-                    image = wandb.Image(image, caption=validation_prompt)
-                    formatted_images.append(image)
-
-            tracker.log({tracker_key: formatted_images})
+                tracker.log({f'Samples_{i}': image})
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
@@ -257,10 +285,16 @@ These are controlnet weights trained on {base_model} with new type of conditioni
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a ControlNet training script.")
     parser.add_argument(
-        "--pretrained_model_name_or_path",
+        "--config_file",
         type=str,
         default=None,
         required=True,
+        help="Path to yaml config file.",
+    )
+    parser.add_argument(
+        "--pretrained_model_name_or_path",
+        type=str,
+        default=None,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -286,7 +320,6 @@ def parse_args(input_args=None):
         "--revision",
         type=str,
         default=None,
-        required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -586,44 +619,7 @@ def parse_args(input_args=None):
         ),
     )
 
-    if input_args is not None:
-        args = parser.parse_args(input_args)
-    else:
-        args = parser.parse_args()
-
-    if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError("Specify either `--dataset_name` or `--train_data_dir`")
-
-    if args.dataset_name is not None and args.train_data_dir is not None:
-        raise ValueError("Specify only one of `--dataset_name` or `--train_data_dir`")
-
-    if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
-        raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
-
-    if args.validation_prompt is not None and args.validation_image is None:
-        raise ValueError("`--validation_image` must be set if `--validation_prompt` is set")
-
-    if args.validation_prompt is None and args.validation_image is not None:
-        raise ValueError("`--validation_prompt` must be set if `--validation_image` is set")
-
-    if (
-        args.validation_image is not None
-        and args.validation_prompt is not None
-        and len(args.validation_image) != 1
-        and len(args.validation_prompt) != 1
-        and len(args.validation_image) != len(args.validation_prompt)
-    ):
-        raise ValueError(
-            "Must provide either 1 `--validation_image`, 1 `--validation_prompt`,"
-            " or the same number of `--validation_prompt`s and `--validation_image`s"
-        )
-
-    if args.resolution % 8 != 0:
-        raise ValueError(
-            "`--resolution` must be divisible by 8 for consistently sized encoded images between the VAE and the controlnet encoder."
-        )
-
-    return args
+    return parser
 
 
 def get_train_dataset(args, accelerator):
@@ -883,6 +879,10 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
+    if args.pretrained_unet :
+        unet = StableDiffusionXLPipeline.from_single_file('/home/gkalstn000/diffusers/checkpoints/pretrained/jector_lr1e-3_step00080000.safetensors',
+                                                          revision=args.revision,
+                                                          variant=args.variant,).unet
 
     if args.controlnet_model_name_or_path:
         logger.info("Loading existing controlnet weights")
@@ -1108,8 +1108,9 @@ def main(args):
         # tensorboard cannot handle list types for config
         tracker_config.pop("validation_prompt")
         tracker_config.pop("validation_image")
-
-        accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
+        init_kwargs = {}
+        init_kwargs["wandb"] = {"name": args.wandb_run_name}
+        accelerator.init_trackers(args.tracker_project_name, config=tracker_config, init_kwargs = init_kwargs)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1188,6 +1189,8 @@ def main(args):
 
                 # ControlNet conditioning.
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
+                if random.random() > 0.5 :
+                    controlnet_image = 1 - controlnet_image
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
                     timesteps,
@@ -1315,5 +1318,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = parse_args()
+    parser = parse_args()
+    args = parser.parse_args()
+    args = read_config_from_file(args, parser)
     main(args)
