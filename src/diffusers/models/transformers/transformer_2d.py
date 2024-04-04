@@ -492,10 +492,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             output = F.log_softmax(logits.double(), dim=1).float()
 
         if self.is_input_patches:
-            if self.config.norm_type != "ada_norm_single":
-                conditioning = self.transformer_blocks[0].norm1.emb(
-                    timestep, class_labels, hidden_dtype=hidden_states.dtype
-                )
+            if self.config.norm_type == "ada_norm":
+                conditioning = self.transformer_blocks[0].norm1.emb(timestep)
                 shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
                 hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
                 hidden_states = self.proj_out_2(hidden_states)
@@ -506,6 +504,14 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 hidden_states = hidden_states * (1 + scale) + shift
                 hidden_states = self.proj_out(hidden_states)
                 hidden_states = hidden_states.squeeze(1)
+            else:
+                conditioning = self.transformer_blocks[0].norm1.emb(
+                    timestep, class_labels, hidden_dtype=hidden_states.dtype
+                )
+                shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
+                hidden_states = self.norm_out(hidden_states) * (
+                            1 + scale[:, None]) + shift[:, None]
+                hidden_states = self.proj_out_2(hidden_states)
 
             # unpatchify
             if self.adaln_single is None:
