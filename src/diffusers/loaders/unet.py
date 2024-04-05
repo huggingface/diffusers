@@ -800,7 +800,7 @@ class UNet2DConditionLoadersMixin:
 
         return image_projection
 
-    def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False, target_blocks=['block']):
+    def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False, target_blocks=["block"]):
         from ..models.attention_processor import (
             AttnProcessor,
             AttnProcessor2_0,
@@ -864,7 +864,6 @@ class UNet2DConditionLoadersMixin:
                         num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
 
                 with init_context():
-
                     selected = False
                     for block_name in target_blocks:
                         if block_name in name:
@@ -876,7 +875,7 @@ class UNet2DConditionLoadersMixin:
                         cross_attention_dim=cross_attention_dim,
                         scale=1.0,
                         num_tokens=num_image_text_embeds,
-                        skip=not selected
+                        skip=not selected,
                     )
 
                 value_dict = {}
@@ -902,7 +901,9 @@ class UNet2DConditionLoadersMixin:
         # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None
 
-        attn_procs = self._convert_ip_adapter_attn_to_diffusers(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage, target_blocks=target_blocks)
+        attn_procs = self._convert_ip_adapter_attn_to_diffusers(
+            state_dicts, low_cpu_mem_usage=low_cpu_mem_usage, target_blocks=target_blocks
+        )
         self.set_attn_processor(attn_procs)
 
         # convert IP-Adapter Image Projection layers to diffusers
