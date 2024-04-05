@@ -136,6 +136,7 @@ class IPAdapterMixin:
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+        target_blocks = kwargs.pop("target_blocks", ["block"])
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
@@ -226,7 +227,7 @@ class IPAdapterMixin:
 
         # load ip-adapter into unet
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
+        unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage, target_blocks=target_blocks)
 
     def set_ip_adapter_scale(self, scale):
         """
