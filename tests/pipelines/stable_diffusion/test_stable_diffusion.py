@@ -210,6 +210,7 @@ class StableDiffusionPipelineFastTests(
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
+        print(", ".join([str(round(x, 4)) for x in image_slice.flatten().tolist()]))
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3203, 0.4555, 0.4711, 0.3505, 0.3973, 0.4650, 0.5137, 0.3392, 0.4045])
