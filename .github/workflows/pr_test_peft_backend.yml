@@ -32,9 +32,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install .[quality]
       - name: Check quality
+        run: make quality
+      - name: Check if failure
+        if: ${{ failure() }}
         run: |
-          ruff check examples tests src utils scripts
-          ruff format examples tests src utils scripts --check
+          echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
 
   check_repository_consistency:
     needs: check_code_quality
@@ -49,11 +51,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .[quality]
-      - name: Check quality
+      - name: Check repo consistency
         run: |
           python utils/check_copies.py
           python utils/check_dummies.py
           make deps_table_check_updated
+      - name: Check if failure
+        if: ${{ failure() }}
+        run: |
+          echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
 
   run_fast_tests:
     needs: [check_code_quality, check_repository_consistency]
@@ -65,7 +71,7 @@ jobs:
 
     name: LoRA - ${{ matrix.lib-versions }}
 
-    runs-on: docker-cpu
+    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
 
     container:
       image: diffusers/diffusers-pytorch-cpu
@@ -102,7 +108,7 @@ jobs:
     - name: Run fast PyTorch LoRA CPU tests with PEFT backend
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_${{ matrix.config.report }} \
-          tests/lora/test_lora_layers_peft.py
+          tests/lora/

@@ -66,6 +66,7 @@ from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
     floats_tensor,
+    get_python_version,
     get_tests_dir,
     load_numpy,
     nightly,
@@ -914,7 +915,7 @@ class CustomPipelineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-components")
 
-        # Check that only loading custom componets "my_unet", "my_scheduler" works
+        # Check that only loading custom components "my_unet", "my_scheduler" works
         pipeline = DiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-sdxl-custom-components", trust_remote_code=True
         )
@@ -928,7 +929,7 @@ class CustomPipelineTests(unittest.TestCase):
 
         assert images.shape == (1, 64, 64, 3)
 
-        # Check that only loading custom componets "my_unet", "my_scheduler" and explicit custom pipeline works
+        # Check that only loading custom components "my_unet", "my_scheduler" and explicit custom pipeline works
         pipeline = DiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-sdxl-custom-components", custom_pipeline="my_pipeline", trust_remote_code=True
         )
@@ -947,7 +948,7 @@ class CustomPipelineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-all")
 
-        # Check that only loading custom componets "my_unet", "my_scheduler" and auto custom pipeline works
+        # Check that only loading custom components "my_unet", "my_scheduler" and auto custom pipeline works
         pipeline = DiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-sdxl-custom-all", trust_remote_code=True
         )
@@ -1055,6 +1056,12 @@ class CustomPipelineTests(unittest.TestCase):
 
 
 class PipelineFastTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -1672,6 +1679,12 @@ class PipelineFastTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class PipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -1748,6 +1761,10 @@ class PipelineSlowTests(unittest.TestCase):
 
     @require_python39_or_higher
     @require_torch_2
+    @unittest.skipIf(
+        get_python_version == (3, 12),
+        reason="Torch Dynamo isn't yet supported for Python 3.12.",
+    )
     def test_from_save_pretrained_dynamo(self):
         run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
 
@@ -1893,6 +1910,12 @@ class PipelineSlowTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class PipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()

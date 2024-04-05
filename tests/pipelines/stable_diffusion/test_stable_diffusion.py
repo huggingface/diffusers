@@ -54,6 +54,7 @@ from diffusers.utils.testing_utils import (
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
+    skip_mps,
     slow,
     torch_device,
 )
@@ -370,6 +371,12 @@ class StableDiffusionPipelineFastTests(
 
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.3203, 0.4555, 0.4711, 0.3505, 0.3973, 0.4650, 0.5137, 0.3392, 0.4045])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_stable_diffusion_ddim_factor_8(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -633,6 +640,8 @@ class StableDiffusionPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    # MPS currently doesn't support ComplexFloats, which are required for freeU - see https://github.com/huggingface/diffusers/issues/7569.
+    @skip_mps
     def test_freeu_enabled(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
@@ -1238,6 +1247,11 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class StableDiffusionPipelineCkptTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -1332,6 +1346,11 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class StableDiffusionPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
