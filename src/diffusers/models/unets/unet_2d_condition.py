@@ -68,100 +68,102 @@ class UNet2DConditionOutput(BaseOutput):
 
 class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin):
     r"""
-    A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
-    shaped output.
+        A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
+        shaped output.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
-    for all models (such as downloading or saving).
+        This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods
+        implemented for all models (such as downloading or saving).
 
-    Parameters:
-        sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
-            Height and width of input/output sample.
-        in_channels (`int`, *optional*, defaults to 4): Number of channels in the input sample.
-        out_channels (`int`, *optional*, defaults to 4): Number of channels in the output.
-        center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
-        flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
-            Whether to flip the sin to cos in the time embedding.
-        freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
-            The tuple of downsample blocks to use.
-        mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2DCrossAttn"`):
-            Block type for middle of UNet, it can be one of `UNetMidBlock2DCrossAttn`, `UNetMidBlock2D`, or
-            `UNetMidBlock2DSimpleCrossAttn`. If `None`, the mid block layer is skipped.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")`):
-            The tuple of upsample blocks to use.
-        only_cross_attention(`bool` or `Tuple[bool]`, *optional*, default to `False`):
-            Whether to include self-attention in the basic transformer blocks, see
-            [`~models.attention.BasicTransformerBlock`].
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
-            The tuple of output channels for each block.
-        layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
-        downsample_padding (`int`, *optional*, defaults to 1): The padding to use for the downsampling convolution.
-        mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
-        norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
-            If `None`, normalization and activation layers is skipped in post-processing.
-        norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
-        cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
-            The dimension of the cross attention features.
-        transformer_layers_per_block (`int`, `Tuple[int]`, or `Tuple[Tuple]` , *optional*, defaults to 1):
-            The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
-            [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
-            [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
-        reverse_transformer_layers_per_block : (`Tuple[Tuple]`, *optional*, defaults to None):
-            The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`], in the upsampling
-            blocks of the U-Net. Only relevant if `transformer_layers_per_block` is of type `Tuple[Tuple]` and for
-            [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
-            [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
-        encoder_hid_dim (`int`, *optional*, defaults to None):
-            If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
-            dimension to `cross_attention_dim`.
-        encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
-            If given, the `encoder_hidden_states` and potentially other embeddings are down-projected to text
-            embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
-        attention_head_dim (`int`, *optional*):
-            The dimension of the attention heads. Note that this configuration parameter was previously incorrectly 
-            named as stated in (https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-) and therefore will be automatically renamed to `num_attention_heads` if `num_attention_heads`
-            is not provided. If `num_attention_heads` is provided this configuration parameter will be ignored for now.
-        num_attention_heads (`int`, *optional*, defaults to 8):
-            The number of attention heads.
-        resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
-            for ResNet blocks (see [`~models.resnet.ResnetBlock2D`]). Choose from `default` or `scale_shift`.
-        class_embed_type (`str`, *optional*, defaults to `None`):
-            The type of class embedding to use which is ultimately summed with the time embeddings. Choose from `None`,
-            `"timestep"`, `"identity"`, `"projection"`, or `"simple_projection"`.
-        addition_embed_type (`str`, *optional*, defaults to `None`):
-            Configures an optional embedding which will be summed with the time embeddings. Choose from `None` or
-            "text". "text" will use the `TextTimeEmbedding` layer.
-        addition_time_embed_dim: (`int`, *optional*, defaults to `None`):
-            Dimension for the timestep embeddings.
-        num_class_embeds (`int`, *optional*, defaults to `None`):
-            Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
-            class conditioning with `class_embed_type` equal to `None`.
-        time_embedding_type (`str`, *optional*, defaults to `positional`):
-            The type of position embedding to use for timesteps. Choose from `positional` or `fourier`.
-        time_embedding_dim (`int`, *optional*, defaults to `None`):
-            An optional override for the dimension of the projected time embedding.
-        time_embedding_act_fn (`str`, *optional*, defaults to `None`):
-            Optional activation function to use only once on the time embeddings before they are passed to the rest of
-            the UNet. Choose from `silu`, `mish`, `gelu`, and `swish`.
-        timestep_post_act (`str`, *optional*, defaults to `None`):
-            The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
-        time_cond_proj_dim (`int`, *optional*, defaults to `None`):
-            The dimension of `cond_proj` layer in the timestep embedding.
-        conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
-        conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
-        projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
-            `class_embed_type="projection"`. Required when `class_embed_type="projection"`.
-        class_embeddings_concat (`bool`, *optional*, defaults to `False`): Whether to concatenate the time
-            embeddings with the class embeddings.
-        mid_block_only_cross_attention (`bool`, *optional*, defaults to `None`):
-            Whether to use cross attention with the mid block when using the `UNetMidBlock2DSimpleCrossAttn`. If
-            `only_cross_attention` is given as a single boolean and `mid_block_only_cross_attention` is `None`, the
-            `only_cross_attention` value is used as the value for `mid_block_only_cross_attention`. Default to `False`
-            otherwise.
+        Parameters:
+            sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
+                Height and width of input/output sample.
+            in_channels (`int`, *optional*, defaults to 4): Number of channels in the input sample.
+            out_channels (`int`, *optional*, defaults to 4): Number of channels in the output.
+            center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
+            flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
+                Whether to flip the sin to cos in the time embedding.
+            freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
+            down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
+                The tuple of downsample blocks to use.
+            mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2DCrossAttn"`):
+                Block type for middle of UNet, it can be one of `UNetMidBlock2DCrossAttn`, `UNetMidBlock2D`, or
+                `UNetMidBlock2DSimpleCrossAttn`. If `None`, the mid block layer is skipped.
+            up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")`):
+                The tuple of upsample blocks to use.
+            only_cross_attention(`bool` or `Tuple[bool]`, *optional*, default to `False`):
+                Whether to include self-attention in the basic transformer blocks, see
+                [`~models.attention.BasicTransformerBlock`].
+            block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
+                The tuple of output channels for each block.
+            layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
+            downsample_padding (`int`, *optional*, defaults to 1):
+                The padding to use for the downsampling convolution.
+            mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
+            dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+            act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+            norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
+                If `None`, normalization and activation layers is skipped in post-processing.
+            norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
+            cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
+                The dimension of the cross attention features.
+            transformer_layers_per_block (`int`, `Tuple[int]`, or `Tuple[Tuple]` , *optional*, defaults to 1):
+                The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
+                [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
+                [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
+            reverse_transformer_layers_per_block : (`Tuple[Tuple]`, *optional*, defaults to None):
+                The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`], in the upsampling
+                blocks of the U-Net. Only relevant if `transformer_layers_per_block` is of type `Tuple[Tuple]` and for
+                [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
+                [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
+            encoder_hid_dim (`int`, *optional*, defaults to None):
+                If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
+                dimension to `cross_attention_dim`.
+            encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
+                If given, the `encoder_hidden_states` and potentially other embeddings are down-projected to text
+                embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
+            attention_head_dim (`int`, *optional*):
+                The dimension of the attention heads. Note that this configuration parameter was previously incorrectly
+                named as stated in (https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
+    ) and therefore will be automatically renamed to `num_attention_heads` if `num_attention_heads`
+                is not provided. If `num_attention_heads` is provided this configuration parameter will be ignored for
+                now.
+            num_attention_heads (`int`, *optional*, defaults to 8):
+                The number of attention heads.
+            resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
+                for ResNet blocks (see [`~models.resnet.ResnetBlock2D`]). Choose from `default` or `scale_shift`.
+            class_embed_type (`str`, *optional*, defaults to `None`):
+                The type of class embedding to use which is ultimately summed with the time embeddings. Choose from
+                `None`, `"timestep"`, `"identity"`, `"projection"`, or `"simple_projection"`.
+            addition_embed_type (`str`, *optional*, defaults to `None`):
+                Configures an optional embedding which will be summed with the time embeddings. Choose from `None` or
+                "text". "text" will use the `TextTimeEmbedding` layer.
+            addition_time_embed_dim: (`int`, *optional*, defaults to `None`):
+                Dimension for the timestep embeddings.
+            num_class_embeds (`int`, *optional*, defaults to `None`):
+                Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
+                class conditioning with `class_embed_type` equal to `None`.
+            time_embedding_type (`str`, *optional*, defaults to `positional`):
+                The type of position embedding to use for timesteps. Choose from `positional` or `fourier`.
+            time_embedding_dim (`int`, *optional*, defaults to `None`):
+                An optional override for the dimension of the projected time embedding.
+            time_embedding_act_fn (`str`, *optional*, defaults to `None`):
+                Optional activation function to use only once on the time embeddings before they are passed to the rest
+                of the UNet. Choose from `silu`, `mish`, `gelu`, and `swish`.
+            timestep_post_act (`str`, *optional*, defaults to `None`):
+                The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
+            time_cond_proj_dim (`int`, *optional*, defaults to `None`):
+                The dimension of `cond_proj` layer in the timestep embedding.
+            conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer. conv_out_kernel
+            (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
+            projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
+                `class_embed_type="projection"`. Required when `class_embed_type="projection"`.
+            class_embeddings_concat (`bool`, *optional*, defaults to `False`): Whether to concatenate the time
+                embeddings with the class embeddings.
+            mid_block_only_cross_attention (`bool`, *optional*, defaults to `None`):
+                Whether to use cross attention with the mid block when using the `UNetMidBlock2DSimpleCrossAttn`. If
+                `only_cross_attention` is given as a single boolean and `mid_block_only_cross_attention` is `None`, the
+                `only_cross_attention` value is used as the value for `mid_block_only_cross_attention`. Default to
+                `False` otherwise.
     """
 
     _supports_gradient_checkpointing = True
