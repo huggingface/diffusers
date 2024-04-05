@@ -278,8 +278,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 A random number generator.
             return_dict (`bool`):
-                Whether or not to return a [`~schedulers.scheduling_euler_discrete.EDMEulerSchedulerOutput`] or
-                tuple.
+                Whether or not to return a [`~schedulers.scheduling_euler_discrete.EDMEulerSchedulerOutput`] or tuple.
 
         Returns:
             [`~schedulers.scheduling_euler_discrete.EDMEulerSchedulerOutput`] or `tuple`:

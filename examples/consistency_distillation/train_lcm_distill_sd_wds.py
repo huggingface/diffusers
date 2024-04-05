@@ -23,6 +23,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Union
 
@@ -252,7 +253,12 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step, name="targe
 
     for _, prompt in enumerate(validation_prompts):
         images = []
-        with torch.autocast("cuda"):
+        if torch.backends.mps.is_available():
+            autocast_ctx = nullcontext()
+        else:
+            autocast_ctx = torch.autocast(accelerator.device.type)
+
+        with autocast_ctx:
             images = pipeline(
                 prompt=prompt,
                 num_inference_steps=4,
@@ -1257,7 +1263,12 @@ def main(args):
                 # estimates to predict the data point in the augmented PF-ODE trajectory corresponding to the next ODE
                 # solver timestep.
                 with torch.no_grad():
-                    with torch.autocast("cuda"):
+                    if torch.backends.mps.is_available():
+                        autocast_ctx = nullcontext()
+                    else:
+                        autocast_ctx = torch.autocast(accelerator.device.type)
+
+                    with autocast_ctx:
                         # 1. Get teacher model prediction on noisy_model_input z_{t_{n + k}} and conditional embedding c
                         cond_teacher_output = teacher_unet(
                             noisy_model_input.to(weight_dtype),
@@ -1315,7 +1326,12 @@ def main(args):
 
                 # 9. Get target LCM prediction on x_prev, w, c, t_n (timesteps)
                 with torch.no_grad():
-                    with torch.autocast("cuda", dtype=weight_dtype):
+                    if torch.backends.mps.is_available():
+                        autocast_ctx = nullcontext()
+                    else:
+                        autocast_ctx = torch.autocast(accelerator.device.type, dtype=weight_dtype)
+
+                    with autocast_ctx:
                         target_noise_pred = target_unet(
                             x_prev.float(),
                             timesteps,
