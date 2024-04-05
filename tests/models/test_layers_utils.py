@@ -378,8 +378,8 @@ class Transformer2DModelTests(unittest.TestCase):
             num_embeds_ada_norm=num_embeds_ada_norm,
         ).to(torch_device)
         with torch.no_grad():
-            timestep_1 = torch.tensor(1, dtype=torch.long).to(torch_device)
-            timestep_2 = torch.tensor(2, dtype=torch.long).to(torch_device)
+            timestep_1 = torch.tensor(1, dtype=torch.long).to(torch_device)[None]
+            timestep_2 = torch.tensor(2, dtype=torch.long).to(torch_device)[None]
             attention_scores_1 = spatial_transformer_block(sample, timestep=timestep_1).sample
             attention_scores_2 = spatial_transformer_block(sample, timestep=timestep_2).sample
 
