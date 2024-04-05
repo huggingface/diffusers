@@ -691,6 +691,9 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
             self.scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = self.scheduler.timesteps
 
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(0)
+
         # 5. Prepare intermediate images
         intermediate_images = self.prepare_intermediate_images(
             batch_size * num_images_per_prompt,
