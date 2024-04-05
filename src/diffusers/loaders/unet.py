@@ -870,7 +870,7 @@ class UNet2DConditionLoadersMixin:
                         if block_name in name:
                             selected = True
                             break
-                    
+
                     attn_procs[name] = attn_processor_class(
                         hidden_size=hidden_size,
                         cross_attention_dim=cross_attention_dim,
