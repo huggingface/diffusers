@@ -63,7 +63,8 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (32, 64),
+            "block_out_channels": (4, 8),
+            "norm_num_groups": 2,
             "down_block_types": ("DownBlock2D", "AttnDownBlock2D"),
             "up_block_types": ("AttnUpBlock2D", "UpBlock2D"),
             "attention_head_dim": 3,
@@ -78,9 +79,8 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     def test_mid_block_attn_groups(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["norm_num_groups"] = 16
         init_dict["add_attention"] = True
-        init_dict["attn_norm_num_groups"] = 8
+        init_dict["attn_norm_num_groups"] = 4
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
