@@ -46,14 +46,14 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, SDFunctionTesterMixin
 
 
 enable_full_determinism()
 
 
 @skip_mps
-class I2VGenXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = I2VGenXLPipeline
     params = frozenset(["prompt", "negative_prompt", "image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "generator"])
@@ -229,6 +229,12 @@ class I2VGenXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @slow
 @require_torch_gpu
 class I2VGenXLPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()

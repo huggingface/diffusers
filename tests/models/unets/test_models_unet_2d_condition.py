@@ -62,7 +62,10 @@ def create_ip_adapter_state_dict(model):
     key_id = 1
 
     for name in model.attn_processors.keys():
-        cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
+        cross_attention_dim = (
+            None if name.endswith("attn1.processor") or "motion_module" in name else model.config.cross_attention_dim
+        )
+
         if name.startswith("mid_block"):
             hidden_size = model.config.block_out_channels[-1]
         elif name.startswith("up_blocks"):
@@ -71,6 +74,7 @@ def create_ip_adapter_state_dict(model):
         elif name.startswith("down_blocks"):
             block_id = int(name[len("down_blocks.")])
             hidden_size = model.config.block_out_channels[block_id]
+
         if cross_attention_dim is not None:
             sd = IPAdapterAttnProcessor(
                 hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
@@ -778,7 +782,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
         # for ip-adapter image_embeds has shape [batch_size, num_image, embed_dim]
-        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
+        image_embeds = floats_tensor((batch_size, 1, model.config.cross_attention_dim)).to(torch_device)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
 
         # make ip_adapter_1 and ip_adapter_2
@@ -850,7 +854,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
         # for ip-adapter-plus image_embeds has shape [batch_size, num_image, sequence_length, embed_dim]
-        image_embeds = floats_tensor((batch_size, 1, 1, model.cross_attention_dim)).to(torch_device)
+        image_embeds = floats_tensor((batch_size, 1, 1, model.config.cross_attention_dim)).to(torch_device)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
 
         # make ip_adapter_1 and ip_adapter_2

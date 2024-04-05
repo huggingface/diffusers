@@ -32,14 +32,25 @@ from diffusers import (
 from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, skip_mps, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineFromPipeTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
 @skip_mps
-class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionPanoramaPipelineFastTests(
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+    PipelineFromPipeTesterMixin,
+    unittest.TestCase,
+):
     pipeline_class = StableDiffusionPanoramaPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -96,7 +107,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        generator = torch.manual_seed(seed)
+        generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "a photo of the dolomites",
             "generator": generator,
@@ -105,7 +116,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
             "width": None,
             "num_inference_steps": 1,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -251,6 +262,11 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 @nightly
 @require_torch_gpu
 class StableDiffusionPanoramaNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -263,7 +279,7 @@ class StableDiffusionPanoramaNightlyTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

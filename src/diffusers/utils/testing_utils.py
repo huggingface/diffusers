@@ -14,7 +14,6 @@ import time
 import unittest
 import urllib.parse
 from contextlib import contextmanager
-from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
@@ -106,10 +105,21 @@ def numpy_cosine_similarity_distance(a, b):
     return distance
 
 
-def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):
+def print_tensor_test(
+    tensor,
+    limit_to_slices=None,
+    max_torch_print=None,
+    filename="test_corrections.txt",
+    expected_tensor_name="expected_slice",
+):
+    if max_torch_print:
+        torch.set_printoptions(threshold=10_000)
+
     test_name = os.environ.get("PYTEST_CURRENT_TEST")
     if not torch.is_tensor(tensor):
         tensor = torch.from_numpy(tensor)
+    if limit_to_slices:
+        tensor = tensor[0, -3:, -3:, -1]
 
     tensor_str = str(tensor.detach().cpu().flatten().to(torch.float32)).replace("\n", "")
     # format is usually:
@@ -118,7 +128,7 @@ def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_n
     test_file, test_class, test_fn = test_name.split("::")
     test_fn = test_fn.split()[0]
     with open(filename, "a") as f:
-        print(";".join([test_file, test_class, test_fn, output_str]), file=f)
+        print("::".join([test_file, test_class, test_fn, output_str]), file=f)
 
 
 def get_tests_dir(append_path=None):
@@ -142,6 +152,22 @@ def get_tests_dir(append_path=None):
         return tests_dir
 
 
+# Taken from the following PR:
+# https://github.com/huggingface/accelerate/pull/1964
+def str_to_bool(value) -> int:
+    """
+    Converts a string representation of truth to `True` (1) or `False` (0). True values are `y`, `yes`, `t`, `true`,
+    `on`, and `1`; False value are `n`, `no`, `f`, `false`, `off`, and `0`;
+    """
+    value = value.lower()
+    if value in ("y", "yes", "t", "true", "on", "1"):
+        return 1
+    elif value in ("n", "no", "f", "false", "off", "0"):
+        return 0
+    else:
+        raise ValueError(f"invalid truth value {value}")
+
+
 def parse_flag_from_env(key, default=False):
     try:
         value = os.environ[key]
@@ -151,7 +177,7 @@ def parse_flag_from_env(key, default=False):
     else:
         # KEY is set, convert it to True or False.
         try:
-            _value = strtobool(value)
+            _value = str_to_bool(value)
         except ValueError:
             # More values are supported, but let's keep the message simple.
             raise ValueError(f"If set, {key} must be yes or no.")
@@ -324,10 +350,15 @@ def deprecate_after_peft_backend(test_case):
     return unittest.skipUnless(not USE_PEFT_BACKEND, "test skipped in favor of PEFT backend")(test_case)
 
 
+def get_python_version():
+    sys_info = sys.version_info
+    major, minor = sys_info.major, sys_info.minor
+    return major, minor
+
+
 def require_python39_or_higher(test_case):
     def python39_available():
-        sys_info = sys.version_info
-        major, minor = sys_info.major, sys_info.minor
+        major, minor = get_python_version()
         return major == 3 and minor >= 9
 
     return unittest.skipUnless(python39_available(), "test requires Python 3.9 or higher")(test_case)

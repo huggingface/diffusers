@@ -89,7 +89,7 @@ class I2VGenXLTransformerTemporalEncoder(nn.Module):
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
 
-        ff_output = self.ff(hidden_states, scale=1.0)
+        ff_output = self.ff(hidden_states)
         hidden_states = ff_output + hidden_states
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
@@ -99,8 +99,8 @@ class I2VGenXLTransformerTemporalEncoder(nn.Module):
 
 class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
-    I2VGenXL UNet. It is a conditional 3D UNet model that takes a noisy sample, conditional state, and a timestep
-    and returns a sample-shaped output.
+    I2VGenXL UNet. It is a conditional 3D UNet model that takes a noisy sample, conditional state, and a timestep and
+    returns a sample-shaped output.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -474,6 +474,44 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
 
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
+    def fuse_qkv_projections(self):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
+        are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+        """
+        self.original_attn_processors = None
+
+        for _, attn_processor in self.attn_processors.items():
+            if "Added" in str(attn_processor.__class__.__name__):
+                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+
+        self.original_attn_processors = self.attn_processors
+
+        for module in self.modules():
+            if isinstance(module, Attention):
+                module.fuse_projections(fuse=True)
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
+    def unfuse_qkv_projections(self):
+        """Disables the fused QKV projection if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        """
+        if self.original_attn_processors is not None:
+            self.set_attn_processor(self.original_attn_processors)
+
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -495,7 +533,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             fps (`torch.Tensor`): Frames per second for the video being generated. Used as a "micro-condition".
             image_latents (`torch.FloatTensor`): Image encodings from the VAE.
-            image_embeddings (`torch.FloatTensor`): Projection embeddings of the conditioning image computed with a vision encoder.
+            image_embeddings (`torch.FloatTensor`):
+                Projection embeddings of the conditioning image computed with a vision encoder.
             encoder_hidden_states (`torch.FloatTensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             cross_attention_kwargs (`dict`, *optional*):

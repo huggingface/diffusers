@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # coding=utf-8
 # Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
@@ -20,6 +21,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import datasets
@@ -51,16 +53,23 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
 
-def save_model_card(repo_id: str, images=None, base_model=str, dataset_name=str, repo_folder=None):
+def save_model_card(
+    repo_id: str,
+    images: list = None,
+    base_model: str = None,
+    dataset_name: str = None,
+    repo_folder: str = None,
+):
     img_str = ""
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"![img_{i}](./image_{i}.png)\n"
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            img_str += f"![img_{i}](./image_{i}.png)\n"
 
     model_description = f"""
 # LoRA text2image fine-tuning - {repo_id}
@@ -82,6 +91,7 @@ These are LoRA adaption weights for {base_model}. The weights were fine-tuned on
         "stable-diffusion-diffusers",
         "text-to-image",
         "diffusers",
+        "diffusers-training",
         "lora",
     ]
     model_card = populate_model_card(model_card, tags=tags)
@@ -291,7 +301,7 @@ def parse_args():
         "--prediction_type",
         type=str,
         default=None,
-        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.",
+        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediction_type` is chosen.",
     )
     parser.add_argument(
         "--hub_model_id",
@@ -399,6 +409,11 @@ def main():
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
+
     if args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
@@ -452,7 +467,7 @@ def main():
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
 
-    # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -488,7 +503,7 @@ def main():
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -869,7 +884,12 @@ def main():
                 if args.seed is not None:
                     generator = generator.manual_seed(args.seed)
                 images = []
-                with torch.cuda.amp.autocast():
+                if torch.backends.mps.is_available():
+                    autocast_ctx = nullcontext()
+                else:
+                    autocast_ctx = torch.autocast(accelerator.device.type)
+
+                with autocast_ctx:
                     for _ in range(args.num_validation_images):
                         images.append(
                             pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
@@ -939,7 +959,12 @@ def main():
             if args.seed is not None:
                 generator = generator.manual_seed(args.seed)
             images = []
-            with torch.cuda.amp.autocast():
+            if torch.backends.mps.is_available():
+                autocast_ctx = nullcontext()
+            else:
+                autocast_ctx = torch.autocast(accelerator.device.type)
+
+            with autocast_ctx:
                 for _ in range(args.num_validation_images):
                     images.append(
                         pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]

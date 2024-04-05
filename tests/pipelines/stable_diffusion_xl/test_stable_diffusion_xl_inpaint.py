@@ -48,13 +48,15 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionXLInpaintPipelineFastTests(
+    IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionXLInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
@@ -220,6 +222,12 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "output_type": "np",
         }
         return inputs
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.7971, 0.5371, 0.5973, 0.5642, 0.6689, 0.6894, 0.5770, 0.6063, 0.5261])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_components_function(self):
         init_components = self.get_dummy_components()

@@ -20,6 +20,7 @@ import os
 import random
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -53,6 +54,7 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -79,37 +81,42 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
 
-def save_model_card(repo_id: str, images=None, base_model=str, repo_folder=None):
+def save_model_card(repo_id: str, images: list = None, base_model: str = None, repo_folder: str = None):
     img_str = ""
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"![img_{i}](./image_{i}.png)\n"
-
-    yaml = f"""
----
-license: creativeml-openrail-m
-base_model: {base_model}
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- text-to-image
-- diffusers
-- textual_inversion
-inference: true
----
-    """
-    model_card = f"""
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            img_str += f"![img_{i}](./image_{i}.png)\n"
+    model_description = f"""
 # Textual inversion text2image fine-tuning - {repo_id}
 These are textual inversion adaption weights for {base_model}. You can find some example images in the following. \n
 {img_str}
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=base_model,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = [
+        "stable-diffusion",
+        "stable-diffusion-diffusers",
+        "text-to-image",
+        "diffusers",
+        "textual_inversion",
+        "diffusers-training",
+    ]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch):
@@ -137,7 +144,12 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
     generator = None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
     images = []
     for _ in range(args.num_validation_images):
-        with torch.autocast("cuda"):
+        if torch.backends.mps.is_available():
+            autocast_ctx = nullcontext()
+        else:
+            autocast_ctx = torch.autocast(accelerator.device.type)
+
+        with autocast_ctx:
             image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
         images.append(image)
 
@@ -594,6 +606,10 @@ def main():
         project_config=accelerator_project_config,
     )
 
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
+
     if args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
@@ -702,7 +718,7 @@ def main():
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -960,7 +976,7 @@ def main():
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         if args.push_to_hub and not args.save_as_full_pipeline:
-            logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
+            logger.warning("Enabling full model saving because --push_to_hub=True was specified.")
             save_full_model = True
         else:
             save_full_model = args.save_as_full_pipeline

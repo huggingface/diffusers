@@ -128,7 +128,7 @@ seed = 2023
 # The values come from
 # https://github.com/lyn-rgb/FreeU_Diffusers#video-pipelines
 pipe.enable_freeu(b1=1.2, b2=1.4, s1=0.9, s2=0.2)
-video_frames = pipe(prompt, height=320, width=576, num_frames=30, generator=torch.manual_seed(seed)).frames
+video_frames = pipe(prompt, height=320, width=576, num_frames=30, generator=torch.manual_seed(seed)).frames[0]
 export_to_video(video_frames, "astronaut_rides_horse.mp4")
 ```
 

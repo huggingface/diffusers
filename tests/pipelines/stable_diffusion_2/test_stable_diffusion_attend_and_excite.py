@@ -32,10 +32,16 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     skip_mps,
+    torch_device,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    PipelineFromPipeTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -43,7 +49,11 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 @skip_mps
 class StableDiffusionAttendAndExcitePipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    PipelineFromPipeTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionAttendAndExcitePipeline
     test_attention_slicing = False
@@ -138,11 +148,17 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
             "generator": generator,
             "num_inference_steps": 1,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "max_iter_to_alter": 2,
             "thresholds": {0: 0.7},
         }
         return inputs
+
+    def test_dict_tuple_outputs_equivalent(self):
+        expected_slice = None
+        if torch_device == "cpu":
+            expected_slice = np.array([0.6391, 0.6290, 0.4860, 0.5134, 0.5550, 0.4577, 0.5033, 0.5023, 0.4538])
+        super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice, expected_max_difference=3e-3)
 
     def test_inference(self):
         device = "cpu"
@@ -173,9 +189,6 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=2, expected_max_diff=7e-4)
 
-    def test_dict_tuple_outputs_equivalent(self):
-        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
-
     def test_pt_np_pil_outputs_equivalent(self):
         super().test_pt_np_pil_outputs_equivalent(expected_max_diff=5e-4)
 
@@ -184,6 +197,9 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
 
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=4e-4)
+
+    def test_karras_schedulers_shape(self):
+        super().test_karras_schedulers_shape(num_inference_steps_for_strength_for_iterations=3)
 
 
 @require_torch_gpu
@@ -201,6 +217,11 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
     def tearDownClass(cls):
         super().tearDownClass()
         torch.use_deterministic_algorithms(True)
+
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def tearDown(self):
         super().tearDown()
@@ -225,7 +246,7 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=5,
             max_iter_to_alter=5,
-            output_type="numpy",
+            output_type="np",
         ).images[0]
 
         expected_image = load_numpy(

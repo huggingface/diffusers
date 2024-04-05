@@ -1,6 +1,7 @@
 name: Benchmarking tests
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "30 1 1,15 * *" # every 2 weeks on the 1st and the 15th of every month at 1:30 AM
 
@@ -31,8 +32,9 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update && apt-get install libsndfile1-dev libgl1 -y
-          python -m pip install -e .[quality,test]
-          python -m pip install pandas
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+          python -m uv pip install pandas peft
       - name: Environment
         run: |
           python utils/print_env.py
