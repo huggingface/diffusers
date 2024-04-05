@@ -124,6 +124,8 @@ class StableDiffusionPipelineFastTests(
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
 
     def get_dummy_components(self, time_cond_proj_dim=None):
+        cross_attention_dim = 8
+
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(4, 8),
@@ -134,7 +136,7 @@ class StableDiffusionPipelineFastTests(
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
+            cross_attention_dim=cross_attention_dim,
             norm_num_groups=2,
         )
         scheduler = DDIMScheduler(
@@ -158,11 +160,11 @@ class StableDiffusionPipelineFastTests(
         text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
-            hidden_size=32,
-            intermediate_size=64,
+            hidden_size=cross_attention_dim,
+            intermediate_size=16,
             layer_norm_eps=1e-05,
-            num_attention_heads=8,
-            num_hidden_layers=3,
+            num_attention_heads=2,
+            num_hidden_layers=2,
             pad_token_id=1,
             vocab_size=1000,
         )
