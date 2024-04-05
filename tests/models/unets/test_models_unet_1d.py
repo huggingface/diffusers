@@ -77,7 +77,7 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (32, 64, 128, 256),
+            "block_out_channels": (8, 8, 16, 16),
             "in_channels": 14,
             "out_channels": 14,
             "time_embedding_type": "positional",
