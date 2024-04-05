@@ -695,9 +695,7 @@ def register_to_config(init):
             new_kwargs["_use_default_values"] = list(set(new_kwargs.keys()) - set(init_kwargs))
 
         new_kwargs = {**config_init_kwargs, **new_kwargs}
-
         getattr(self, "register_to_config")(**new_kwargs)
-
         init(self, *args, **init_kwargs)
 
     return inner_init

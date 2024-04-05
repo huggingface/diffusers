@@ -238,7 +238,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             )
 
         # Check inputs
-
         self._check_config(
             down_block_types=down_block_types,
             up_block_types=up_block_types,
