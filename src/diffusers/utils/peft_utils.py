@@ -109,6 +109,8 @@ def scale_lora_layers(model, weight):
             The weight to be given to the LoRA layers.
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
+    if weight == 1.0:
+        return
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
@@ -128,6 +130,8 @@ def unscale_lora_layers(model, weight: Optional[float] = None):
             value.
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
+    if weight == 1.0:
+        return
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):

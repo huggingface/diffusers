@@ -1183,7 +1183,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         else:
             lora_scale = 1.0
 
-        if USE_PEFT_BACKEND and lora_scale != 1.0:
+        if USE_PEFT_BACKEND:
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
 
@@ -1302,7 +1302,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
-        if USE_PEFT_BACKEND and lora_scale != 1.0:
+        if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
 
