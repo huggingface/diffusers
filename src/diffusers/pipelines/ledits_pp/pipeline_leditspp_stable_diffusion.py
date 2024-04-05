@@ -40,30 +40,21 @@ EXAMPLE_DOC_STRING = """
         >>> from io import BytesIO
 
         >>> from diffusers import LEditsPPPipelineStableDiffusion
+        >>> from diffusers.utils import load_image
 
         >>> pipe = LEditsPPPipelineStableDiffusion.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> def download_image(url):
-        ...     response = requests.get(url)
-        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
-
         >>> img_url = "https://www.aiml.informatik.tu-darmstadt.de/people/mbrack/cherry_blossom.png"
-        >>> image = download_image(img_url)
+        >>> image = load_image(img_url).convert("RGB")
 
-        >>> _ = pipe.invert(
-        ...     image = image,
-        ...     num_inversion_steps=50,
-        ...     skip=0.1
-        ... )
+        >>> _ = pipe.invert(image=image, num_inversion_steps=50, skip=0.1)
 
         >>> edited_image = pipe(
-        ...     editing_prompt=["cherry blossom"],
-        ...     edit_guidance_scale=10.0,
-        ...     edit_threshold=0.75,
-        ).images[0]
+        ...     editing_prompt=["cherry blossom"], edit_guidance_scale=10.0, edit_threshold=0.75
+        ... ).images[0]
         ```
 """
 
@@ -279,8 +270,8 @@ class LEditsPPPipelineStableDiffusion(
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`DPMSolverMultistepScheduler`] or [`DDIMScheduler`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
-            [`DPMSolverMultistepScheduler`] or [`DDIMScheduler`]. If any other scheduler is passed it will automatically
-            be set to [`DPMSolverMultistepScheduler`].
+            [`DPMSolverMultistepScheduler`] or [`DDIMScheduler`]. If any other scheduler is passed it will
+            automatically be set to [`DPMSolverMultistepScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
@@ -531,8 +522,7 @@ class LEditsPPPipelineStableDiffusion(
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
             editing_prompt (`str` or `List[str]`, *optional*):
-                Editing prompt(s) to be encoded. If not defined, one has to pass
-                `editing_prompt_embeds` instead.
+                Editing prompt(s) to be encoded. If not defined, one has to pass `editing_prompt_embeds` instead.
             editing_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -734,8 +724,9 @@ class LEditsPPPipelineStableDiffusion(
         **kwargs,
     ):
         r"""
-        The call function to the pipeline for editing. The [`~pipelines.ledits_pp.LEditsPPPipelineStableDiffusion.invert`]
-        method has to be called beforehand. Edits will always be performed for the last inverted image(s).
+        The call function to the pipeline for editing. The
+        [`~pipelines.ledits_pp.LEditsPPPipelineStableDiffusion.invert`] method has to be called beforehand. Edits will
+        always be performed for the last inverted image(s).
 
         Args:
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -748,49 +739,51 @@ class LEditsPPPipelineStableDiffusion(
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] instead of a plain
+                tuple.
             editing_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. The image is reconstructed by setting
-                `editing_prompt = None`. Guidance direction of prompt should be specified via `reverse_editing_direction`.
+                `editing_prompt = None`. Guidance direction of prompt should be specified via
+                `reverse_editing_direction`.
             editing_prompt_embeds (`torch.Tensor>`, *optional*):
-                Pre-computed embeddings to use for guiding the image generation. Guidance direction of embedding should be
-                specified via `reverse_editing_direction`.
+                Pre-computed embeddings to use for guiding the image generation. Guidance direction of embedding should
+                be specified via `reverse_editing_direction`.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             reverse_editing_direction (`bool` or `List[bool]`, *optional*, defaults to `False`):
                 Whether the corresponding prompt in `editing_prompt` should be increased or decreased.
             edit_guidance_scale (`float` or `List[float]`, *optional*, defaults to 5):
-                Guidance scale for guiding the image generation. If provided as list values should correspond to `editing_prompt`.
-                `edit_guidance_scale` is defined as `s_e` of equation 12 of
-                [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
+                Guidance scale for guiding the image generation. If provided as list values should correspond to
+                `editing_prompt`. `edit_guidance_scale` is defined as `s_e` of equation 12 of [LEDITS++
+                Paper](https://arxiv.org/abs/2301.12247).
             edit_warmup_steps (`float` or `List[float]`, *optional*, defaults to 10):
                 Number of diffusion steps (for each prompt) for which guidance will not be applied.
             edit_cooldown_steps (`float` or `List[float]`, *optional*, defaults to `None`):
                 Number of diffusion steps (for each prompt) after which guidance will no longer be applied.
             edit_threshold (`float` or `List[float]`, *optional*, defaults to 0.9):
                 Masking threshold of guidance. Threshold should be proportional to the image region that is modified.
-                'edit_threshold' is defined as 'λ' of equation 12 of [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
+                'edit_threshold' is defined as 'λ' of equation 12 of [LEDITS++
+                Paper](https://arxiv.org/abs/2301.12247).
             user_mask (`torch.FloatTensor`, *optional*):
-                User-provided mask for even better control over the editing process. This is helpful when LEDITS++'s implicit
-                masks do not meet user preferences.
+                User-provided mask for even better control over the editing process. This is helpful when LEDITS++'s
+                implicit masks do not meet user preferences.
             sem_guidance (`List[torch.Tensor]`, *optional*):
                 List of pre-generated guidance vectors to be applied at generation. Length of the list has to
                 correspond to `num_inference_steps`.
             use_cross_attn_mask (`bool`, defaults to `False`):
                 Whether cross-attention masks are used. Cross-attention masks are always used when use_intersect_mask
-                is set to true. Cross-attention masks are defined as 'M^1' of equation 12 of
-                [LEDITS++ paper](https://arxiv.org/pdf/2311.16711.pdf).
+                is set to true. Cross-attention masks are defined as 'M^1' of equation 12 of [LEDITS++
+                paper](https://arxiv.org/pdf/2311.16711.pdf).
             use_intersect_mask (`bool`, defaults to `True`):
-                Whether the masking term is calculated as intersection of cross-attention masks and masks derived
-                from the noise estimate. Cross-attention mask are defined as 'M^1' and masks derived from the noise
-                estimate are defined as 'M^2' of equation 12 of [LEDITS++ paper](https://arxiv.org/pdf/2311.16711.pdf).
+                Whether the masking term is calculated as intersection of cross-attention masks and masks derived from
+                the noise estimate. Cross-attention mask are defined as 'M^1' and masks derived from the noise estimate
+                are defined as 'M^2' of equation 12 of [LEDITS++ paper](https://arxiv.org/pdf/2311.16711.pdf).
             attn_store_steps (`List[int]`, *optional*):
                 Steps for which the attention maps are stored in the AttentionStore. Just for visualization purposes.
             store_averaged_over_steps (`bool`, defaults to `True`):
-                Whether the attention maps for the 'attn_store_steps' are stored averaged over the diffusion steps.
-                If False, attention maps for each step are stores separately. Just for visualization purposes.
+                Whether the attention maps for the 'attn_store_steps' are stored averaged over the diffusion steps. If
+                False, attention maps for each step are stores separately. Just for visualization purposes.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -815,10 +808,10 @@ class LEditsPPPipelineStableDiffusion(
 
         Returns:
             [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] if `return_dict` is True,
-            otherwise a `tuple. When returning a tuple, the first element is a list with the generated images, and the
-            second element is a list of `bool`s denoting whether the corresponding generated image likely represents
-            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple. When
+            returning a tuple, the first element is a list with the generated images, and the second element is a list
+            of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work" (nsfw)
+            content, according to the `safety_checker`.
         """
 
         if self.inversion_steps is None:
@@ -1219,9 +1212,9 @@ class LEditsPPPipelineStableDiffusion(
         crops_coords: Optional[Tuple[int, int, int, int]] = None,
     ):
         r"""
-        The function to the pipeline for image inversion as described by the [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
-        If the scheduler is set to [`~schedulers.DDIMScheduler`] the inversion proposed by [edit-friendly DPDM](https://arxiv.org/abs/2304.06140)
-        will be performed instead.
+        The function to the pipeline for image inversion as described by the [LEDITS++
+        Paper](https://arxiv.org/abs/2301.12247). If the scheduler is set to [`~schedulers.DDIMScheduler`] the
+        inversion proposed by [edit-friendly DPDM](https://arxiv.org/abs/2304.06140) will be performed instead.
 
          Args:
             image (`PipelineImageInput`):
@@ -1238,8 +1231,8 @@ class LEditsPPPipelineStableDiffusion(
                 Portion of initial steps that will be ignored for inversion and subsequent generation. Lower values
                 will lead to stronger changes to the input image. `skip` has to be between `0` and `1`.
             generator (`torch.Generator`, *optional*):
-                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
-                inversion deterministic.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make inversion
+                deterministic.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -1247,23 +1240,24 @@ class LEditsPPPipelineStableDiffusion(
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
             height (`int`, *optional*, defaults to `None`):
-                The height in preprocessed image. If `None`, will use the `get_default_height_width()` to get default height.
+                The height in preprocessed image. If `None`, will use the `get_default_height_width()` to get default
+                height.
             width (`int`, *optional*`, defaults to `None`):
-                The width in preprocessed. If `None`, will use  get_default_height_width()` to get the default width.
+                The width in preprocessed. If `None`, will use get_default_height_width()` to get the default width.
             resize_mode (`str`, *optional*, defaults to `default`):
-                The resize mode, can be one of `default` or `fill`. If `default`, will resize the image to fit
-                within the specified width and height, and it may not maintaining the original aspect ratio.
-                If `fill`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
-                within the dimensions, filling empty with data from image.
-                If `crop`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
-                within the dimensions, cropping the excess.
-                Note that resize_mode `fill` and `crop` are only supported for PIL image input.
+                The resize mode, can be one of `default` or `fill`. If `default`, will resize the image to fit within
+                the specified width and height, and it may not maintaining the original aspect ratio. If `fill`, will
+                resize the image to fit within the specified width and height, maintaining the aspect ratio, and then
+                center the image within the dimensions, filling empty with data from image. If `crop`, will resize the
+                image to fit within the specified width and height, maintaining the aspect ratio, and then center the
+                image within the dimensions, cropping the excess. Note that resize_mode `fill` and `crop` are only
+                supported for PIL image input.
             crops_coords (`List[Tuple[int, int, int, int]]`, *optional*, defaults to `None`):
                 The crop coordinates for each image in the batch. If `None`, will not crop the image.
 
         Returns:
-            [`~pipelines.ledits_pp.LEditsPPInversionPipelineOutput`]:
-            Output will contain the resized input image(s) and respective VAE reconstruction(s).
+            [`~pipelines.ledits_pp.LEditsPPInversionPipelineOutput`]: Output will contain the resized input image(s)
+            and respective VAE reconstruction(s).
         """
         # Reset attn processor, we do not want to store attn maps during inversion
         self.unet.set_attn_processor(AttnProcessor())

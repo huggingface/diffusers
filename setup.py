@@ -134,6 +134,7 @@ _deps = [
     "torchvision",
     "transformers>=4.25.1",
     "urllib3<=2.0.0",
+    "black",
 ]
 
 # this is a lookup table with items like:
