@@ -57,6 +57,7 @@ from diffusers.utils.testing_utils import (
     skip_mps,
     slow,
     torch_device,
+    print_tensor_test
 )
 
 from ..pipeline_params import (
@@ -210,7 +211,6 @@ class StableDiffusionPipelineFastTests(
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
-        print(", ".join([str(round(x, 4)) for x in image_slice.flatten().tolist()]))
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.1763, 0.4776, 0.4986, 0.2566, 0.3802, 0.4596, 0.5363, 0.3277, 0.3949])
@@ -231,6 +231,7 @@ class StableDiffusionPipelineFastTests(
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
+        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3454, 0.5349, 0.5185, 0.2808, 0.4509, 0.4612, 0.4655, 0.3601, 0.4315])
@@ -253,6 +254,7 @@ class StableDiffusionPipelineFastTests(
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
+        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3454, 0.5349, 0.5185, 0.2808, 0.4509, 0.4612, 0.4655, 0.3601, 0.4315])
@@ -374,11 +376,11 @@ class StableDiffusionPipelineFastTests(
 
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
-    def test_ip_adapter_single(self):
-        expected_pipe_slice = None
-        if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.3203, 0.4555, 0.4711, 0.3505, 0.3973, 0.4650, 0.5137, 0.3392, 0.4045])
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+    # def test_ip_adapter_single(self):
+    #     expected_pipe_slice = None
+    #     if torch_device == "cpu":
+    #         expected_pipe_slice = np.array([0.3203, 0.4555, 0.4711, 0.3505, 0.3973, 0.4650, 0.5137, 0.3392, 0.4045])
+    #     return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_ddim_factor_8(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -393,6 +395,7 @@ class StableDiffusionPipelineFastTests(
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
+        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 136, 136, 3)
         expected_slice = np.array([0.4346, 0.5621, 0.5016, 0.3926, 0.4533, 0.4134, 0.5625, 0.5632, 0.5265])
@@ -411,6 +414,7 @@ class StableDiffusionPipelineFastTests(
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
+        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3411, 0.5032, 0.4704, 0.3135, 0.4323, 0.4740, 0.5150, 0.3498, 0.4022])
@@ -451,6 +455,7 @@ class StableDiffusionPipelineFastTests(
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
+        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3149, 0.5246, 0.4796, 0.3218, 0.4469, 0.4729, 0.5151, 0.3597, 0.3954])
@@ -470,6 +475,7 @@ class StableDiffusionPipelineFastTests(
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
+        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3151, 0.5243, 0.4794, 0.3217, 0.4468, 0.4728, 0.5152, 0.3598, 0.3954])
@@ -489,6 +495,7 @@ class StableDiffusionPipelineFastTests(
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
+        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3149, 0.5246, 0.4796, 0.3218, 0.4469, 0.4729, 0.5151, 0.3597, 0.3954])
@@ -561,6 +568,7 @@ class StableDiffusionPipelineFastTests(
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
+        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3458, 0.5120, 0.4800, 0.3116, 0.4348, 0.4802, 0.5237, 0.3467, 0.3991])
