@@ -57,7 +57,6 @@ from diffusers.utils.testing_utils import (
     skip_mps,
     slow,
     torch_device,
-    print_tensor_test
 )
 
 from ..pipeline_params import (
@@ -231,7 +230,6 @@ class StableDiffusionPipelineFastTests(
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.2368, 0.4900, 0.5019, 0.2723, 0.4473, 0.4578, 0.4551, 0.3532, 0.4133])
@@ -254,7 +252,6 @@ class StableDiffusionPipelineFastTests(
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.2368, 0.4900, 0.5019, 0.2723, 0.4473, 0.4578, 0.4551, 0.3532, 0.4133])
@@ -389,7 +386,6 @@ class StableDiffusionPipelineFastTests(
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 136, 136, 3)
         expected_slice = np.array([0.4720, 0.5426, 0.5160, 0.3961, 0.4696, 0.4296, 0.5738, 0.5888, 0.5481])
@@ -408,7 +404,6 @@ class StableDiffusionPipelineFastTests(
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.1941, 0.4748, 0.4880, 0.2222, 0.4221, 0.4545, 0.5604, 0.3488, 0.3902])
@@ -449,7 +444,6 @@ class StableDiffusionPipelineFastTests(
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.2681, 0.4785, 0.4857, 0.2426, 0.4473, 0.4481, 0.5610, 0.3676, 0.3855])
@@ -469,7 +463,6 @@ class StableDiffusionPipelineFastTests(
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.2682, 0.4782, 0.4855, 0.2424, 0.4472, 0.4479, 0.5612, 0.3676, 0.3854])
@@ -489,7 +482,6 @@ class StableDiffusionPipelineFastTests(
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.2681, 0.4785, 0.4857, 0.2426, 0.4473, 0.4481, 0.5610, 0.3676, 0.3855])
@@ -562,7 +554,6 @@ class StableDiffusionPipelineFastTests(
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(tensor=image_slice, max_torch_print=True)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.1907, 0.4709, 0.4858, 0.2224, 0.4223, 0.4539, 0.5606, 0.3489, 0.3900])
