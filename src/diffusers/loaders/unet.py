@@ -864,11 +864,7 @@ class UNet2DConditionLoadersMixin:
                         num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
 
                 with init_context():
-                    selected = False
-                    for block_name in target_blocks:
-                        if block_name in name:
-                            selected = True
-                            break
+                    selected = any(block_name in name for block_name in target_blocks)
 
                     attn_procs[name] = attn_processor_class(
                         hidden_size=hidden_size,
