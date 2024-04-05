@@ -1,4 +1,5 @@
 import gc
+import tempfile
 import unittest
 
 import torch
@@ -15,13 +16,20 @@ from diffusers.utils.testing_utils import (
     slow,
 )
 
+from .utils import SDXLSingleFileTesterMixin, download_original_config, download_single_file_checkpoint
+
 
 enable_full_determinism()
 
 
 @slow
 @require_torch_gpu
-class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase):
+class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDXLSingleFileTesterMixin):
+    pipeline_class = StableDiffusionXLAdapterPipeline
+    ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+    repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
+    original_config = "https://github.com/Stability-AI/generative-models/blob/main/configs/inference/sd_xl_base.yaml"
+
     def setUp(self):
         super().setUp()
         gc.collect()
@@ -32,85 +40,114 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_single_file_format_inference_is_same(self):
-        ckpt_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
-        )
-        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
+    def get_inputs(self):
         prompt = "toy"
+        generator = torch.Generator(device="cpu").manual_seed(0)
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
         )
+
+        inputs = {
+            "prompt": prompt,
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "np",
+        }
+
+        return inputs
+
+    def test_single_file_format_inference_is_same_as_pretrained(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
         pipe_single_file = StableDiffusionXLAdapterPipeline.from_single_file(
-            ckpt_path,
+            self.ckpt_path,
             adapter=adapter,
             torch_dtype=torch.float16,
         )
         pipe_single_file.enable_model_cpu_offload()
         pipe_single_file.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        images_single_file = pipe_single_file(
-            prompt, image=image, generator=generator, output_type="np", num_inference_steps=3
-        ).images
+        inputs = self.get_inputs()
+        images_single_file = pipe_single_file(**inputs).images[0]
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
         pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
+            self.repo_id,
             adapter=adapter,
             torch_dtype=torch.float16,
         )
         pipe.enable_model_cpu_offload()
-        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
 
-        assert images_single_file[0].shape == (768, 512, 3)
-        assert images[0].shape == (768, 512, 3)
+        inputs = self.get_inputs()
+        images = pipe(**inputs).images[0]
 
-        max_diff = numpy_cosine_similarity_distance(images[0].flatten(), images_single_file[0].flatten())
+        assert images_single_file.shape == (768, 512, 3)
+        assert images.shape == (768, 512, 3)
+
+        max_diff = numpy_cosine_similarity_distance(images.flatten(), images_single_file.flatten())
         assert max_diff < 5e-3
 
-    def test_single_file_component_configs(self):
-        ckpt_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
-        )
+    def test_single_file_components(self):
         adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
-
-        pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", adapter=adapter, torch_dtype=torch.float16
-        )
-        single_file_pipe = StableDiffusionXLAdapterPipeline.from_single_file(
-            ckpt_path,
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
+            variant="fp16",
             adapter=adapter,
             torch_dtype=torch.float16,
         )
 
-        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
-            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
-                continue
-            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
+        pipe_single_file = self.pipeline_class.from_single_file(self.ckpt_path, adapter=adapter)
+        super().test_single_file_components(pipe, pipe_single_file, safety_checker=False)
 
-        for param_name, param_value in single_file_pipe.text_encoder_2.config.to_dict().items():
-            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
-                continue
-            assert pipe.text_encoder_2.config.to_dict()[param_name] == param_value
+    def test_single_file_components_local_files_only(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
+            variant="fp16",
+            adapter=adapter,
+            torch_dtype=torch.float16,
+        )
 
-        PARAMS_TO_IGNORE = [
-            "torch_dtype",
-            "_name_or_path",
-            "architectures",
-            "_use_default_values",
-            "_diffusers_version",
-        ]
-        for param_name, param_value in single_file_pipe.unet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.unet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
 
-        for param_name, param_value in single_file_pipe.vae.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.vae.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            single_file_pipe = self.pipeline_class.from_single_file(
+                local_ckpt_path, adapter=adapter, local_files_only=True
+            )
+
+        self._compare_component_configs(pipe, single_file_pipe, safety_checker=False)
+
+    def test_single_file_components_with_original_config(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
+            variant="fp16",
+            adapter=adapter,
+            torch_dtype=torch.float16,
+        )
+
+        pipe_single_file = self.pipeline_class.from_single_file(
+            self.ckpt_path, original_config=self.original_config, adapter=adapter
+        )
+        self._compare_component_configs(pipe, pipe_single_file, safety_checker=False)
+
+    def test_single_file_components_with_original_config_local_files_only(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
+            variant="fp16",
+            adapter=adapter,
+            torch_dtype=torch.float16,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            local_original_config = download_original_config(self.repo_id, self.original_config, tmpdir)
+
+            pipe_single_file = self.pipeline_class.from_single_file(
+                local_ckpt_path, original_config=local_original_config, adapter=adapter, local_files_only=True
+            )
+        self._compare_component_configs(pipe, pipe_single_file, safety_checker=False)

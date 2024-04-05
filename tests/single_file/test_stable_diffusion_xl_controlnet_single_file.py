@@ -1,4 +1,5 @@
 import gc
+import tempfile
 import unittest
 
 import torch
@@ -10,7 +11,10 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
+    torch_device,
 )
+
+from .utils import SDXLSingleFileTesterMixin, download_single_file_checkpoint
 
 
 enable_full_determinism()
@@ -18,7 +22,12 @@ enable_full_determinism()
 
 @slow
 @require_torch_gpu
-class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase):
+class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, SDXLSingleFileTesterMixin):
+    pipeline_class = StableDiffusionXLControlNetPipeline
+    ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+    repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
+    original_config = "https://github.com/Stability-AI/generative-models/blob/main/configs/inference/sd_xl_base.yaml"
+
     def setUp(self):
         super().setUp()
         gc.collect()
@@ -29,86 +38,115 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_single_file_format_inference_is_same(self):
-        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16)
-        single_file_url = (
-            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
         )
-        pipe_single_file = StableDiffusionXLControlNetPipeline.from_single_file(
-            single_file_url, controlnet=controlnet, torch_dtype=torch.float16
+        inputs = {
+            "prompt": "Stormtrooper's lecture",
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "np",
+        }
+
+        return inputs
+
+    def test_single_file_format_inference_is_same_as_pretrained(self):
+        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16)
+        pipe_single_file = self.pipeline_class.from_single_file(
+            self.ckpt_path, controlnet=controlnet, torch_dtype=torch.float16
         )
         pipe_single_file.unet.set_default_attn_processor()
         pipe_single_file.enable_model_cpu_offload()
         pipe_single_file.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "Stormtrooper's lecture"
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
-        )
-        single_file_images = pipe_single_file(
-            prompt, image=image, generator=generator, output_type="np", num_inference_steps=2
-        ).images
+        inputs = self.get_inputs(torch_device)
+        single_file_images = pipe_single_file(**inputs).images[0]
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
-        )
+        pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet, torch_dtype=torch.float16)
         pipe.unet.set_default_attn_processor()
         pipe.enable_model_cpu_offload()
-        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=2).images
 
-        assert images[0].shape == (512, 512, 3)
-        assert single_file_images[0].shape == (512, 512, 3)
+        inputs = self.get_inputs(torch_device)
+        images = pipe(**inputs).images[0]
+
+        assert images.shape == (512, 512, 3)
+        assert single_file_images.shape == (512, 512, 3)
 
         max_diff = numpy_cosine_similarity_distance(images[0].flatten(), single_file_images[0].flatten())
         assert max_diff < 5e-2
 
-    def test_single_file_component_configs(self):
+    def test_single_file_components(self):
         controlnet = ControlNetModel.from_pretrained(
             "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
         )
-        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
             variant="fp16",
             controlnet=controlnet,
             torch_dtype=torch.float16,
         )
 
-        single_file_url = (
-            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+        pipe_single_file = self.pipeline_class.from_single_file(self.ckpt_path, controlnet=controlnet)
+        super().test_single_file_components(pipe, pipe_single_file, safety_checker=False)
+
+    def test_single_file_components_local_files_only(self):
+        controlnet = ControlNetModel.from_pretrained(
+            "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
         )
-        single_file_pipe = StableDiffusionXLControlNetPipeline.from_single_file(
-            single_file_url, controlnet=controlnet, torch_dtype=torch.float16
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
+            variant="fp16",
+            controlnet=controlnet,
+            torch_dtype=torch.float16,
         )
 
-        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
-            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
-                continue
-            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
 
-        for param_name, param_value in single_file_pipe.text_encoder_2.config.to_dict().items():
-            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
-                continue
-            assert pipe.text_encoder_2.config.to_dict()[param_name] == param_value
+            single_file_pipe = self.pipeline_class.from_single_file(
+                local_ckpt_path, controlnet=controlnet, local_files_only=True
+            )
 
-        PARAMS_TO_IGNORE = [
-            "torch_dtype",
-            "_name_or_path",
-            "architectures",
-            "_use_default_values",
-            "_diffusers_version",
-        ]
-        for param_name, param_value in single_file_pipe.unet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.unet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+        self._compare_component_configs(pipe, single_file_pipe, safety_checker=False)
 
-        for param_name, param_value in single_file_pipe.vae.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.vae.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+    def test_single_file_components_with_original_config(self):
+        controlnet = ControlNetModel.from_pretrained(
+            "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
+        )
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
+            variant="fp16",
+            controlnet=controlnet,
+            torch_dtype=torch.float16,
+        )
+
+        pipe_single_file = self.pipeline_class.from_single_file(
+            self.ckpt_path, original_config=self.original_config, controlnet=controlnet
+        )
+        self._compare_component_configs(pipe, pipe_single_file, safety_checker=False)
+
+    def test_single_file_components_with_original_config_local_files_only(self):
+        controlnet = ControlNetModel.from_pretrained(
+            "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
+        )
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
+            variant="fp16",
+            controlnet=controlnet,
+            torch_dtype=torch.float16,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+
+            pipe_single_file = self.pipeline_class.from_single_file(
+                local_ckpt_path, controlnet=controlnet, local_files_only=True
+            )
+        self._compare_component_configs(pipe, pipe_single_file, safety_checker=False)

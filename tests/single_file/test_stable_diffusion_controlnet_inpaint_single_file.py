@@ -1,4 +1,5 @@
 import gc
+import tempfile
 import unittest
 
 import torch
@@ -10,7 +11,10 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
+    torch_device,
 )
+
+from .utils import SDSingleFileTesterMixin, download_original_config, download_single_file_checkpoint
 
 
 enable_full_determinism()
@@ -18,7 +22,12 @@ enable_full_determinism()
 
 @slow
 @require_torch_gpu
-class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestCase):
+class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
+    pipeline_class = StableDiffusionControlNetInpaintPipeline
+    ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
+    original_config = "https://raw.githubusercontent.com/runwayml/stable-diffusion/main/configs/stable-diffusion/v1-inpainting-inference.yaml"
+    repo_id = "runwayml/stable-diffusion-inpainting"
+
     def setUp(self):
         super().setUp()
         gc.collect()
@@ -29,20 +38,7 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_single_file_format_inference_is_same(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
-        pipe_1 = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None, controlnet=controlnet
-        )
-
-        controlnet = ControlNetModel.from_single_file(
-            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
-        )
-        pipe_2 = StableDiffusionControlNetInpaintPipeline.from_single_file(
-            "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt",
-            safety_checker=None,
-            controlnet=controlnet,
-        )
+    def get_inputs(self):
         control_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         ).resize((512, 512))
@@ -54,72 +50,91 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
             "/stable_diffusion_inpaint/input_bench_mask.png"
         ).resize((512, 512))
 
-        pipes = [pipe_1, pipe_2]
-        images = []
-        for pipe in pipes:
-            pipe.enable_model_cpu_offload()
-            pipe.set_progress_bar_config(disable=None)
+        inputs = {
+            "prompt": "bird",
+            "image": image,
+            "control_image": control_image,
+            "mask_image": mask_image,
+            "generator": torch.Generator(device="cpu").manual_seed(0),
+            "num_inference_steps": 3,
+            "output_type": "np",
+        }
 
-            generator = torch.Generator(device="cpu").manual_seed(0)
-            prompt = "bird"
-            output = pipe(
-                prompt,
-                image=image,
-                control_image=control_image,
-                mask_image=mask_image,
-                strength=0.9,
-                generator=generator,
-                output_type="np",
-                num_inference_steps=3,
-            )
-            images.append(output.images[0])
+        return inputs
 
-            del pipe
-            gc.collect()
-            torch.cuda.empty_cache()
+    def test_single_file_format_inference_is_same_as_pretrained(self):
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
+        pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
+        pipe.unet.set_default_attn_processor()
+        pipe.enable_model_cpu_offload()
 
-        max_diff = numpy_cosine_similarity_distance(images[0].flatten(), images[1].flatten())
+        pipe_sf = self.pipeline_class.from_single_file(
+            self.ckpt_path,
+            controlnet=controlnet,
+        )
+        pipe_sf.unet.set_default_attn_processor()
+        pipe_sf.enable_model_cpu_offload()
+
+        inputs = self.get_inputs(torch_device)
+        output = pipe(**inputs).images[0]
+
+        inputs = self.get_inputs(torch_device)
+        output_sf = pipe_sf(**inputs).images[0]
+
+        max_diff = numpy_cosine_similarity_distance(output_sf.flatten(), output.flatten())
         assert max_diff < 1e-3
 
-    def test_single_file_component_configs(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny", variant="fp16")
-        pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", variant="fp16", safety_checker=None, controlnet=controlnet
+    def test_single_file_components(self):
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id, variant="fp16", safety_checker=None, controlnet=controlnet
         )
-
-        controlnet_single_file = ControlNetModel.from_single_file(
-            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
-        )
-        single_file_pipe = StableDiffusionControlNetInpaintPipeline.from_single_file(
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
+        pipe_single_file = self.pipline_class.from_single_file(
+            self.ckpt_path,
             safety_checker=None,
-            controlnet=controlnet_single_file,
+            controlnet=controlnet,
         )
 
-        PARAMS_TO_IGNORE = [
-            "torch_dtype",
-            "_name_or_path",
-            "architectures",
-            "_use_default_values",
-            "_diffusers_version",
-        ]
-        for param_name, param_value in single_file_pipe.controlnet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.controlnet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+        super()._compare_component_configs(pipe, pipe_single_file)
 
-        for param_name, param_value in single_file_pipe.unet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.unet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+    def test_single_file_components_local_files_only(self):
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
+        pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
 
-        for param_name, param_value in single_file_pipe.vae.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.vae.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+
+            pipe_single_file = self.pipeline_class.from_single_file(
+                local_ckpt_path, controlnet=controlnet, local_files_only=True
+            )
+
+        super()._compare_component_configs(pipe, pipe_single_file)
+
+    def test_single_file_components_with_original_config(self):
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny", variant="fp16")
+        pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
+        pipe_single_file = self.pipeline_class.from_single_file(
+            self.ckpt_path, controlnet=controlnet, original_config=self.original_config
+        )
+
+        super()._compare_component_configs(pipe, pipe_single_file)
+
+    def test_single_file_components_with_original_config_local_files_only(self):
+        controlnet = ControlNetModel.from_pretrained(
+            "lllyasviel/control_v11p_sd15_canny", torch_dtype=torch.float16, variant="fp16"
+        )
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
+            controlnet=controlnet,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            local_original_config = download_original_config(self.repo_id, self.original_config, tmpdir)
+
+            pipe_single_file = self.pipeline_class.from_single_file(
+                local_ckpt_path, original_config=local_original_config, controlnet=controlnet, local_files_only=True
+            )
+        super()._compare_component_configs(pipe, pipe_single_file)

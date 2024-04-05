@@ -7,7 +7,6 @@ from diffusers import (
     DDIMScheduler,
     StableDiffusionXLImg2ImgPipeline,
 )
-from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -23,6 +22,11 @@ enable_full_determinism()
 @slow
 @require_torch_gpu
 class StableDiffusionXLImg2ImgPipelineSingleFileSlowTests(unittest.TestCase):
+    pipeline_class = StableDiffusionXLImg2ImgPipeline
+    ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+    repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
+    original_config = "https://github.com/Stability-AI/generative-models/blob/main/configs/inference/sd_xl_base.yaml"
+
     def setUp(self):
         super().setUp()
         gc.collect()
@@ -33,76 +37,46 @@ class StableDiffusionXLImg2ImgPipelineSingleFileSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_single_file_format_inference_is_same(self):
-        ckpt_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        init_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/sketch-mountains-input.png"
         )
+        inputs = {
+            "prompt": "a fantasy landscape, concept art, high resolution",
+            "image": init_image,
+            "generator": generator,
+            "num_inference_steps": 3,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "np",
+        }
+        return inputs
 
-        sf_pipe = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path)
-        sf_pipe.scheduler = DDIMScheduler.from_config(sf_pipe.scheduler.config)
-        sf_pipe.unet.set_attn_processor(AttnProcessor())
-        sf_pipe.to("cuda")
+    def test_single_file_format_inference_is_same_as_pretrained(self):
+        super().test_single_file_format_inference_is_same_as_pretrained(expected_max_diff=1e-3)
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image_single_file = sf_pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
-        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.to("cuda")
+@slow
+@require_torch_gpu
+class StableDiffusionXLImg2ImgRefinerPipelineSingleFileSlowTests(unittest.TestCase):
+    pipeline_class = StableDiffusionXLImg2ImgPipeline
+    ckpt_path = (
+        "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors"
+    )
+    repo_id = "stabilityai/stable-diffusion-xl-refiner-1.0"
+    original_config = (
+        "https://github.com/Stability-AI/generative-models/blob/main/configs/inference/sd_xl_refiner.yaml"
+    )
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
-
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
-
-        assert max_diff < 1e-3
-
-    def test_single_file_component_configs(self):
-        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-
-        ckpt_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
-        )
-        single_file_pipe = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path, load_safety_checker=True)
-
-        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
-            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
-                continue
-            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
-
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
-        for param_name, param_value in single_file_pipe.unet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.unet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.vae.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.vae.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.safety_checker.config.to_dict().items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.safety_checker.config.to_dict()[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-    def test_single_file_format_inference_is_same_refiner(self):
-        ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors"
+    def test_single_file_format_inference_is_same_as_pretrained(self):
         init_image = load_image(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/sketch-mountains-input.png"
         )
 
-        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16
-        )
+        pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.unet.set_default_attn_processor()
         pipe.enable_model_cpu_offload()
@@ -112,7 +86,7 @@ class StableDiffusionXLImg2ImgPipelineSingleFileSlowTests(unittest.TestCase):
             prompt="mountains", image=init_image, num_inference_steps=5, generator=generator, output_type="np"
         ).images[0]
 
-        pipe_single_file = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
+        pipe_single_file = self.pipeline_class.from_single_file(self.ckpt_path, torch_dtype=torch.float16)
         pipe_single_file.scheduler = DDIMScheduler.from_config(pipe_single_file.scheduler.config)
         pipe_single_file.unet.set_default_attn_processor()
         pipe_single_file.enable_model_cpu_offload()
@@ -124,37 +98,18 @@ class StableDiffusionXLImg2ImgPipelineSingleFileSlowTests(unittest.TestCase):
 
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
-        assert max_diff < 5e-2
+        assert max_diff < 5e-4
 
-    def test_single_file_component_configs_refiner(self):
-        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-1.0")
+    def test_single_file_components(self):
+        super().test_single_file_components(safety_checker=False, text_encoder=False)
 
-        ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors"
-        single_file_pipe = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path, load_safety_checker=True)
+    def test_single_file_components_local_files_only(self):
+        super().test_single_file_components_local_files_only(safety_checker=False, text_encoder=False)
 
-        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
-            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
-                continue
-            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
+    def test_single_file_components_with_original_config(self):
+        super().test_single_file_components(safety_checker=False, text_encoder=False)
 
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
-        for param_name, param_value in single_file_pipe.unet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.unet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.vae.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.vae.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.safety_checker.config.to_dict().items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.safety_checker.config.to_dict()[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+    def test_single_file_components_with_original_config_local_files_only(self):
+        super().test_single_file_components_with_original_config_local_files_only(
+            safety_checker=False, text_encoder=False
+        )

@@ -296,6 +296,15 @@ class FromSingleFileMixin:
         """
         original_config_file = kwargs.pop("original_config_file", None)
         config = kwargs.pop("config", None)
+        original_config = kwargs.pop("original_config", None)
+
+        if original_config_file is not None:
+            deprecation_message = (
+                "`original_config_file` argument is deprecated and will be removed in future versions."
+                "please use the `original_config` argument instead."
+            )
+            deprecate("original_config_file", "1.0.0", deprecation_message)
+            original_config = original_config_file
 
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
@@ -308,7 +317,7 @@ class FromSingleFileMixin:
         local_dir = kwargs.pop("local_dir", None)
         local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
 
-        if config is not None and original_config_file is not None:
+        if config is not None and original_config is not None:
             raise ValueError("Only one of `config` and `original_config_file` can be provided.")
 
         # We shouldn't allow configuring individual models components through a Pipeline creation method
@@ -325,8 +334,8 @@ class FromSingleFileMixin:
             )
             deprecate("prediction_type", "1.0.0", deprecation_message)
 
-        if original_config_file is not None:
-            original_config = fetch_original_config(original_config_file, local_files_only=local_files_only)
+        if original_config is not None:
+            original_config = fetch_original_config(original_config, local_files_only=local_files_only)
         else:
             original_config = None
 
