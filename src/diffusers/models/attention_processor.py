@@ -13,7 +13,7 @@
 # limitations under the License.
 import inspect
 from importlib import import_module
-from typing import Callable, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -2198,24 +2198,33 @@ class IPAdapterAttnProcessor(nn.Module):
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         if ip_adapter_masks is not None:
-            if not isinstance(ip_adapter_mask, List):
+            if not isinstance(ip_adapter_masks, List):
                 # for backward compatibility, we accept `ip_adapter_mask` as a tensor of shape [num_ip_adapter, 1, height, width]
-                ip_adapter_mask = list(ip_adapter_mask.unsqueeze(1))
-            if not (len(ip_adapter_masks) == len(self.scale) == len(ip_hidden_states) == len(self.to_k_ip) == len(self.to_v_ip)):
-                raise ValueError(...)
-             else:
-                 for mask, scale, ip_state in zip(ip_adapter_masks, self.scale, ip_hidden_states):
-                     if not isinstance(mask, torch.Tensor) or mask.ndim != 4:
-                         raise ValueError("each ip_adapter_mask should be a tensor with shape [1, num_images, height, width] ..." )
-                     if mask.shape[1] != current_ip_hidden_states.shape[1]:
-                         raise ValueError(...)
-                     if isinstance(scale, list) and not len(scale) == len(mask.shape[1]:
-                         raise ValueError(...) 
-            if len(ip_adapter_masks) != len(self.scale):
+                ip_adapter_masks = list(ip_adapter_masks.unsqueeze(1))
+            if not (len(ip_adapter_masks) == len(self.scale) == len(ip_hidden_states)):
                 raise ValueError(
                     f"Length of ip_adapter_masks array ({len(ip_adapter_masks)}) must match "
-                    f"number of IP-Adapters ({len(self.scale)})"
-                )
+                    f"length of self.scale array ({len(self.scale)}) and number of ip_hidden_states "
+                    f"({len(ip_hidden_states)})"
+                    )
+            else:
+                for index, (mask, scale, ip_state) in enumerate(zip(ip_adapter_masks, self.scale, ip_hidden_states)):
+                    if not isinstance(mask, torch.Tensor) or mask.ndim != 4:
+                        raise ValueError(
+                            "Each element of the ip_adapter_masks array should be a tensor with shape "
+                            "[1, num_images_for_ip_adapter, height, width]."
+                            " Please use `IPAdapterMaskProcessor` to preprocess your mask"
+                        )
+                    if mask.shape[1] != ip_state.shape[1]:
+                        raise ValueError(
+                            f"Number of masks ({mask.shape[1]}) does not match "
+                            f"number of ip images ({ip_state.shape[1]}) at index {index}"
+                        )
+                    if isinstance(scale, list) and not len(scale) == mask.shape[1]:
+                        raise ValueError(
+                            f"Number of masks ({mask.shape[1]}) does not match "
+                            f"number of scales ({len(scale)}) at index {index}"
+                        )
         else:
             ip_adapter_masks = [None] * len(self.scale)
 
@@ -2227,7 +2236,6 @@ class IPAdapterAttnProcessor(nn.Module):
 
                 if not isinstance(scale, list):
                     scale = [scale]
-
 
                 current_num_images = mask.shape[1]
                 for i in range(current_num_images):
@@ -2401,11 +2409,33 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         hidden_states = hidden_states.to(query.dtype)
 
         if ip_adapter_masks is not None:
-            if len(ip_adapter_masks) != len(self.scale):
+            if not isinstance(ip_adapter_masks, List):
+                # for backward compatibility, we accept `ip_adapter_mask` as a tensor of shape [num_ip_adapter, 1, height, width]
+                ip_adapter_masks = list(ip_adapter_masks.unsqueeze(1))
+            if not (len(ip_adapter_masks) == len(self.scale) == len(ip_hidden_states)):
                 raise ValueError(
-                    f"Lenght of ip_adapter_masks array ({len(ip_adapter_masks)}) must match "
-                    f"number of IP-Adapters ({len(self.scale)})"
-                )
+                    f"Length of ip_adapter_masks array ({len(ip_adapter_masks)}) must match "
+                    f"length of self.scale array ({len(self.scale)}) and number of ip_hidden_states "
+                    f"({len(ip_hidden_states)})"
+                    )
+            else:
+                for index, (mask, scale, ip_state) in enumerate(zip(ip_adapter_masks, self.scale, ip_hidden_states)):
+                    if not isinstance(mask, torch.Tensor) or mask.ndim != 4:
+                        raise ValueError(
+                            "Each element of the ip_adapter_masks array should be a tensor with shape "
+                            "[1, num_images_for_ip_adapter, height, width]."
+                            " Please use `IPAdapterMaskProcessor` to preprocess your mask"
+                        )
+                    if mask.shape[1] != ip_state.shape[1]:
+                        raise ValueError(
+                            f"Number of masks ({mask.shape[1]}) does not match "
+                            f"number of ip images ({ip_state.shape[1]}) at index {index}"
+                        )
+                    if isinstance(scale, list) and not len(scale) == mask.shape[1]:
+                        raise ValueError(
+                            f"Number of masks ({mask.shape[1]}) does not match "
+                            f"number of scales ({len(scale)}) at index {index}"
+                        )
         else:
             ip_adapter_masks = [None] * len(self.scale)
 
@@ -2414,28 +2444,12 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
         ):
             if mask is not None:
-                if not isinstance(mask, torch.Tensor) or mask.ndim != 4:
-                    raise ValueError(
-                        "Each element of the ip_adapter_masks array should be a tensor with shape "
-                        "[1, num_images, height, width]."
-                        " Please use `IPAdapterMaskProcessor` to preprocess your mask"
-                    )
-
-                if mask.shape[1] != current_ip_hidden_states.shape[1]:
-                    raise ValueError(
-                        f"Number of masks in ip_adapter_masks ({mask.shape[1]}) must match "
-                        f"number of input images ({current_ip_hidden_states.shape[1]})"
-                    )
 
                 if not isinstance(scale, list):
                     scale = [scale]
 
-                if mask.shape[1] != len(scale):
-                    raise ValueError(
-                        f"Number of masks in ip_adapter_masks ({mask.shape[1]}) must match number of scales ({len(scale)})"
-                    )
-
-                for i in range(mask.shape[1]):
+                current_num_images = mask.shape[1]
+                for i in range(current_num_images):
                     ip_key = to_k_ip(current_ip_hidden_states[:, i, :, :])
                     ip_value = to_v_ip(current_ip_hidden_states[:, i, :, :])
 
