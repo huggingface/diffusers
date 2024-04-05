@@ -673,6 +673,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
         for i, block in enumerate(self.down_blocks):
             input_channel = output_channel
             output_channel = block_out_channels[i]
+            is_final_block = i == len(block_out_channels) - 1
             num_states = len(block.resnets)
             for j in range(num_states):
                 down_block_res_samples.append(
@@ -689,12 +690,12 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
                     dtype=sample.dtype,
                 )
             )
-            h, w = h // 2, w // 2
+            if not is_final_block:
+                h, w = h // 2, w // 2
 
-        b, c, h, w = sample.shape
         mid_block_channel = block_out_channels[-1]
         mid_block_res_sample = torch.zeros(
-            (b, mid_block_channel, h // 8, w // 8),
+            (b, mid_block_channel, h, w),
             device=sample.device,
             dtype=sample.dtype,
         )
