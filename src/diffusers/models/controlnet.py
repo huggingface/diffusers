@@ -663,6 +663,49 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
         if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
             module.gradient_checkpointing = value
 
+    def zeros_res_samples(
+        self, sample: torch.FloatTensor, return_dict: bool
+    ) -> Union[ControlNetOutput, Tuple[Tuple[torch.FloatTensor, ...], torch.FloatTensor]]:
+        b, c, h, w = sample.shape
+        down_block_res_samples = []
+        block_out_channels = self.config.block_out_channels
+        output_channel = block_out_channels[0]
+        for i, block in enumerate(self.down_blocks):
+            input_channel = output_channel
+            output_channel = block_out_channels[i]
+            num_states = len(block.resnets)
+            for j in range(num_states):
+                down_block_res_samples.append(
+                    torch.zeros(
+                        (b, input_channel if j == 0 else output_channel, h, w),
+                        device=sample.device,
+                        dtype=sample.dtype,
+                    )
+                )
+            down_block_res_samples.append(
+                torch.zeros(
+                    (b, output_channel, h, w),
+                    device=sample.device,
+                    dtype=sample.dtype,
+                )
+            )
+            h, w = h // 2, w // 2
+
+        b, c, h, w = sample.shape
+        mid_block_channel = block_out_channels[-1]
+        mid_block_res_sample = torch.zeros(
+            (b, mid_block_channel, h // 8, w // 8),
+            device=sample.device,
+            dtype=sample.dtype,
+        )
+
+        if not return_dict:
+            return (down_block_res_samples, mid_block_res_sample)
+        return ControlNetOutput(
+            down_block_res_samples=down_block_res_samples,
+            mid_block_res_sample=mid_block_res_sample,
+        )
+
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -717,6 +760,10 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
                 If `return_dict` is `True`, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
                 returned where the first element is the sample tensor.
         """
+        # check if conditioning_scale is zero
+        if conditioning_scale == 0:
+            return self.zeros_res_samples(sample=sample, return_dict=return_dict)
+
         # check channel order
         channel_order = self.config.controlnet_conditioning_channel_order
 
