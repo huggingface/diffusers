@@ -250,7 +250,7 @@ install_requires = [
     deps["Pillow"],
 ]
 
-version_range_max = max(sys.version_info[1], 10) + 1
+version_range_max = max(sys.version_info[1], 12) + 1
 
 setup(
     name="diffusers",
