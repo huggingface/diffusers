@@ -2206,7 +2206,7 @@ class IPAdapterAttnProcessor(nn.Module):
                     f"Length of ip_adapter_masks array ({len(ip_adapter_masks)}) must match "
                     f"length of self.scale array ({len(self.scale)}) and number of ip_hidden_states "
                     f"({len(ip_hidden_states)})"
-                    )
+                )
             else:
                 for index, (mask, scale, ip_state) in enumerate(zip(ip_adapter_masks, self.scale, ip_hidden_states)):
                     if not isinstance(mask, torch.Tensor) or mask.ndim != 4:
@@ -2233,7 +2233,6 @@ class IPAdapterAttnProcessor(nn.Module):
             ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
         ):
             if mask is not None:
-
                 if not isinstance(scale, list):
                     scale = [scale]
 
@@ -2417,7 +2416,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                     f"Length of ip_adapter_masks array ({len(ip_adapter_masks)}) must match "
                     f"length of self.scale array ({len(self.scale)}) and number of ip_hidden_states "
                     f"({len(ip_hidden_states)})"
-                    )
+                )
             else:
                 for index, (mask, scale, ip_state) in enumerate(zip(ip_adapter_masks, self.scale, ip_hidden_states)):
                     if not isinstance(mask, torch.Tensor) or mask.ndim != 4:
@@ -2444,7 +2443,6 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
         ):
             if mask is not None:
-
                 if not isinstance(scale, list):
                     scale = [scale]
 

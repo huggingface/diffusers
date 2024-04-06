@@ -228,7 +228,7 @@ class IPAdapterTesterMixin:
 
     def _get_dummy_masks(self, input_size: int = 64):
         _masks = torch.zeros((1, 1, input_size, input_size), device=torch_device)
-        _masks[0, :, :, :int(input_size / 2)] = 1
+        _masks[0, :, :, : int(input_size / 2)] = 1
         return _masks
 
     def _modify_inputs_for_ip_adapter_test(self, inputs: Dict[str, Any]):
@@ -359,14 +359,13 @@ class IPAdapterTesterMixin:
         assert out_cfg.shape == out_no_cfg.shape
 
     def test_ip_adapter_masks(self, expected_max_diff: float = 1e-4):
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
         sample_size = pipe.unet.config.get("sample_size", 32)
         block_out_channels = pipe.vae.config.get("block_out_channels", [128, 256, 512, 512])
-        input_size =  sample_size * (2 ** (len(block_out_channels) - 1))
+        input_size = sample_size * (2 ** (len(block_out_channels) - 1))
 
         # forward pass without ip adapter
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
@@ -379,9 +378,7 @@ class IPAdapterTesterMixin:
         # forward pass with single ip adapter and masks, but scale=0 which should have no effect
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
-        inputs["cross_attention_kwargs"] = {
-            "ip_adapter_masks": [self._get_dummy_masks(input_size)]
-        }
+        inputs["cross_attention_kwargs"] = {"ip_adapter_masks": [self._get_dummy_masks(input_size)]}
         pipe.set_ip_adapter_scale(0.0)
         output_without_adapter_scale = pipe(**inputs)[0]
         output_without_adapter_scale = output_without_adapter_scale[0, -3:, -3:, -1].flatten()
@@ -389,9 +386,7 @@ class IPAdapterTesterMixin:
         # forward pass with single ip adapter and masks, but with scale of adapter weights
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
-        inputs["cross_attention_kwargs"] = {
-            "ip_adapter_masks": [self._get_dummy_masks(input_size)]
-        }
+        inputs["cross_attention_kwargs"] = {"ip_adapter_masks": [self._get_dummy_masks(input_size)]}
         pipe.set_ip_adapter_scale(42.0)
         output_with_adapter_scale = pipe(**inputs)[0]
         output_with_adapter_scale = output_with_adapter_scale[0, -3:, -3:, -1].flatten()
@@ -407,6 +402,7 @@ class IPAdapterTesterMixin:
         self.assertGreater(
             max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
         )
+
 
 class PipelineLatentTesterMixin:
     """
