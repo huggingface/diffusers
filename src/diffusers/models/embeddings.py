@@ -907,9 +907,12 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         depth (int): The number of blocks. Defaults to 8.
         dim_head (int): The number of head channels. Defaults to 64.
         heads (int): Parallel attention heads. Defaults to 16.
+        num_tokens (int): Number of tokens
         num_queries (int): The number of queries. Defaults to 8.
         ffn_ratio (float): The expansion ratio of feedforward network hidden
             layer channels. Defaults to 4.
+        ffproj_ratio (float): The expansion ratio of feedforward network hidden
+            layer channels (for ID embeddings). Defaults to 4.
     """
 
     def __init__(
@@ -921,7 +924,7 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         depth: int = 4,
         dim_head: int = 64,
         heads: int = 16,
-        num_tokens=4,
+        num_tokens: int = 4,
         num_queries: int = 8,
         ffn_ratio: float = 4,
         ffproj_ratio: int = 2,
@@ -932,6 +935,8 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         self.num_tokens = num_tokens
         self.embed_dim = embed_dims
         self.clip_embeds = None
+        self.shortcut = False
+        self.shortcut_scale = 1.0
 
         self.proj = FeedForward(id_embeddings_dim, embed_dims*num_tokens, activation_fn="gelu", mult=ffproj_ratio)
         self.norm = nn.LayerNorm(embed_dims)
@@ -973,23 +978,29 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         -------
             torch.Tensor: Output Tensor.
         """
+        id_embeds = id_embeds.to(self.clip_embeds.dtype)
         id_embeds = self.proj(id_embeds)
         id_embeds = id_embeds.reshape(-1, self.num_tokens, self.embed_dim)
-        latents = self.norm(id_embeds)
+        id_embeds = self.norm(id_embeds)
+        latents = id_embeds
 
         clip_embeds = self.proj_in(self.clip_embeds)
         x = clip_embeds.reshape(-1, clip_embeds.shape[2], clip_embeds.shape[3])
 
         for ln0, ln1, attn, ff in self.layers:
+            residual = latents
 
             encoder_hidden_states = ln0(x)
             latents = ln1(latents)
-            latents = torch.cat([encoder_hidden_states, latents], dim=-2)
-            latents = attn(latents, encoder_hidden_states) + latents
+            encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
+            latents = attn(latents, encoder_hidden_states) + residual
             latents = ff(latents) + latents
 
         latents = self.proj_out(latents)
-        return self.norm_out(latents)
+        out = self.norm_out(latents)
+        if self.shortcut:
+            out = id_embeds + self.shortcut_scale * out
+        return out
 
 
 class MultiIPAdapterImageProjection(nn.Module):
