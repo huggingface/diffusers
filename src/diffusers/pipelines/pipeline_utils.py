@@ -1064,6 +1064,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
+        self._all_hooks = []
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
             model = all_model_components.pop(model_str, None)
