@@ -523,7 +523,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--huber_schedule",
         type=str,
-        default="exponential",
+        default="snr",
         choices=["constant", "exponential", "snr"],
         help="The schedule to use for the huber losses parameter"
     )
