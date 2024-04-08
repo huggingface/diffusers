@@ -423,14 +423,21 @@ def parse_args(input_args=None):
         "--loss_type",
         type=str,
         default="l2",
-        choices=["l2", "huber", "huber_scheduled"],
+        choices=["l2", "huber", "smooth_l1"],
         help="The type of loss to use and whether it's timestep-scheduled. See Issue #7488 for more info."
+    )
+    parser.add_argument(
+        "--huber_schedule",
+        type=str,
+        default="snr",
+        choices=["constant", "exponential", "snr"],
+        help="The schedule to use for the huber losses parameter"
     )
     parser.add_argument(
         "--huber_c",
         type=float,
-        default=0.01,
-        help="The huber loss parameter. Only used if one of the huber loss modes is selected with loss_type.",
+        default=0.1,
+        help="The huber loss parameter. Only used if one of the huber loss modes (huber or smooth l1) is selected with loss_type.",
     )
     parser.add_argument(
         "--rank",
@@ -1078,27 +1085,33 @@ def main(args):
 
                 bsz = model_input.shape[0]
                 # Sample a random timestep for each image
-                if args.loss_type == 'huber_scheduled':
+                if args.loss_type == 'huber' or args.loss_type == 'smooth_l1':
                     timesteps = torch.randint(
                         0, noise_scheduler.config.num_train_timesteps, (1,), device='cpu'
                     )
                     timestep = timesteps.item()
 
-                    alpha = - math.log(args.huber_c) / noise_scheduler.config.num_train_timesteps
-                    huber_c = math.exp(-alpha * timestep)
-                    timesteps = timesteps.repeat(bsz).to(latents.device)
-                elif args.loss_type == 'huber':
-                    # for fairness in comparison 
+                    if args.huber_schedule == "exponential":
+                        alpha = - math.log(args.huber_c) / noise_scheduler.config.num_train_timesteps
+                        huber_c = math.exp(-alpha * timestep)
+                    elif args.huber_schedule == "snr":
+                        alphas_cumprod = noise_scheduler.alphas_cumprod[timestep]
+                        sigmas = ((1.0 - alphas_cumprod) / alphas_cumprod) ** 0.5
+                        huber_c = (1 - args.huber_c) / (1 + sigmas)**2 + args.huber_c
+                    elif args.huber_schedule == "constant":
+                        huber_c = args.huber_c
+                    else:
+                        raise NotImplementedError(f'Unknown Huber loss schedule {args.huber_schedule}!')
+                    
+                    timesteps = timesteps.repeat(bsz).to(model_input.device)
+                elif args.loss_type == 'l2':
                     timesteps = torch.randint(
-                        0, noise_scheduler.config.num_train_timesteps, (1,), device='cpu'
-                    )
-                    timesteps = timesteps.repeat(bsz).to(latents.device)
-                    huber_c = args.huber_c
-                else:
-                    timesteps = torch.randint(
-                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
                     )
                     huber_c = 1 # may be anything, as it's not used
+                else:
+                    raise NotImplementedError(f'Unknown loss type {args.loss_type}')
+
                 timesteps = timesteps.long()
 
                 # Add noise to the model input according to the noise magnitude at each timestep
