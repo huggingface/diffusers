@@ -312,7 +312,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
 
         with torch.no_grad():
             unet_output = unet(**input_for_unet).sample.cpu()
-            unet_controlnet_output = model(**input_, do_control=False).sample.cpu()
+            unet_controlnet_output = model(**input_, apply_control=False).sample.cpu()
 
         assert np.abs(unet_output.flatten() - unet_controlnet_output.flatten()).max() < 3e-4
 

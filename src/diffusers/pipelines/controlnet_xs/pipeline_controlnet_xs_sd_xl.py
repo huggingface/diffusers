@@ -1048,7 +1048,7 @@ class StableDiffusionXLControlNetXSPipeline(
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
                 # predict the noise residual
-                do_control = (
+                apply_control = (
                     i / len(timesteps) >= control_guidance_start and (i + 1) / len(timesteps) <= control_guidance_end
                 )
                 noise_pred = self.unet(
@@ -1060,7 +1060,7 @@ class StableDiffusionXLControlNetXSPipeline(
                     cross_attention_kwargs=cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=True,
-                    do_control=do_control,
+                    apply_control=apply_control,
                 ).sample
 
                 # perform guidance
