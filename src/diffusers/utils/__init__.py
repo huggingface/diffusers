@@ -108,7 +108,8 @@ from .state_dict_utils import (
     convert_unet_state_dict_to_peft,
 )
 
-from .lpw_stable_diffusion import encode_prompt as encode_prompt_sd
+from .lpw_stable_diffusion import encode_prompt as encode_prompt_lpw_sd
+from .encode_prompt_sd import encode_prompt as default_encode_prompt_sd
 
 
 logger = get_logger(__name__)

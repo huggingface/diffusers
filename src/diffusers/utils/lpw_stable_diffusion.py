@@ -186,6 +186,7 @@ def get_unweighted_text_embeddings(
     text_input: torch.Tensor,
     chunk_length: int,
     no_boseos_middle: Optional[bool] = True,
+    clip_skip=None
 ):
     """
     When the length of tokens is a multiple of the capacity of the text encoder,
@@ -201,7 +202,27 @@ def get_unweighted_text_embeddings(
             # cover the head and the tail by the starting and the ending tokens
             text_input_chunk[:, 0] = text_input[0, 0]
             text_input_chunk[:, -1] = text_input[0, -1]
-            text_embedding = pipe.text_encoder(text_input_chunk)[0]
+            if hasattr(pipeline.text_encoder.config, "use_attention_mask") and pipeline.text_encoder.config.use_attention_mask:
+                attention_mask = text_inputs.attention_mask.to(device)
+            else:
+                attention_mask = None
+
+            if clip_skip is None:
+                prompt_embeds = pipeline.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+                prompt_embeds = prompt_embeds[0]
+            else:
+                prompt_embeds = pipeline.text_encoder(
+                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                )
+                # Access the `hidden_states` first, that contains a tuple of
+                # all the hidden states from the encoder layers. Then index into
+                # the tuple to access the hidden states from the desired layer.
+                prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
+                # We also need to apply the final LayerNorm here to not mess with the
+                # representations. The `last_hidden_states` that we typically use for
+                # obtaining the final prompt representations passes through the LayerNorm
+                # layer.
+                prompt_embeds = pipeline.text_encoder.text_model.final_layer_norm(prompt_embeds)
 
             if no_boseos_middle:
                 if i == 0:
@@ -229,6 +250,7 @@ def get_weighted_text_embeddings(
     no_boseos_middle: Optional[bool] = False,
     skip_parsing: Optional[bool] = False,
     skip_weighting: Optional[bool] = False,
+    clip_skip=None
 ):
     r"""
     Prompts can be assigned with local weights using brackets. For example,
@@ -325,6 +347,7 @@ def get_weighted_text_embeddings(
         prompt_tokens,
         pipe.tokenizer.model_max_length,
         no_boseos_middle=no_boseos_middle,
+        clip_skip=clip_skip
     )
     prompt_weights = torch.tensor(prompt_weights, dtype=text_embeddings.dtype, device=text_embeddings.device)
     if uncond_prompt is not None:
@@ -364,7 +387,8 @@ def encode_prompt(
     prompt_embeds: Optional[torch.FloatTensor] = None,
     negative_prompt_embeds: Optional[torch.FloatTensor] = None,
     lora_scale: Optional[float] = None,
-    max_embeddings_multiples:float=3
+    max_embeddings_multiples:float=3,
+    clip_skip=None
 ):
     r"""
     Encodes the prompt into text encoder hidden states.
@@ -431,6 +455,7 @@ def encode_prompt(
             prompt=prompt,
             uncond_prompt=negative_prompt if do_classifier_free_guidance else None,
             max_embeddings_multiples=max_embeddings_multiples,
+            clip_skip=clip_skip
         )
         if prompt_embeds is None:
             prompt_embeds = prompt_embeds1
