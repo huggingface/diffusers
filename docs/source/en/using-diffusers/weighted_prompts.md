@@ -21,7 +21,7 @@ This guide will show you how you can use these prompt techniques to generate hig
 ## Prompt engineering
 
 > [!TIP]
-> This is not an exhaustive guide on prompt engineering, but it will help you understand the necessary parts of a good prompt. From here, we encourage you to continue experimenting with different prompts and combine them in new ways to see what works best. As you write more prompts, you'll develop an intuition for what works and what doesn't!
+> This is not an exhaustive guide on prompt engineering, but it will help you understand the necessary parts of a good prompt. We encourage you to continue experimenting with different prompts and combine them in new ways to see what works best. As you write more prompts, you'll develop an intuition for what works and what doesn't!
 
 New diffusion models do a pretty good job of generating high-quality images from a basic prompt, but it is still important to create a well-written prompt to get the best results. Here are a few tips for writing a good prompt:
 
@@ -42,12 +42,14 @@ New diffusion models do a pretty good job of generating high-quality images from
 
 ## Prompt enhancing
 
-Prompt enhancing is a technique for improving prompt quality by using a combination of:
+Prompt enhancing is a technique for quickly improving prompt quality without spending too much effort constructing one. It uses a model like GPT2 pretrained on Stable Diffusion text prompts to automatically enrich a prompt with additional important keywords to generate high-quality images.
 
-- [*Offset noise*](https://www.crosslabs.org//blog/diffusion-with-offset-noise) improves the contrast in bright and dark images and creates better lighting overall. This is available as a [LoRA](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_offset_example-lora_1.0.safetensors) from [stabilityai/stable-diffusion-xl-base-1.0](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0).
-- GPT2 enhances the original prompt with a list of words you want. This means curating a list of specific keywords and forcing the model to use those words in the original prompt. As a result, you can use a very basic prompt and still get very high-quality results without spending too much effort. For example, your prompt can be "a cat" and GPT2 can improve it to "cinematic photo of cat, 35mm photograph, film, professional, 4k, highly detailed, breathtaking, hyperrealistic, stunning, ultra, dynamic".
+The technique works by curating a list of specific keywords and forcing the model to generate those words to enhance the original prompt. This way, your prompt can be "a cat" and GPT2 can enhance the prompt to "cinematic film still of a cat basking in the sun on a roof in Turkey, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain quality sharp focus beautiful detailed intricate stunning amazing epic".
 
-You can start by defining certain styles and a list of words to enhance a prompt with.
+> [!TIP]
+> You should also use a [*offset noise*](https://www.crosslabs.org//blog/diffusion-with-offset-noise) LoRA to improve the contrast in bright and dark images and create better lighting overall. This [LoRA](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_offset_example-lora_1.0.safetensors) is available from [stabilityai/stable-diffusion-xl-base-1.0](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0).
+
+Start by defining certain styles and a list of words to enhance a prompt with.
 
 ```py
 import torch
@@ -119,7 +121,7 @@ processor = CustomLogitsProcessor(bias)
 processor_list = LogitsProcessorList([processor])
 ```
 
-Combine the prompt and the `anime` style prompt defined in the `styles` dictionary earlier.
+Combine the prompt and the `cinematic` style prompt defined in the `styles` dictionary earlier.
 
 ```py
 prompt = "a cat basking in the sun on a roof in Turkey"
@@ -201,11 +203,11 @@ image
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/non-enhanced-prompt.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">non-enhanced prompt</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">"a cat basking in the sun on a roof in Turkey"</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/enhanced-prompt.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">enhanced prompt</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">"cinematic film still of a cat basking in the sun on a roof in Turkey, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain"</figcaption>
   </div>
 </div>
 
