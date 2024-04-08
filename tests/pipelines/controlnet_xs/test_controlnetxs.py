@@ -134,24 +134,24 @@ class ControlNetXSPipelineFastTests(
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
+            block_out_channels=(4, 8),
             layers_per_block=2,
-            sample_size=32,
+            sample_size=16,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
+            cross_attention_dim=8,
+            norm_num_groups=4,
             time_cond_proj_dim=time_cond_proj_dim,
             use_linear_projection=True,
         )
         torch.manual_seed(0)
         controlnet = ControlNetXSAddon.from_unet(
             unet=unet,
-            size_ratio=0.5,
-            num_attention_heads=2,
+            size_ratio=1,
             learn_time_embedding=True,
-            conditioning_embedding_out_channels=(16, 32),
+            conditioning_embedding_out_channels=(2, 2),
         )
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
@@ -175,7 +175,7 @@ class ControlNetXSPipelineFastTests(
         text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
-            hidden_size=32,
+            hidden_size=8,
             intermediate_size=37,
             layer_norm_eps=1e-05,
             num_attention_heads=4,
@@ -206,7 +206,7 @@ class ControlNetXSPipelineFastTests(
 
         controlnet_embedder_scale_factor = 2
         image = randn_tensor(
-            (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
+            (1, 3, 8 * controlnet_embedder_scale_factor, 8 * controlnet_embedder_scale_factor),
             generator=generator,
             device=torch.device(device),
         )
@@ -235,7 +235,7 @@ class ControlNetXSPipelineFastTests(
     def test_controlnet_lcm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        components = self.get_dummy_components(time_cond_proj_dim=256)
+        components = self.get_dummy_components(time_cond_proj_dim=8)
         sd_pipe = StableDiffusionControlNetXSPipeline(**components)
         sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
@@ -247,8 +247,8 @@ class ControlNetXSPipelineFastTests(
 
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.491, 0.411, 0.292, 0.631, 0.506, 0.439, 0.664, 0.67, 0.447])
+        assert image.shape == (1, 16, 16, 3)
+        expected_slice = np.array([0.745, 0.753, 0.767, 0.543, 0.523, 0.502, 0.314, 0.521, 0.478])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

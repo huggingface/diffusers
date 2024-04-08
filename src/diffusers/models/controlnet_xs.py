@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch import FloatTensor, nn
-from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, is_torch_version, logging
@@ -216,9 +215,7 @@ def get_mid_block_addon(
     # Addition requires change in number of channels
     ctrl_to_base = make_zero_conv(ctrl_channels, base_channels)
 
-    return ControlNetXSAddonMidBlockComponents(
-        base_to_ctrl=base_to_ctrl, midblock=midblock, ctrl_to_base=ctrl_to_base
-    )
+    return ControlNetXSAddonMidBlockComponents(base_to_ctrl=base_to_ctrl, midblock=midblock, ctrl_to_base=ctrl_to_base)
 
 
 def get_up_block_addon(
@@ -620,7 +617,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                     ctrl_in_channels=ctrl_in_channels,
                     ctrl_out_channels=ctrl_out_channels,
                     temb_channels=time_embed_dim,
-                    max_norm_num_groups=ctrl_max_norm_num_groups,
+                    norm_num_groups=norm_num_groups,
+                    ctrl_max_norm_num_groups=ctrl_max_norm_num_groups,
                     has_crossattn=has_crossattn,
                     transformer_layers_per_block=transformer_layers_per_block[i],
                     base_num_attention_heads=base_num_attention_heads[i],
@@ -636,6 +634,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             base_channels=block_out_channels[-1],
             ctrl_channels=ctrl_block_out_channels[-1],
             temb_channels=time_embed_dim,
+            norm_num_groups=norm_num_groups,
+            ctrl_max_norm_num_groups=ctrl_max_norm_num_groups,
             transformer_layers_per_block=transformer_layers_per_block[-1],
             base_num_attention_heads=base_num_attention_heads[-1],
             ctrl_num_attention_heads=ctrl_num_attention_heads[-1],
@@ -683,6 +683,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                     cross_attention_dim=rev_cross_attention_dim[-1],
                     add_upsample=not is_final_block,
                     upcast_attention=upcast_attention,
+                    norm_num_groups=norm_num_groups,
                 )
             )
 
@@ -1184,7 +1185,8 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         ctrl_in_channels: int,
         ctrl_out_channels: int,
         temb_channels: int,
-        max_norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int = 32,
+        ctrl_max_norm_num_groups: int = 32,
         has_crossattn=True,
         transformer_layers_per_block: Optional[Union[int, Tuple[int]]] = 1,
         base_num_attention_heads: Optional[int] = 1,
@@ -1219,6 +1221,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
                     in_channels=base_in_channels,
                     out_channels=base_out_channels,
                     temb_channels=temb_channels,
+                    groups=norm_num_groups,
                 )
             )
             ctrl_resnets.append(
@@ -1226,8 +1229,10 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
                     in_channels=ctrl_in_channels + base_in_channels,  # information from base is concatted to ctrl
                     out_channels=ctrl_out_channels,
                     temb_channels=temb_channels,
-                    groups=find_largest_factor(ctrl_in_channels + base_in_channels, max_factor=max_norm_num_groups),
-                    groups_out=find_largest_factor(ctrl_out_channels, max_factor=max_norm_num_groups),
+                    groups=find_largest_factor(
+                        ctrl_in_channels + base_in_channels, max_factor=ctrl_max_norm_num_groups
+                    ),
+                    groups_out=find_largest_factor(ctrl_out_channels, max_factor=ctrl_max_norm_num_groups),
                     eps=1e-5,
                 )
             )
@@ -1242,6 +1247,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
                         cross_attention_dim=cross_attention_dim,
                         use_linear_projection=True,
                         upcast_attention=upcast_attention,
+                        norm_num_groups=norm_num_groups,
                     )
                 )
                 ctrl_attentions.append(
@@ -1253,7 +1259,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
                         cross_attention_dim=cross_attention_dim,
                         use_linear_projection=True,
                         upcast_attention=upcast_attention,
-                        norm_num_groups=find_largest_factor(ctrl_out_channels, max_factor=max_norm_num_groups),
+                        norm_num_groups=find_largest_factor(ctrl_out_channels, max_factor=ctrl_max_norm_num_groups),
                     )
                 )
 
@@ -1302,7 +1308,8 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         )  # base channels are concatted to ctrl channels in init
         ctrl_out_channels = ctrl_downblock.resnets[0].out_channels
         temb_channels = base_downblock.resnets[0].time_emb_proj.in_features
-        num_groups = ctrl_downblock.resnets[0].norm1.num_groups
+        num_groups = base_downblock.resnets[0].norm1.num_groups
+        ctrl_num_groups = ctrl_downblock.resnets[0].norm1.num_groups
         if hasattr(base_downblock, "attentions"):
             has_crossattn = True
             transformer_layers_per_block = len(base_downblock.attentions[0].transformer_blocks)
@@ -1326,7 +1333,8 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
             ctrl_in_channels=ctrl_in_channels,
             ctrl_out_channels=ctrl_out_channels,
             temb_channels=temb_channels,
-            max_norm_num_groups=num_groups,
+            norm_num_groups=num_groups,
+            ctrl_max_norm_num_groups=ctrl_num_groups,
             has_crossattn=has_crossattn,
             transformer_layers_per_block=transformer_layers_per_block,
             base_num_attention_heads=base_num_attention_heads,
@@ -1487,7 +1495,8 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
         base_channels: int,
         ctrl_channels: int,
         temb_channels: Optional[int] = None,
-        max_norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int = 32,
+        ctrl_max_norm_num_groups: int = 32,
         transformer_layers_per_block: int = 1,
         base_num_attention_heads: Optional[int] = 1,
         ctrl_num_attention_heads: Optional[int] = 1,
@@ -1504,6 +1513,7 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
             transformer_layers_per_block=transformer_layers_per_block,
             in_channels=base_channels,
             temb_channels=temb_channels,
+            resnet_groups=norm_num_groups,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=base_num_attention_heads,
             use_linear_projection=True,
@@ -1516,7 +1526,9 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
             out_channels=ctrl_channels,
             temb_channels=temb_channels,
             # number or norm groups must divide both in_channels and out_channels
-            resnet_groups=find_largest_factor(gcd(ctrl_channels, ctrl_channels + base_channels), max_norm_num_groups),
+            resnet_groups=find_largest_factor(
+                gcd(ctrl_channels, ctrl_channels + base_channels), ctrl_max_norm_num_groups
+            ),
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=ctrl_num_attention_heads,
             use_linear_projection=True,
@@ -1547,7 +1559,8 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
         ctrl_channels = ctrl_to_base.in_channels
         transformer_layers_per_block = len(base_midblock.attentions[0].transformer_blocks)
         temb_channels = base_midblock.resnets[0].time_emb_proj.in_features
-        num_groups = ctrl_midblock.resnets[0].norm1.num_groups
+        num_groups = base_midblock.resnets[0].norm1.num_groups
+        ctrl_num_groups = ctrl_midblock.resnets[0].norm1.num_groups
         base_num_attention_heads = get_first_cross_attention(base_midblock).heads
         ctrl_num_attention_heads = get_first_cross_attention(ctrl_midblock).heads
         cross_attention_dim = get_first_cross_attention(base_midblock).cross_attention_dim
@@ -1558,7 +1571,8 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
             base_channels=base_channels,
             ctrl_channels=ctrl_channels,
             temb_channels=temb_channels,
-            max_norm_num_groups=num_groups,
+            norm_num_groups=num_groups,
+            ctrl_max_norm_num_groups=ctrl_num_groups,
             transformer_layers_per_block=transformer_layers_per_block,
             base_num_attention_heads=base_num_attention_heads,
             ctrl_num_attention_heads=ctrl_num_attention_heads,
@@ -1630,6 +1644,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         prev_output_channel: int,
         ctrl_skip_channels: List[int],
         temb_channels: int,
+        norm_num_groups: int = 32,
         resolution_idx: Optional[int] = None,
         has_crossattn=True,
         transformer_layers_per_block: int = 1,
@@ -1662,6 +1677,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
                     in_channels=resnet_in_channels + res_skip_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
+                    groups=norm_num_groups,
                 )
             )
 
@@ -1675,6 +1691,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
                         cross_attention_dim=cross_attention_dim,
                         use_linear_projection=True,
                         upcast_attention=upcast_attention,
+                        norm_num_groups=norm_num_groups,
                     )
                 )
 
@@ -1703,6 +1720,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         prev_output_channels = base_upblock.resnets[0].in_channels - out_channels
         ctrl_skip_channelss = [c.in_channels for c in ctrl_to_base_skip_connections]
         temb_channels = base_upblock.resnets[0].time_emb_proj.in_features
+        num_groups = base_upblock.resnets[0].norm1.num_groups
         resolution_idx = base_upblock.resolution_idx
         if hasattr(base_upblock, "attentions"):
             has_crossattn = True
@@ -1725,6 +1743,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             prev_output_channel=prev_output_channels,
             ctrl_skip_channels=ctrl_skip_channelss,
             temb_channels=temb_channels,
+            norm_num_groups=num_groups,
             resolution_idx=resolution_idx,
             has_crossattn=has_crossattn,
             transformer_layers_per_block=transformer_layers_per_block,

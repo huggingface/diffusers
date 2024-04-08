@@ -44,12 +44,13 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
     def dummy_input(self):
         batch_size = 4
         num_channels = 4
-        sizes = (32, 32)
+        sizes = (16, 16)
+        conditioning_image_size = (3, 32, 32)  # size of additional, unprocessed image for control-conditioning
 
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
-        controlnet_cond = floats_tensor((batch_size, 3, 256, 256)).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 8)).to(torch_device)
+        controlnet_cond = floats_tensor((batch_size, *conditioning_image_size)).to(torch_device)
         conditioning_scale = 1
 
         return {
@@ -62,46 +63,54 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
 
     @property
     def input_shape(self):
-        return (4, 32, 32)
+        return (4, 16, 16)
 
     @property
     def output_shape(self):
-        return (4, 32, 32)
+        return (4, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "sample_size": 32,
+            "sample_size": 16,
             "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
             "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
-            "block_out_channels": (32, 64),
-            "cross_attention_dim": 32,
+            "block_out_channels": (4, 8),
+            "cross_attention_dim": 8,
             "transformer_layers_per_block": 1,
-            "num_attention_heads": 8,
+            "num_attention_heads": 2,
+            "norm_num_groups": 4,
             "upcast_attention": False,
-            "ctrl_block_out_channels": [4, 8],
-            "ctrl_num_attention_heads": 8,
-            "ctrl_max_norm_num_groups": 4,
+            "ctrl_block_out_channels": [2, 4],
+            "ctrl_num_attention_heads": 4,
+            "ctrl_max_norm_num_groups": 2,
+            "ctrl_conditioning_embedding_out_channels": (2, 2),
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def get_dummy_unet(self):
-        """For some tests we also need the underlying UNet. For these, we'll build the UNetControlNetXSModel from the UNet"""
+        """For some tests we also need the underlying UNet. For these, we'll build the UNetControlNetXSModel from the UNet and ControlNetXS-Addon"""
         return UNet2DConditionModel(
-            block_out_channels=(32, 64),
+            block_out_channels=(4, 8),
             layers_per_block=2,
-            sample_size=32,
+            sample_size=16,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
+            cross_attention_dim=8,
+            norm_num_groups=4,
             use_linear_projection=True,
         )
 
+    def get_dummy_controlnet_from_unet(self, unet, **kwargs):
+        """For some tests we also need the underlying ControlNetXS-Addon. For these, we'll build the UNetControlNetXSModel from the UNet and ControlNetXS-Addon"""
+        # size_ratio and conditioning_embedding_out_channels chosen to keep model small
+        return ControlNetXSAddon.from_unet(unet, size_ratio=1, conditioning_embedding_out_channels=(2, 2), **kwargs)
+
     def test_from_unet(self):
         unet = self.get_dummy_unet()
-        controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
+        controlnet = self.get_dummy_controlnet_from_unet(unet)
 
         model = UNetControlNetXSModel.from_unet(unet, controlnet)
         model_state_dict = model.state_dict()
@@ -298,7 +307,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
 
     def test_forward_no_control(self):
         unet = self.get_dummy_unet()
-        controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
+        controlnet = self.get_dummy_controlnet_from_unet(unet)
 
         model = UNetControlNetXSModel.from_unet(unet, controlnet)
 
@@ -318,9 +327,9 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
 
     def test_time_embedding_mixing(self):
         unet = self.get_dummy_unet()
-        controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
-        controlnet_mix_time = ControlNetXSAddon.from_unet(
-            unet, size_ratio=1, time_embedding_mix=0.5, learn_time_embedding=True
+        controlnet = self.get_dummy_controlnet_from_unet(unet)
+        controlnet_mix_time = self.get_dummy_controlnet_from_unet(
+            unet, time_embedding_mix=0.5, learn_time_embedding=True
         )
 
         model = UNetControlNetXSModel.from_unet(unet, controlnet)
