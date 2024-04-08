@@ -1222,6 +1222,7 @@ def create_diffusers_clip_model_from_ldm(
     subfolder=None,
     config=None,
     torch_dtype=None,
+    local_files_only=None,
 ):
     if config is None:
         config = fetch_diffusers_config(checkpoint)

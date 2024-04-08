@@ -42,10 +42,6 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from .single_file_utils import (
-    create_diffusers_unet_from_ldm,
-    create_diffusers_unet_from_stable_cascade,
-)
 from .unet_loader_utils import _maybe_expand_lora_scales
 from .utils import AttnProcsLayers
 
@@ -65,12 +61,6 @@ LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
-
-COMPATIBLE_SINGLE_FILE_CLASSES = ["StableCascadeUNet", "UNet2DConditionModel"]
-SINGLE_FILE_LOADABLE_CLASSES = {
-    "StableCascadeUNet": create_diffusers_unet_from_stable_cascade,
-    "UNet2DConditionModel": create_diffusers_unet_from_ldm,
-}
 
 
 class UNet2DConditionLoadersMixin:
