@@ -95,7 +95,14 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
     """
 
     @register_to_config
-    def __init__(self, text_encoder_dim, text_encoder_1_dim, langauge_model_dim):
+    def __init__(
+        self,
+        text_encoder_dim,
+        text_encoder_1_dim,
+        langauge_model_dim,
+        use_learned_position_embedding=None,
+        max_seq_length=None,
+    ):
         super().__init__()
         # additional projection layers for each text encoder
         self.projection = nn.Linear(text_encoder_dim, langauge_model_dim)
@@ -108,6 +115,14 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
         self.sos_embed_1 = nn.Parameter(torch.ones(langauge_model_dim))
         self.eos_embed_1 = nn.Parameter(torch.ones(langauge_model_dim))
 
+        self.use_learned_position_embedding = use_learned_position_embedding
+
+        # learable positional embedding for vits encoder
+        if self.use_learned_position_embedding is not None:
+            self.learnable_positional_embedding = torch.nn.Parameter(
+                torch.zeros((1, text_encoder_1_dim, max_seq_length))
+            )
+
     def forward(
         self,
         hidden_states: Optional[torch.FloatTensor] = None,
@@ -119,6 +134,10 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
         hidden_states, attention_mask = add_special_tokens(
             hidden_states, attention_mask, sos_token=self.sos_embed, eos_token=self.eos_embed
         )
+
+        # Add positional embedding for Vits hidden state
+        if self.use_learned_position_embedding is not None:
+            hidden_states_1 = (hidden_states_1.permute(0, 2, 1) + self.learnable_positional_embedding).permute(0, 2, 1)
 
         hidden_states_1 = self.projection_1(hidden_states_1)
         hidden_states_1, attention_mask_1 = add_special_tokens(
