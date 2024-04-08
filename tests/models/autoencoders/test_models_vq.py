@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,7 +54,8 @@ class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": [32, 64],
+            "block_out_channels": [8, 16],
+            "norm_num_groups": 8,
             "in_channels": 3,
             "out_channels": 3,
             "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],

@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ if is_torch_available():
     _import_structure["unets.unet_kandinsky3"] = ["Kandinsky3UNet"]
     _import_structure["unets.unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
     _import_structure["unets.unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
+    _import_structure["unets.unet_stable_cascade"] = ["StableCascadeUNet"]
     _import_structure["unets.uvit_2d"] = ["UVit2DModel"]
     _import_structure["vq_model"] = ["VQModel"]
 
@@ -80,6 +81,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             I2VGenXLUNet,
             Kandinsky3UNet,
             MotionAdapter,
+            StableCascadeUNet,
             UNet1DModel,
             UNet2DConditionModel,
             UNet2DModel,

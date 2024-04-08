@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 Harutatsu Akiyama and HuggingFace Inc.
+# Copyright 2024 Harutatsu Akiyama and HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -143,7 +143,7 @@ class StableDiffusionXLInstructPix2PixPipelineFastTests(
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "image_guidance_scale": 1,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

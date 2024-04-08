@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -21,7 +21,7 @@ The abstract from the paper is:
 ## Tips
 
 - SDXL Turbo uses the exact same architecture as [SDXL](./stable_diffusion_xl), which means it also has the same API. Please refer to the [SDXL](./stable_diffusion_xl) API reference for more details.
-- SDXL Turbo should disable guidance scale by setting `guidance_scale=0.0`
+- SDXL Turbo should disable guidance scale by setting `guidance_scale=0.0`.
 - SDXL Turbo should use `timestep_spacing='trailing'` for the scheduler and use between 1 and 4 steps.
 - SDXL Turbo has been trained to generate images of size 512x512.
 - SDXL Turbo is open-access, but not open-source meaning that one might have to buy a model license in order to use it for commercial applications. Make sure to read the [official model card](https://huggingface.co/stabilityai/sdxl-turbo) to learn more.

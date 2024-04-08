@@ -28,7 +28,7 @@ def buffered_writer(raw_f):
     f.flush()
 
 
-def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None) -> str:
+def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None, fps: int = 10) -> str:
     if output_gif_path is None:
         output_gif_path = tempfile.NamedTemporaryFile(suffix=".gif").name
 
@@ -37,7 +37,7 @@ def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None) -> 
         save_all=True,
         append_images=image[1:],
         optimize=False,
-        duration=100,
+        duration=1000 // fps,
         loop=0,
     )
     return output_gif_path
@@ -116,7 +116,7 @@ def export_to_obj(mesh, output_obj_path: str = None):
 
 
 def export_to_video(
-    video_frames: Union[List[np.ndarray], List[PIL.Image.Image]], output_video_path: str = None, fps: int = 8
+    video_frames: Union[List[np.ndarray], List[PIL.Image.Image]], output_video_path: str = None, fps: int = 10
 ) -> str:
     if is_opencv_available():
         import cv2

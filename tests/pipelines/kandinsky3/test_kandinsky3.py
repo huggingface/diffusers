@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -169,6 +169,12 @@ class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @slow
 @require_torch_gpu
 class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -186,7 +192,7 @@ class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
 
         generator = torch.Generator(device="cpu").manual_seed(0)
 
-        image = pipe(prompt, num_inference_steps=25, generator=generator).images[0]
+        image = pipe(prompt, num_inference_steps=5, generator=generator).images[0]
 
         assert image.size == (1024, 1024)
 
@@ -217,7 +223,7 @@ class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
         image = image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
         prompt = "A painting of the inside of a subway train with tiny raccoons."
 
-        image = pipe(prompt, image=image, strength=0.75, num_inference_steps=25, generator=generator).images[0]
+        image = pipe(prompt, image=image, strength=0.75, num_inference_steps=5, generator=generator).images[0]
 
         assert image.size == (512, 512)
 

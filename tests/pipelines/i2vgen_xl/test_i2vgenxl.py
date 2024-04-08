@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,14 +46,14 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, SDFunctionTesterMixin
 
 
 enable_full_determinism()
 
 
 @skip_mps
-class I2VGenXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = I2VGenXLPipeline
     params = frozenset(["prompt", "negative_prompt", "image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "generator"])
@@ -80,7 +80,8 @@ class I2VGenXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             down_block_types=("CrossAttnDownBlock3D", "DownBlock3D"),
             up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
             cross_attention_dim=4,
-            num_attention_heads=4,
+            attention_head_dim=4,
+            num_attention_heads=None,
             norm_num_groups=2,
         )
 
@@ -228,6 +229,12 @@ class I2VGenXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @slow
 @require_torch_gpu
 class I2VGenXLPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()

@@ -11,6 +11,7 @@ $ python convert_zero123_to_diffusers.py \
    --original_config_file /path/zero123/configs/sd-objaverse-finetune-c_concat-256.yaml
 ```
 """
+
 import argparse
 
 import torch
@@ -801,6 +802,6 @@ if __name__ == "__main__":
     )
 
     if args.half:
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
 
     pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)

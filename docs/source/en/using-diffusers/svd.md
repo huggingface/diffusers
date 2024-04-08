@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -21,7 +21,7 @@ This guide will show you how to use SVD to generate short videos from images.
 Before you begin, make sure you have the following libraries installed:
 
 ```py
-!pip install -q -U diffusers transformers accelerate 
+!pip install -q -U diffusers transformers accelerate
 ```
 
 The are two variants of this model, [SVD](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid) and [SVD-XT](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt). The SVD checkpoint is trained to generate 14 frames and the SVD-XT checkpoint is further finetuned to generate 25 frames.
@@ -86,7 +86,7 @@ Video generation is very memory intensive because you're essentially generating 
 + frames = pipe(image, decode_chunk_size=2, generator=generator, num_frames=25).frames[0]
 ```
 
-Using all these tricks togethere should lower the memory requirement to less than 8GB VRAM.
+Using all these tricks together should lower the memory requirement to less than 8GB VRAM.
 
 ## Micro-conditioning
 

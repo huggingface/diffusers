@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -21,6 +20,7 @@ import PIL.Image
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
+from gmflow.gmflow import GMFlow
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.image_processor import VaeImageProcessor
@@ -32,13 +32,6 @@ from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionS
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate, logging
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
-
-
-gmflow_dir = "/path/to/gmflow"
-sys.path.insert(0, gmflow_dir)
-from gmflow.gmflow import GMFlow  # noqa: E402
-
-from utils.utils import InputPadder  # noqa: E402
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -119,11 +112,11 @@ def forward_backward_consistency_check(fwd_flow, bwd_flow, alpha=0.01, beta=0.5)
 
 
 @torch.no_grad()
-def get_warped_and_mask(flow_model, image1, image2, image3=None, pixel_consistency=False):
+def get_warped_and_mask(flow_model, image1, image2, image3=None, pixel_consistency=False, device=None):
     if image3 is None:
         image3 = image1
     padder = InputPadder(image1.shape, padding_factor=8)
-    image1, image2 = padder.pad(image1[None].cuda(), image2[None].cuda())
+    image1, image2 = padder.pad(image1[None].to(device), image2[None].to(device))
     results_dict = flow_model(
         image1, image2, attn_splits_list=[2], corr_radius_list=[-1], prop_radius_list=[-1], pred_bidir_flow=True
     )
@@ -307,6 +300,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
         feature_extractor: CLIPImageProcessor,
         image_encoder=None,
         requires_safety_checker: bool = True,
+        device=None,
     ):
         super().__init__(
             vae,
@@ -320,6 +314,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             image_encoder,
             requires_safety_checker,
         )
+        self.to(device)
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -374,7 +369,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             attention_type="swin",
             ffn_dim_expansion=4,
             num_transformer_layers=6,
-        ).to("cuda")
+        ).to(self.device)
 
         checkpoint = torch.utils.model_zoo.load_url(
             "https://huggingface.co/Anonymous-sub/Rerender/resolve/main/models/gmflow_sintel-0c07dcb3.pth",
@@ -928,13 +923,13 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             prev_image = self.image_processor.preprocess(prev_image).to(dtype=torch.float32)
 
             warped_0, bwd_occ_0, bwd_flow_0 = get_warped_and_mask(
-                self.flow_model, first_image, image[0], first_result, False
+                self.flow_model, first_image, image[0], first_result, False, self.device
             )
             blend_mask_0 = blur(F.max_pool2d(bwd_occ_0, kernel_size=9, stride=1, padding=4))
             blend_mask_0 = torch.clamp(blend_mask_0 + bwd_occ_0, 0, 1)
 
             warped_pre, bwd_occ_pre, bwd_flow_pre = get_warped_and_mask(
-                self.flow_model, prev_image[0], image[0], prev_result, False
+                self.flow_model, prev_image[0], image[0], prev_result, False, self.device
             )
             blend_mask_pre = blur(F.max_pool2d(bwd_occ_pre, kernel_size=9, stride=1, padding=4))
             blend_mask_pre = torch.clamp(blend_mask_pre + bwd_occ_pre, 0, 1)
@@ -1176,3 +1171,24 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             return output_frames
 
         return TextToVideoSDPipelineOutput(frames=output_frames)
+
+
+class InputPadder:
+    """Pads images such that dimensions are divisible by 8"""
+
+    def __init__(self, dims, mode="sintel", padding_factor=8):
+        self.ht, self.wd = dims[-2:]
+        pad_ht = (((self.ht // padding_factor) + 1) * padding_factor - self.ht) % padding_factor
+        pad_wd = (((self.wd // padding_factor) + 1) * padding_factor - self.wd) % padding_factor
+        if mode == "sintel":
+            self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
+        else:
+            self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, 0, pad_ht]
+
+    def pad(self, *inputs):
+        return [F.pad(x, self._pad, mode="replicate") for x in inputs]
+
+    def unpad(self, x):
+        ht, wd = x.shape[-2:]
+        c = [self._pad[2], ht - self._pad[3], self._pad[0], wd - self._pad[1]]
+        return x[..., c[0] : c[1], c[2] : c[3]]
