@@ -85,7 +85,7 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
     for key, value in args_dict.items():
         if isinstance(value, pathlib.Path):
             args_dict[key] = str(value)
-
+    os.makedirs(args.output_dir, exist_ok=True)
     # convert to yaml and output to file
     with open(config_save_path, "w") as f:
         yaml.dump(args_dict, f)

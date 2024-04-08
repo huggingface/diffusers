@@ -1,4 +1,8 @@
 
+nohup accelerate launch --num_cpu_threads_per_process 1 train_controlnet_sdxl.py --config_file=configs/controlnet_sdxl_training.yaml > train_controlnet_sdxl.out &
+
+
+
 accelerate launch examples/controlnet/train_controlnet_sdxl.py \
 --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0"
 --output_dir="checkpoints/jector_inpaint_controlnet_exp"

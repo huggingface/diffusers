@@ -148,10 +148,9 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         else torch.autocast("cuda")
     )
 
-    validation_index_list = random.sample(range(args.num_validation_images), 4)
     dataroot = '/home/gkalstn000/dataset/inpainting'
     metadata = pd.read_json(os.path.join(dataroot, 'test.jsonl'), lines=True)
-    for validation_index in validation_index_list:
+    for validation_index in range(args.num_validation_images):
         image_path, text, mask_path = metadata.iloc[validation_index]
 
         init_image = Image.open(image_path).convert("RGB")
@@ -159,7 +158,9 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
 
         mask_image = Image.open(mask_path)
         mask_image = mask_image.resize((args.resolution, args.resolution))
-
+        if random.random() > 0.5:
+            mask_image = np.array(mask_image).max() - np.array(mask_image)
+            mask_image = Image.fromarray(mask_image)
         control_image = make_inpaint_condition(init_image, mask_image)
 
         images = []
@@ -167,7 +168,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         for _ in range(3):
             with inference_ctx:
                 image = pipeline(prompt= text,
-                                 num_inference_steps=20,
+                                 num_inference_steps=50,
                                  generator=generator,
                                  image=init_image,
                                  mask_image=mask_image,
@@ -1188,9 +1189,12 @@ def main(args):
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # ControlNet conditioning.
-                controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
+                mask = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
                 if random.random() > 0.5 :
-                    controlnet_image = 1 - controlnet_image
+                    mask = 1 - mask
+
+                controlnet_image = torch.where(mask >= 0.5, -1, batch["pixel_values"])
+
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
                     timesteps,

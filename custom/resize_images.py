@@ -15,7 +15,7 @@ def process_image(filename):
 
     image_resize.save(filepath)
 
-img_root = '/home/gkalstn000/dataset/inpainting/image'
+img_root = '/home/gkalstn000/dataset/inpainting/images'
 file_list = os.listdir(img_root)
 
 # 멀티 프로세싱을 사용하여 이미지 처리

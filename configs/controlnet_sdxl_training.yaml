@@ -13,7 +13,7 @@ seed: 42
 train_batch_size: 1
 num_train_epochs: 1
 max_train_steps: 50000
-checkpointing_steps: 500
+checkpointing_steps: 2000
 checkpoints_total_limit: null
 resume_from_checkpoint: null
 gradient_accumulation_steps: 4
@@ -27,7 +27,7 @@ lr_power: 1.0
 use_8bit_adam: false
 
 # Save Configuration
-output_dir: checkpoints/jector_inpaint_controlnet_exp
+output_dir: checkpoints/jector_inpaint_controlnet_lr1e-5
 tracker_project_name: conneckbrick
 logging_dir: logs
 
@@ -62,7 +62,7 @@ validation_image:
   - ./conditioning_image_1.png
   - ./conditioning_image_2.png
 num_validation_images: 8
-validation_steps: 500
+validation_steps: 1
 
 # Logging and Reporting
 report_to: wandb
