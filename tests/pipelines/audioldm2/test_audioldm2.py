@@ -516,6 +516,20 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         }
         return inputs
 
+    def get_inputs_tts(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        latents = np.random.RandomState(seed).standard_normal((1, 8, 128, 16))
+        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
+        inputs = {
+            "prompt": "A men saying",
+            "transcription": "hello my name is John",
+            "latents": latents,
+            "generator": generator,
+            "num_inference_steps": 3,
+            "guidance_scale": 2.5,
+        }
+        return inputs
+
     def test_audioldm2(self):
         audioldm_pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm2")
         audioldm_pipe = audioldm_pipe.to(torch_device)
@@ -561,6 +575,25 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
 
         inputs = self.get_inputs(torch_device)
         audio = audioldm_pipe(**inputs).audios[0]
+
+        assert audio.ndim == 1
+        assert len(audio) == 81952
+
+        # check the portion of the generated audio with the largest dynamic range (reduces flakiness)
+        audio_slice = audio[8825:8835]
+        expected_slice = np.array(
+            [-0.1829, -0.1461, 0.0759, -0.1493, -0.1396, 0.5783, 0.3001, -0.3038, -0.0639, -0.2244]
+        )
+        max_diff = np.abs(expected_slice - audio_slice).max()
+        assert max_diff < 1e-3
+
+    def test_audioldm2_tts(self):
+        audioldm_tts_pipe = AudioLDM2Pipeline.from_pretrained("anhnct/audioldm2_gigaspeech")
+        audioldm_tts_pipe = audioldm_tts_pipe.to(torch_device)
+        audioldm_tts_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs_tts(torch_device)
+        audio = audioldm_tts_pipe(**inputs).audios[0]
 
         assert audio.ndim == 1
         assert len(audio) == 81952
