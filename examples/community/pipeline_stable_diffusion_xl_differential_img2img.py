@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
+import torchvision
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -26,23 +27,25 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import (
+from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
+from diffusers.loaders import (
     FromSingleFileMixin,
     IPAdapterMixin,
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
-from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
-from ...models.attention_processor import (
+from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
+from diffusers.models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
+from diffusers.models.lora import adjust_lora_scale_text_encoder
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils import (
     USE_PEFT_BACKEND,
     deprecate,
     is_invisible_watermark_available,
@@ -52,13 +55,11 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from .pipeline_output import StableDiffusionXLPipelineOutput
+from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_invisible_watermark_available():
-    from .watermark import StableDiffusionXLWatermarker
+    from diffusers.pipelines.stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -67,35 +68,24 @@ if is_torch_xla_available():
 else:
     XLA_AVAILABLE = False
 
-
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
 
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionXLInpaintPipeline
+        >>> from diffusers import StableDiffusionXLImg2ImgPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0",
-        ...     torch_dtype=torch.float16,
-        ...     variant="fp16",
-        ...     use_safetensors=True,
+        >>> pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16
         ... )
-        >>> pipe.to("cuda")
+        >>> pipe = pipe.to("cuda")
+        >>> url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
 
-        >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
-        >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
-
-        >>> init_image = load_image(img_url).convert("RGB")
-        >>> mask_image = load_image(mask_url).convert("RGB")
-
-        >>> prompt = "A majestic tiger sitting on a bench"
-        >>> image = pipe(
-        ...     prompt=prompt, image=init_image, mask_image=mask_image, num_inference_steps=50, strength=0.80
-        ... ).images[0]
+        >>> init_image = load_image(url).convert("RGB")
+        >>> prompt = "a photo of an astronaut riding a horse on mars"
+        >>> image = pipe(prompt, image=init_image).images[0]
         ```
 """
 
@@ -113,140 +103,6 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
     noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
     return noise_cfg
-
-
-def mask_pil_to_torch(mask, height, width):
-    # preprocess mask
-    if isinstance(mask, (PIL.Image.Image, np.ndarray)):
-        mask = [mask]
-
-    if isinstance(mask, list) and isinstance(mask[0], PIL.Image.Image):
-        mask = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in mask]
-        mask = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask], axis=0)
-        mask = mask.astype(np.float32) / 255.0
-    elif isinstance(mask, list) and isinstance(mask[0], np.ndarray):
-        mask = np.concatenate([m[None, None, :] for m in mask], axis=0)
-
-    mask = torch.from_numpy(mask)
-    return mask
-
-
-def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool = False):
-    """
-    Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline. This means that those inputs will be
-    converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for the
-    ``image`` and ``1`` for the ``mask``.
-
-    The ``image`` will be converted to ``torch.float32`` and normalized to be in ``[-1, 1]``. The ``mask`` will be
-    binarized (``mask > 0.5``) and cast to ``torch.float32`` too.
-
-    Args:
-        image (Union[np.array, PIL.Image, torch.Tensor]): The image to inpaint.
-            It can be a ``PIL.Image``, or a ``height x width x 3`` ``np.array`` or a ``channels x height x width``
-            ``torch.Tensor`` or a ``batch x channels x height x width`` ``torch.Tensor``.
-        mask (_type_): The mask to apply to the image, i.e. regions to inpaint.
-            It can be a ``PIL.Image``, or a ``height x width`` ``np.array`` or a ``1 x height x width``
-            ``torch.Tensor`` or a ``batch x 1 x height x width`` ``torch.Tensor``.
-
-
-    Raises:
-        ValueError: ``torch.Tensor`` images should be in the ``[-1, 1]`` range. ValueError: ``torch.Tensor`` mask
-        should be in the ``[0, 1]`` range. ValueError: ``mask`` and ``image`` should have the same spatial dimensions.
-        TypeError: ``mask`` is a ``torch.Tensor`` but ``image`` is not
-            (ot the other way around).
-
-    Returns:
-        tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
-            dimensions: ``batch x channels x height x width``.
-    """
-
-    # checkpoint. TOD(Yiyi) - need to clean this up later
-    deprecation_message = "The prepare_mask_and_masked_image method is deprecated and will be removed in a future version. Please use VaeImageProcessor.preprocess instead"
-    deprecate(
-        "prepare_mask_and_masked_image",
-        "0.30.0",
-        deprecation_message,
-    )
-    if image is None:
-        raise ValueError("`image` input cannot be undefined.")
-
-    if mask is None:
-        raise ValueError("`mask_image` input cannot be undefined.")
-
-    if isinstance(image, torch.Tensor):
-        if not isinstance(mask, torch.Tensor):
-            mask = mask_pil_to_torch(mask, height, width)
-
-        if image.ndim == 3:
-            image = image.unsqueeze(0)
-
-        # Batch and add channel dim for single mask
-        if mask.ndim == 2:
-            mask = mask.unsqueeze(0).unsqueeze(0)
-
-        # Batch single mask or add channel dim
-        if mask.ndim == 3:
-            # Single batched mask, no channel dim or single mask not batched but channel dim
-            if mask.shape[0] == 1:
-                mask = mask.unsqueeze(0)
-
-            # Batched masks no channel dim
-            else:
-                mask = mask.unsqueeze(1)
-
-        assert image.ndim == 4 and mask.ndim == 4, "Image and Mask must have 4 dimensions"
-        # assert image.shape[-2:] == mask.shape[-2:], "Image and Mask must have the same spatial dimensions"
-        assert image.shape[0] == mask.shape[0], "Image and Mask must have the same batch size"
-
-        # Check image is in [-1, 1]
-        # if image.min() < -1 or image.max() > 1:
-        #    raise ValueError("Image should be in [-1, 1] range")
-
-        # Check mask is in [0, 1]
-        if mask.min() < 0 or mask.max() > 1:
-            raise ValueError("Mask should be in [0, 1] range")
-
-        # Binarize mask
-        mask[mask < 0.5] = 0
-        mask[mask >= 0.5] = 1
-
-        # Image as float32
-        image = image.to(dtype=torch.float32)
-    elif isinstance(mask, torch.Tensor):
-        raise TypeError(f"`mask` is a torch.Tensor but `image` (type: {type(image)} is not")
-    else:
-        # preprocess image
-        if isinstance(image, (PIL.Image.Image, np.ndarray)):
-            image = [image]
-        if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
-            # resize all images w.r.t passed height an width
-            image = [i.resize((width, height), resample=PIL.Image.LANCZOS) for i in image]
-            image = [np.array(i.convert("RGB"))[None, :] for i in image]
-            image = np.concatenate(image, axis=0)
-        elif isinstance(image, list) and isinstance(image[0], np.ndarray):
-            image = np.concatenate([i[None, :] for i in image], axis=0)
-
-        image = image.transpose(0, 3, 1, 2)
-        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
-
-        mask = mask_pil_to_torch(mask, height, width)
-        mask[mask < 0.5] = 0
-        mask[mask >= 0.5] = 1
-
-    if image.shape[1] == 4:
-        # images are in latent space and thus can't
-        # be masked set masked_image to None
-        # we assume that the checkpoint is not an inpainting
-        # checkpoint. TOD(Yiyi) - need to clean this up later
-        masked_image = None
-    else:
-        masked_image = image * (mask < 0.5)
-
-    # n.b. ensure backwards compatibility as old function does not return image
-    if return_image:
-        return mask, masked_image, image
-
-    return mask, masked_image
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -279,8 +135,8 @@ def retrieve_timesteps(
         scheduler (`SchedulerMixin`):
             The scheduler to get timesteps from.
         num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
-            must be `None`.
+            The number of diffusion steps used when generating samples with a pre-trained model. If used,
+            `timesteps` must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         timesteps (`List[int]`, *optional*):
@@ -308,12 +164,12 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusionXLInpaintPipeline(
+class StableDiffusionXLDifferentialImg2ImgPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
-    StableDiffusionXLLoraLoaderMixin,
     FromSingleFileMixin,
+    StableDiffusionXLLoraLoaderMixin,
     IPAdapterMixin,
 ):
     r"""
@@ -322,12 +178,13 @@ class StableDiffusionXLInpaintPipeline(
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
-    The pipeline also inherits the following loading methods:
-        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
-        - [`~loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
-        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
+    In addition the pipeline inherits the following loading methods:
+        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
+        - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
+        - *Ckpt*: [`loaders.FromSingleFileMixin.from_single_file`]
+
+    as well as the following saving methods:
+        - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -352,20 +209,9 @@ class StableDiffusionXLInpaintPipeline(
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        requires_aesthetics_score (`bool`, *optional*, defaults to `"False"`):
-            Whether the `unet` requires a aesthetic_score condition to be passed during inference. Also see the config
-            of `stabilityai/stable-diffusion-xl-refiner-1-0`.
-        force_zeros_for_empty_prompt (`bool`, *optional*, defaults to `"True"`):
-            Whether the negative prompt embeddings shall be forced to always be set to 0. Also see the config of
-            `stabilityai/stable-diffusion-xl-base-1-0`.
-        add_watermarker (`bool`, *optional*):
-            Whether to use the [invisible_watermark library](https://github.com/ShieldMnt/invisible-watermark/) to
-            watermark output images. If not defined, it will default to True if the package is installed, otherwise no
-            watermarker will be used.
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->unet->vae"
-
     _optional_components = [
         "tokenizer",
         "tokenizer_2",
@@ -382,8 +228,6 @@ class StableDiffusionXLInpaintPipeline(
         "add_time_ids",
         "negative_pooled_prompt_embeds",
         "add_neg_time_ids",
-        "mask",
-        "masked_image_latents",
     ]
 
     def __init__(
@@ -418,9 +262,6 @@ class StableDiffusionXLInpaintPipeline(
         self.register_to_config(requires_aesthetics_score=requires_aesthetics_score)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.mask_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
-        )
 
         add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
 
@@ -428,83 +269,6 @@ class StableDiffusionXLInpaintPipeline(
             self.watermark = StableDiffusionXLWatermarker()
         else:
             self.watermark = None
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
-        dtype = next(self.image_encoder.parameters()).dtype
-
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(image, return_tensors="pt").pixel_values
-
-        image = image.to(device=device, dtype=dtype)
-        if output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_enc_hidden_states = self.image_encoder(
-                torch.zeros_like(image), output_hidden_states=True
-            ).hidden_states[-2]
-            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
-            return image_enc_hidden_states, uncond_image_enc_hidden_states
-        else:
-            image_embeds = self.image_encoder(image).image_embeds
-            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_embeds = torch.zeros_like(image_embeds)
-
-            return image_embeds, uncond_image_embeds
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
-    def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
-    ):
-        if ip_adapter_image_embeds is None:
-            if not isinstance(ip_adapter_image, list):
-                ip_adapter_image = [ip_adapter_image]
-
-            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
-                raise ValueError(
-                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
-                )
-
-            image_embeds = []
-            for single_ip_adapter_image, image_proj_layer in zip(
-                ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
-            ):
-                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
-                single_image_embeds, single_negative_image_embeds = self.encode_image(
-                    single_ip_adapter_image, device, 1, output_hidden_state
-                )
-                single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
-                single_negative_image_embeds = torch.stack(
-                    [single_negative_image_embeds] * num_images_per_prompt, dim=0
-                )
-
-                if do_classifier_free_guidance:
-                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
-                    single_image_embeds = single_image_embeds.to(device)
-
-                image_embeds.append(single_image_embeds)
-        else:
-            repeat_dims = [1]
-            image_embeds = []
-            for single_image_embeds in ip_adapter_image_embeds:
-                if do_classifier_free_guidance:
-                    single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
-                    single_image_embeds = single_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
-                    )
-                    single_negative_image_embeds = single_negative_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
-                    )
-                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
-                else:
-                    single_image_embeds = single_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
-                    )
-                image_embeds.append(single_image_embeds)
-
-        return image_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
@@ -763,13 +527,9 @@ class StableDiffusionXLInpaintPipeline(
         self,
         prompt,
         prompt_2,
-        image,
-        mask_image,
-        height,
-        width,
         strength,
+        num_inference_steps,
         callback_steps,
-        output_type,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -777,14 +537,16 @@ class StableDiffusionXLInpaintPipeline(
         ip_adapter_image=None,
         ip_adapter_image_embeds=None,
         callback_on_step_end_tensor_inputs=None,
-        padding_mask_crop=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
-
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
+        if num_inference_steps is None:
+            raise ValueError("`num_inference_steps` cannot be None.")
+        elif not isinstance(num_inference_steps, int) or num_inference_steps <= 0:
+            raise ValueError(
+                f"`num_inference_steps` has to be a positive integer but is {num_inference_steps} of type"
+                f" {type(num_inference_steps)}."
+            )
         if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
@@ -835,18 +597,6 @@ class StableDiffusionXLInpaintPipeline(
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-        if padding_mask_crop is not None:
-            if not isinstance(image, PIL.Image.Image):
-                raise ValueError(
-                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
-                )
-            if not isinstance(mask_image, PIL.Image.Image):
-                raise ValueError(
-                    f"The mask image should be a PIL image when inpainting mask crop, but is of type"
-                    f" {type(mask_image)}."
-                )
-            if output_type != "pil":
-                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
 
         if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
             raise ValueError(
@@ -863,144 +613,6 @@ class StableDiffusionXLInpaintPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
-    def prepare_latents(
-        self,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-        latents=None,
-        image=None,
-        timestep=None,
-        is_strength_max=True,
-        add_noise=True,
-        return_noise=False,
-        return_image_latents=False,
-    ):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        if (image is None or timestep is None) and not is_strength_max:
-            raise ValueError(
-                "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
-                "However, either the image or the noise timestep has not been provided."
-            )
-
-        if image.shape[1] == 4:
-            image_latents = image.to(device=device, dtype=dtype)
-            image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
-        elif return_image_latents or (latents is None and not is_strength_max):
-            image = image.to(device=device, dtype=dtype)
-            image_latents = self._encode_vae_image(image=image, generator=generator)
-            image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
-
-        if latents is None and add_noise:
-            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            # if strength is 1. then initialise the latents to noise, else initial to image + noise
-            latents = noise if is_strength_max else self.scheduler.add_noise(image_latents, noise, timestep)
-            # if pure noise then scale the initial latents by the  Scheduler's init sigma
-            latents = latents * self.scheduler.init_noise_sigma if is_strength_max else latents
-        elif add_noise:
-            noise = latents.to(device)
-            latents = noise * self.scheduler.init_noise_sigma
-        else:
-            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            latents = image_latents.to(device)
-
-        outputs = (latents,)
-
-        if return_noise:
-            outputs += (noise,)
-
-        if return_image_latents:
-            outputs += (image_latents,)
-
-        return outputs
-
-    def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
-        dtype = image.dtype
-        if self.vae.config.force_upcast:
-            image = image.float()
-            self.vae.to(dtype=torch.float32)
-
-        if isinstance(generator, list):
-            image_latents = [
-                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
-                for i in range(image.shape[0])
-            ]
-            image_latents = torch.cat(image_latents, dim=0)
-        else:
-            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
-
-        if self.vae.config.force_upcast:
-            self.vae.to(dtype)
-
-        image_latents = image_latents.to(dtype)
-        image_latents = self.vae.config.scaling_factor * image_latents
-
-        return image_latents
-
-    def prepare_mask_latents(
-        self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
-    ):
-        # resize the mask to latents shape as we concatenate the mask to the latents
-        # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
-        # and half precision
-        mask = torch.nn.functional.interpolate(
-            mask, size=(height // self.vae_scale_factor, width // self.vae_scale_factor)
-        )
-        mask = mask.to(device=device, dtype=dtype)
-
-        # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        if mask.shape[0] < batch_size:
-            if not batch_size % mask.shape[0] == 0:
-                raise ValueError(
-                    "The passed mask and the required batch size don't match. Masks are supposed to be duplicated to"
-                    f" a total batch size of {batch_size}, but {mask.shape[0]} masks were passed. Make sure the number"
-                    " of masks that you pass is divisible by the total requested batch size."
-                )
-            mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
-
-        mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
-
-        if masked_image is not None and masked_image.shape[1] == 4:
-            masked_image_latents = masked_image
-        else:
-            masked_image_latents = None
-
-        if masked_image is not None:
-            if masked_image_latents is None:
-                masked_image = masked_image.to(device=device, dtype=dtype)
-                masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
-
-            if masked_image_latents.shape[0] < batch_size:
-                if not batch_size % masked_image_latents.shape[0] == 0:
-                    raise ValueError(
-                        "The passed images and the required batch size don't match. Images are supposed to be duplicated"
-                        f" to a total batch size of {batch_size}, but {masked_image_latents.shape[0]} images were passed."
-                        " Make sure the number of images that you pass is divisible by the total requested batch size."
-                    )
-                masked_image_latents = masked_image_latents.repeat(
-                    batch_size // masked_image_latents.shape[0], 1, 1, 1
-                )
-
-            masked_image_latents = (
-                torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
-            )
-
-            # aligning device to prevent device errors when concating it with the latent model input
-            masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
-
-        return mask, masked_image_latents
-
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device, denoising_start=None):
         # get the original timestep using init_timestep
         if denoising_start is None:
@@ -1037,7 +649,151 @@ class StableDiffusionXLInpaintPipeline(
 
         return timesteps, num_inference_steps - t_start
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids
+    def prepare_latents(
+        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
+    ):
+        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
+            raise ValueError(
+                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
+            )
+
+        # Offload text encoder if `enable_model_cpu_offload` was enabled
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.text_encoder_2.to("cpu")
+            torch.cuda.empty_cache()
+
+        image = image.to(device=device, dtype=dtype)
+
+        batch_size = batch_size * num_images_per_prompt
+
+        if image.shape[1] == 4:
+            init_latents = image
+
+        else:
+            # make sure the VAE is in float32 mode, as it overflows in float16
+            if self.vae.config.force_upcast:
+                image = image.float()
+                self.vae.to(dtype=torch.float32)
+
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            elif isinstance(generator, list):
+                init_latents = [
+                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                    for i in range(batch_size)
+                ]
+                init_latents = torch.cat(init_latents, dim=0)
+            else:
+                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+
+            if self.vae.config.force_upcast:
+                self.vae.to(dtype)
+
+            init_latents = init_latents.to(dtype)
+            init_latents = self.vae.config.scaling_factor * init_latents
+
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
+            # expand init_latents for batch_size
+            additional_image_per_prompt = batch_size // init_latents.shape[0]
+            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
+        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
+            )
+        else:
+            init_latents = torch.cat([init_latents], dim=0)
+
+        if add_noise:
+            shape = init_latents.shape
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            # get latents
+            init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+
+        latents = init_latents
+
+        return latents
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+        dtype = next(self.image_encoder.parameters()).dtype
+
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(image, return_tensors="pt").pixel_values
+
+        image = image.to(device=device, dtype=dtype)
+        if output_hidden_states:
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_enc_hidden_states = self.image_encoder(
+                torch.zeros_like(image), output_hidden_states=True
+            ).hidden_states[-2]
+            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
+            return image_enc_hidden_states, uncond_image_enc_hidden_states
+        else:
+            image_embeds = self.image_encoder(image).image_embeds
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_embeds = torch.zeros_like(image_embeds)
+
+            return image_embeds, uncond_image_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
+    def prepare_ip_adapter_image_embeds(
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
+    ):
+        if ip_adapter_image_embeds is None:
+            if not isinstance(ip_adapter_image, list):
+                ip_adapter_image = [ip_adapter_image]
+
+            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
+                raise ValueError(
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
+                )
+
+            image_embeds = []
+            for single_ip_adapter_image, image_proj_layer in zip(
+                ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
+            ):
+                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
+                single_image_embeds, single_negative_image_embeds = self.encode_image(
+                    single_ip_adapter_image, device, 1, output_hidden_state
+                )
+                single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
+                single_negative_image_embeds = torch.stack(
+                    [single_negative_image_embeds] * num_images_per_prompt, dim=0
+                )
+
+                if do_classifier_free_guidance:
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                    single_image_embeds = single_image_embeds.to(device)
+
+                image_embeds.append(single_image_embeds)
+        else:
+            repeat_dims = [1]
+            image_embeds = []
+            for single_image_embeds in ip_adapter_image_embeds:
+                if do_classifier_free_guidance:
+                    single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
+                    )
+                    single_negative_image_embeds = single_negative_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
+                    )
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                else:
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
+                    )
+                image_embeds.append(single_image_embeds)
+
+        return image_embeds
+
     def _get_add_time_ids(
         self,
         original_size,
@@ -1185,18 +941,20 @@ class StableDiffusionXLInpaintPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        image: PipelineImageInput = None,
-        mask_image: PipelineImageInput = None,
-        masked_image_latents: torch.FloatTensor = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        padding_mask_crop: Optional[int] = None,
-        strength: float = 0.9999,
+        image: Union[
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
+        ] = None,
+        strength: float = 0.3,
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
         denoising_start: Optional[float] = None,
         denoising_end: Optional[float] = None,
-        guidance_scale: float = 7.5,
+        guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -1224,6 +982,15 @@ class StableDiffusionXLInpaintPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        map: torch.FloatTensor = None,
+        original_image: Union[
+            torch.FloatTensor,
+            PIL.Image.Image,
+            np.ndarray,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
+            List[np.ndarray],
+        ] = None,
         **kwargs,
     ):
         r"""
@@ -1236,46 +1003,18 @@ class StableDiffusionXLInpaintPipeline(
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in both text-encoders
-            image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
-                be masked out with `mask_image` and repainted according to `prompt`.
-            mask_image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
-                repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted
-                to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
-                instead of 3, so the expected shape would be `(B, H, W, 1)`.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image. This is set to 1024 by default for the best results.
-                Anything below 512 pixels won't work well for
-                [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
-                and checkpoints that are not specifically fine-tuned on low resolutions.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image. This is set to 1024 by default for the best results.
-                Anything below 512 pixels won't work well for
-                [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
-                and checkpoints that are not specifically fine-tuned on low resolutions.
-            padding_mask_crop (`int`, *optional*, defaults to `None`):
-                The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied to
-                image and mask_image. If `padding_mask_crop` is not `None`, it will first find a rectangular region
-                with the same aspect ration of the image and contains all masked area, and then expand that area based
-                on `padding_mask_crop`. The image and mask_image will then be cropped based on the expanded area before
-                resizing to the original image size for inpainting. This is useful when the masked area is small while
-                the image is large and contain information irrelevant for inpainting, such as background.
-            strength (`float`, *optional*, defaults to 0.9999):
-                Conceptually, indicates how much to transform the masked portion of the reference `image`. Must be
-                between 0 and 1. `image` will be used as a starting point, adding more noise to it the larger the
-                `strength`. The number of denoising steps depends on the amount of noise initially added. When
-                `strength` is 1, added noise will be maximum and the denoising process will run for the full number of
-                iterations specified in `num_inference_steps`. A value of 1, therefore, essentially ignores the masked
-                portion of the reference `image`. Note that in the case of `denoising_start` being declared as an
-                integer, the value of `strength` will be ignored.
+            image (`torch.FloatTensor` or `PIL.Image.Image` or `np.ndarray` or `List[torch.FloatTensor]` or `List[PIL.Image.Image]` or `List[np.ndarray]`):
+                The image(s) to modify with the pipeline.
+            strength (`float`, *optional*, defaults to 0.3):
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
+                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
+                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
+                be maximum and the denoising process will run for the full number of iterations specified in
+                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`. Note that in the case of
+                `denoising_start` being declared as an integer, the value of `strength` will be ignored.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
             denoising_start (`float`, *optional*):
                 When specified, indicates the fraction (between 0.0 and 1.0) of the total denoising process to be
                 bypassed before it is initiated. Consequently, the initial part of the denoising process is skipped and
@@ -1304,6 +1043,18 @@ class StableDiffusionXLInpaintPipeline(
             negative_prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            eta (`float`, *optional*, defaults to 0.0):
+                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
+                [`schedulers.DDIMScheduler`], will be ignored for others.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -1320,35 +1071,34 @@ class StableDiffusionXLInpaintPipeline(
                 input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
-                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
-                contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
-                provided, embeddings are computed from the `ip_adapter_image` input argument.
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
-            eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
-            generator (`torch.Generator`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
-                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
+                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
+                if `do_classifier_free_guidance` is set to `True`.
+                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
+                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] instead of a
                 plain tuple.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+            guidance_rescale (`float`, *optional*, defaults to 0.7):
+                Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://arxiv.org/pdf/2305.08891.pdf) `guidance_scale` is defined as `φ` in equation 16. of
+                [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+                Guidance rescale factor should fix overexposure when using zero terminal SNR.
             original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
-                `original_size` defaults to `(height, width)` if not specified. Part of SDXL's micro-conditioning as
+                `original_size` defaults to `(width, height)` if not specified. Part of SDXL's micro-conditioning as
                 explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
@@ -1358,23 +1108,8 @@ class StableDiffusionXLInpaintPipeline(
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 For most cases, `target_size` should be set to the desired height and width of the generated image. If
-                not specified it will default to `(height, width)`. Part of SDXL's micro-conditioning as explained in
+                not specified it will default to `(width, height)`. Part of SDXL's micro-conditioning as explained in
                 section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
-            negative_original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
-                To negatively condition the generation process based on a specific image resolution. Part of SDXL's
-                micro-conditioning as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
-                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
-            negative_crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
-                To negatively condition the generation process based on a specific crop coordinates. Part of SDXL's
-                micro-conditioning as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
-                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
-            negative_target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
-                To negatively condition the generation process based on a target image resolution. It should be as same
-                as the `target_size` for most cases. Part of SDXL's micro-conditioning as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
-                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
             aesthetic_score (`float`, *optional*, defaults to 6.0):
                 Used to simulate an aesthetic score of the generated image by influencing the positive text condition.
                 Part of SDXL's micro-conditioning as explained in section 2.2 of
@@ -1383,25 +1118,13 @@ class StableDiffusionXLInpaintPipeline(
                 Part of SDXL's micro-conditioning as explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). Can be used to
                 simulate an aesthetic score of the generated image by influencing the negative text condition.
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
-                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
-                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple. `tuple. When returning a tuple, the first element is a list with the generated images.
+            `tuple. When returning a tuple, the first element is a list with the generated images.
         """
 
         callback = kwargs.pop("callback", None)
@@ -1420,21 +1143,13 @@ class StableDiffusionXLInpaintPipeline(
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
 
-        # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
-
-        # 1. Check inputs
+        # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             prompt_2,
-            image,
-            mask_image,
-            height,
-            width,
             strength,
+            num_inference_steps,
             callback_steps,
-            output_type,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
@@ -1442,7 +1157,6 @@ class StableDiffusionXLInpaintPipeline(
             ip_adapter_image,
             ip_adapter_image_embeds,
             callback_on_step_end_tensor_inputs,
-            padding_mask_crop,
         )
 
         self._guidance_scale = guidance_scale
@@ -1465,9 +1179,8 @@ class StableDiffusionXLInpaintPipeline(
 
         # 3. Encode input prompt
         text_encoder_lora_scale = (
-            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
-
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -1486,119 +1199,47 @@ class StableDiffusionXLInpaintPipeline(
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
-            clip_skip=self.clip_skip,
         )
 
-        # 4. set timesteps
+        # 4. Preprocess image
+        # image = self.image_processor.preprocess(image) #ideally we would have preprocess the image with diffusers, but for this POC we won't --- it throws a deprecated warning
+        map = torchvision.transforms.Resize(
+            tuple(s // self.vae_scale_factor for s in original_image.shape[2:]), antialias=None
+        )(map)
+
+        # 5. Prepare timesteps
         def denoising_value_valid(dnv):
             return isinstance(dnv, float) and 0 < dnv < 1
 
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+
+        # begin diff diff change
+        total_time_steps = num_inference_steps
+        # end diff diff change
+
         timesteps, num_inference_steps = self.get_timesteps(
             num_inference_steps,
             strength,
             device,
             denoising_start=self.denoising_start if denoising_value_valid(self.denoising_start) else None,
         )
-        # check that number of inference steps is not < 1 - as this doesn't make sense
-        if num_inference_steps < 1:
-            raise ValueError(
-                f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
-                f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
-            )
-        # at which timestep to set the initial noise (n.b. 50% if strength is 0.5)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
-        # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
-        is_strength_max = strength == 1.0
 
-        # 5. Preprocess mask and image
-        if padding_mask_crop is not None:
-            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
-            resize_mode = "fill"
-        else:
-            crops_coords = None
-            resize_mode = "default"
-
-        original_image = image
-        init_image = self.image_processor.preprocess(
-            image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
-        )
-        init_image = init_image.to(dtype=torch.float32)
-
-        mask = self.mask_processor.preprocess(
-            mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
-        )
-
-        if masked_image_latents is not None:
-            masked_image = masked_image_latents
-        elif init_image.shape[1] == 4:
-            # if images are in latent space, we can't mask it
-            masked_image = None
-        else:
-            masked_image = init_image * (mask < 0.5)
-
+        add_noise = True if denoising_start is None else False
         # 6. Prepare latent variables
-        num_channels_latents = self.vae.config.latent_channels
-        num_channels_unet = self.unet.config.in_channels
-        return_image_latents = num_channels_unet == 4
-
-        add_noise = True if self.denoising_start is None else False
-        latents_outputs = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
+        latents = self.prepare_latents(
+            image,
+            latent_timestep,
+            batch_size,
+            num_images_per_prompt,
             prompt_embeds.dtype,
             device,
             generator,
-            latents,
-            image=init_image,
-            timestep=latent_timestep,
-            is_strength_max=is_strength_max,
-            add_noise=add_noise,
-            return_noise=True,
-            return_image_latents=return_image_latents,
+            add_noise,
         )
-
-        if return_image_latents:
-            latents, noise, image_latents = latents_outputs
-        else:
-            latents, noise = latents_outputs
-
-        # 7. Prepare mask latent variables
-        mask, masked_image_latents = self.prepare_mask_latents(
-            mask,
-            masked_image,
-            batch_size * num_images_per_prompt,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            self.do_classifier_free_guidance,
-        )
-
-        # 8. Check that sizes of mask, masked image and latents match
-        if num_channels_unet == 9:
-            # default case for runwayml/stable-diffusion-inpainting
-            num_channels_mask = mask.shape[1]
-            num_channels_masked_image = masked_image_latents.shape[1]
-            if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
-                raise ValueError(
-                    f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
-                    f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-                    f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
-                    " `pipeline.unet` or your `mask_image` or `image` input."
-                )
-        elif num_channels_unet != 4:
-            raise ValueError(
-                f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}."
-            )
-        # 8.1 Prepare extra step kwargs.
+        # 7. Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         height, width = latents.shape[-2:]
         height = height * self.vae_scale_factor
         width = width * self.vae_scale_factor
@@ -1606,7 +1247,7 @@ class StableDiffusionXLInpaintPipeline(
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
 
-        # 10. Prepare added time ids & embeddings
+        # 8. Prepare added time ids & embeddings
         if negative_original_size is None:
             negative_original_size = original_size
         if negative_target_size is None:
@@ -1651,31 +1292,41 @@ class StableDiffusionXLInpaintPipeline(
                 self.do_classifier_free_guidance,
             )
 
-        # 11. Denoising loop
+        # 9. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
+        # 9.1 Apply denoising_end
         if (
-            self.denoising_end is not None
-            and self.denoising_start is not None
-            and denoising_value_valid(self.denoising_end)
-            and denoising_value_valid(self.denoising_start)
-            and self.denoising_start >= self.denoising_end
+            denoising_end is not None
+            and denoising_start is not None
+            and denoising_value_valid(denoising_end)
+            and denoising_value_valid(denoising_start)
+            and denoising_start >= denoising_end
         ):
             raise ValueError(
-                f"`denoising_start`: {self.denoising_start} cannot be larger than or equal to `denoising_end`: "
-                + f" {self.denoising_end} when using type float."
+                f"`denoising_start`: {denoising_start} cannot be larger than or equal to `denoising_end`: "
+                + f" {denoising_end} when using type float."
             )
-        elif self.denoising_end is not None and denoising_value_valid(self.denoising_end):
+        elif denoising_end is not None and denoising_value_valid(denoising_end):
             discrete_timestep_cutoff = int(
                 round(
                     self.scheduler.config.num_train_timesteps
-                    - (self.denoising_end * self.scheduler.config.num_train_timesteps)
+                    - (denoising_end * self.scheduler.config.num_train_timesteps)
                 )
             )
             num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
             timesteps = timesteps[:num_inference_steps]
 
-        # 11.1 Optionally get Guidance Scale Embedding
+        # preparations for diff diff
+        original_with_noise = self.prepare_latents(
+            original_image, timesteps, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
+        )
+        thresholds = torch.arange(total_time_steps, dtype=map.dtype) / total_time_steps
+        thresholds = thresholds.unsqueeze(1).unsqueeze(1).to(device)
+        masks = map > (thresholds + (denoising_start or 0))
+        # end diff diff preparations
+
+        # 9.2 Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
             guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
@@ -1688,14 +1339,22 @@ class StableDiffusionXLInpaintPipeline(
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+
+                # diff diff
+                if i == 0 and denoising_start is None:
+                    latents = original_with_noise[:1]
+                else:
+                    mask = masks[i].unsqueeze(0)
+                    # cast mask to the same type as latents etc
+                    mask = mask.to(latents.dtype)
+                    mask = mask.unsqueeze(1)  # fit shape
+                    latents = original_with_noise[i] * mask + latents * (1 - mask)
+                # end diff diff
+
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
-                # concat latents, mask, masked_image_latents in the channel dimension
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-                if num_channels_unet == 9:
-                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
@@ -1706,7 +1365,7 @@ class StableDiffusionXLInpaintPipeline(
                     t,
                     encoder_hidden_states=prompt_embeds,
                     timestep_cond=timestep_cond,
-                    cross_attention_kwargs=self.cross_attention_kwargs,
+                    cross_attention_kwargs=cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
@@ -1714,11 +1373,11 @@ class StableDiffusionXLInpaintPipeline(
                 # perform guidance
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
+                if self.do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
+                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
@@ -1727,21 +1386,10 @@ class StableDiffusionXLInpaintPipeline(
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
-
-                if num_channels_unet == 4:
-                    init_latents_proper = image_latents
-                    if self.do_classifier_free_guidance:
-                        init_mask, _ = mask.chunk(2)
                     else:
-                        init_mask = mask
-
-                    if i < len(timesteps) - 1:
-                        noise_timestep = timesteps[i + 1]
-                        init_latents_proper = self.scheduler.add_noise(
-                            init_latents_proper, noise, torch.tensor([noise_timestep])
+                        raise ValueError(
+                            "For the given accelerator, there seems to be an unexpected problem in type-casting. Please file an issue on the PyTorch GitHub repository. See also: https://github.com/huggingface/diffusers/pull/7446/."
                         )
-
-                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -1758,8 +1406,6 @@ class StableDiffusionXLInpaintPipeline(
                     )
                     add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
                     add_neg_time_ids = callback_outputs.pop("add_neg_time_ids", add_neg_time_ids)
-                    mask = callback_outputs.pop("mask", mask)
-                    masked_image_latents = callback_outputs.pop("masked_image_latents", masked_image_latents)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -1782,7 +1428,10 @@ class StableDiffusionXLInpaintPipeline(
                 if torch.backends.mps.is_available():
                     # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                     self.vae = self.vae.to(latents.dtype)
-
+                else:
+                    raise ValueError(
+                        "For the given accelerator, there seems to be an unexpected problem in type-casting. Please file an issue on the PyTorch GitHub repository. See also: https://github.com/huggingface/diffusers/pull/7446/."
+                    )
             # unscale/denormalize the latents
             # denormalize with the mean and std if available and not None
             has_latents_mean = hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
@@ -1804,16 +1453,13 @@ class StableDiffusionXLInpaintPipeline(
             if needs_upcasting:
                 self.vae.to(dtype=torch.float16)
         else:
-            return StableDiffusionXLPipelineOutput(images=latents)
+            image = latents
 
         # apply watermark if available
         if self.watermark is not None:
             image = self.watermark.apply_watermark(image)
 
         image = self.image_processor.postprocess(image, output_type=output_type)
-
-        if padding_mask_crop is not None:
-            image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
 
         # Offload all models
         self.maybe_free_model_hooks()
