@@ -551,8 +551,8 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             "stabilityai/stable-diffusion-xl-base-1.0",
             image_encoder=image_encoder,
             torch_dtype=self.dtype,
-            variant="fp16",
         )
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter(
             "h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"]
         )
