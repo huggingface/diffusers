@@ -711,7 +711,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     )
                     model._undo_temp_convert_self_to_deprecated_attention_blocks()
 
-
                 loading_info = {
                     "missing_keys": [],
                     "unexpected_keys": [],
@@ -968,12 +967,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         recursive_find_attn_block(self)
         if len(deprecated_attention_block_modules) > 0:
-                logger.warning(
-                    f"{pretrained_model_name_or_path} was saved with deprecated attention block weight names."
-                    " We will load it with the deprecated attention block names and convert them on the fly to the new attention block format."
-                    " Please re-save the model after this conversion so we don't have to do the on the fly renaming in the future. "
-                    "If the model is from a hub checkpoint, please also re-upload it or open a PR on the original repository."
-                )
+            logger.warning(
+                f"{pretrained_model_name_or_path} was saved with deprecated attention block weight names."
+                " We will load it with the deprecated attention block names and convert them on the fly to the new attention block format."
+                " Please re-save the model after this conversion so we don't have to do the on the fly renaming in the future. "
+                "If the model is from a hub checkpoint, please also re-upload it or open a PR on the original repository."
+            )
 
         for module in deprecated_attention_block_modules:
             module.query = module.to_q
