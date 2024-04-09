@@ -23,7 +23,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetXSAddon, UNet2DConditionModel, UNetControlNetXSModel
+from ...models import AutoencoderKL, ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -47,7 +47,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionControlNetXSPipeline, ControlNetXSAddon
+        >>> from diffusers import StableDiffusionControlNetXSPipeline, ControlNetXSAdapter
         >>> from diffusers.utils import load_image
         >>> import numpy as np
         >>> import torch
@@ -66,7 +66,7 @@ EXAMPLE_DOC_STRING = """
         >>> # initialize the models and pipeline
         >>> controlnet_conditioning_scale = 0.5
 
-        >>> controlnet = ControlNetXSAddon.from_pretrained(
+        >>> controlnet = ControlNetXSAdapter.from_pretrained(
         ...     "UmerHA/Testing-ConrolNetXS-SD2.1-canny", torch_dtype=torch.float16
         ... )
         >>> pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
@@ -110,8 +110,10 @@ class StableDiffusionControlNetXSPipeline(
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
         tokenizer ([`~transformers.CLIPTokenizer`]):
             A `CLIPTokenizer` to tokenize text.
-        controlnet ([`ControlNetXSModel`]):
-            A model containing a base UNet and a control addon.
+        unet ([`UNet2DConditionModel`]):
+            A [`UNet2DConditionModel`] used to create a UNetControlNetXSModel to denoise the encoded image latents.
+        controlnet ([`ControlNetXSAdapter`]):
+            A [`ControlNetXSAdapter`] to be used in combination with `unet` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -134,7 +136,7 @@ class StableDiffusionControlNetXSPipeline(
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: Union[UNet2DConditionModel, UNetControlNetXSModel],
-        controlnet: ControlNetXSAddon,
+        controlnet: ControlNetXSAdapter,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,

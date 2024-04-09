@@ -55,7 +55,7 @@ class ControlNetXSOutput(BaseOutput):
     sample: FloatTensor = None
 
 
-class ControlNetXSAddonDownBlockComponents(nn.Module):
+class DownBlockControlNetXSAdapter(nn.Module):
     """Components that together with corresponding components from the base model will form a
     `ControlNetXSCrossAttnDownBlock2D`"""
 
@@ -75,7 +75,7 @@ class ControlNetXSAddonDownBlockComponents(nn.Module):
         self.downsamplers = downsampler
 
 
-class ControlNetXSAddonMidBlockComponents(nn.Module):
+class MidBlockControlNetXSAdapter(nn.Module):
     """Components that together with corresponding components from the base model will form a
     `ControlNetXSCrossAttnMidBlock2D`"""
 
@@ -86,7 +86,7 @@ class ControlNetXSAddonMidBlockComponents(nn.Module):
         self.ctrl_to_base = ctrl_to_base
 
 
-class ControlNetXSAddonUpBlockComponents(nn.Module):
+class UpBlockControlNetXSAdapter(nn.Module):
     """Components that together with corresponding components from the base model will form a `ControlNetXSCrossAttnUpBlock2D`"""
 
     def __init__(self, ctrl_to_base: nn.ModuleList):
@@ -94,7 +94,7 @@ class ControlNetXSAddonUpBlockComponents(nn.Module):
         self.ctrl_to_base = ctrl_to_base
 
 
-def get_down_block_addon(
+def get_down_block_adapter(
     base_in_channels: int,
     base_out_channels: int,
     ctrl_in_channels: int,
@@ -170,7 +170,7 @@ def get_down_block_addon(
     else:
         downsamplers = None
 
-    down_block_components = ControlNetXSAddonDownBlockComponents(
+    down_block_components = DownBlockControlNetXSAdapter(
         resnets=nn.ModuleList(resnets),
         base_to_ctrl=nn.ModuleList(base_to_ctrl),
         ctrl_to_base=nn.ModuleList(ctrl_to_base),
@@ -184,7 +184,7 @@ def get_down_block_addon(
     return down_block_components
 
 
-def get_mid_block_addon(
+def get_mid_block_adapter(
     base_channels: int,
     ctrl_channels: int,
     temb_channels: Optional[int] = None,
@@ -215,10 +215,10 @@ def get_mid_block_addon(
     # Addition requires change in number of channels
     ctrl_to_base = make_zero_conv(ctrl_channels, base_channels)
 
-    return ControlNetXSAddonMidBlockComponents(base_to_ctrl=base_to_ctrl, midblock=midblock, ctrl_to_base=ctrl_to_base)
+    return MidBlockControlNetXSAdapter(base_to_ctrl=base_to_ctrl, midblock=midblock, ctrl_to_base=ctrl_to_base)
 
 
-def get_up_block_addon(
+def get_up_block_adapter(
     out_channels: int,
     prev_output_channel: int,
     ctrl_skip_channels: List[int],
@@ -229,18 +229,18 @@ def get_up_block_addon(
         resnet_in_channels = prev_output_channel if i == 0 else out_channels
         ctrl_to_base.append(make_zero_conv(ctrl_skip_channels[i], resnet_in_channels))
 
-    return ControlNetXSAddonUpBlockComponents(ctrl_to_base=nn.ModuleList(ctrl_to_base))
+    return UpBlockControlNetXSAdapter(ctrl_to_base=nn.ModuleList(ctrl_to_base))
 
 
-class ControlNetXSAddon(ModelMixin, ConfigMixin):
+class ControlNetXSAdapter(ModelMixin, ConfigMixin):
     r"""
-    A `ControlNetXSAddon` model. To use it, pass it into a `ControlNetXSModel` (together with a `UNet2DConditionModel`
-    base model).
+    A `ControlNetXSAdapter` model. To use it, pass it into a `UNetControlNetXSModel` (together with a
+    `UNet2DConditionModel` base model).
 
     This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
     methods implemented for all models (such as downloading or saving).
 
-    Like `ControlNetXSModel`, `ControlNetXSAddon` is compatible with StableDiffusion and StableDiffusion-XL. It's
+    Like `UNetControlNetXSModel`, `ControlNetXSAdapter` is compatible with StableDiffusion and StableDiffusion-XL. It's
     default parameters are compatible with StableDiffusion.
 
     Parameters:
@@ -251,11 +251,12 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
             The tuple of output channels for each block in the `controlnet_cond_embedding` layer.
         time_embedding_mix (`float`, defaults to 1.0):
-            If 0, then only the control addon's time embedding is used. If 1, then only the base unet's time embedding
-            is used. Otherwise, both are combined.
+            If 0, then only the control adapters's time embedding is used. If 1, then only the base unet's time
+            embedding is used. Otherwise, both are combined.
         learn_time_embedding (`bool`, defaults to `False`):
-            Whether a time embedding should be learned. If yes, `ControlNetXSModel` will combine the time embeddings of
-            the base model and the addon. If no, `ControlNetXSModel` will use the base model's time embedding.
+            Whether a time embedding should be learned. If yes, `UNetControlNetXSModel` will combine the time
+            embeddings of the base model and the control adapter. If no, `UNetControlNetXSModel` will use the base
+            model's time embedding.
         num_attention_heads (`list[int]`, defaults to `[4]`):
             The number of attention heads.
         block_out_channels (`list[int]`, defaults to `[4, 8, 16, 16]`):
@@ -319,7 +320,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
         if not isinstance(cross_attention_dim, (list, tuple)):
             cross_attention_dim = [cross_attention_dim] * len(down_block_types)
-        # see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why `ControlNetXSAddon` takes `num_attention_heads` instead of `attention_head_dim`
+        # see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why `ControlNetXSAdapter` takes `num_attention_heads` instead of `attention_head_dim`
         if not isinstance(num_attention_heads, (list, tuple)):
             num_attention_heads = [num_attention_heads] * len(down_block_types)
 
@@ -360,7 +361,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             is_final_block = i == len(down_block_types) - 1
 
             self.down_blocks.append(
-                get_down_block_addon(
+                get_down_block_adapter(
                     base_in_channels=base_in_channels,
                     base_out_channels=base_out_channels,
                     ctrl_in_channels=ctrl_in_channels,
@@ -377,7 +378,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             )
 
         # mid
-        self.mid_block = get_mid_block_addon(
+        self.mid_block = get_mid_block_adapter(
             base_channels=base_block_out_channels[-1],
             ctrl_channels=block_out_channels[-1],
             temb_channels=time_embedding_dim,
@@ -405,7 +406,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             ctrl_skip_channels_ = [ctrl_skip_channels.pop() for _ in range(3)]
 
             self.up_connections.append(
-                get_up_block_addon(
+                get_up_block_adapter(
                     out_channels=base_out_channels,
                     prev_output_channel=prev_base_output_channel,
                     ctrl_skip_channels=ctrl_skip_channels_,
@@ -426,11 +427,11 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
     ):
         r"""
-        Instantiate a [`ControlNetXSAddon`] from a [`UNet2DConditionModel`].
+        Instantiate a [`ControlNetXSAdapter`] from a [`UNet2DConditionModel`].
 
         Parameters:
             unet (`UNet2DConditionModel`):
-                The UNet model we want to control. The dimensions of the ControlNetXSAddon will be adapted to it.
+                The UNet model we want to control. The dimensions of the ControlNetXSAdapter will be adapted to it.
             size_ratio (float, *optional*, defaults to `None`):
                 When given, block_out_channels is set to a fraction of the base model's block_out_channels. Either this
                 or `block_out_channels` must be given.
@@ -440,9 +441,9 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                 The dimension of the attention heads. The naming seems a bit confusing and it is, see
                 https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
             learn_time_embedding (`bool`, defaults to `False`):
-                Whether the `ControlNetXSAddon` should learn a time embedding.
+                Whether the `ControlNetXSAdapter` should learn a time embedding.
             time_embedding_mix (`float`, defaults to 1.0):
-                If 0, then only the control addon's time embedding is used. If 1, then only the base unet's time
+                If 0, then only the control adapter's time embedding is used. If 1, then only the base unet's time
                 embedding is used. Otherwise, both are combined.
             conditioning_channels (`int`, defaults to 3):
                 Number of channels of conditioning input (e.g. an image)
@@ -483,20 +484,20 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             max_norm_num_groups=unet.config.norm_num_groups,
         )
 
-        # ensure that the ControlNetXSAddon is the same dtype as the UNet2DConditionModel
+        # ensure that the ControlNetXSAdapter is the same dtype as the UNet2DConditionModel
         model.to(unet.dtype)
 
         return model
 
     def forward(self, *args, **kwargs):
         raise ValueError(
-            "A ControlNetXSAddonModel cannot be run by itself. Pass it into a ControlNetXSModel model instead."
+            "A ControlNetXSAdapter cannot be run by itself. Use it together with a UNet2DConditionModel to instantiate a UNetControlNetXSModel."
         )
 
 
 class UNetControlNetXSModel(ModelMixin, ConfigMixin):
     r"""
-    A UNet fused with a ControlNet-XS addon model
+    A UNet fused with a ControlNet-XS adapter model
 
     This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
     methods implemented for all models (such as downloading or saving).
@@ -505,7 +506,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
     compatible with StableDiffusion.
 
     It's parameters are either passed to the underlying `UNet2DConditionModel` or used exactly like in
-    `ControlNetXSAddon` . See their documentation for details.
+    `ControlNetXSAdapter` . See their documentation for details.
     """
 
     _supports_gradient_checkpointing = True
@@ -547,9 +548,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         if time_embedding_mix < 0 or time_embedding_mix > 1:
             raise ValueError("`time_embedding_mix` needs to be between 0 and 1.")
         if time_embedding_mix < 1 and not ctrl_learn_time_embedding:
-            raise ValueError(
-                "To use `time_embedding_mix` < 1, initialize `ctrl_addon` with `learn_time_embedding = True`"
-            )
+            raise ValueError("To use `time_embedding_mix` < 1, `ctrl_learn_time_embedding` must be `True`")
 
         if addition_embed_type is not None and addition_embed_type != "text_time":
             raise ValueError(
@@ -698,33 +697,36 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
     def from_unet(
         cls,
         unet: UNet2DConditionModel,
-        controlnet: Optional[ControlNetXSAddon] = None,
+        controlnet: Optional[ControlNetXSAdapter] = None,
         size_ratio: Optional[float] = None,
         ctrl_block_out_channels: Optional[List[float]] = None,
         time_embedding_mix: Optional[float] = None,
         ctrl_optional_kwargs: Optional[Dict] = None,
     ):
         r"""
-        Instantiate a [`UNetControlNetXSModel`] from a [`UNet2DConditionModel`] and an optional [`ControlNetXSAddon`] .
+        Instantiate a [`UNetControlNetXSModel`] from a [`UNet2DConditionModel`] and an optional [`ControlNetXSAdapter`]
+        .
 
         Parameters:
             unet (`UNet2DConditionModel`):
                 The UNet model we want to control.
-            controlnet (`ControlNetXSAddon`):
-                The ConntrolNet-XS addon with which the UNet will be fused. If none is given, a new ConntrolNet-XS
-                addon will be created.
+            controlnet (`ControlNetXSAdapter`):
+                The ConntrolNet-XS adapter with which the UNet will be fused. If none is given, a new ConntrolNet-XS
+                adapter will be created.
             size_ratio (float, *optional*, defaults to `None`):
-                Used to contruct the controlnet if none is given. See [`ControlNetXSAddon.from_unet`] for details.
+                Used to contruct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details.
             ctrl_block_out_channels (`List[int]`, *optional*, defaults to `None`):
-                Used to contruct the controlnet if none is given. See [`ControlNetXSAddon.from_unet`] for details,
+                Used to contruct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details,
                 where this parameter is called `block_out_channels`.
             time_embedding_mix (`float`, *optional*, defaults to None):
-                Used to contruct the controlnet if none is given. See [`ControlNetXSAddon.from_unet`] for details.
+                Used to contruct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details.
             ctrl_optional_kwargs (`Dict`, *optional*, defaults to `None`):
                 Passed to the `init` of the new controlent if no controlent was given.
         """
         if controlnet is None:
-            controlnet = ControlNetXSAddon.from_unet(unet, size_ratio, ctrl_block_out_channels, **ctrl_optional_kwargs)
+            controlnet = ControlNetXSAdapter.from_unet(
+                unet, size_ratio, ctrl_block_out_channels, **ctrl_optional_kwargs
+            )
         else:
             if any(
                 o is not None for o in (size_ratio, ctrl_block_out_channels, time_embedding_mix, ctrl_optional_kwargs)
@@ -816,7 +818,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         for param in self.parameters():
             param.requires_grad = True
 
-        # Unfreeze ControlNetXSAddon
+        # Unfreeze ControlNetXSAdapter
         base_parts = [
             "base_time_proj",
             "base_time_embedding",
@@ -1296,7 +1298,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     @classmethod
-    def from_modules(cls, base_downblock: CrossAttnDownBlock2D, ctrl_downblock: ControlNetXSAddonDownBlockComponents):
+    def from_modules(cls, base_downblock: CrossAttnDownBlock2D, ctrl_downblock: DownBlockControlNetXSAdapter):
         # get params
         def get_first_cross_attention(block):
             return block.attentions[0].transformer_blocks[0].attn2
@@ -1545,7 +1547,7 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
     def from_modules(
         cls,
         base_midblock: UNetMidBlock2DCrossAttn,
-        ctrl_midblock: ControlNetXSAddonMidBlockComponents,
+        ctrl_midblock: MidBlockControlNetXSAdapter,
     ):
         base_to_ctrl = ctrl_midblock.base_to_ctrl
         ctrl_to_base = ctrl_midblock.ctrl_to_base
@@ -1708,7 +1710,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         self.resolution_idx = resolution_idx
 
     @classmethod
-    def from_modules(cls, base_upblock: CrossAttnUpBlock2D, ctrl_upblock: ControlNetXSAddonUpBlockComponents):
+    def from_modules(cls, base_upblock: CrossAttnUpBlock2D, ctrl_upblock: UpBlockControlNetXSAdapter):
         ctrl_to_base_skip_connections = ctrl_upblock.ctrl_to_base
 
         # get params

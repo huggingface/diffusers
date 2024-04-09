@@ -25,7 +25,7 @@ from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
     ConsistencyDecoderVAE,
-    ControlNetXSAddon,
+    ControlNetXSAdapter,
     EulerDiscreteScheduler,
     StableDiffusionXLControlNetXSPipeline,
     UNet2DConditionModel,
@@ -93,7 +93,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
             cross_attention_dim=8,
         )
         torch.manual_seed(0)
-        controlnet = ControlNetXSAddon.from_unet(
+        controlnet = ControlNetXSAdapter.from_unet(
             unet=unet,
             size_ratio=0.5,
             learn_time_embedding=True,
@@ -377,7 +377,7 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_canny(self):
-        controlnet = ControlNetXSAddon.from_pretrained(
+        controlnet = ControlNetXSAdapter.from_pretrained(
             "UmerHA/Testing-ConrolNetXS-SDXL-canny", torch_dtype=torch.float16
         )
         pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
@@ -401,7 +401,7 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     def test_depth(self):
-        controlnet = ControlNetXSAddon.from_pretrained(
+        controlnet = ControlNetXSAdapter.from_pretrained(
             "UmerHA/Testing-ConrolNetXS-SDXL-depth", torch_dtype=torch.float16
         )
         pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(

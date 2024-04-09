@@ -26,7 +26,7 @@ from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
     ConsistencyDecoderVAE,
-    ControlNetXSAddon,
+    ControlNetXSAdapter,
     DDIMScheduler,
     LCMScheduler,
     StableDiffusionControlNetXSPipeline,
@@ -75,7 +75,7 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     try:
         _ = in_queue.get(timeout=timeout)
 
-        controlnet = ControlNetXSAddon.from_pretrained(
+        controlnet = ControlNetXSAdapter.from_pretrained(
             "UmerHA/Testing-ConrolNetXS-SD2.1-canny", torch_dtype=torch.float16
         )
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
@@ -147,7 +147,7 @@ class ControlNetXSPipelineFastTests(
             use_linear_projection=True,
         )
         torch.manual_seed(0)
-        controlnet = ControlNetXSAddon.from_unet(
+        controlnet = ControlNetXSAdapter.from_unet(
             unet=unet,
             size_ratio=1,
             learn_time_embedding=True,
@@ -309,7 +309,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_canny(self):
-        controlnet = ControlNetXSAddon.from_pretrained(
+        controlnet = ControlNetXSAdapter.from_pretrained(
             "UmerHA/Testing-ConrolNetXS-SD2.1-canny", torch_dtype=torch.float16
         )
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
@@ -335,7 +335,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     def test_depth(self):
-        controlnet = ControlNetXSAddon.from_pretrained(
+        controlnet = ControlNetXSAdapter.from_pretrained(
             "UmerHA/Testing-ConrolNetXS-SD2.1-depth", torch_dtype=torch.float16
         )
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(

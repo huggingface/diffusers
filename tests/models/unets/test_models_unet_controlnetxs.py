@@ -20,7 +20,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from diffusers import ControlNetXSAddon, UNet2DConditionModel, UNetControlNetXSModel
+from diffusers import ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -89,7 +89,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         return init_dict, inputs_dict
 
     def get_dummy_unet(self):
-        """For some tests we also need the underlying UNet. For these, we'll build the UNetControlNetXSModel from the UNet and ControlNetXS-Addon"""
+        """For some tests we also need the underlying UNet. For these, we'll build the UNetControlNetXSModel from the UNet and ControlNetXS-Adapter"""
         return UNet2DConditionModel(
             block_out_channels=(4, 8),
             layers_per_block=2,
@@ -104,9 +104,9 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         )
 
     def get_dummy_controlnet_from_unet(self, unet, **kwargs):
-        """For some tests we also need the underlying ControlNetXS-Addon. For these, we'll build the UNetControlNetXSModel from the UNet and ControlNetXS-Addon"""
+        """For some tests we also need the underlying ControlNetXS-Adapter. For these, we'll build the UNetControlNetXSModel from the UNet and ControlNetXS-Adapter"""
         # size_ratio and conditioning_embedding_out_channels chosen to keep model small
-        return ControlNetXSAddon.from_unet(unet, size_ratio=1, conditioning_embedding_out_channels=(2, 2), **kwargs)
+        return ControlNetXSAdapter.from_unet(unet, size_ratio=1, conditioning_embedding_out_channels=(2, 2), **kwargs)
 
     def test_from_unet(self):
         unet = self.get_dummy_unet()
