@@ -92,6 +92,8 @@ class FromOriginalModelMixin:
                     - A link to the `.ckpt` file (for example
                       `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
                     - A path to a *file* containing all pipeline weights.
+            checkpoint (`str`, *optional*):
+                state dict containing the model weights.
             config (`str`, *optional*):
                 - A string, the *repo id* (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline hosted
                   on the Hub.
@@ -199,15 +201,16 @@ class FromOriginalModelMixin:
             diffusers_model_config = config_mapping_fn(
                 original_config=original_config, checkpoint=checkpoint, **config_mapping_kwargs
             )
-
-        elif config is None or isinstance(config, str):
-            if config is None:
-                config = fetch_diffusers_config(checkpoint)
-            else:
+        else:
+            if config:
                 config = {"pretrained_model_name_or_path": config}
+            else:
+                config = fetch_diffusers_config(checkpoint)
 
-            # some configs contain a subfolder key, e.g. StableCascadeUNet
-            subfolder = config.pop("subfolder", None)
+            subfolder = subfolder or config.pop(
+                "subfolder", None
+            )  # some configs contain a subfolder key, e.g. StableCascadeUNet
+
             if "default_subfolder" in mapping_functions and subfolder is None:
                 subfolder = mapping_functions["default_subfolder"]
 
@@ -222,8 +225,6 @@ class FromOriginalModelMixin:
                 local_dir_use_symlinks=local_dir_use_symlinks,
                 **model_kwargs,
             )
-        else:
-            diffusers_model_config = config
 
         checkpoint_mapping_kwargs = _get_mapping_function_kwargs(checkpoint_mapping_fn, **kwargs)
         diffusers_format_checkpoint = checkpoint_mapping_fn(

@@ -1224,12 +1224,12 @@ def create_diffusers_clip_model_from_ldm(
     torch_dtype=None,
     local_files_only=None,
 ):
-    if config is None:
-        config = fetch_diffusers_config(checkpoint)
-        model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder)
-
+    if config:
+        config = {"pretrained_model_name_or_path": config}
     else:
-        model_config = config
+        config = fetch_diffusers_config(checkpoint)
+
+    model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():

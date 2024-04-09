@@ -74,31 +74,28 @@ def load_single_file_sub_model(
 
     if is_diffusers_single_file_model:
         load_method = getattr(class_obj, "from_single_file")
-        if original_config is None:
-            config = class_obj.load_config(
-                pretrained_model_name_or_path,
-                subfolder=name,
-                local_files_only=local_files_only,
-                **kwargs,
-            )
-        else:
-            config = None
+
+        # We cannot provide two config types to the `from_single_file` method
+        # Here we have to ignore loading the config from `pretrained_model_name_or_path` if the `original_config`
+        # is provided
+        if original_config:
+            pretrained_model_name_or_path = None
 
         loaded_sub_model = load_method(
             checkpoint=checkpoint,
             original_config=original_config,
-            config=config,
+            config=pretrained_model_name_or_path,
+            subfolder=name,
             torch_dtype=torch_dtype,
             **kwargs,
         )
 
     elif is_transformers_model and is_clip_model_in_single_file(class_obj, checkpoint):
-        config = class_obj.config_class.from_pretrained(pretrained_model_name_or_path, subfolder=name)
         loaded_sub_model = create_diffusers_clip_model_from_ldm(
             class_obj,
             checkpoint=checkpoint,
+            config=pretrained_model_name_or_path,
             subfolder=name,
-            config=config,
             torch_dtype=torch_dtype,
             local_files_only=local_files_only,
         )
@@ -177,7 +174,8 @@ def _map_component_types_to_config_dict(component_types):
         if is_diffusers_model:
             config_dict[component_name] = ["diffusers", component_value[0].__name__]
         elif is_scheduler:
-            config_dict[component_name] = ["diffusers", component_value.__name__]
+            # Since we cannot fetch a scheduler config from the hub, we default to DDIMScheduler
+            config_dict[component_name] = ["diffusers", "DDIMScheduler"]
         elif is_transformers_model:
             config_dict[component_name] = ["transformers", component_value.__name__]
         else:
@@ -357,13 +355,15 @@ class FromSingleFileMixin:
         )
 
         if original_config is not None and local_files_only:
-            # If operating in a state where local_files_only=True and an original config file is provided
+            # This is to preserve backwards compatibility
+
+            # If operating in a state where `local_files_only=True` and an original config file is provided
             # we cannot fetch the model_index.json from the hub to create the Pipeline config dict
             # In such a case we dynamically create the config dict based on the type hints of the components
             config = fetch_diffusers_config(checkpoint)
             default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
 
-            # We should deprecate this behavior as it is not very reliable and can lead to errors
+            # We might want to deprecate this behavior as it is not very reliable and can lead to errors
             component_types = pipeline_class._get_signature_types()
             config_dict = _map_component_types_to_config_dict(component_types)
             config_dict["_class_name"] = pipeline_class.__name__
