@@ -1,5 +1,7 @@
-
 nohup accelerate launch --num_cpu_threads_per_process 1 train_controlnet_sdxl.py --config_file=configs/controlnet_sdxl_training.yaml > train_controlnet_sdxl.out &
+
+# canny format
+nohup accelerate launch --num_cpu_threads_per_process 1 train_controlnet_sdxl.py --config_file=configs/controlnet_sdxl_canny_format_training.yaml &
 
 
 

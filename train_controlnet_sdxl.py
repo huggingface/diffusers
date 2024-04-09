@@ -119,27 +119,13 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
-    if args.enable_xformers_memory_efficient_attention:
-        pipeline.enable_xformers_memory_efficient_attention()
+    # if args.enable_xformers_memory_efficient_attention:
+    pipeline.enable_xformers_memory_efficient_attention()
 
     if args.seed is None:
         generator = None
     else:
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-
-    if len(args.validation_image) == len(args.validation_prompt):
-        validation_images = args.validation_image
-        validation_prompts = args.validation_prompt
-    elif len(args.validation_image) == 1:
-        validation_images = args.validation_image * len(args.validation_prompt)
-        validation_prompts = args.validation_prompt
-    elif len(args.validation_prompt) == 1:
-        validation_images = args.validation_image
-        validation_prompts = args.validation_prompt * len(args.validation_image)
-    else:
-        raise ValueError(
-            "number of `args.validation_image` and `args.validation_prompt` should be checked in `parse_args`"
-        )
 
     image_logs = []
     inference_ctx = (
@@ -148,37 +134,56 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         else torch.autocast("cuda")
     )
 
-    dataroot = '/home/gkalstn000/dataset/inpainting'
+    dataroot = '/home/gkalstn000/dataset/canny_format'
     metadata = pd.read_json(os.path.join(dataroot, 'test.jsonl'), lines=True)
     for validation_index in range(args.num_validation_images):
-        image_path, text, mask_path = metadata.iloc[validation_index]
+        image_path, text, canny_simple_path, canny_total_path, mask_path = metadata.iloc[validation_index]
 
         init_image = Image.open(image_path).convert("RGB")
         init_image = init_image.resize((args.resolution, args.resolution))
 
-        mask_image = Image.open(mask_path)
-        mask_image = mask_image.resize((args.resolution, args.resolution))
-        if random.random() > 0.5:
-            mask_image = np.array(mask_image).max() - np.array(mask_image)
-            mask_image = Image.fromarray(mask_image)
-        control_image = make_inpaint_condition(init_image, mask_image)
+        canny_total = Image.open(canny_total_path).convert("RGB").resize((args.resolution, args.resolution))
+        canny_simple = Image.open(canny_simple_path).convert("RGB").resize((args.resolution, args.resolution))
+
+        mask = Image.open(mask_path).convert("RGB").resize((args.resolution, args.resolution))
 
         images = []
-
-        for _ in range(3):
+        for _ in range(2):
             with inference_ctx:
                 image = pipeline(prompt= text,
-                                 num_inference_steps=50,
+                                 num_inference_steps=30,
                                  generator=generator,
                                  image=init_image,
-                                 mask_image=mask_image,
-                                 control_image=control_image,
+                                 mask_image=mask,
+                                 control_image=canny_total,
+                                 strength = 1.0
                 ).images[0]
             images.append(image)
 
         to_pil = transforms.ToPILImage()
-        val_images = [x.resize((args.resolution//2, args.resolution//2)) for x in [init_image, mask_image, to_pil(control_image.squeeze(0))] + images]
-        grid = make_image_grid(val_images, rows=1, cols=6)
+        val_images = [x.resize((args.resolution//2, args.resolution//2)) for x in [init_image, canny_total, mask] + images]
+        grid_1 = make_image_grid(val_images, rows=1, cols=6)
+
+
+        images = []
+        for _ in range(2):
+            with inference_ctx:
+                image = pipeline(prompt= text,
+                                 num_inference_steps=30,
+                                 generator=generator,
+                                 image=init_image,
+                                 mask_image=mask,
+                                 control_image=canny_simple,
+                                 strength = 1.0
+                ).images[0]
+            images.append(image)
+
+        to_pil = transforms.ToPILImage()
+        val_images = [x.resize((args.resolution // 2, args.resolution // 2)) for x in
+                      [init_image, canny_simple, mask] + images]
+        grid_2 = make_image_grid(val_images, rows=1, cols=6)
+
+        grid = make_image_grid([grid_1, grid_2], rows=2, cols=1)
 
         image_logs.append(
             {"validation_image": grid, "validation_prompt": text}
@@ -753,8 +758,12 @@ def prepare_train_dataset(dataset, accelerator):
         conditioning_images = [image.convert("RGB") for image in examples[args.conditioning_image_column]]
         conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
 
+        mask_images = [image.convert("RGB") for image in examples['mask']]
+        mask_images = [conditioning_image_transforms(image) for image in mask_images]
+
         examples["pixel_values"] = images
         examples["conditioning_pixel_values"] = conditioning_images
+        examples["mask"] = mask_images
 
         return examples
 
@@ -771,6 +780,9 @@ def collate_fn(examples):
     conditioning_pixel_values = torch.stack([example["conditioning_pixel_values"] for example in examples])
     conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
 
+    mask_pixel_values = torch.stack([example["mask"] for example in examples])
+    mask_pixel_values = mask_pixel_values.to(memory_format=torch.contiguous_format).float()
+
     prompt_ids = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
 
     add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
@@ -779,6 +791,7 @@ def collate_fn(examples):
     return {
         "pixel_values": pixel_values,
         "conditioning_pixel_values": conditioning_pixel_values,
+        "mask": mask_pixel_values,
         "prompt_ids": prompt_ids,
         "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
     }
@@ -1187,13 +1200,11 @@ def main(args):
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
+                controlnet_image = batch["conditioning_pixel_values"].to(weight_dtype)
                 # ControlNet conditioning.
-                mask = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
                 if random.random() > 0.5 :
-                    mask = 1 - mask
-
-                controlnet_image = torch.where(mask >= 0.5, -1, batch["pixel_values"])
+                    mask = batch["mask"].to(dtype=weight_dtype)
+                    controlnet_image = torch.where(mask > 0.5, 0, controlnet_image)
 
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
