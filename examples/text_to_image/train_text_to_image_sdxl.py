@@ -1252,6 +1252,10 @@ def main(args):
                 del pipeline
                 torch.cuda.empty_cache()
 
+                if args.use_ema:
+                    # Switch back to the original UNet parameters.
+                    ema_unet.restore(unet.parameters())
+
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unwrap_model(unet)
