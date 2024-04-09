@@ -89,7 +89,7 @@ def resize_mask_to_latent(mask, latent):
 
     # 마스크 텐서의 크기를 잠재 텐서의 크기에 맞춰 조정
     # 'nearest' 모드를 사용하여 0과 1의 값을 그대로 유지하도록 합니다.
-    resized_mask = F.interpolate(mask, size=latent_size, mode='nearest')
+    resized_mask = F.interpolate(mask, size=latent_size)
 
     return resized_mask
 
