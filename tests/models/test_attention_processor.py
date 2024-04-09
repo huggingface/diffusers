@@ -80,6 +80,8 @@ class AttnAddedKVProcessorTests(unittest.TestCase):
 
 class DeprecatedAttentionBlockTests(unittest.TestCase):
     def test_conversion_when_using_device_map(self):
+        # To-DO for Sayak: enable this test again and to test `device_map='balanced'` once we have this in accelerate https://github.com/huggingface/accelerate/pull/2641
+        pass
         pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None)
 
         pre_conversion = pipe(
