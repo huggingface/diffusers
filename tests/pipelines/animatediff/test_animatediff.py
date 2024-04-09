@@ -18,7 +18,12 @@ from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import numpy_cosine_similarity_distance, require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin, SDFunctionTesterMixin
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineFromPipeTesterMixin,
+    PipelineTesterMixin,
+    SDFunctionTesterMixin,
+)
 
 
 def to_np(tensor):
@@ -29,7 +34,7 @@ def to_np(tensor):
 
 
 class AnimateDiffPipelineFastTests(
-    IPAdapterTesterMixin, SDFunctionTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin, SDFunctionTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase
 ):
     pipeline_class = AnimateDiffPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -166,6 +171,12 @@ class AnimateDiffPipelineFastTests(
                 ]
             )
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        expected_slice = None
+        if torch_device == "cpu":
+            expected_slice = np.array([0.4051, 0.4495, 0.4480, 0.5845, 0.4172, 0.6066, 0.4205, 0.3786, 0.5323])
+        return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     def test_inference_batch_single_identical(
         self,

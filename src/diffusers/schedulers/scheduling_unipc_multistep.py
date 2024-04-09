@@ -71,6 +71,43 @@ def betas_for_alpha_bar(
     return torch.tensor(betas, dtype=torch.float32)
 
 
+# Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
+def rescale_zero_terminal_snr(betas):
+    """
+    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
+
+
+    Args:
+        betas (`torch.FloatTensor`):
+            the betas that the scheduler is being initialized with.
+
+    Returns:
+        `torch.FloatTensor`: rescaled betas with zero terminal SNR
+    """
+    # Convert betas to alphas_bar_sqrt
+    alphas = 1.0 - betas
+    alphas_cumprod = torch.cumprod(alphas, dim=0)
+    alphas_bar_sqrt = alphas_cumprod.sqrt()
+
+    # Store old values.
+    alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
+    alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
+
+    # Shift so the last timestep is zero.
+    alphas_bar_sqrt -= alphas_bar_sqrt_T
+
+    # Scale so the first timestep is back to the old value.
+    alphas_bar_sqrt *= alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
+
+    # Convert alphas_bar_sqrt to betas
+    alphas_bar = alphas_bar_sqrt**2  # Revert sqrt
+    alphas = alphas_bar[1:] / alphas_bar[:-1]  # Revert cumprod
+    alphas = torch.cat([alphas_bar[0:1], alphas])
+    betas = 1 - alphas
+
+    return betas
+
+
 class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
     `UniPCMultistepScheduler` is a training-free framework designed for the fast sampling of diffusion models.
@@ -128,8 +165,12 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         steps_offset (`int`, defaults to 0):
             An offset added to the inference steps, as required by some model families.
         final_sigmas_type (`str`, defaults to `"zero"`):
-            The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final sigma
-            is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
+            The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final
+            sigma is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
+        rescale_betas_zero_snr (`bool`, defaults to `False`):
+            Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
+            dark samples instead of limiting it to samples with medium brightness. Loosely related to
+            [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -157,6 +198,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
+        rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -171,8 +213,17 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
+        if rescale_betas_zero_snr:
+            self.betas = rescale_zero_terminal_snr(self.betas)
+
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+
+        if rescale_betas_zero_snr:
+            # Close to 0 without being 0 so first sigma is not inf
+            # FP16 smallest positive subnormal works well here
+            self.alphas_cumprod[-1] = 2**-24
+
         # Currently we only support VP-type noise schedule
         self.alpha_t = torch.sqrt(self.alphas_cumprod)
         self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
@@ -576,7 +627,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             if order == 2:
                 rhos_p = torch.tensor([0.5], dtype=x.dtype, device=device)
             else:
-                rhos_p = torch.linalg.solve(R[:-1, :-1], b[:-1])
+                rhos_p = torch.linalg.solve(R[:-1, :-1], b[:-1]).to(device).to(x.dtype)
         else:
             D1s = None
 
@@ -714,7 +765,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         if order == 1:
             rhos_c = torch.tensor([0.5], dtype=x.dtype, device=device)
         else:
-            rhos_c = torch.linalg.solve(R, b)
+            rhos_c = torch.linalg.solve(R, b).to(device).to(x.dtype)
 
         if self.predict_x0:
             x_t_ = sigma_t / sigma_s0 * x - alpha_t * h_phi_1 * m0

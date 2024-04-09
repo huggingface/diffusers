@@ -22,6 +22,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import accelerate
@@ -146,7 +147,12 @@ def log_validation(vae, args, accelerator, weight_dtype, step, unet=None, is_fin
 
     for _, prompt in enumerate(validation_prompts):
         images = []
-        with torch.autocast("cuda", dtype=weight_dtype):
+        if torch.backends.mps.is_available():
+            autocast_ctx = nullcontext()
+        else:
+            autocast_ctx = torch.autocast(accelerator.device.type, dtype=weight_dtype)
+
+        with autocast_ctx:
             images = pipeline(
                 prompt=prompt,
                 num_inference_steps=4,
