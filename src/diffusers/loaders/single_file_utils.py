@@ -1219,7 +1219,7 @@ def convert_open_clip_checkpoint(
 def create_diffusers_clip_model_from_ldm(
     cls,
     checkpoint,
-    subfolder=None,
+    subfolder="",
     config=None,
     original_config=None,
     torch_dtype=None,
@@ -1248,7 +1248,7 @@ def create_diffusers_clip_model_from_ldm(
         config["pretrained_model_name_or_path"] = clip_config
         subfolder = ""
 
-    model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
+    model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=False)
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():

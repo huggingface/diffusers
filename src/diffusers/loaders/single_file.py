@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import importlib
+import os
 
 import torch
 from huggingface_hub import _CACHED_NO_EXIST, hf_hub_download, try_to_load_from_cache
@@ -367,47 +368,57 @@ class FromSingleFileMixin:
             local_dir=local_dir,
         )
 
-        # Infer the model type based on the checkpoint in order to fetch the approriate pipeline components
-        if isinstance(config, str):
-            config = {"pretrained_model_name_or_path": config}
-        else:
-            config = fetch_diffusers_config(checkpoint)
-
-        default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
-
-        if local_files_only:
-            # If operating in a case where `local_files_only=True`
-            # we first attempt to load the model_index.json file for the pipeline from the cache.
-            # If that fails, we dynamically create the config dict based on the type hints of the components
-            config_file = try_to_load_from_cache(
-                default_pretrained_model_name_or_path,
-                filename=cls.config_name,
-                cache_dir=cache_dir,
+        if original_config and local_files_only:
+            logger.warning(
+                " Attempting to create the pipeline based on inferred components."
+                " This may lead to errors if the model components are not correctly inferred."
+                " Please explicity pass the `config` argument to `from_single_file` with a path to a local diffusers model repo"
+                " or run this pipeline with `local_files_only=False` to avoid raising this warning."
             )
-            if config_file is _CACHED_NO_EXIST:
-                logger.warning(
-                    f"Unable to find the local config files for inferred model type: {default_pretrained_model_name_or_path}."
-                    " Attempting to create the pipeline based on inferred components."
-                    " This may lead to errors if the model components are not correctly inferred."
-                    " Please explicity pass the `config` argument to `from_single_file` with a path to a local diffusers model repo"
-                    " or run this pipeline with `local_files_only=False` first to download the appropriate config files from the Hub."
-                    " to avoid raising this warning."
+
+            # We might want to deprecate this behavior as it is brittle and can lead to errors
+            component_types = pipeline_class._get_signature_types()
+            expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
+            component_types = {
+                k: v for k, v in component_types.items() if k not in pipeline_class._optional_components
+            }
+
+            config_dict = _map_component_types_to_config_dict(component_types)
+            config_dict["_class_name"] = pipeline_class.__name__
+
+        elif config and local_files_only:
+            # Default pipeline path is always inferred from the checkpoint, but might not be used to configure the pipeline
+            default_pretrained_model_name_or_path = config
+
+            if not os.path.isdir(default_pretrained_model_name_or_path):
+                if default_pretrained_model_name_or_path.count("/") > 1:
+                    raise ValueError(
+                        f'The provided pretrained_model_name_or_path "{default_pretrained_model_name_or_path}"'
+                        " is neither a valid local path nor a valid repo id. Please check the parameter."
+                    )
+                config_file = try_to_load_from_cache(
+                    default_pretrained_model_name_or_path,
+                    filename=cls.config_name,
+                    cache_dir=cache_dir,
                 )
 
-                # We might want to deprecate this behavior as it is brittle and can lead to errors
-                component_types = pipeline_class._get_signature_types()
-                expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
-                component_types = {
-                    k: v for k, v in component_types.items() if k not in pipeline_class._optional_components
-                }
+                if config_file is _CACHED_NO_EXIST:
+                    logger.warning(
+                        (
+                            f"Unable to find local config files for model type: {default_pretrained_model_name_or_path}."
+                            " "
+                        )
+                    )
 
-                config_dict = _map_component_types_to_config_dict(component_types)
-                config_dict["_class_name"] = pipeline_class.__name__
-
+                else:
+                    config_dict = pipeline_class._dict_from_json_file(config_file)
             else:
-                config_dict = pipeline_class._dict_from_json_file(config_file)
+                config_dict = pipeline_class.load_config(default_pretrained_model_name_or_path)
 
         else:
+            config = fetch_diffusers_config(checkpoint)
+            default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
+
             config_file = hf_hub_download(
                 default_pretrained_model_name_or_path,
                 filename=cls.config_name,

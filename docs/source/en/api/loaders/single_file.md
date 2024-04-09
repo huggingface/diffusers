@@ -230,9 +230,7 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, original_config=ori
 ```
 
 <Tip>
-As of `diffusers>=0.28.0` the `from_single_file` method will always attempt to fetch a [`model_index.json`](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/model_index.json) file for the pipeline from either the Hugging Face Hub or the local hub cache in order to determine the component objects to use with the pipeline.
-
-If the appropriate pipeline config is not present in the local cache and `local_files_only=True` is passed to the `from_single_file` method, `diffusers` will attempt to infer the components based on the type signatures of pipeline class. This is not as reliable as providing the correct config and might lead to errors when configuring the pipeline.
+When using `original_config` with local_files_only=True`, `diffusers` will attempt to infer the components based on the type signatures of pipeline class. This is not as reliable as providing the correct config and might lead to errors when configuring the pipeline. Additionally, the pipeline scheduler will default to the `DDIMScheduler` if one isn't provided.
 
 </Tip>
 
