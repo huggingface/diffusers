@@ -101,7 +101,7 @@ def save_model_card(
     repo_id: str,
     use_dora: bool,
     images: list = None,
-    base_model: Optional[str] = None,
+    base_model: str = None,
     train_text_encoder: bool = False,
     train_text_encoder_ti: bool = False,
     token_abstraction_dict=None,
