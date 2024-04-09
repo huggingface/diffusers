@@ -73,15 +73,25 @@ check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
-def make_inpaint_condition(image, image_mask):
-    image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
-    image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
 
-    assert image.shape[0:1] == image_mask.shape[0:1]
-    image[image_mask > 0.5] = -1.0  # set as masked pixel
-    image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
-    image = torch.from_numpy(image)
-    return image
+def resize_mask_to_latent(mask, latent):
+    """
+    Resizes the mask tensor to the size of the latent tensor using nearest neighbor interpolation.
+    Args:
+    - mask (torch.Tensor): The mask tensor to be resized.
+    - latent (torch.Tensor): The latent tensor to match the mask size to.
+
+    Returns:
+    - torch.Tensor: Resized mask tensor.
+    """
+    # latent size 가져오기
+    latent_size = (latent.size(2), latent.size(3))
+
+    # 마스크 텐서의 크기를 잠재 텐서의 크기에 맞춰 조정
+    # 'nearest' 모드를 사용하여 0과 1의 값을 그대로 유지하도록 합니다.
+    resized_mask = F.interpolate(mask, size=latent_size, mode='nearest')
+
+    return resized_mask
 
 def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step, is_final_validation=False):
     logger.info("Running validation... ")
@@ -162,7 +172,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
 
         to_pil = transforms.ToPILImage()
         val_images = [x.resize((args.resolution//2, args.resolution//2)) for x in [init_image, canny_total, mask] + images]
-        grid_1 = make_image_grid(val_images, rows=1, cols=6)
+        grid_1 = make_image_grid(val_images, rows=1, cols=5)
 
 
         images = []
@@ -181,7 +191,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         to_pil = transforms.ToPILImage()
         val_images = [x.resize((args.resolution // 2, args.resolution // 2)) for x in
                       [init_image, canny_simple, mask] + images]
-        grid_2 = make_image_grid(val_images, rows=1, cols=6)
+        grid_2 = make_image_grid(val_images, rows=1, cols=5)
 
         grid = make_image_grid([grid_1, grid_2], rows=2, cols=1)
 
@@ -1199,12 +1209,27 @@ def main(args):
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
                 controlnet_image = batch["conditioning_pixel_values"].to(weight_dtype)
                 # ControlNet conditioning.
+                mask = batch["mask"].to(dtype=weight_dtype)
                 if random.random() > 0.5 :
-                    mask = batch["mask"].to(dtype=weight_dtype)
                     controlnet_image = torch.where(mask > 0.5, 0, controlnet_image)
+
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+
+                if args.use_unknown_noisy_in_training:
+                    if timesteps < 999:
+                        noise = torch.randn_like(latents)
+                        prev_noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps + 1)
+                        noise_pred = torch.randn_like(latents)
+
+                        unknown_noisy_latents = \
+                        noise_scheduler.step(noise_pred, timesteps + 1, prev_noisy_latents, return_dict=False)[0]
+                        known_noisy_latents = noisy_latents
+                        resized_mask_tensor = resize_mask_to_latent(mask, noisy_latents)
+
+                        noisy_latents = (1 - resized_mask_tensor) * known_noisy_latents + resized_mask_tensor * unknown_noisy_latents
+
 
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,

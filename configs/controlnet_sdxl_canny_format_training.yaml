@@ -25,6 +25,7 @@ lr_warmup_steps: 500
 lr_num_cycles: 1
 lr_power: 1.0
 use_8bit_adam: false
+use_unknown_noisy_in_training: false
 
 # Save Configuration
 output_dir: checkpoints/jector_canny_format_controlnet_lr1e-5
