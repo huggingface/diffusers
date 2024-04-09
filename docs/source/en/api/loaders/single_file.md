@@ -59,6 +59,7 @@ ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blo
 
 scheduler = DDIMScheduler()
 pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, scheduler=scheduler)
+
 ```
 
 ```python
@@ -68,6 +69,7 @@ ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-
 
 controlnet = ControlNetModel.from_pretrained("https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors")
 pipe = StableDiffusionPipeline.from_single_file(ckpt_path, controlnet=controlnet)
+
 ```
 
 ## Loading a Model using `from_single_file`
@@ -77,6 +79,7 @@ from diffusers import StableCascadeUNet
 
 ckpt_path = "https://huggingface.co/stabilityai/stable-cascade/blob/main/stage_b_lite.safetensors"
 model = StableCascadeUNet.from_single_file(ckpt_path)
+
 ```
 
 ## Override configuration options when using single file loading
@@ -88,13 +91,16 @@ from diffusers import StableDiffusionXLImg2ImgPipeline
 
 ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0_0.9vae.safetensors"
 pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, requires_aesthetics_score=True)
+
 ```
+
 
 ```python
 from diffusers import UNet2DConditionModel
 
 ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
 model = UNet2DConditionModel.from_single_file(ckpt_path, device="cuda", upcast_attention=True)
+
 ```
 
 ## Downloading a single file checkpoint to a specific directory
@@ -104,15 +110,7 @@ from diffusers import StableDiffusionXLPipeline
 
 ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
 pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, local_dir="my_checkpoints")
-```
 
-## Disable symlinking when downloading a single file checkpoint
-
-```python
-from diffusers import StableDiffusionXLPipeline
-
-ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
-pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, local_dir="my_checkpoints", local_dir_use_symlinks=False)
 ```
 
 <Tip>
@@ -125,10 +123,6 @@ To learn more about how to load single file weights, see the [Load different Sta
 
 [[autodoc]] loaders.single_file.FromSingleFileMixin
 
-## FromOriginalVAEMixin
+## FromOriginalModelMixin
 
-[[autodoc]] loaders.autoencoder.FromOriginalVAEMixin
-
-## FromOriginalControlnetMixin
-
-[[autodoc]] loaders.controlnet.FromOriginalControlNetMixin
+[[autodoc]] loaders.single_file_model.FromOriginalModelMixin

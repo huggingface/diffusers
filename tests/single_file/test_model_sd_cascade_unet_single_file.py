@@ -50,7 +50,7 @@ class StableCascadeUNetSingleFileTest(unittest.TestCase):
             "https://huggingface.co/stabilityai/stable-cascade/blob/main/stage_b_bf16.safetensors",
             torch_dtype=torch.bfloat16,
         )
-        model = StableCascadeUNet.from_pretrained("stabilityai/stable-cascade", variant="bf16", subfolder="decoder")
+        model = StableCascadeUNet.from_pretrained("stabilityai/stable-cascade", variant="bf16", subfolder="decoder", use_safetensors=True)
 
         PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
         for param_name, param_value in model_single_file.config.items():
@@ -100,7 +100,7 @@ class StableCascadeUNetSingleFileTest(unittest.TestCase):
             torch_dtype=torch.bfloat16,
         )
         model = StableCascadeUNet.from_pretrained(
-            "stabilityai/stable-cascade-prior", variant="bf16", subfolder="prior-lite"
+            "stabilityai/stable-cascade-prior", variant="bf16", subfolder="prior_lite"
         )
 
         PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]

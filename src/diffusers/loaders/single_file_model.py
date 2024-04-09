@@ -185,7 +185,10 @@ class FromOriginalModelMixin:
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
-        config_mapping_fn = mapping_functions["config_mapping_fn"]
+        if "config_mapping_fn" in mapping_functions:
+            config_mapping_fn = mapping_functions["config_mapping_fn"]
+        else:
+            config_mapping_fn = None
 
         if original_config:
             if config_mapping_fn is None:
@@ -214,17 +217,17 @@ class FromOriginalModelMixin:
             if "default_subfolder" in mapping_functions and subfolder is None:
                 subfolder = mapping_functions["default_subfolder"]
 
-            expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
-            model_kwargs = {k: kwargs.pop(k) for k in kwargs if k in expected_kwargs or k in optional_kwargs}
-
             diffusers_model_config = cls.load_config(
                 **config,
                 subfolder=subfolder,
                 local_files_only=local_files_only,
                 local_dir=local_dir,
                 local_dir_use_symlinks=local_dir_use_symlinks,
-                **model_kwargs,
             )
+            expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
+            model_kwargs = {k: kwargs.get(k) for k in kwargs if k in expected_kwargs or k in optional_kwargs}
+
+            diffusers_model_config.update(model_kwargs)
 
         checkpoint_mapping_kwargs = _get_mapping_function_kwargs(checkpoint_mapping_fn, **kwargs)
         diffusers_format_checkpoint = checkpoint_mapping_fn(

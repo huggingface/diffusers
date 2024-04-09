@@ -41,7 +41,7 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
     ckpt_path = (
         "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
     )
-    repo_id = "stabilityai/sd-vae-ft-mse"
+    repo_id = "runwayml/stable-diffusion-v1-5"
     main_input_name = "sample"
     base_precision = 1e-2
 
@@ -64,7 +64,7 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
         return image
 
     def test_single_file_inference_same_as_pretrained(self):
-        model_1 = self.model_class.from_pretrained(self.repo_id).to(torch_device)
+        model_1 = self.model_class.from_pretrained(self.repo_id, subfolder="vae").to(torch_device)
         model_2 = self.model_class.from_single_file(self.ckpt_path).to(torch_device)
 
         image = self.get_sd_image(33)
@@ -82,7 +82,7 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
 
     def test_single_file_components(self):
         model_single_file = self.model_class.from_single_file(self.ckpt_path)
-        model = self.model_class.from_pretrained(self.repo_id)
+        model = self.model_class.from_pretrained(self.repo_id, subfolder="vae")
 
         PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
         for param_name, param_value in model_single_file.config.items():
@@ -100,15 +100,15 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
         assert model_default.dtype == torch.float32
 
         scaling_factor = 2.0
-        image_size = 256
+        sample_size = 256
         torch_dtype = torch.float16
 
         model = self.model_class.from_single_file(
             self.ckpt_path,
-            image_size=image_size,
+            sample_size=sample_size,
             scaling_factor=scaling_factor,
             torch_dtype=torch_dtype,
         )
         assert model.config.scaling_factor == scaling_factor
-        assert model.config.sample_size == image_size
+        assert model.config.sample_size == sample_size
         assert model.dtype == torch_dtype

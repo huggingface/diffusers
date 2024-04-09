@@ -13,6 +13,7 @@
 # limitations under the License.
 import importlib
 import os
+from pathlib import Path
 
 import torch
 from huggingface_hub import hf_hub_download
@@ -97,6 +98,7 @@ def load_single_file_sub_model(
             config=pretrained_model_name_or_path,
             subfolder=name,
             torch_dtype=torch_dtype,
+            original_config=original_config,
             local_files_only=local_files_only,
         )
 
@@ -313,7 +315,6 @@ class FromSingleFileMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         local_dir = kwargs.pop("local_dir", None)
-        local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
 
         if config is not None and original_config is not None:
             raise ValueError("Only one of `config` and `original_config_file` can be provided.")
@@ -351,7 +352,6 @@ class FromSingleFileMixin:
             local_files_only=local_files_only,
             revision=revision,
             local_dir=local_dir,
-            local_dir_use_symlinks=local_dir_use_symlinks,
         )
 
         if original_config is not None and local_files_only:
@@ -363,14 +363,14 @@ class FromSingleFileMixin:
             config = fetch_diffusers_config(checkpoint)
             default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
 
-            # We might want to deprecate this behavior as it is not very reliable and can lead to errors
+            # We might want to deprecate this behavior as it is brittle and can lead to errors
             component_types = pipeline_class._get_signature_types()
             config_dict = _map_component_types_to_config_dict(component_types)
             config_dict["_class_name"] = pipeline_class.__name__
 
         elif config is not None:
             default_pretrained_model_name_or_path = config
-            config_file = os.path.join(default_pretrained_model_name_or_path, cls.config_name)
+            config_file = Path(os.path.join(default_pretrained_model_name_or_path, cls.config_name)).as_posix()
             config_dict = pipeline_class._dict_from_json_file(config_file)
 
         else:

@@ -13,7 +13,7 @@ from diffusers.utils.testing_utils import (
     slow,
 )
 
-from .utils import SDSingleFileComponentsTesterMixin
+from .utils import SDSingleFileTesterMixin
 
 
 enable_full_determinism()
@@ -21,7 +21,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_gpu
-class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileComponentsTesterMixin):
+class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
     ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
     original_config = "https://raw.githubusercontent.com/runwayml/stable-diffusion/main/configs/stable-diffusion/v1-inpainting-inference.yaml"
@@ -62,7 +62,7 @@ class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSin
         super().test_single_file_format_inference_is_same_as_pretrained(expected_max_diff=1e-3)
 
 
-class StableDiffusion21InpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileComponentsTesterMixin):
+class StableDiffusion21InpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
     original_config = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"

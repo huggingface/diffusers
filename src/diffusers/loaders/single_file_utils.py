@@ -60,7 +60,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "upscale": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
     "inpainting": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-inpainting"},
     "inpainting_v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-inpainting"},
-    "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v111p_sd15_canny"},
+    "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
     "v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-1"},
     "v1": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
     "stable_cascade_stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder"},
@@ -1221,6 +1221,7 @@ def create_diffusers_clip_model_from_ldm(
     checkpoint,
     subfolder=None,
     config=None,
+    original_config=None,
     torch_dtype=None,
     local_files_only=None,
 ):
@@ -1228,6 +1229,25 @@ def create_diffusers_clip_model_from_ldm(
         config = {"pretrained_model_name_or_path": config}
     else:
         config = fetch_diffusers_config(checkpoint)
+
+    # For backwards compatibility
+    # Older versions of `from_single_file` expected CLIP configs to be placed in their original transformers model repo
+    # in the cache_dir, rather than in a subfolder of the model
+
+    # This behavior is most noticeable when using `local_files_only=True` and passing in an original config file
+    if (is_clip_model(checkpoint) or is_clip_sdxl_model(checkpoint)) and original_config and local_files_only:
+        clip_config = "openai/clip-vit-large-patch14"
+        config["pretrained_model_name_or_path"] = clip_config
+        subfolder = None
+
+    elif (
+        (is_open_clip_sdxl_model(checkpoint) or is_open_clip_sdxl_refiner_model(checkpoint))
+        and original_config
+        and local_files_only
+    ):
+        clip_config = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+        config["pretrained_model_name_or_path"] = clip_config
+        subfolder = None
 
     model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
 
