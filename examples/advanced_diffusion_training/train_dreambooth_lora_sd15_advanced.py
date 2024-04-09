@@ -90,20 +90,17 @@ def save_model_card(
     repo_folder=None,
     vae_path=None,
 ):
-    img_str = "widget:\n"
-    lora = "lora" if not use_dora else "dora"
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"""
-        - text: '{validation_prompt if validation_prompt else ' ' }'
-          output:
-            url:
-                "image_{i}.png"
-        """
-    if not images:
-        img_str += f"""
-        - text: '{instance_prompt}'
-        """
+    widget_dict = []
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            widget_dict.append(
+                {"text": validation_prompt if validation_prompt else " ", "output": {"url": f"image_{i}.png"}}
+            )
+    else:
+        widget_dict.append(
+            {"text": instance_prompt}
+        )
     embeddings_filename = f"{repo_folder}_emb"
     instance_prompt_webui = re.sub(r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1))
     ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
@@ -194,6 +191,7 @@ Special VAE used for training: {vae_path}.
         prompt=instance_prompt,
         model_description=model_description,
         inference=True,
+        widget=widget_dict,
     )
 
     tags = ["text-to-image", 
