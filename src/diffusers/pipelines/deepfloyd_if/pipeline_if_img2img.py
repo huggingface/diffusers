@@ -346,9 +346,6 @@ class IFImg2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
             nsfw_detected = None
             watermark_detected = None
 
-            if hasattr(self, "unet_offload_hook") and self.unet_offload_hook is not None:
-                self.unet_offload_hook.offload()
-
         return image, nsfw_detected, watermark_detected
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.prepare_extra_step_kwargs
