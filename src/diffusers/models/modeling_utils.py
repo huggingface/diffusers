@@ -690,47 +690,27 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
-                    try:
-                        accelerate.load_checkpoint_and_dispatch(
-                            model,
-                            model_file,
-                            device_map,
-                            max_memory=max_memory,
-                            offload_folder=offload_folder,
-                            offload_state_dict=offload_state_dict,
-                            dtype=torch_dtype,
-                        )
-                    except AttributeError as e:
-                        # When using accelerate loading, we do not have the ability to load the state
-                        # dict and rename the weight names manually. Additionally, accelerate skips
-                        # torch loading conventions and directly writes into `module.{_buffers, _parameters}`
-                        # (which look like they should be private variables?), so we can't use the standard hooks
-                        # to rename parameters on load. We need to mimic the original weight names so the correct
-                        # attributes are available. After we have loaded the weights, we convert the deprecated
-                        # names to the new non-deprecated names. Then we _greatly encourage_ the user to convert
-                        # the weights so we don't have to do this again.
 
-                        if "'Attention' object has no attribute" in str(e):
-                            logger.warning(
-                                f"Taking `{str(e)}` while using `accelerate.load_checkpoint_and_dispatch` to mean {pretrained_model_name_or_path}"
-                                " was saved with deprecated attention block weight names. We will load it with the deprecated attention block"
-                                " names and convert them on the fly to the new attention block format. Please re-save the model after this conversion,"
-                                " so we don't have to do the on the fly renaming in the future. If the model is from a hub checkpoint,"
-                                " please also re-upload it or open a PR on the original repository."
-                            )
-                            model._temp_convert_self_to_deprecated_attention_blocks()
-                            accelerate.load_checkpoint_and_dispatch(
-                                model,
-                                model_file,
-                                device_map,
-                                max_memory=max_memory,
-                                offload_folder=offload_folder,
-                                offload_state_dict=offload_state_dict,
-                                dtype=torch_dtype,
-                            )
-                            model._undo_temp_convert_self_to_deprecated_attention_blocks()
-                        else:
-                            raise e
+                    # When using accelerate loading, we do not have the ability to load the state
+                    # dict and rename the weight names manually. Additionally, accelerate skips
+                    # torch loading conventions and directly writes into `module.{_buffers, _parameters}`
+                    # (which look like they should be private variables?), so we can't use the standard hooks
+                    # to rename parameters on load. We need to mimic the original weight names so the correct
+                    # attributes are available. After we have loaded the weights, we convert the deprecated
+                    # names to the new non-deprecated names. Then we _greatly encourage_ the user to convert
+                    # the weights so we don't have to do this again.
+                    model._temp_convert_self_to_deprecated_attention_blocks(pretrained_model_name_or_path)
+                    accelerate.load_checkpoint_and_dispatch(
+                        model,
+                        model_file,
+                        device_map,
+                        max_memory=max_memory,
+                        offload_folder=offload_folder,
+                        offload_state_dict=offload_state_dict,
+                        dtype=torch_dtype,
+                    )
+                    model._undo_temp_convert_self_to_deprecated_attention_blocks()
+
 
                 loading_info = {
                     "missing_keys": [],
@@ -976,7 +956,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if f"{path}.proj_attn.bias" in state_dict:
                 state_dict[f"{path}.to_out.0.bias"] = state_dict.pop(f"{path}.proj_attn.bias")
 
-    def _temp_convert_self_to_deprecated_attention_blocks(self) -> None:
+    def _temp_convert_self_to_deprecated_attention_blocks(self, pretrained_model_name_or_path) -> None:
         deprecated_attention_block_modules = []
 
         def recursive_find_attn_block(module):
@@ -987,6 +967,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 recursive_find_attn_block(sub_module)
 
         recursive_find_attn_block(self)
+        if len(deprecated_attention_block_modules) > 0:
+                logger.warning(
+                    f"{pretrained_model_name_or_path} was saved with deprecated attention block weight names."
+                    " We will load it with the deprecated attention block names and convert them on the fly to the new attention block format."
+                    " Please re-save the model after this conversion so we don't have to do the on the fly renaming in the future. "
+                    "If the model is from a hub checkpoint, please also re-upload it or open a PR on the original repository."
+                )
 
         for module in deprecated_attention_block_modules:
             module.query = module.to_q
