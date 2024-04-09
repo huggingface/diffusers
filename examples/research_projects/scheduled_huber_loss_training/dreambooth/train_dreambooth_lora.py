@@ -518,14 +518,14 @@ def parse_args(input_args=None):
         type=str,
         default="l2",
         choices=["l2", "huber", "smooth_l1"],
-        help="The type of loss to use and whether it's timestep-scheduled. See Issue #7488 for more info."
+        help="The type of loss to use and whether it's timestep-scheduled. See Issue #7488 for more info.",
     )
     parser.add_argument(
         "--huber_schedule",
         type=str,
         default="snr",
         choices=["constant", "exponential", "snr"],
-        help="The schedule to use for the huber losses parameter"
+        help="The schedule to use for the huber losses parameter",
     )
     parser.add_argument(
         "--huber_c",
@@ -750,26 +750,33 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
 
     return prompt_embeds
 
+
 # NOTE: if you're using the scheduled version, huber_c has to depend on the timesteps already
-def conditional_loss(model_pred:torch.Tensor, target:torch.Tensor, reduction:str="mean", loss_type:str="l2", huber_c:float=0.1):
-    
-    if loss_type == 'l2':
+def conditional_loss(
+    model_pred: torch.Tensor,
+    target: torch.Tensor,
+    reduction: str = "mean",
+    loss_type: str = "l2",
+    huber_c: float = 0.1,
+):
+    if loss_type == "l2":
         loss = F.mse_loss(model_pred, target, reduction=reduction)
-    elif loss_type == 'huber':
+    elif loss_type == "huber":
         loss = 2 * huber_c * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
         if reduction == "mean":
             loss = torch.mean(loss)
         elif reduction == "sum":
             loss = torch.sum(loss)
-    elif loss_type == 'smooth_l1':
+    elif loss_type == "smooth_l1":
         loss = 2 * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
         if reduction == "mean":
             loss = torch.mean(loss)
         elif reduction == "sum":
             loss = torch.sum(loss)
     else:
-        raise NotImplementedError(f'Unsupported Loss Type {loss_type}')
+        raise NotImplementedError(f"Unsupported Loss Type {loss_type}")
     return loss
+
 
 def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
@@ -1258,32 +1265,30 @@ def main(args):
                 noise = torch.randn_like(model_input)
                 bsz, channels, height, width = model_input.shape
                 # Sample a random timestep for each image
-                if args.loss_type == 'huber' or args.loss_type == 'smooth_l1':
-                    timesteps = torch.randint(
-                        0, noise_scheduler.config.num_train_timesteps, (1,), device='cpu'
-                    )
+                if args.loss_type == "huber" or args.loss_type == "smooth_l1":
+                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (1,), device="cpu")
                     timestep = timesteps.item()
 
                     if args.huber_schedule == "exponential":
-                        alpha = - math.log(args.huber_c) / noise_scheduler.config.num_train_timesteps
+                        alpha = -math.log(args.huber_c) / noise_scheduler.config.num_train_timesteps
                         huber_c = math.exp(-alpha * timestep)
                     elif args.huber_schedule == "snr":
                         alphas_cumprod = noise_scheduler.alphas_cumprod[timestep]
                         sigmas = ((1.0 - alphas_cumprod) / alphas_cumprod) ** 0.5
-                        huber_c = (1 - args.huber_c) / (1 + sigmas)**2 + args.huber_c
+                        huber_c = (1 - args.huber_c) / (1 + sigmas) ** 2 + args.huber_c
                     elif args.huber_schedule == "constant":
                         huber_c = args.huber_c
                     else:
-                        raise NotImplementedError(f'Unknown Huber loss schedule {args.huber_schedule}!')
-                    
+                        raise NotImplementedError(f"Unknown Huber loss schedule {args.huber_schedule}!")
+
                     timesteps = timesteps.repeat(bsz).to(model_input.device)
-                elif args.loss_type == 'l2':
+                elif args.loss_type == "l2":
                     timesteps = torch.randint(
                         0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
                     )
-                    huber_c = 1 # may be anything, as it's not used
+                    huber_c = 1  # may be anything, as it's not used
                 else:
-                    raise NotImplementedError(f'Unknown loss type {args.loss_type}')
+                    raise NotImplementedError(f"Unknown loss type {args.loss_type}")
 
                 timesteps = timesteps.long()
 
@@ -1339,15 +1344,25 @@ def main(args):
                     target, target_prior = torch.chunk(target, 2, dim=0)
 
                     # Compute instance loss
-                    loss = conditional_loss(model_pred.float(), target.float(), reduction="mean", loss_type=args.loss_type, huber_c=huber_c)
+                    loss = conditional_loss(
+                        model_pred.float(), target.float(), reduction="mean", loss_type=args.loss_type, huber_c=huber_c
+                    )
 
                     # Compute prior loss
-                    prior_loss = conditional_loss(model_pred_prior.float(), target_prior.float(), reduction="mean", loss_type=args.loss_type, huber_c=huber_c)
+                    prior_loss = conditional_loss(
+                        model_pred_prior.float(),
+                        target_prior.float(),
+                        reduction="mean",
+                        loss_type=args.loss_type,
+                        huber_c=huber_c,
+                    )
 
                     # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
-                    loss = conditional_loss(model_pred.float(), target.float(), reduction="mean", loss_type=args.loss_type, huber_c=huber_c)
+                    loss = conditional_loss(
+                        model_pred.float(), target.float(), reduction="mean", loss_type=args.loss_type, huber_c=huber_c
+                    )
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
