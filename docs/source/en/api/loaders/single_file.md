@@ -113,6 +113,22 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, local_dir="my_check
 
 ```
 
+## Using a Diffusers model repository to configure single file loading
+
+Under the hood, `from_single_file` will try to determine a model repository to use to configure the components of the pipeline. You can also pass in a repository id to the `config` argument of the `from_single_file` method to explicitly set the repository to use.
+
+```python
+from diffusers import StableDiffusionXLPipeline
+
+ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
+repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
+
+pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, config=repo_id)
+
+```
+
+This can be useful in cases where model components might have been changed from what was originally distributed or in cases where a checkpoint file might not have the necessary metadata to correctly determine the configuration to use for the pipeline.
+
 <Tip>
 
 To learn more about how to load single file weights, see the [Load different Stable Diffusion formats](../../using-diffusers/other-formats) loading guide.
