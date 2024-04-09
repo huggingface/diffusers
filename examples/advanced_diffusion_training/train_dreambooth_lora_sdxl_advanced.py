@@ -105,8 +105,8 @@ def save_model_card(
     train_text_encoder: bool = False,
     train_text_encoder_ti: bool = False,
     token_abstraction_dict=None,
-    instance_prompt: Optional[str] = None,
-    validation_prompt: Optional[str] = None,
+    instance_prompt: str = None,
+    validation_prompt: str = None,
     repo_folder=None,
     vae_path=None,
 ):
