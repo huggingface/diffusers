@@ -199,7 +199,8 @@ Special VAE used for training: {vae_path}.
     tags = ["text-to-image", 
             "diffusers", 
             "diffusers-training",
-            "lora"
+            "lora",
+            "template:sd-lora"
             "stable-diffusion", 
             "stable-diffusion-diffusers"]
     model_card = populate_model_card(model_card, tags=tags)
