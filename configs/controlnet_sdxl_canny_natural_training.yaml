@@ -1,0 +1,79 @@
+# Model & Tokenizer Configuration
+pretrained_model_name_or_path: stabilityai/stable-diffusion-xl-base-1.0
+pretrained_vae_model_name_or_path: madebyollin/sdxl-vae-fp16-fix
+controlnet_model_name_or_path: destitech/controlnet-inpaint-dreamer-sdxl
+pretrained_unet: /home/gkalstn000/diffusers/checkpoints/pretrained/jector_lr1e-3_step00080000.safetensors
+variant: null
+revision: null
+tokenizer_name: null
+
+# Training Configuration
+cache_dir: null
+seed: 42
+train_batch_size: 1
+num_train_epochs: 1
+max_train_steps: 30000
+checkpointing_steps: 2000
+checkpoints_total_limit: null
+resume_from_checkpoint: null
+gradient_accumulation_steps: 4
+gradient_checkpointing: false
+learning_rate: 1e-5
+scale_lr: false
+lr_scheduler: constant
+lr_warmup_steps: 500
+lr_num_cycles: 1
+lr_power: 1.0
+use_8bit_adam: false
+
+# Save Configuration
+output_dir: checkpoints/jector_canny_natural_controlnet_lr1e-5
+tracker_project_name: conneckbrick
+logging_dir: logs
+
+# Optimizer Settings
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_weight_decay: 0.01
+adam_epsilon: 1e-08
+max_grad_norm: 1.0
+
+# Image Processing Configuration
+resolution: 1024
+crops_coords_top_left_h: 0
+crops_coords_top_left_w: 0
+image_column: image
+conditioning_image_column: canny
+caption_column: text
+
+# Dataloader Configuration
+dataloader_num_workers: 0
+dataset_name: /home/gkalstn000/diffusers/datasets/canny
+dataset_config_name: train_natural.jsonl
+train_data_dir: null
+max_train_samples: null
+
+# Validation Configuration
+proportion_empty_prompts: 0
+validation_prompt:
+  - red circle with blue background
+  - cyan circle with brown floral background
+validation_image:
+  - ./conditioning_image_1.png
+  - ./conditioning_image_2.png
+num_validation_images: 8
+validation_steps: 1
+
+# Logging and Reporting
+report_to: wandb
+wandb_api_key: "c712e8f77a773944f4b1872bf59cb52690a56828"
+push_to_hub: false
+hub_token: null
+hub_model_id: null
+
+# Additional Features
+allow_tf32: false
+mixed_precision: fp16
+enable_xformers_memory_efficient_attention: false
+set_grads_to_none: false
+
