@@ -49,6 +49,8 @@ class SDSingleFileTesterMixin:
                 continue
 
             assert component_name in pipe.components
+            assert isinstance(component, pipe.components[component_name].__class__)
+
             for param_name, param_value in component.config.items():
                 if param_name in PARAMS_TO_IGNORE:
                     continue

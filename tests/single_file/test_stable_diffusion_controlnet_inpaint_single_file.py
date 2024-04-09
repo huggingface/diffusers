@@ -14,7 +14,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from .utils import (
+from .single_file_testing_utils import (
     SDSingleFileTesterMixin,
     download_diffusers_config,
     download_original_config,

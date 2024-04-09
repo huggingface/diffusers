@@ -593,7 +593,7 @@ def create_vae_diffusers_config_from_ldm(original_config, checkpoint, image_size
         )
         deprecate("image_size", "1.0.0", deprecation_message)
 
-        image_size = set_image_size(checkpoint, image_size=image_size)
+    image_size = set_image_size(checkpoint, image_size=image_size)
 
     if "edm_mean" in checkpoint and "edm_std" in checkpoint:
         latents_mean = checkpoint["edm_mean"]
@@ -1232,13 +1232,12 @@ def create_diffusers_clip_model_from_ldm(
 
     # For backwards compatibility
     # Older versions of `from_single_file` expected CLIP configs to be placed in their original transformers model repo
-    # in the cache_dir, rather than in a subfolder of the model
-
+    # in the cache_dir, rather than in a subfolder of the Diffusers model
     # This behavior is most noticeable when using `local_files_only=True` and passing in an original config file
     if (is_clip_model(checkpoint) or is_clip_sdxl_model(checkpoint)) and original_config and local_files_only:
         clip_config = "openai/clip-vit-large-patch14"
         config["pretrained_model_name_or_path"] = clip_config
-        subfolder = None
+        subfolder = ""
 
     elif (
         (is_open_clip_sdxl_model(checkpoint) or is_open_clip_sdxl_refiner_model(checkpoint))
@@ -1247,7 +1246,7 @@ def create_diffusers_clip_model_from_ldm(
     ):
         clip_config = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
         config["pretrained_model_name_or_path"] = clip_config
-        subfolder = None
+        subfolder = ""
 
     model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
 

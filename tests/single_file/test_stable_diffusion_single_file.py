@@ -12,7 +12,7 @@ from diffusers.utils.testing_utils import (
     slow,
 )
 
-from .utils import SDSingleFileTesterMixin
+from .single_file_testing_utils import SDSingleFileTesterMixin
 
 
 enable_full_determinism()

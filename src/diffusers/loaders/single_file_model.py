@@ -206,7 +206,16 @@ class FromOriginalModelMixin:
             )
         else:
             if config:
-                config = {"pretrained_model_name_or_path": config}
+                if isinstance(config, str):
+                    config = {"pretrained_model_name_or_path": config}
+                else:
+                    raise ValueError(
+                        (
+                            "Invalid `config` argument. Please provide a string representing a repo id"
+                            "or path to a local Diffusers model repo."
+                        )
+                    )
+
             else:
                 config = fetch_diffusers_config(checkpoint)
 

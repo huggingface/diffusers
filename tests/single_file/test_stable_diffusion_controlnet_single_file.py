@@ -14,7 +14,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from .utils import (
+from .single_file_testing_utils import (
     SDSingleFileTesterMixin,
     download_diffusers_config,
     download_original_config,
@@ -86,7 +86,7 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         pipe = self.pipeline_class.from_pretrained(
             self.repo_id, variant="fp16", safety_checker=None, controlnet=controlnet
         )
-        pipe_single_file = self.pipline_class.from_single_file(
+        pipe_single_file = self.pipeline_class.from_single_file(
             self.ckpt_path,
             safety_checker=None,
             controlnet=controlnet,
@@ -129,7 +129,7 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         with tempfile.TemporaryDirectory() as tmpdir:
             ckpt_filename = self.ckpt_path.split("/")[-1]
             local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
-            local_original_config = download_original_config(self.repo_id, self.original_config, tmpdir)
+            local_original_config = download_original_config(self.original_config, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
                 local_ckpt_path, original_config=local_original_config, controlnet=controlnet, local_files_only=True

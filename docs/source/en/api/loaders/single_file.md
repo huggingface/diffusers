@@ -94,7 +94,6 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, requires_aesthetics
 
 ```
 
-
 ```python
 from diffusers import UNet2DConditionModel
 
@@ -134,6 +133,109 @@ This can be useful in cases where model components might have been changed from 
 To learn more about how to load single file weights, see the [Load different Stable Diffusion formats](../../using-diffusers/other-formats) loading guide.
 
 </Tip>
+
+## Working with local files
+
+As of `diffusers>=0.28.0` the `from_single_file` method will attempt to configure a pipeline or model by first inferring the model type from the checkpoint file and then using the model type to determine the appropriate model repo configuration to use from the Hugging Face Hub. e.g. Any single file checkpoint based on the `StableDiffusionXL` base model will use the `stabilityai/stable-diffusion-xl-base-1.0` model repo to configure the pipeline.
+
+If you are working in an environment with restricted internet access, it is recommended to download the config files and checkpoints for the model to your preferred directory and pass the local paths to the `pretrained_model_link_or_path` and `config` arguments of the `from_single_file` method.
+
+```python
+from huggingface_hub import hf_hub_download, snapshot_download
+
+my_local_checkpoint_path = hf_hub_download(
+    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+    filename="sd_xl_base_1.0_0.9vae.safetensors"
+)
+
+my_local_config_path = snapshot_download(
+    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+    allowed_patterns=["*.json", "**/*.json"]
+)
+
+pipe = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, config=my_local_config_path, local_files_only=True)
+
+```
+
+By default this will download the checkpoints and config files to the [Hugging Face Hub cache directory](https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache). You can also specify a local directory to download the files to by passing the `local_dir` argument to the `hf_hub_download` and `snapshot_download` functions.
+
+```python
+from huggingface_hub import hf_hub_download, snapshot_download
+
+my_local_checkpoint_path = hf_hub_download(
+    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+    filename="sd_xl_base_1.0_0.9vae.safetensors",
+    local_dir="my_local_checkpoints"
+)
+
+my_local_config_path = snapshot_download(
+    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+    allowed_patterns=["*.json", "**/*.json"],
+    local_dir="my_local_config"
+)
+
+pipe = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, config=my_local_config_path, local_files_only=True)
+
+```
+
+## Working with local files on file systems that do not support symlinking
+
+By default the `from_single_file` method relies on the `huggingface_hub` caching mechanism to fetch and store checkpoints and config files for models and pipelines. If you are working with a file system that does not support symlinking, it is recommended that you first download the checkpoint file to a local directory and disable symlinking by passing the `local_dir_use_symlink=False` argument to the `hf_hub_download` and `snapshot_download` functions.
+
+```python
+from huggingface_hub import hf_hub_download, snapshot_download
+
+my_local_checkpoint_path = hf_hub_download(
+    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+    filename="sd_xl_base_1.0_0.9vae.safetensors"
+    local_dir="my_local_checkpoints",
+    local_dir_use_symlink=False
+)
+print("My local checkpoint: ", my_local_checkpoint_path)
+
+my_local_config_path = snapshot_download(
+    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+    local_dir="my_local_sdxl_config",
+    local_dir_use_symlink=False,
+    allowed_patterns=["*.json", "**/*.json"]
+)
+print("My local config: ", my_local_config_path)
+
+```
+
+Then pass the local paths to the `pretrained_model_link_or_path` and `config` arguments of the `from_single_file` method.
+
+```python
+pipe = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, config=my_local_config_path, local_files_only=True)
+
+```
+
+<Tip>
+Disabling symlinking means that the `huggingface_hub` caching mechanism has no way to determine whether a file has already been downloaded to the local directory. This means that the `hf_hub_download` and `snapshot_download` functions will download the file to the local directory every time they are called. If you are disabling symlinking, it recommended that you separate the download and loading steps to avoid downloading the same file multiple times.
+
+</Tip>
+
+## Using the original configuration file of a model
+
+If you would like to use the original configuration file of a model when loading a model from a single file, you can do so with the `original_config` argument.
+
+```python
+from diffusers import StableDiffusionXLPipeline
+
+ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
+repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
+original_config = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
+
+pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, original_config=original_config)
+```
+
+<Tip>
+As of `diffusers>=0.28.0` the `from_single_file` method will always attempt to fetch a [`model_index.json`](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/model_index.json) file for the pipeline from either the Hugging Face Hub or the local hub cache in order to determine the component objects to use with the pipeline.
+
+If the appropriate pipeline config is not present in the local cache and `local_files_only=True` is passed to the `from_single_file` method, `diffusers` will attempt to infer the components based on the type signatures of pipeline class. This is not as reliable as providing the correct config and might lead to errors when configuring the pipeline.
+
+</Tip>
+
 
 ## FromSingleFileMixin
 

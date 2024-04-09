@@ -14,7 +14,11 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from .utils import SDXLSingleFileTesterMixin, download_diffusers_config, download_single_file_checkpoint
+from .single_file_testing_utils import (
+    SDXLSingleFileTesterMixin,
+    download_diffusers_config,
+    download_single_file_checkpoint,
+)
 
 
 enable_full_determinism()

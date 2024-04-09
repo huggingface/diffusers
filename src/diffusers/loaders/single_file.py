@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import importlib
-import os
-from pathlib import Path
 
 import torch
-from huggingface_hub import hf_hub_download
+from huggingface_hub import _CACHED_NO_EXIST, hf_hub_download, try_to_load_from_cache
 from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
@@ -34,7 +32,7 @@ logger = logging.get_logger(__name__)
 
 if is_transformers_available():
     import transformers
-    from transformers import AutoImageProcessor, PreTrainedModel
+    from transformers import AutoImageProcessor, PreTrainedModel, PreTrainedTokenizer
 
 
 def load_single_file_sub_model(
@@ -76,9 +74,8 @@ def load_single_file_sub_model(
     if is_diffusers_single_file_model:
         load_method = getattr(class_obj, "from_single_file")
 
-        # We cannot provide two config types to the `from_single_file` method
-        # Here we have to ignore loading the config from `pretrained_model_name_or_path` if the `original_config`
-        # is provided
+        # We cannot provide two different config options to the `from_single_file` method
+        # Here we have to ignore loading the config from `pretrained_model_name_or_path` if `original_config` is provided
         if original_config:
             pretrained_model_name_or_path = None
 
@@ -88,6 +85,7 @@ def load_single_file_sub_model(
             config=pretrained_model_name_or_path,
             subfolder=name,
             torch_dtype=torch_dtype,
+            local_files_only=local_files_only,
             **kwargs,
         )
 
@@ -164,22 +162,39 @@ def _map_component_types_to_config_dict(component_types):
         transformers_version = "N/A"
 
     for component_name, component_value in component_types.items():
-        is_diffusers_model = issubclass(component_value, diffusers_module.ModelMixin)
-        is_scheduler = issubclass(component_value, diffusers_module.SchedulerMixin)
+        is_diffusers_model = issubclass(component_value[0], diffusers_module.ModelMixin)
+        is_scheduler_enum = component_value[0].__name__ == "KarrasDiffusionSchedulers"
+        is_scheduler = issubclass(component_value[0], diffusers_module.SchedulerMixin)
 
         is_transformers_model = (
             is_transformers_available()
-            and issubclass(component_value, PreTrainedModel)
+            and issubclass(component_value[0], PreTrainedModel)
+            and transformers_version >= version.parse("4.20.0")
+        )
+        is_transformers_tokenizer = (
+            is_transformers_available()
+            and issubclass(component_value[0], PreTrainedTokenizer)
             and transformers_version >= version.parse("4.20.0")
         )
 
         if is_diffusers_model:
             config_dict[component_name] = ["diffusers", component_value[0].__name__]
-        elif is_scheduler:
-            # Since we cannot fetch a scheduler config from the hub, we default to DDIMScheduler
-            config_dict[component_name] = ["diffusers", "DDIMScheduler"]
-        elif is_transformers_model:
-            config_dict[component_name] = ["transformers", component_value.__name__]
+
+        elif is_scheduler_enum or is_scheduler:
+            if is_scheduler_enum:
+                # Since we cannot fetch a scheduler config from the hub, we default to DDIMScheduler
+                # if the type hint is a KarrassDiffusionSchedulers enum
+                config_dict[component_name] = ["diffusers", "DDIMScheduler"]
+
+            elif is_scheduler:
+                config_dict[component_name] = ["diffusers", component_value[0].__name__]
+
+        elif is_transformers_model or is_transformers_tokenizer:
+            config_dict[component_name] = ["transformers", component_value[0].__name__]
+
+        elif is_transformers_model and component_value[0].__name__ == "StableDiffusionSafetyChecker":
+            config_dict[component_name] = ["stable_diffusion", component_value[0].__name__]
+
         else:
             config_dict[component_name] = [None, None]
 
@@ -335,8 +350,6 @@ class FromSingleFileMixin:
 
         if original_config is not None:
             original_config = fetch_original_config(original_config, local_files_only=local_files_only)
-        else:
-            original_config = None
 
         from ..pipelines.pipeline_utils import _get_pipeline_class
 
@@ -354,32 +367,50 @@ class FromSingleFileMixin:
             local_dir=local_dir,
         )
 
-        if original_config is not None and local_files_only:
-            # This is to preserve backwards compatibility
-
-            # If operating in a state where `local_files_only=True` and an original config file is provided
-            # we cannot fetch the model_index.json from the hub to create the Pipeline config dict
-            # In such a case we dynamically create the config dict based on the type hints of the components
-            config = fetch_diffusers_config(checkpoint)
-            default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
-
-            # We might want to deprecate this behavior as it is brittle and can lead to errors
-            component_types = pipeline_class._get_signature_types()
-            config_dict = _map_component_types_to_config_dict(component_types)
-            config_dict["_class_name"] = pipeline_class.__name__
-
-        elif config is not None:
-            default_pretrained_model_name_or_path = config
-            config_file = Path(os.path.join(default_pretrained_model_name_or_path, cls.config_name)).as_posix()
-            config_dict = pipeline_class._dict_from_json_file(config_file)
-
+        # Infer the model type based on the checkpoint in order to fetch the approriate pipeline components
+        if isinstance(config, str):
+            config = {"pretrained_model_name_or_path": config}
         else:
             config = fetch_diffusers_config(checkpoint)
-            default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
+
+        default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
+
+        if local_files_only:
+            # If operating in a case where `local_files_only=True`
+            # we first attempt to load the model_index.json file for the pipeline from the cache.
+            # If that fails, we dynamically create the config dict based on the type hints of the components
+            config_file = try_to_load_from_cache(
+                default_pretrained_model_name_or_path,
+                filename=cls.config_name,
+                cache_dir=cache_dir,
+            )
+            if config_file is _CACHED_NO_EXIST:
+                logger.warning(
+                    f"Unable to find the local config files for inferred model type: {default_pretrained_model_name_or_path}."
+                    " Attempting to create the pipeline based on inferred components."
+                    " This may lead to errors if the model components are not correctly inferred."
+                    " Please explicity pass the `config` argument to `from_single_file` with a path to a local diffusers model repo"
+                    " or run this pipeline with `local_files_only=False` first to download the appropriate config files from the Hub."
+                    " to avoid raising this warning."
+                )
+
+                # We might want to deprecate this behavior as it is brittle and can lead to errors
+                component_types = pipeline_class._get_signature_types()
+                expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
+                component_types = {
+                    k: v for k, v in component_types.items() if k not in pipeline_class._optional_components
+                }
+
+                config_dict = _map_component_types_to_config_dict(component_types)
+                config_dict["_class_name"] = pipeline_class.__name__
+
+            else:
+                config_dict = pipeline_class._dict_from_json_file(config_file)
+
+        else:
             config_file = hf_hub_download(
                 default_pretrained_model_name_or_path,
                 filename=cls.config_name,
-                local_files_only=local_files_only,
                 cache_dir=cache_dir,
                 revision=revision,
                 proxies=proxies,
@@ -433,6 +464,7 @@ class FromSingleFileMixin:
                     name=name,
                     torch_dtype=torch_dtype,
                     original_config=original_config,
+                    local_files_only=local_files_only,
                     **kwargs,
                 )
 

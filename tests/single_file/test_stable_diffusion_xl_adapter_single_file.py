@@ -16,7 +16,11 @@ from diffusers.utils.testing_utils import (
     slow,
 )
 
-from .utils import SDXLSingleFileTesterMixin, download_original_config, download_single_file_checkpoint
+from .single_file_testing_utils import (
+    SDXLSingleFileTesterMixin,
+    download_original_config,
+    download_single_file_checkpoint,
+)
 
 
 enable_full_determinism()
