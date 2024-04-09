@@ -54,7 +54,7 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 
 if is_wandb_available():
-    import wandb 
+    import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.28.0.dev0")
@@ -74,9 +74,9 @@ def log_validation(
     generator,
 ):
     logger.info(
-                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f" {args.validation_prompt}."
+    )
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
@@ -100,16 +100,14 @@ def log_validation(
                     generator=generator,
                 ).images[0]
             )
-        
+
     for tracker in accelerator.trackers:
         if tracker.name == "wandb":
             wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
             for edited_image in edited_images:
-                wandb_table.add_data(
-                    wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt 
-                )
+                wandb_table.add_data(wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt)
             tracker.log({"validation": wandb_table})
-    
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script for InstructPix2Pix.")
@@ -458,7 +456,6 @@ def main():
 
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
-    
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -981,7 +978,7 @@ def main():
                     variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
-                
+
                 log_validation(
                     pipeline,
                     args,
@@ -1020,7 +1017,6 @@ def main():
                 ignore_patterns=["step_*", "epoch_*"],
             )
 
-        
         if (args.val_image_url is not None) and (args.validation_prompt is not None):
             log_validation(
                 pipeline,
