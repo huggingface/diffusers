@@ -191,7 +191,7 @@ Special VAE used for training: {vae_path}.
         from_training=True,
         license="openrail++",
         base_model=base_model,
-        instance_prompt=prompt,
+        prompt=prompt,
         model_description=model_description,
         inference=True,
     )
