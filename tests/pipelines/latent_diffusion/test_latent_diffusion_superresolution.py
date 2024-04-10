@@ -124,7 +124,7 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
         )
         init_image = init_image.resize((64, 64), resample=PIL_INTERPOLATION["lanczos"])
 
-        ldm = LDMSuperResolutionPipeline.from_pretrained("duongna/ldm-super-resolution", device_map="auto")
+        ldm = LDMSuperResolutionPipeline.from_pretrained("duongna/ldm-super-resolution")
         ldm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)

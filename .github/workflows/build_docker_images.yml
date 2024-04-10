@@ -20,7 +20,7 @@ env:
 
 jobs:
   test-build-docker-images:
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
     if: github.event_name == 'pull_request'
     steps:
       - name: Set up Docker Buildx
@@ -50,7 +50,7 @@ jobs:
         if: steps.file_changes.outputs.all != ''
 
   build-and-push-docker-images:
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
     if: github.event_name != 'pull_request'
     
     permissions:
