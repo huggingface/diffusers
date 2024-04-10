@@ -23,7 +23,7 @@ faster because it only runs once during the diffusion process. The downside is t
 than ControlNet.
 
 This guide will show you how to use T2I-Adapter with different Stable Diffusion models and how you can compose multiple
-T2I-Adapters to impose more than one condition. 
+T2I-Adapters to impose more than one condition.
 
 > [!TIP]
 > There are several T2I-Adapters available for different conditions, such as color palette, depth, sketch, pose, and
@@ -33,7 +33,7 @@ Before you begin, make sure you have the following libraries installed.
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install -q diffusers accelerate controlnet_aux==0.0.7
+#!pip install -q diffusers accelerate controlnet-aux==0.0.7
 ```
 
 ## Text-to-image
@@ -43,14 +43,26 @@ accurate structural guidance. T2I-Adapter allows you to provide an additional co
 process. For example, you can provide a canny image (a white outline of an image on a black background) to guide the
 model to generate an image with a similar structure.
 
-Load a canny image or create one with the [opencv-library](https://github.com/opencv/opencv-python).
-
-```py
-
-```
-
 <hfoptions id="stablediffusion">
 <hfoption id="Stable Diffusion 1.5">
+
+Create a canny image with the [opencv-library](https://github.com/opencv/opencv-python).
+
+```py
+import cv2
+import numpy as np
+from PIL import Image
+from diffusers.utils import load_image
+
+image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png")
+image = np.array(image)
+
+low_threshold = 100
+high_threshold = 200
+
+image = cv2.Canny(image, low_threshold, high_threshold)
+image = Image.fromarray(image)
+```
 
 Now load a T2I-Adapter conditioned on [canny images](https://hf.co/TencentARC/t2iadapter_canny_sd15v2) and pass it to
 the [`StableDiffusionAdapterPipeline`].
@@ -74,15 +86,31 @@ Finally, pass your prompt and control image to the pipeline.
 generator = torch.Generator("cuda").manual_seed(0)
 
 image = pipeline(
-    prompt="",
+    prompt="cinematic photo of a plush and soft midcentury style rug on a wooden floor, 35mm photograph, film, professional, 4k, highly detailed",
     image=image,
     generator=generator,
 ).images[0]
 image
 ```
 
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/t2i-sd1.5.png"/>
+</div>
+
 </hfoption>
 <hfoption id="Stable Diffusion XL">
+
+Create a canny image with the [controlnet-aux](https://github.com/huggingface/controlnet_aux) library.
+
+```py
+from controlnet_aux.canny import CannyDetector
+from diffusers.utils import load_image
+
+canny_detector = CannyDetector()
+
+image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png")
+image = canny_detector(image, detect_resolution=384, image_resolution=1024)
+```
 
 Now load a T2I-Adapter conditioned on [canny images](https://hf.co/TencentARC/t2i-adapter-canny-sdxl-1.0) and pass it
 to the [`StableDiffusionXLAdapterPipeline`].
@@ -108,15 +136,19 @@ pipeline.to("cuda")
 Finally, pass your prompt and control image to the pipeline.
 
 ```py
-prompt = ""
+generator = torch.Generator("cuda").manual_seed(0)
 
 image = pipeline(
-  prompt=prompt,
+  prompt="cinematic photo of a plush and soft midcentury style rug on a wooden floor, 35mm photograph, film, professional, 4k, highly detailed",
   image=image,
-  adapter_conditioning_scale=0.6, 
+  generator=generator,
 ).images[0]
 image
 ```
+
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/t2i-sdxl.png"/>
+</div>
 
 </hfoption>
 </hfoptions>
@@ -127,42 +159,28 @@ T2I-Adapters are also composable, allowing you to use more than one adapter to i
 image. For example, you can use a pose map to provide structural control and a depth map for depth control. This is
 enabled by the [`MultiAdapter`] class.
 
-Let's condition a text-to-image model with a pose and depth adapter. Create a depth and pose image and put them in a list.
+Let's condition a text-to-image model with a pose and depth adapter. Create and place your depth and pose image and in a list.
 
 ```py
 from diffusers.utils import load_image
-from controlnet_aux.midas import MidasDetector, OpenposeDetector
 
-# depth image
-midas_depth = MidasDetector.from_pretrained(
-  "valhalla/t2iadapter-aux-models", filename="dpt_large_384.pt", model_type="dpt_large"
-).to("cuda")
-
-url = ""
-image = load_image(url)
-depth_image = midas_depth(
-  image, detect_resolution=512, image_resolution=1024
+pose_image = load_image(
+    "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/keypose_sample_input.png"
 )
-
-# pose image
-open_pose = OpenposeDetector.from_pretrained("lllyasviel/Annotators")
-url = ""
-image = load_image(url)
-image = open_pose(image, detect_resolution=512, image_resolution=1024)
-image = np.array(image)[:, :, ::-1]           
-pose_image = Image.fromarray(np.uint8(image))
-
-cond = [depth_image, pose_image]
-prompt = [""]
+depth_image = load_image(
+    "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/depth_sample_input.png"
+)
+cond = [pose_image, depth_image]
+prompt = ["Santa Claus walking into an office room with a beautiful city view"]
 ```
 
 <div class="flex gap-4">
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/depth_sample_input.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">depth image</figcaption>
   </div>
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/keypose_sample_input.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">pose image</figcaption>
   </div>
 </div>
@@ -171,36 +189,31 @@ Load the corresponding pose and depth adapters as a list in the [`MultiAdapter`]
 
 ```py
 import torch
-from diffusers import StableDiffusionAdapterXLPipeline, MultiAdapter, T2IAdapter, EulerAncestralDiscreteScheduler, AutoencoderKL
+from diffusers import StableDiffusionAdapterPipeline, MultiAdapter, T2IAdapter
 
 adapters = MultiAdapter(
     [
-        T2IAdapter.from_pretrained("TencentARC/t2i-adapter-openpose-sdxl-1.0"),
-        T2IAdapter.from_pretrained("TencentARC/t2i-adapter-depth-midas-sdxl-1.0"),
+        T2IAdapter.from_pretrained("TencentARC/t2iadapter_keypose_sd14v1"),
+        T2IAdapter.from_pretrained("TencentARC/t2iadapter_depth_sd14v1"),
     ]
 )
 adapters = adapters.to(torch.float16)
 ```
 
-Finally, load a [`StableDiffusionXLAdapterPipeline`] with the adapters, and pass your prompt and conditioned images to
+Finally, load a [`StableDiffusionAdapterPipeline`] with the adapters, and pass your prompt and conditioned images to
 it. Use the [`adapter_conditioning_scale`] to adjust the weight of each adapter on the image.
 
 ```py
-scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-pipeline = StableDiffusionAdapterXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0",
-    vae=vae,
-    scheduler=scheduler,
-    adapter=adapters,
+pipeline = StableDiffusionAdapterPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
     torch_dtype=torch.float16,
-    varinat="fp16",
+    adapter=adapters,
 ).to("cuda")
 
-image = pipeline(prompt, cond, adapter_conditioning_scale=[0.8, 0.8]).images[0]
+image = pipeline(prompt, cond, adapter_conditioning_scale=[0.7, 0.7]).images[0]
 image
 ```
 
 <div class="flex justify-center">
-  <img class="rounded-xl" src=""/>
+  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/t2i-multi.png"/>
 </div>
