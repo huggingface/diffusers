@@ -27,7 +27,21 @@ def download_original_config(config_url, tmpdir):
 
 
 def download_diffusers_config(repo_id, tmpdir):
-    path = snapshot_download(repo_id, allow_patterns=["**/*.json", "*.json"], local_dir=tmpdir)
+    path = snapshot_download(
+        repo_id,
+        ignore_patterns=[
+            "**/*.ckpt",
+            "*.ckpt",
+            "**/*.bin",
+            "*.bin",
+            "**/*.pt",
+            "*.pt",
+            "**/*.safetensors",
+            "*.safetensors",
+        ],
+        allow_patterns=["**/*.json", "*.json", "*.txt", "**/*.txt"],
+        local_dir=tmpdir,
+    )
     return path
 
 
@@ -48,15 +62,17 @@ class SDSingleFileTesterMixin:
             if component_name in ["text_encoder", "tokenizer", "safety_checker", "feature_extractor"]:
                 continue
 
-            assert component_name in pipe.components
-            assert isinstance(component, pipe.components[component_name].__class__)
+            assert component_name in pipe.components, f"single file {component_name} not found in pretrained pipeline"
+            assert isinstance(
+                component, pipe.components[component_name].__class__
+            ), f"single file {component.__class__.__name__} and pretrained {pipe.components[component_name].__class__.__name__} are not the same"
 
             for param_name, param_value in component.config.items():
                 if param_name in PARAMS_TO_IGNORE:
                     continue
                 assert (
                     pipe.components[component_name].config[param_name] == param_value
-                ), f"{param_name} differs between single file loading and pretrained loading"
+                ), f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
 
     def test_single_file_components(self, pipe=None, single_file_pipe=None, safety_checker=True):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(self.ckpt_path)

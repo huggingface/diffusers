@@ -15,7 +15,7 @@ import importlib
 import os
 
 import torch
-from huggingface_hub import _CACHED_NO_EXIST, hf_hub_download, try_to_load_from_cache
+from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
@@ -47,6 +47,7 @@ def load_single_file_sub_model(
     original_config=None,
     local_files_only=False,
     torch_dtype=None,
+    use_safetensors=True,
     **kwargs,
 ):
     if is_pipeline_module:
@@ -127,9 +128,10 @@ def load_single_file_sub_model(
 
         load_method = getattr(class_obj, "from_pretrained")
         loaded_sub_model = load_method(
-            pretrained_model_name_or_path,
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
             subfolder=name,
             local_files_only=local_files_only,
+            use_safetensors=use_safetensors,
             **loading_kwargs,
         )
 
@@ -331,6 +333,7 @@ class FromSingleFileMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         local_dir = kwargs.pop("local_dir", None)
+        use_safetensors = kwargs.pop("local_dir", True)
 
         if config is not None and original_config is not None:
             raise ValueError("Only one of `config` and `original_config_file` can be provided.")
@@ -368,6 +371,11 @@ class FromSingleFileMixin:
             local_dir=local_dir,
         )
 
+        # Always infer and fetch the default diffusers pretrained_model config from the checkpoint
+        # although it might not be used to configure the pipeline
+        config = {"pretrained_model_name_or_path": config} if config else fetch_diffusers_config(checkpoint)
+        default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
+
         if original_config and local_files_only:
             logger.warning(
                 " Attempting to create the pipeline based on inferred components."
@@ -386,50 +394,31 @@ class FromSingleFileMixin:
             config_dict = _map_component_types_to_config_dict(component_types)
             config_dict["_class_name"] = pipeline_class.__name__
 
-        elif config and local_files_only:
-            # Default pipeline path is always inferred from the checkpoint, but might not be used to configure the pipeline
-            default_pretrained_model_name_or_path = config
-
+        else:
             if not os.path.isdir(default_pretrained_model_name_or_path):
+                # Provided config is a repo_id
                 if default_pretrained_model_name_or_path.count("/") > 1:
                     raise ValueError(
                         f'The provided pretrained_model_name_or_path "{default_pretrained_model_name_or_path}"'
                         " is neither a valid local path nor a valid repo id. Please check the parameter."
                     )
-                config_file = try_to_load_from_cache(
+                config_file = hf_hub_download(
                     default_pretrained_model_name_or_path,
                     filename=cls.config_name,
                     cache_dir=cache_dir,
+                    revision=revision,
+                    proxies=proxies,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    local_files_only=local_files_only,
+                    token=token,
                 )
 
-                if config_file is _CACHED_NO_EXIST:
-                    logger.warning(
-                        (
-                            f"Unable to find local config files for model type: {default_pretrained_model_name_or_path}."
-                            " "
-                        )
-                    )
+                config_dict = pipeline_class._dict_from_json_file(config_file)
 
-                else:
-                    config_dict = pipeline_class._dict_from_json_file(config_file)
             else:
+                # Provide config is a path to a local directory attempt to load directly.
                 config_dict = pipeline_class.load_config(default_pretrained_model_name_or_path)
-
-        else:
-            config = fetch_diffusers_config(checkpoint)
-            default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
-
-            config_file = hf_hub_download(
-                default_pretrained_model_name_or_path,
-                filename=cls.config_name,
-                cache_dir=cache_dir,
-                revision=revision,
-                proxies=proxies,
-                force_download=force_download,
-                resume_download=resume_download,
-                token=token,
-            )
-            config_dict = pipeline_class._dict_from_json_file(config_file)
 
         #   pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
@@ -476,6 +465,7 @@ class FromSingleFileMixin:
                     torch_dtype=torch_dtype,
                     original_config=original_config,
                     local_files_only=local_files_only,
+                    use_safetensors=use_safetensors,
                     **kwargs,
                 )
 

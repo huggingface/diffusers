@@ -11,7 +11,6 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
-    torch_device,
 )
 
 from .single_file_testing_utils import (
@@ -72,10 +71,10 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         pipe_sf.unet.set_default_attn_processor()
         pipe_sf.enable_model_cpu_offload()
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         output = pipe(**inputs).images[0]
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         output_sf = pipe_sf(**inputs).images[0]
 
         max_diff = numpy_cosine_similarity_distance(output_sf.flatten(), output.flatten())
@@ -134,6 +133,8 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
             pipe_single_file = self.pipeline_class.from_single_file(
                 local_ckpt_path, original_config=local_original_config, controlnet=controlnet, local_files_only=True
             )
+            pipe_single_file.scheduler = pipe.scheduler
+
         super()._compare_component_configs(pipe, pipe_single_file)
 
     def test_single_file_components_with_diffusers_config(self):
@@ -160,6 +161,10 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
-                local_ckpt_path, config=local_diffusers_config, controlnet=controlnet, local_files_only=True
+                local_ckpt_path,
+                config=local_diffusers_config,
+                safety_checker=None,
+                controlnet=controlnet,
+                local_files_only=True,
             )
         super()._compare_component_configs(pipe, pipe_single_file, safety_checker=False)
