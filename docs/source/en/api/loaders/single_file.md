@@ -150,7 +150,7 @@ my_local_checkpoint_path = hf_hub_download(
 
 my_local_config_path = snapshot_download(
     repo_id="stabilityai/stable-diffusion-xl-base-1.0",
-    allowed_patterns=["*.json", "**/*.json"]
+    allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
 )
 
 pipe = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, config=my_local_config_path, local_files_only=True)
@@ -170,7 +170,7 @@ my_local_checkpoint_path = hf_hub_download(
 
 my_local_config_path = snapshot_download(
     repo_id="stabilityai/stable-diffusion-xl-base-1.0",
-    allowed_patterns=["*.json", "**/*.json"],
+    allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
     local_dir="my_local_config"
 )
 
@@ -197,7 +197,7 @@ my_local_config_path = snapshot_download(
     repo_id="stabilityai/stable-diffusion-xl-base-1.0",
     local_dir="my_local_sdxl_config",
     local_dir_use_symlinks=False,
-    allowed_patterns=["*.json", "**/*.json"]
+    allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
 )
 print("My local config: ", my_local_config_path)
 
