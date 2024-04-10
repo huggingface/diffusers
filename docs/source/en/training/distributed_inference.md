@@ -66,7 +66,7 @@ For example, if you have two 8GB GPUs, then using [`~DiffusionPipeline.enable_mo
 
 To make use of both GPUs, you can use the "balanced" device placement strategy which splits the models across all available GPUs.
 
-> [!TIP]
+> [!WARNING]
 > Only the "balanced" strategy is supported at the moment, and we plan to support additional mapping strategies in the future.
 
 ```diff
@@ -80,9 +80,6 @@ pipeline = DiffusionPipeline.from_pretrained(
 image = pipeline("a dog").images[0]
 image
 ```
-
-> [!WARNING]  
-> Currently, we support only "balanced" `device_map`. We plan to support more device mapping strategies in future.
 
 You can also pass a dictionary to enforce the maximum GPU memory that can be used on each device:
 
