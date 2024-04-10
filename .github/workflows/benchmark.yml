@@ -31,7 +31,6 @@ jobs:
           nvidia-smi
       - name: Install dependencies
         run: |
-          apt-get update && apt-get install libsndfile1-dev libgl1 -y
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install pandas peft
