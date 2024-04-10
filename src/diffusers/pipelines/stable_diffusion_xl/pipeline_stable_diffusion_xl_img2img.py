@@ -664,7 +664,7 @@ class StableDiffusionXLImg2ImgPipeline(
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
-        
+
         latents_mean = latents_std = None
         if hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None:
             latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1)
@@ -708,7 +708,7 @@ class StableDiffusionXLImg2ImgPipeline(
                 self.vae.to(dtype)
 
             init_latents = init_latents.to(dtype)
-            if  latents_mean is not None and latents_std is not None:
+            if latents_mean is not None and latents_std is not None:
                 latents_mean = latents_mean.to(device=self.device, dtype=dtype)
                 latents_std = latents_std.to(device=self.device, dtype=dtype)
                 init_latents = (init_latents - latents_mean) * self.vae.config.scaling_factor / latents_std
