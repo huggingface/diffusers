@@ -402,7 +402,19 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 1. Input
         if self.is_input_continuous:
-            batch_size, _, height, width = hidden_states.shape
+        batch_size, _, height, width = hidden_states.shape
+
+        if self.is_input_continuous:
+            residual = hidden_states
+            hidden_states, inner_dim = self._operate_on_continuous_inputs(hidden_states)
+        elif self.is_input_vectorized:
+            hidden_states = self.latent_image_embedding(hidden_states)
+        elif self.is_input_patches:
+            height, width = height // self.patch_size, width // self.patch_size
+            hidden_states, encoder_hidden_states, timestep, embedded_timestep = self._operate_on_patched_inputs(
+                hidden_states, encoder_hidden_states, timestep, added_cond_kwargs
+            )
+
             residual = hidden_states
             hidden_states, inner_dim = self._operate_on_continuous_inputs(hidden_states)
         elif self.is_input_vectorized:
