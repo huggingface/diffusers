@@ -189,14 +189,14 @@ my_local_checkpoint_path = hf_hub_download(
     repo_id="stabilityai/stable-diffusion-xl-base-1.0",
     filename="sd_xl_base_1.0_0.9vae.safetensors"
     local_dir="my_local_checkpoints",
-    local_dir_use_symlink=False
+    local_dir_use_symlinks=False
 )
 print("My local checkpoint: ", my_local_checkpoint_path)
 
 my_local_config_path = snapshot_download(
     repo_id="stabilityai/stable-diffusion-xl-base-1.0",
     local_dir="my_local_sdxl_config",
-    local_dir_use_symlink=False,
+    local_dir_use_symlinks=False,
     allowed_patterns=["*.json", "**/*.json"]
 )
 print("My local config: ", my_local_config_path)
