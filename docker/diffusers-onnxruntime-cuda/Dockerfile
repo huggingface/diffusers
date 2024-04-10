@@ -12,6 +12,7 @@ RUN apt update && \
                    curl \
                    ca-certificates \
                    libsndfile1-dev \
+                   libgl1 \
                    python3.8 \
                    python3-pip \
                    python3.8-venv && \
