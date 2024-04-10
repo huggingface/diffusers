@@ -50,9 +50,11 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
+    require_accelerate_version_greater,
     require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
+    require_torch_multi_gpu,
     run_test_in_subprocess,
     skip_mps,
     slow,
@@ -1442,3 +1444,121 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         )
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
+
+
+# (sayakpaul): This test suite was run in the DGX with two GPUs (1, 2).
+@slow
+@require_torch_multi_gpu
+@require_accelerate_version_greater("0.27.0")
+class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, generator_device="cpu", seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        inputs = {
+            "prompt": "a photograph of an astronaut riding a horse",
+            "generator": generator,
+            "num_inference_steps": 50,
+            "guidance_scale": 7.5,
+            "output_type": "np",
+        }
+        return inputs
+
+    def get_pipeline_output_without_device_map(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ).to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=True)
+        inputs = self.get_inputs()
+        no_device_map_image = sd_pipe(**inputs).images
+
+        del sd_pipe
+
+        return no_device_map_image
+
+    def test_forward_pass_balanced_device_map(self):
+        no_device_map_image = self.get_pipeline_output_without_device_map()
+
+        sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", device_map="balanced", torch_dtype=torch.float16
+        )
+        sd_pipe_with_device_map.set_progress_bar_config(disable=True)
+        inputs = self.get_inputs()
+        device_map_image = sd_pipe_with_device_map(**inputs).images
+
+        max_diff = np.abs(device_map_image - no_device_map_image).max()
+        assert max_diff < 1e-3
+
+    def test_components_put_in_right_devices(self):
+        sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", device_map="balanced", torch_dtype=torch.float16
+        )
+
+        assert len(set(sd_pipe_with_device_map.hf_device_map.values())) >= 2
+
+    def test_max_memory(self):
+        no_device_map_image = self.get_pipeline_output_without_device_map()
+
+        sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5",
+            device_map="balanced",
+            max_memory={0: "1GB", 1: "1GB"},
+            torch_dtype=torch.float16,
+        )
+        sd_pipe_with_device_map.set_progress_bar_config(disable=True)
+        inputs = self.get_inputs()
+        device_map_image = sd_pipe_with_device_map(**inputs).images
+
+        max_diff = np.abs(device_map_image - no_device_map_image).max()
+        assert max_diff < 1e-3
+
+    def test_reset_device_map(self):
+        sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", device_map="balanced", torch_dtype=torch.float16
+        )
+        sd_pipe_with_device_map.reset_device_map()
+
+        assert sd_pipe_with_device_map.hf_device_map is None
+
+        for name, component in sd_pipe_with_device_map.components.items():
+            if isinstance(component, torch.nn.Module):
+                assert component.device.type == "cpu"
+
+    def test_reset_device_map_to(self):
+        sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", device_map="balanced", torch_dtype=torch.float16
+        )
+        sd_pipe_with_device_map.reset_device_map()
+
+        assert sd_pipe_with_device_map.hf_device_map is None
+
+        # Make sure `to()` can be used and the pipeline can be called.
+        pipe = sd_pipe_with_device_map.to("cuda")
+        _ = pipe("hello", num_inference_steps=2)
+
+    def test_reset_device_map_enable_model_cpu_offload(self):
+        sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", device_map="balanced", torch_dtype=torch.float16
+        )
+        sd_pipe_with_device_map.reset_device_map()
+
+        assert sd_pipe_with_device_map.hf_device_map is None
+
+        # Make sure `enable_model_cpu_offload()` can be used and the pipeline can be called.
+        sd_pipe_with_device_map.enable_model_cpu_offload()
+        _ = sd_pipe_with_device_map("hello", num_inference_steps=2)
+
+    def test_reset_device_map_enable_sequential_cpu_offload(self):
+        sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", device_map="balanced", torch_dtype=torch.float16
+        )
+        sd_pipe_with_device_map.reset_device_map()
+
+        assert sd_pipe_with_device_map.hf_device_map is None
+
+        # Make sure `enable_sequential_cpu_offload()` can be used and the pipeline can be called.
+        sd_pipe_with_device_map.enable_sequential_cpu_offload()
+        _ = sd_pipe_with_device_map("hello", num_inference_steps=2)
