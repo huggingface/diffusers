@@ -27,6 +27,8 @@ from transformers import (
     T5EncoderModel,
     T5Tokenizer,
     T5TokenizerFast,
+    VitsModel,
+    VitsTokenizer,
 )
 
 from ...models import AutoencoderKL
@@ -79,6 +81,37 @@ EXAMPLE_DOC_STRING = """
         >>> # save the best audio sample (index 0) as a .wav file
         >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio[0])
         ```
+        ```
+        #Using AudioLDM2 for Text To Speech
+        >>> import scipy
+        >>> import torch
+        >>> from diffusers import AudioLDM2Pipeline
+
+        >>> repo_id = "anhnct/audioldm2_gigaspeech"
+        >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
+
+        >>> # define the prompts
+        >>> prompt = "A female reporter is speaking"
+        >>> transcript = "wish you have a good day"
+
+        >>> # set the seed for generator
+        >>> generator = torch.Generator("cuda").manual_seed(0)
+
+        >>> # run the generation
+        >>> audio = pipe(
+        ...     prompt,
+        ...     transcription=transcript,
+        ...     num_inference_steps=200,
+        ...     audio_length_in_s=10.0,
+        ...     num_waveforms_per_prompt=2,
+        ...     generator=generator,
+        ...     max_new_tokens=512,          #Must set max_new_tokens equa to 512 for TTS
+        ... ).audios
+
+        >>> # save the best audio sample (index 0) as a .wav file
+        >>> scipy.io.wavfile.write("tts.wav", rate=16000, data=audio[0])
+        ```
 """
 
 
@@ -116,20 +149,23 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             specifically the [laion/clap-htsat-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant. The
             text branch is used to encode the text prompt to a prompt embedding. The full audio-text model is used to
             rank generated waveforms against the text prompt by computing similarity scores.
-        text_encoder_2 ([`~transformers.T5EncoderModel`]):
+        text_encoder_2 ([`~transformers.T5EncoderModel`, `~transformers.VitsModel`]):
             Second frozen text-encoder. AudioLDM2 uses the encoder of
             [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
-            [google/flan-t5-large](https://huggingface.co/google/flan-t5-large) variant.
+            [google/flan-t5-large](https://huggingface.co/google/flan-t5-large) variant. Second frozen text-encoder use
+            for TTS. AudioLDM2 uses the encoder of
+            [Vits](https://huggingface.co/docs/transformers/model_doc/vits#transformers.VitsModel).
         projection_model ([`AudioLDM2ProjectionModel`]):
             A trained model used to linearly project the hidden-states from the first and second text encoder models
             and insert learned SOS and EOS token embeddings. The projected hidden-states from the two text encoders are
-            concatenated to give the input to the language model.
+            concatenated to give the input to the language model. A Learned Position Embedding for the Vits
+            hidden-states
         language_model ([`~transformers.GPT2Model`]):
             An auto-regressive language model used to generate a sequence of hidden-states conditioned on the projected
             outputs from the two text encoders.
         tokenizer ([`~transformers.RobertaTokenizer`]):
             Tokenizer to tokenize text for the first frozen text-encoder.
-        tokenizer_2 ([`~transformers.T5Tokenizer`]):
+        tokenizer_2 ([`~transformers.T5Tokenizer`, `~transformers.VitsTokenizer`]):
             Tokenizer to tokenize text for the second frozen text-encoder.
         feature_extractor ([`~transformers.ClapFeatureExtractor`]):
             Feature extractor to pre-process generated audio waveforms to log-mel spectrograms for automatic scoring.
@@ -146,11 +182,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         self,
         vae: AutoencoderKL,
         text_encoder: ClapModel,
-        text_encoder_2: T5EncoderModel,
+        text_encoder_2: Union[T5EncoderModel, VitsModel],
         projection_model: AudioLDM2ProjectionModel,
         language_model: GPT2Model,
         tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
-        tokenizer_2: Union[T5Tokenizer, T5TokenizerFast],
+        tokenizer_2: Union[T5Tokenizer, T5TokenizerFast, VitsTokenizer],
         feature_extractor: ClapFeatureExtractor,
         unet: AudioLDM2UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
@@ -273,6 +309,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         device,
         num_waveforms_per_prompt,
         do_classifier_free_guidance,
+        transcription=None,
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -288,6 +325,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
+            transcription (`str` or `List[str]`):
+                transcription of text to speech
             device (`torch.device`):
                 torch device
             num_waveforms_per_prompt (`int`):
@@ -368,16 +407,26 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         # Define tokenizers and text encoders
         tokenizers = [self.tokenizer, self.tokenizer_2]
-        text_encoders = [self.text_encoder, self.text_encoder_2]
+        is_vits_text_encoder = isinstance(self.text_encoder_2, VitsModel)
+
+        if is_vits_text_encoder:
+            text_encoders = [self.text_encoder, self.text_encoder_2.text_encoder]
+        else:
+            text_encoders = [self.text_encoder, self.text_encoder_2]
 
         if prompt_embeds is None:
             prompt_embeds_list = []
             attention_mask_list = []
 
             for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                use_prompt = isinstance(
+                    tokenizer, (RobertaTokenizer, RobertaTokenizerFast, T5Tokenizer, T5TokenizerFast)
+                )
                 text_inputs = tokenizer(
-                    prompt,
-                    padding="max_length" if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast)) else True,
+                    prompt if use_prompt else transcription,
+                    padding="max_length"
+                    if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast, VitsTokenizer))
+                    else True,
                     max_length=tokenizer.model_max_length,
                     truncation=True,
                     return_tensors="pt",
@@ -407,6 +456,18 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     prompt_embeds = prompt_embeds[:, None, :]
                     # make sure that we attend to this single hidden-state
                     attention_mask = attention_mask.new_ones((batch_size, 1))
+                elif is_vits_text_encoder:
+                    # Add end_token_id and attention mask in the end of sequence phonemes
+                    for text_input_id, text_attention_mask in zip(text_input_ids, attention_mask):
+                        for idx, phoneme_id in enumerate(text_input_id):
+                            if phoneme_id == 0:
+                                text_input_id[idx] = 182
+                                text_attention_mask[idx] = 1
+                                break
+                    prompt_embeds = text_encoder(
+                        text_input_ids, attention_mask=attention_mask, padding_mask=attention_mask.unsqueeze(-1)
+                    )
+                    prompt_embeds = prompt_embeds[0]
                 else:
                     prompt_embeds = text_encoder(
                         text_input_ids,
@@ -485,7 +546,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     uncond_tokens,
                     padding="max_length",
                     max_length=tokenizer.model_max_length
-                    if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast))
+                    if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast, VitsTokenizer))
                     else max_length,
                     truncation=True,
                     return_tensors="pt",
@@ -503,6 +564,15 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     negative_prompt_embeds = negative_prompt_embeds[:, None, :]
                     # make sure that we attend to this single hidden-state
                     negative_attention_mask = negative_attention_mask.new_ones((batch_size, 1))
+                elif is_vits_text_encoder:
+                    negative_prompt_embeds = torch.zeros(
+                        batch_size,
+                        tokenizer.model_max_length,
+                        text_encoder.config.hidden_size,
+                    ).to(dtype=self.text_encoder_2.dtype, device=device)
+                    negative_attention_mask = torch.zeros(batch_size, tokenizer.model_max_length).to(
+                        dtype=self.text_encoder_2.dtype, device=device
+                    )
                 else:
                     negative_prompt_embeds = text_encoder(
                         uncond_input_ids,
@@ -623,6 +693,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         audio_length_in_s,
         vocoder_upsample_factor,
         callback_steps,
+        transcription=None,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -690,6 +761,14 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     f"`attention_mask: {attention_mask.shape} != `prompt_embeds` {prompt_embeds.shape}"
                 )
 
+        if transcription is None:
+            if self.text_encoder_2.config.model_type == "vits":
+                raise ValueError("Cannot forward without transcription. Please make sure to" " have transcription")
+        elif transcription is not None and (
+            not isinstance(transcription, str) and not isinstance(transcription, list)
+        ):
+            raise ValueError(f"`transcription` has to be of type `str` or `list` but is {type(transcription)}")
+
         if generated_prompt_embeds is not None and negative_generated_prompt_embeds is not None:
             if generated_prompt_embeds.shape != negative_generated_prompt_embeds.shape:
                 raise ValueError(
@@ -734,6 +813,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
+        transcription: Union[str, List[str]] = None,
         audio_length_in_s: Optional[float] = None,
         num_inference_steps: int = 200,
         guidance_scale: float = 3.5,
@@ -761,6 +841,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide audio generation. If not defined, you need to pass `prompt_embeds`.
+            transcription (`str` or `List[str]`, *optional*):\
+                The transcript for text to speech.
             audio_length_in_s (`int`, *optional*, defaults to 10.24):
                 The length of the generated audio sample in seconds.
             num_inference_steps (`int`, *optional*, defaults to 200):
@@ -857,6 +939,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             audio_length_in_s,
             vocoder_upsample_factor,
             callback_steps,
+            transcription,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
@@ -886,6 +969,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             device,
             num_waveforms_per_prompt,
             do_classifier_free_guidance,
+            transcription,
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
