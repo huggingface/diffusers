@@ -25,9 +25,7 @@ enable_full_determinism()
 class StableDiffusionUpscalePipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionUpscalePipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/x4-upscaler-ema.safetensors"
-    original_config = (
-        "https://raw.githubusercontent.com/stabilityai/stable-diffusion/main/configs/stable-diffusion/x4-upscaler.yaml"
-    )
+    original_config = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/x4-upscaling.yaml"
     repo_id = "stabilityai/stable-diffusion-x4-upscaler"
 
     def setUp(self):

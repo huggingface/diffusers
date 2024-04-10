@@ -24,7 +24,9 @@ class StableDiffusionXLPipelineSingleFileSlowTests(unittest.TestCase, SDXLSingle
     pipeline_class = StableDiffusionXLPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
-    original_config = "https://github.com/Stability-AI/generative-models/blob/main/configs/inference/sd_xl_base.yaml"
+    original_config = (
+        "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
+    )
 
     def setUp(self):
         super().setUp()

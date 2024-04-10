@@ -30,7 +30,9 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
     pipeline_class = StableDiffusionXLControlNetPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
-    original_config = "https://github.com/Stability-AI/generative-models/blob/main/configs/inference/sd_xl_base.yaml"
+    original_config = (
+        "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
+    )
 
     def setUp(self):
         super().setUp()
@@ -96,7 +98,7 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
         )
 
         pipe_single_file = self.pipeline_class.from_single_file(self.ckpt_path, controlnet=controlnet)
-        super().test_single_file_components(pipe, pipe_single_file, safety_checker=False)
+        super().test_single_file_components(pipe, pipe_single_file)
 
     def test_single_file_components_local_files_only(self):
         controlnet = ControlNetModel.from_pretrained(
@@ -114,10 +116,10 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
             local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
 
             single_file_pipe = self.pipeline_class.from_single_file(
-                local_ckpt_path, controlnet=controlnet, local_files_only=True
+                local_ckpt_path, controlnet=controlnet, safety_checker=None, local_files_only=True
             )
 
-        self._compare_component_configs(pipe, single_file_pipe, safety_checker=False)
+        self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_components_with_original_config(self):
         controlnet = ControlNetModel.from_pretrained(
@@ -133,7 +135,7 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
         pipe_single_file = self.pipeline_class.from_single_file(
             self.ckpt_path, original_config=self.original_config, controlnet=controlnet
         )
-        self._compare_component_configs(pipe, pipe_single_file, safety_checker=False)
+        self._compare_component_configs(pipe, pipe_single_file)
 
     def test_single_file_components_with_original_config_local_files_only(self):
         controlnet = ControlNetModel.from_pretrained(
@@ -151,9 +153,9 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
             local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
-                local_ckpt_path, controlnet=controlnet, local_files_only=True
+                local_ckpt_path, safety_checker=None, controlnet=controlnet, local_files_only=True
             )
-        self._compare_component_configs(pipe, pipe_single_file, safety_checker=False)
+        self._compare_component_configs(pipe, pipe_single_file)
 
     def test_single_file_components_with_diffusers_config(self):
         controlnet = ControlNetModel.from_pretrained(
@@ -161,7 +163,7 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
         )
         pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
         pipe_single_file = self.pipeline_class.from_single_file(
-            self.ckpt_path, controlnet=controlnet, original_config=self.original_config
+            self.ckpt_path, controlnet=controlnet, config=self.repo_id
         )
 
         super()._compare_component_configs(pipe, pipe_single_file)
@@ -181,6 +183,10 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
-                local_ckpt_path, config=local_diffusers_config, controlnet=controlnet, local_files_only=True
+                local_ckpt_path,
+                config=local_diffusers_config,
+                safety_checker=None,
+                controlnet=controlnet,
+                local_files_only=True,
             )
         super()._compare_component_configs(pipe, pipe_single_file)

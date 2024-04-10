@@ -47,7 +47,7 @@ def load_single_file_sub_model(
     original_config=None,
     local_files_only=False,
     torch_dtype=None,
-    use_safetensors=True,
+    use_safetensors=None,
     **kwargs,
 ):
     if is_pipeline_module:
@@ -333,7 +333,7 @@ class FromSingleFileMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         local_dir = kwargs.pop("local_dir", None)
-        use_safetensors = kwargs.pop("local_dir", True)
+        use_safetensors = kwargs.pop("use_safetensors", None)
 
         if config is not None and original_config is not None:
             raise ValueError("Only one of `config` and `original_config_file` can be provided.")

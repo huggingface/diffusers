@@ -67,7 +67,7 @@ class StableDiffusionXLImg2ImgRefinerPipelineSingleFileSlowTests(unittest.TestCa
     )
     repo_id = "stabilityai/stable-diffusion-xl-refiner-1.0"
     original_config = (
-        "https://github.com/Stability-AI/generative-models/blob/main/configs/inference/sd_xl_refiner.yaml"
+        "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml"
     )
 
     def test_single_file_format_inference_is_same_as_pretrained(self):
@@ -99,17 +99,3 @@ class StableDiffusionXLImg2ImgRefinerPipelineSingleFileSlowTests(unittest.TestCa
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
         assert max_diff < 5e-4
-
-    def test_single_file_components(self):
-        super().test_single_file_components(safety_checker=False, text_encoder=False)
-
-    def test_single_file_components_local_files_only(self):
-        super().test_single_file_components_local_files_only(safety_checker=False, text_encoder=False)
-
-    def test_single_file_components_with_original_config(self):
-        super().test_single_file_components(safety_checker=False, text_encoder=False)
-
-    def test_single_file_components_with_original_config_local_files_only(self):
-        super().test_single_file_components_with_original_config_local_files_only(
-            safety_checker=False, text_encoder=False
-        )

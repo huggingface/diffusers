@@ -230,7 +230,7 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, original_config=ori
 ```
 
 <Tip>
-When using `original_config` with local_files_only=True`, `diffusers` will attempt to infer the components based on the type signatures of pipeline class. This is not as reliable as providing the correct config and might lead to errors when configuring the pipeline. Additionally, the pipeline scheduler will default to the `DDIMScheduler` if one isn't provided.
+When using `original_config` with local_files_only=True`, `diffusers` will attempt to infer the components based on the type signatures of pipeline class. This is not as reliable as providing a config path and might lead to errors when configuring the pipeline. Additionally, the pipeline scheduler will default to the `DDIMScheduler` if one isn't provided.
 
 </Tip>
 

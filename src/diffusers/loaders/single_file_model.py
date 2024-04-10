@@ -163,7 +163,7 @@ class FromOriginalModelMixin:
         cache_dir = kwargs.pop("cache_dir", None)
         local_files_only = kwargs.pop("local_files_only", None)
         local_dir = kwargs.pop("local_dir", None)
-        local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", None)
+        local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
         subfolder = kwargs.pop("subfolder", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
@@ -233,6 +233,7 @@ class FromOriginalModelMixin:
                 local_dir=local_dir,
                 local_dir_use_symlinks=local_dir_use_symlinks,
             )
+
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
             model_kwargs = {k: kwargs.get(k) for k in kwargs if k in expected_kwargs or k in optional_kwargs}
 

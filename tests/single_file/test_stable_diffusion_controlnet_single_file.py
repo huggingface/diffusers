@@ -141,7 +141,7 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny", variant="fp16")
         pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
         pipe_single_file = self.pipeline_class.from_single_file(
-            self.ckpt_path, controlnet=controlnet, config=self.repo_id
+            self.ckpt_path, controlnet=controlnet, safety_checker=None, config=self.repo_id
         )
 
         super()._compare_component_configs(pipe, pipe_single_file, safety_checker=False)
@@ -153,6 +153,7 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         pipe = self.pipeline_class.from_pretrained(
             self.repo_id,
             controlnet=controlnet,
+            safety_checker=None,
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -163,8 +164,8 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
             pipe_single_file = self.pipeline_class.from_single_file(
                 local_ckpt_path,
                 config=local_diffusers_config,
-                safety_checker=None,
                 controlnet=controlnet,
+                safety_checker=None,
                 local_files_only=True,
             )
         super()._compare_component_configs(pipe, pipe_single_file, safety_checker=False)

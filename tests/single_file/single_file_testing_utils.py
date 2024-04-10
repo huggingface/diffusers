@@ -46,13 +46,19 @@ def download_diffusers_config(repo_id, tmpdir):
 
 
 class SDSingleFileTesterMixin:
-    def _compare_component_configs(self, pipe, single_file_pipe, safety_checker=True):
+    def _compare_component_configs(self, pipe, single_file_pipe):
         for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
             if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
                 continue
             assert pipe.text_encoder.config.to_dict()[param_name] == param_value
 
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        PARAMS_TO_IGNORE = [
+            "torch_dtype",
+            "_name_or_path",
+            "architectures",
+            "_use_default_values",
+            "_diffusers_version",
+        ]
         for component_name, component in single_file_pipe.components.items():
             if component_name in single_file_pipe._optional_components:
                 continue
@@ -74,13 +80,13 @@ class SDSingleFileTesterMixin:
                     pipe.components[component_name].config[param_name] == param_value
                 ), f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
 
-    def test_single_file_components(self, pipe=None, single_file_pipe=None, safety_checker=True):
+    def test_single_file_components(self, pipe=None, single_file_pipe=None):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(self.ckpt_path)
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
 
-        self._compare_component_configs(pipe, single_file_pipe, safety_checker=safety_checker)
+        self._compare_component_configs(pipe, single_file_pipe)
 
-    def test_single_file_components_local_files_only(self, pipe=None, single_file_pipe=None, safety_checker=True):
+    def test_single_file_components_local_files_only(self, pipe=None, single_file_pipe=None):
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -91,26 +97,24 @@ class SDSingleFileTesterMixin:
                 local_ckpt_path, local_files_only=True
             )
 
-        self._compare_component_configs(pipe, single_file_pipe, safety_checker=safety_checker)
+        self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_components_with_original_config(
         self,
         pipe=None,
         single_file_pipe=None,
-        safety_checker=True,
     ):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
             self.ckpt_path, original_config=self.original_config
         )
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
 
-        self._compare_component_configs(pipe, single_file_pipe, safety_checker=safety_checker)
+        self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_components_with_original_config_local_files_only(
         self,
         pipe=None,
         single_file_pipe=None,
-        safety_checker=True,
     ):
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
 
@@ -120,10 +124,10 @@ class SDSingleFileTesterMixin:
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
-                local_ckpt_path, original_config=local_original_config, local_files_only=True
+                local_ckpt_path, original_config=local_original_config, safety_checker=None, local_files_only=True
             )
 
-        self._compare_component_configs(pipe, single_file_pipe, safety_checker=safety_checker)
+        self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_format_inference_is_same_as_pretrained(self, expected_max_diff=1e-4):
         sf_pipe = self.pipeline_class.from_single_file(self.ckpt_path)
@@ -148,37 +152,37 @@ class SDSingleFileTesterMixin:
         self,
         pipe=None,
         single_file_pipe=None,
-        safety_checker=True,
     ):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
             self.ckpt_path, config=self.repo_id
         )
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
 
-        self._compare_component_configs(pipe, single_file_pipe, safety_checker=safety_checker)
+        self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_components_with_diffusers_config_local_files_only(
         self,
         pipe=None,
         single_file_pipe=None,
-        safety_checker=True,
     ):
+        pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
+
         with tempfile.TemporaryDirectory() as tmpdir:
             ckpt_filename = self.ckpt_path.split("/")[-1]
             local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
-                local_ckpt_path, config=local_diffusers_config, local_files_only=True
+                local_ckpt_path, config=local_diffusers_config, safety_checker=None, local_files_only=True
             )
 
-        self._compare_component_configs(pipe, single_file_pipe, safety_checker=safety_checker)
+        self._compare_component_configs(pipe, single_file_pipe)
 
 
 class SDXLSingleFileTesterMixin:
-    def _compare_component_configs(pipe, single_file_pipe, safety_checker=True, text_encoder=True):
+    def _compare_component_configs(self, pipe, single_file_pipe):
         # Skip testing the text_encoder for Refiner Pipelines
-        if text_encoder:
+        if pipe.text_encoder:
             for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
                 if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
                     continue
@@ -189,17 +193,29 @@ class SDXLSingleFileTesterMixin:
                 continue
             assert pipe.text_encoder_2.config.to_dict()[param_name] == param_value
 
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        PARAMS_TO_IGNORE = [
+            "torch_dtype",
+            "_name_or_path",
+            "architectures",
+            "_use_default_values",
+            "_diffusers_version",
+        ]
         for component_name, component in single_file_pipe.components.items():
+            if component_name in single_file_pipe._optional_components:
+                continue
+
             # skip text encoders since they have already been tested
             if component_name in ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]:
                 continue
 
             # skip safety checker if it is not present in the pipeline
-            if component_name in ["safety_checker", "feature_extractor"] and not safety_checker:
+            if component_name in ["safety_checker", "feature_extractor"]:
                 continue
 
-            assert component_name in pipe.components
+            assert component_name in pipe.components, f"single file {component_name} not found in pretrained pipeline"
+            assert isinstance(
+                component, pipe.components[component_name].__class__
+            ), f"single file {component.__class__.__name__} and pretrained {pipe.components[component_name].__class__.__name__} are not the same"
 
             for param_name, param_value in component.config.items():
                 if param_name in PARAMS_TO_IGNORE:
@@ -208,16 +224,19 @@ class SDXLSingleFileTesterMixin:
                     pipe.components[component_name].config[param_name] == param_value
                 ), f"{param_name} differs between single file loading and pretrained loading"
 
-    def test_single_file_components(self, pipe=None, single_file_pipe=None, safety_checker=True, text_encoder=True):
+    def test_single_file_components(self, pipe=None, single_file_pipe=None):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(self.ckpt_path)
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
 
         self._compare_component_configs(
-            pipe, single_file_pipe, safety_checker=safety_checker, text_encoder=text_encoder
+            pipe,
+            single_file_pipe,
         )
 
     def test_single_file_components_local_files_only(
-        self, pipe=None, single_file_pipe=None, safety_checker=True, text_encoder=True
+        self,
+        pipe=None,
+        single_file_pipe=None,
     ):
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
 
@@ -229,12 +248,12 @@ class SDXLSingleFileTesterMixin:
                 local_ckpt_path, local_files_only=True
             )
 
-        self._compare_component_configs(
-            pipe, single_file_pipe, safety_checker=safety_checker, text_encoder=text_encoder
-        )
+        self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_components_with_original_config(
-        self, pipe=None, single_file_pipe=None, safety_checker=True, text_encoder=True
+        self,
+        pipe=None,
+        single_file_pipe=None,
     ):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
             self.ckpt_path, original_config=self.original_config
@@ -242,11 +261,14 @@ class SDXLSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
 
         self._compare_component_configs(
-            pipe, single_file_pipe, safety_checker=safety_checker, text_encoder=text_encoder
+            pipe,
+            single_file_pipe,
         )
 
     def test_single_file_components_with_original_config_local_files_only(
-        self, pipe=None, single_file_pipe=None, safety_checker=True, text_encoder=True
+        self,
+        pipe=None,
+        single_file_pipe=None,
     ):
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
 
@@ -260,28 +282,29 @@ class SDXLSingleFileTesterMixin:
             )
 
         self._compare_component_configs(
-            pipe, single_file_pipe, safety_checker=safety_checker, text_encoder=text_encoder
+            pipe,
+            single_file_pipe,
         )
 
     def test_single_file_components_with_diffusers_config(
         self,
         pipe=None,
         single_file_pipe=None,
-        safety_checker=True,
     ):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
             self.ckpt_path, config=self.repo_id
         )
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
 
-        self._compare_component_configs(pipe, single_file_pipe, safety_checker=safety_checker)
+        self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_components_with_diffusers_config_local_files_only(
         self,
         pipe=None,
         single_file_pipe=None,
-        safety_checker=True,
     ):
+        pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id)
+
         with tempfile.TemporaryDirectory() as tmpdir:
             ckpt_filename = self.ckpt_path.split("/")[-1]
             local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
@@ -291,7 +314,7 @@ class SDXLSingleFileTesterMixin:
                 local_ckpt_path, config=local_diffusers_config, local_files_only=True
             )
 
-        self._compare_component_configs(pipe, single_file_pipe, safety_checker=safety_checker)
+        self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_format_inference_is_same_as_pretrained(self, expected_max_diff=1e-4):
         sf_pipe = self.pipeline_class.from_single_file(self.ckpt_path, torch_dtype=torch.float16)
