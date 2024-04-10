@@ -112,7 +112,7 @@ jobs:
         shell: bash
     strategy:
       matrix:
-        module: [models, schedulers, lora, others]
+        module: [models, schedulers, lora, others, single_file]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
