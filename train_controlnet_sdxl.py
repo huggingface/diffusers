@@ -89,7 +89,7 @@ def resize_mask_to_latent(mask, latent):
 
     # 마스크 텐서의 크기를 잠재 텐서의 크기에 맞춰 조정
     # 'nearest' 모드를 사용하여 0과 1의 값을 그대로 유지하도록 합니다.
-    resized_mask = F.interpolate(mask, size=latent_size)
+    resized_mask = F.interpolate(mask, size=latent_size, mode='nearest')
 
     return resized_mask
 
@@ -156,7 +156,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         canny_simple = Image.open(canny_simple_path).convert("RGB").resize((args.resolution, args.resolution))
 
         mask = Image.open(mask_path).convert("RGB").resize((args.resolution, args.resolution))
-
+        num_samples_per_prommpt = 2
         images = []
         for _ in range(2):
             with inference_ctx:
@@ -1221,12 +1221,11 @@ def main(args):
                     if timesteps < 999:
                         noise = torch.randn_like(latents)
                         prev_noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps + 1)
-                        noise_pred = torch.randn_like(latents)
 
                         unknown_noisy_latents = \
-                        noise_scheduler.step(noise_pred, timesteps + 1, prev_noisy_latents, return_dict=False)[0]
+                        noise_scheduler.step(noise, timesteps + 1, prev_noisy_latents, return_dict=False)[0].to(weight_dtype)
                         known_noisy_latents = noisy_latents
-                        resized_mask_tensor = resize_mask_to_latent(mask, noisy_latents)
+                        resized_mask_tensor = resize_mask_to_latent(mask, noisy_latents).to(weight_dtype)[:, 0:1, :, :]
 
                         noisy_latents = (1 - resized_mask_tensor) * known_noisy_latents + resized_mask_tensor * unknown_noisy_latents
 
