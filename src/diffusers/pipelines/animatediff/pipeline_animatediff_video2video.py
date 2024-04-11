@@ -638,7 +638,7 @@ class AnimateDiffVideoToVideoPipeline(
         # video must be a list of list of images
         # the outer list denotes having multiple videos as input, whereas inner list means the frames of the video
         # as a list of images
-        if not isinstance(video[0], list):
+        if video and not isinstance(video[0], list):
             video = [video]
         if latents is None:
             video = torch.cat(

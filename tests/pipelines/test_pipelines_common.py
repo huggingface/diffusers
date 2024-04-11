@@ -39,7 +39,7 @@ from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, require_torch, skip_mps, torch_device
 
 from ..models.autoencoders.test_models_vae import (
     get_asym_autoencoder_kl_config,
@@ -125,6 +125,8 @@ class SDFunctionTesterMixin:
                 zeros = torch.zeros(shape).to(torch_device)
                 pipe.vae.decode(zeros)
 
+    # MPS currently doesn't support ComplexFloats, which are required for freeU - see https://github.com/huggingface/diffusers/issues/7569.
+    @skip_mps
     def test_freeu_enabled(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -235,6 +237,11 @@ class IPAdapterTesterMixin:
 
     def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):
         return torch.randn((2, 1, cross_attention_dim), device=torch_device)
+
+    def _get_dummy_masks(self, input_size: int = 64):
+        _masks = torch.zeros((1, 1, input_size, input_size), device=torch_device)
+        _masks[0, :, :, : int(input_size / 2)] = 1
+        return _masks
 
     def _modify_inputs_for_ip_adapter_test(self, inputs: Dict[str, Any]):
         parameters = inspect.signature(self.pipeline_class.__call__).parameters
@@ -362,6 +369,51 @@ class IPAdapterTesterMixin:
         out_cfg = pipe(**inputs)[0]
 
         assert out_cfg.shape == out_no_cfg.shape
+
+    def test_ip_adapter_masks(self, expected_max_diff: float = 1e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
+        sample_size = pipe.unet.config.get("sample_size", 32)
+        block_out_channels = pipe.vae.config.get("block_out_channels", [128, 256, 512, 512])
+        input_size = sample_size * (2 ** (len(block_out_channels) - 1))
+
+        # forward pass without ip adapter
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        output_without_adapter = pipe(**inputs)[0]
+        output_without_adapter = output_without_adapter[0, -3:, -3:, -1].flatten()
+
+        adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
+        pipe.unet._load_ip_adapter_weights(adapter_state_dict)
+
+        # forward pass with single ip adapter and masks, but scale=0 which should have no effect
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
+        inputs["cross_attention_kwargs"] = {"ip_adapter_masks": [self._get_dummy_masks(input_size)]}
+        pipe.set_ip_adapter_scale(0.0)
+        output_without_adapter_scale = pipe(**inputs)[0]
+        output_without_adapter_scale = output_without_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        # forward pass with single ip adapter and masks, but with scale of adapter weights
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
+        inputs["cross_attention_kwargs"] = {"ip_adapter_masks": [self._get_dummy_masks(input_size)]}
+        pipe.set_ip_adapter_scale(42.0)
+        output_with_adapter_scale = pipe(**inputs)[0]
+        output_with_adapter_scale = output_with_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
+        max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
+
+        self.assertLess(
+            max_diff_without_adapter_scale,
+            expected_max_diff,
+            "Output without ip-adapter must be same as normal inference",
+        )
+        self.assertGreater(
+            max_diff_with_adapter_scale, 1e-3, "Output with ip-adapter must be different from normal inference"
+        )
 
 
 class PipelineLatentTesterMixin:
