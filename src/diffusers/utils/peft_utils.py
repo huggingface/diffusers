@@ -64,9 +64,11 @@ def recurse_remove_peft_layers(model):
             module_replaced = False
 
             if isinstance(module, LoraLayer) and isinstance(module, torch.nn.Linear):
-                new_module = torch.nn.Linear(module.in_features, module.out_features, bias=module.bias is not None).to(
-                    module.weight.device
-                )
+                new_module = torch.nn.Linear(
+                    module.in_features,
+                    module.out_features,
+                    bias=module.bias is not None,
+                ).to(module.weight.device)
                 new_module.weight = module.weight
                 if module.bias is not None:
                     new_module.bias = module.bias
@@ -110,6 +112,9 @@ def scale_lora_layers(model, weight):
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
+    if weight == 1.0:
+        return
+
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
             module.scale_layer(weight)
@@ -128,6 +133,9 @@ def unscale_lora_layers(model, weight: Optional[float] = None):
             value.
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
+
+    if weight == 1.0:
+        return
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
