@@ -1843,6 +1843,8 @@ def download_controlnet_from_original_ckpt(
     while "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
 
+    with open(original_config_file, "r") as f:
+        original_config_file = f.read()
     original_config = yaml.safe_load(original_config_file)
 
     if num_in_channels is not None:
