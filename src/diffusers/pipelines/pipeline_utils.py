@@ -1816,7 +1816,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 ):
                     original_class_obj[name] = component
                 else:
-                    logger.warn(
+                    logger.warning(
                         f"component {name} is not switched over to new pipeline because type does not match the expected."
                         f" {name} is {type(component)} while the new pipeline expect {component_types[name]}."
                         f" please pass the component of the correct type to the new pipeline. `from_pipe(..., {name}={name})`"
