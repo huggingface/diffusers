@@ -801,9 +801,9 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
 
-    # InstructPix2Pix uses an additional image for conditioning. To accommodate that,
+    # For inpainting an additional image is used for conditioning. To accommodate that,
     # it uses 8 channels (instead of 4) in the first (conv) layer of the UNet. This UNet is
-    # then fine-tuned on the custom InstructPix2Pix dataset. This modified UNet is initialized
+    # then fine-tuned on the custom inpainting dataset. This modified UNet is initialized
     # from the pre-trained checkpoints. For the extra channels added to the first layer, they are
     # initialized to zero.
 
