@@ -16,7 +16,6 @@ from ...schedulers import DDPMScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     PIL_INTERPOLATION,
-    is_accelerate_available,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -145,6 +144,7 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
 
     model_cpu_offload_seq = "text_encoder->unet"
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor", "watermarker"]
+    _exclude_from_cpu_offload = ["watermarker"]
 
     def __init__(
         self,
@@ -192,21 +192,6 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             watermarker=watermarker,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.remove_all_hooks
-    def remove_all_hooks(self):
-        if is_accelerate_available():
-            from accelerate.hooks import remove_hook_from_module
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        for model in [self.text_encoder, self.unet, self.safety_checker]:
-            if model is not None:
-                remove_hook_from_module(model, recurse=True)
-
-        self.unet_offload_hook = None
-        self.text_encoder_offload_hook = None
-        self.final_offload_hook = None
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
@@ -514,9 +499,6 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             nsfw_detected = None
             watermark_detected = None
-
-            if hasattr(self, "unet_offload_hook") and self.unet_offload_hook is not None:
-                self.unet_offload_hook.offload()
 
         return image, nsfw_detected, watermark_detected
 

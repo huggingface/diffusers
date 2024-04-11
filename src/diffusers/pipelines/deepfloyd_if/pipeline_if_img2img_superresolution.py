@@ -16,7 +16,6 @@ from ...schedulers import DDPMScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     PIL_INTERPOLATION,
-    is_accelerate_available,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -143,6 +142,7 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
 
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor"]
     model_cpu_offload_seq = "text_encoder->unet"
+    _exclude_from_cpu_offload = ["watermarker"]
 
     def __init__(
         self,
@@ -190,21 +190,6 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             watermarker=watermarker,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.remove_all_hooks
-    def remove_all_hooks(self):
-        if is_accelerate_available():
-            from accelerate.hooks import remove_hook_from_module
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        for model in [self.text_encoder, self.unet, self.safety_checker]:
-            if model is not None:
-                remove_hook_from_module(model, recurse=True)
-
-        self.unet_offload_hook = None
-        self.text_encoder_offload_hook = None
-        self.final_offload_hook = None
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
@@ -512,9 +497,6 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             nsfw_detected = None
             watermark_detected = None
-
-            if hasattr(self, "unet_offload_hook") and self.unet_offload_hook is not None:
-                self.unet_offload_hook.offload()
 
         return image, nsfw_detected, watermark_detected
 
@@ -1012,8 +994,6 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             nsfw_detected = None
             watermark_detected = None
 
-            if hasattr(self, "unet_offload_hook") and self.unet_offload_hook is not None:
-                self.unet_offload_hook.offload()
         else:
             # 10. Post-processing
             image = (image / 2 + 0.5).clamp(0, 1)
