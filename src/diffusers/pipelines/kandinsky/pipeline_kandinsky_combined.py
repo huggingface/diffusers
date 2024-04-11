@@ -143,6 +143,7 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
 
     _load_connected_pipes = True
     model_cpu_offload_seq = "text_encoder->unet->movq->prior_prior->prior_image_encoder->prior_text_encoder"
+    _exclude_from_cpu_offload = ["prior_prior"]
 
     def __init__(
         self,
@@ -360,6 +361,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
 
     _load_connected_pipes = True
     model_cpu_offload_seq = "prior_text_encoder->prior_image_encoder->prior_prior->" "text_encoder->unet->movq"
+    _exclude_from_cpu_offload = ["prior_prior"]
 
     def __init__(
         self,
@@ -600,6 +602,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
 
     _load_connected_pipes = True
     model_cpu_offload_seq = "prior_text_encoder->prior_image_encoder->prior_prior->text_encoder->unet->movq"
+    _exclude_from_cpu_offload = ["prior_prior"]
 
     def __init__(
         self,
