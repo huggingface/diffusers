@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import contextlib
 import gc
 import hashlib
 import itertools
@@ -26,6 +25,7 @@ import random
 import re
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Optional
 
@@ -78,7 +78,7 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -2192,13 +2192,12 @@ def main(args):
                 # run inference
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
-                inference_ctx = (
-                    contextlib.nullcontext()
-                    if "playground" in args.pretrained_model_name_or_path
-                    else torch.cuda.amp.autocast()
-                )
+                if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
+                    autocast_ctx = nullcontext()
+                else:
+                    autocast_ctx = torch.autocast(accelerator.device.type)
 
-                with inference_ctx:
+                with autocast_ctx:
                     images = [
                         pipeline(**pipeline_args, generator=generator).images[0]
                         for _ in range(args.num_validation_images)

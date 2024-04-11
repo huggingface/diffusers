@@ -191,6 +191,15 @@ class StableDiffusionXLControlNetPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
+    def test_ip_adapter_single(self, from_ssd1b=False, expected_pipe_slice=None):
+        if not from_ssd1b:
+            expected_pipe_slice = None
+            if torch_device == "cpu":
+                expected_pipe_slice = np.array(
+                    [0.7331, 0.5907, 0.5667, 0.6029, 0.5679, 0.5968, 0.4033, 0.4761, 0.5090]
+                )
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
@@ -503,7 +512,7 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -708,7 +717,7 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet = ControlNetModel(
@@ -884,6 +893,11 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 @slow
 @require_torch_gpu
 class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -1002,6 +1016,11 @@ class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
         for param_name, param_value in single_file_pipe.unet.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
+
+            # Upcast attention might be set to None in a config file, which is incorrect. It should default to False in the model
+            if param_name == "upcast_attention" and pipe.unet.config[param_name] is None:
+                pipe.unet.config[param_name] = False
+
             assert (
                 pipe.unet.config[param_name] == param_value
             ), f"{param_name} differs between single file loading and pretrained loading"
@@ -1036,6 +1055,12 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.6832, 0.5703, 0.5460, 0.6300, 0.5856, 0.6034, 0.4494, 0.4613, 0.5036])
+        return super().test_ip_adapter_single(from_ssd1b=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_controlnet_sdxl_lcm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator

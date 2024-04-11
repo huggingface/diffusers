@@ -12,7 +12,6 @@ from ...models import Kandinsky3UNet, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
     deprecate,
-    is_accelerate_available,
     logging,
     replace_example_docstring,
 )
@@ -29,11 +28,15 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
         >>> import torch
 
-        >>> pipe = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+        >>> pipe = AutoPipelineForImage2Image.from_pretrained(
+        ...     "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
+        ... )
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "A painting of the inside of a subway train with tiny raccoons."
-        >>> image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky3/t2i.png")
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky3/t2i.png"
+        ... )
 
         >>> generator = torch.Generator(device="cpu").manual_seed(0)
         >>> image = pipe(prompt, image=image, strength=0.75, num_inference_steps=25, generator=generator).images[0]
@@ -91,20 +94,6 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         timesteps = self.scheduler.timesteps[t_start:]
 
         return timesteps, num_inference_steps - t_start
-
-    def remove_all_hooks(self):
-        if is_accelerate_available():
-            from accelerate.hooks import remove_hook_from_module
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        for model in [self.text_encoder, self.unet]:
-            if model is not None:
-                remove_hook_from_module(model, recurse=True)
-
-        self.unet_offload_hook = None
-        self.text_encoder_offload_hook = None
-        self.final_offload_hook = None
 
     def _process_embeds(self, embeddings, attention_mask, cut_context):
         # return embeddings, attention_mask
