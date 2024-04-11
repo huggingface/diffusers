@@ -807,7 +807,6 @@ def main():
     # from the pre-trained checkpoints. For the extra channels added to the first layer, they are
     # initialized to zero.
 
-    # when most likely a text2img pretrained model is used
     if unet.conv_in.in_channels == 4:
         logger.info("Initializing the Inpainting UNet from the pretrained 4 channel UNet .")
         in_channels = 9
