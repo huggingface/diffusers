@@ -945,7 +945,7 @@ def main(args):
 
     # 8. Create target student U-Net. This will be updated via EMA updates (polyak averaging).
     # Initialize from (online) unet
-    target_unet = UNet2DConditionModel(**teacher_unet.config)
+    target_unet = UNet2DConditionModel.from_config(unet.config)
     target_unet.load_state_dict(unet.state_dict())
     target_unet.train()
     target_unet.requires_grad_(False)
