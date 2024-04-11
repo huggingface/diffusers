@@ -848,19 +848,22 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False, **kwargs)
             )
 
     # Mid blocks
-    resnet_0 = middle_blocks[0]
-    attentions = middle_blocks[1]
-    resnet_1 = middle_blocks[2]
-
-    update_unet_resnet_ldm_to_diffusers(
-        resnet_0, new_checkpoint, unet_state_dict, mapping={"old": "middle_block.0", "new": "mid_block.resnets.0"}
-    )
-    update_unet_resnet_ldm_to_diffusers(
-        resnet_1, new_checkpoint, unet_state_dict, mapping={"old": "middle_block.2", "new": "mid_block.resnets.1"}
-    )
-    update_unet_attention_ldm_to_diffusers(
-        attentions, new_checkpoint, unet_state_dict, mapping={"old": "middle_block.1", "new": "mid_block.attentions.0"}
-    )
+    for key in middle_blocks.keys():
+        diffusers_key = max(key - 1, 0)
+        if key % 2 == 0:
+            update_unet_resnet_ldm_to_diffusers(
+                middle_blocks[key],
+                new_checkpoint,
+                unet_state_dict,
+                mapping={"old": f"middle_block.{key}", "new": f"mid_block.resnets.{diffusers_key}"},
+            )
+        else:
+            update_unet_attention_ldm_to_diffusers(
+                middle_blocks[key],
+                new_checkpoint,
+                unet_state_dict,
+                mapping={"old": f"middle_block.{key}", "new": f"mid_block.attentions.{diffusers_key}"},
+            )
 
     # Up Blocks
     for i in range(num_output_blocks):
@@ -985,29 +988,24 @@ def convert_controlnet_checkpoint(
         layer_id: [key for key in controlnet_state_dict if f"middle_block.{layer_id}" in key]
         for layer_id in range(num_middle_blocks)
     }
-    if middle_blocks:
-        resnet_0 = middle_blocks[0]
-        attentions = middle_blocks[1]
-        resnet_1 = middle_blocks[2]
 
-        update_unet_resnet_ldm_to_diffusers(
-            resnet_0,
-            new_checkpoint,
-            controlnet_state_dict,
-            mapping={"old": "middle_block.0", "new": "mid_block.resnets.0"},
-        )
-        update_unet_resnet_ldm_to_diffusers(
-            resnet_1,
-            new_checkpoint,
-            controlnet_state_dict,
-            mapping={"old": "middle_block.2", "new": "mid_block.resnets.1"},
-        )
-        update_unet_attention_ldm_to_diffusers(
-            attentions,
-            new_checkpoint,
-            controlnet_state_dict,
-            mapping={"old": "middle_block.1", "new": "mid_block.attentions.0"},
-        )
+    # Mid blocks
+    for key in middle_blocks.keys():
+        diffusers_key = max(key - 1, 0)
+        if key % 2 == 0:
+            update_unet_resnet_ldm_to_diffusers(
+                middle_blocks[key],
+                new_checkpoint,
+                controlnet_state_dict,
+                mapping={"old": f"middle_block.{key}", "new": f"mid_block.resnets.{diffusers_key}"},
+            )
+        else:
+            update_unet_attention_ldm_to_diffusers(
+                middle_blocks[key],
+                new_checkpoint,
+                controlnet_state_dict,
+                mapping={"old": f"middle_block.{key}", "new": f"mid_block.attentions.{diffusers_key}"},
+            )
 
     # mid block
     new_checkpoint["controlnet_mid_block.weight"] = controlnet_state_dict.pop("middle_block_out.0.weight")
@@ -1156,9 +1154,10 @@ def convert_open_clip_checkpoint(
     prefix="cond_stage_model.model.",
 ):
     text_model_dict = {}
-    text_proj_key = prefix + "text_projection"
     text_proj_dim = (
-        int(checkpoint[text_proj_key].shape[0]) if text_proj_key in checkpoint else LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
+        text_model.config.projection_dim
+        if hasattr(text_model.config, "projection_dim")
+        else LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
     )
     text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
 
@@ -1208,7 +1207,7 @@ def convert_open_clip_checkpoint(
             )
             text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :].clone().detach()
         else:
-            text_model_dict[diffusers_key] = checkpoint[key]
+            text_model_dict[diffusers_key] = checkpoint.pop(key)
 
     if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
         text_model_dict.pop("text_model.embeddings.position_ids", None)
