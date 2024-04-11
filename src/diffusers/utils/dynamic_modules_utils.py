@@ -246,8 +246,8 @@ def get_cached_module_file(
 
     <Tip>
 
-    You may pass a token in `token` if you are not logged in (`huggingface-cli login`) and want to use private
-    or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
+    You may pass a token in `token` if you are not logged in (`huggingface-cli login`) and want to use private or
+    [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
 
@@ -329,6 +329,11 @@ def get_cached_module_file(
         # The only reason we do the copy is to avoid putting too many folders in sys.path.
         shutil.copy(resolved_module_file, submodule_path / module_file)
         for module_needed in modules_needed:
+            if len(module_needed.split(".")) == 2:
+                module_needed = "/".join(module_needed.split("."))
+                module_folder = module_needed.split("/")[0]
+                if not os.path.exists(submodule_path / module_folder):
+                    os.makedirs(submodule_path / module_folder)
             module_needed = f"{module_needed}.py"
             shutil.copy(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
     else:
@@ -343,9 +348,16 @@ def get_cached_module_file(
         create_dynamic_module(full_submodule)
 
         if not (submodule_path / module_file).exists():
+            if len(module_file.split("/")) == 2:
+                module_folder = module_file.split("/")[0]
+                if not os.path.exists(submodule_path / module_folder):
+                    os.makedirs(submodule_path / module_folder)
             shutil.copy(resolved_module_file, submodule_path / module_file)
+
         # Make sure we also have every file with relative
         for module_needed in modules_needed:
+            if len(module_needed.split(".")) == 2:
+                module_needed = "/".join(module_needed.split("."))
             if not (submodule_path / module_needed).exists():
                 get_cached_module_file(
                     pretrained_model_name_or_path,
@@ -422,8 +434,8 @@ def get_class_from_dynamic_module(
 
     <Tip>
 
-    You may pass a token in `token` if you are not logged in (`huggingface-cli login`) and want to use private
-    or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
+    You may pass a token in `token` if you are not logged in (`huggingface-cli login`) and want to use private or
+    [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
 

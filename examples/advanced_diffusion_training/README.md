@@ -259,11 +259,55 @@ pip install git+https://github.com/huggingface/peft.git
 **Inference** 
 The inference is the same as if you train a regular LoRA 🤗
 
+## Conducting EDM-style training
+
+It's now possible to perform EDM-style training as proposed in [Elucidating the Design Space of Diffusion-Based Generative Models](https://arxiv.org/abs/2206.00364). 
+
+simply set:
+
+```diff
++  --do_edm_style_training \
+```
+
+Other SDXL-like models that use the EDM formulation, such as [playgroundai/playground-v2.5-1024px-aesthetic](https://huggingface.co/playgroundai/playground-v2.5-1024px-aesthetic), can also be DreamBooth'd with the script. Below is an example command:
+
+```bash
+accelerate launch train_dreambooth_lora_sdxl_advanced.py \
+  --pretrained_model_name_or_path="playgroundai/playground-v2.5-1024px-aesthetic"  \
+  --dataset_name="linoyts/3d_icon" \
+  --instance_prompt="3d icon in the style of TOK" \
+  --validation_prompt="a TOK icon of an astronaut riding a horse, in the style of TOK" \
+  --output_dir="3d-icon-SDXL-LoRA" \
+  --do_edm_style_training \
+  --caption_column="prompt" \
+  --mixed_precision="bf16" \
+  --resolution=1024 \
+  --train_batch_size=3 \
+  --repeats=1 \
+  --report_to="wandb"\
+  --gradient_accumulation_steps=1 \
+  --gradient_checkpointing \
+  --learning_rate=1.0 \
+  --text_encoder_lr=1.0 \
+  --optimizer="prodigy"\
+  --train_text_encoder_ti\
+  --train_text_encoder_ti_frac=0.5\
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --rank=8 \
+  --max_train_steps=1000 \
+  --checkpointing_steps=2000 \
+  --seed="0" \
+  --push_to_hub
+```
+
+> [!CAUTION]
+> Min-SNR gamma is not supported with the EDM-style training yet. When training with the PlaygroundAI model, it's recommended to not pass any "variant".
 
 ### Tips and Tricks
 Check out [these recommended practices](https://huggingface.co/blog/sdxl_lora_advanced_script#additional-good-practices)
 
 ## Running on Colab Notebook
-Check out [this notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/SDXL_DreamBooth_LoRA_advanced_example.ipynb). 
+Check out [this notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/SDXL_Dreambooth_LoRA_advanced_example.ipynb).
 to train using the advanced features (including pivotal tuning), and [this notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/SDXL_DreamBooth_LoRA_.ipynb) to train on a free colab, using some of the advanced features (excluding pivotal tuning)
 

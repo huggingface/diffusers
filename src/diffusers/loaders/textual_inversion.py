@@ -18,6 +18,7 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
+from ..models.modeling_utils import load_state_dict
 from ..utils import _get_model_file, is_accelerate_available, is_transformers_available, logging
 
 
@@ -100,7 +101,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                     subfolder=subfolder,
                     user_agent=user_agent,
                 )
-                state_dict = torch.load(model_file, map_location="cpu")
+                state_dict = load_state_dict(model_file)
         else:
             state_dict = pretrained_model_name_or_path
 
@@ -486,20 +487,35 @@ class TextualInversionLoaderMixin:
 
         # Example 3: unload from SDXL
         pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        embedding_path = hf_hub_download(repo_id="linoyts/web_y2k", filename="web_y2k_emb.safetensors", repo_type="model")
+        embedding_path = hf_hub_download(
+            repo_id="linoyts/web_y2k", filename="web_y2k_emb.safetensors", repo_type="model"
+        )
 
         # load embeddings to the text encoders
         state_dict = load_file(embedding_path)
 
         # load embeddings of text_encoder 1 (CLIP ViT-L/14)
-        pipeline.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+        pipeline.load_textual_inversion(
+            state_dict["clip_l"],
+            token=["<s0>", "<s1>"],
+            text_encoder=pipeline.text_encoder,
+            tokenizer=pipeline.tokenizer,
+        )
         # load embeddings of text_encoder 2 (CLIP ViT-G/14)
-        pipeline.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
+        pipeline.load_textual_inversion(
+            state_dict["clip_g"],
+            token=["<s0>", "<s1>"],
+            text_encoder=pipeline.text_encoder_2,
+            tokenizer=pipeline.tokenizer_2,
+        )
 
         # Unload explicitly from both text encoders abd tokenizers
-        pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
-        pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
-
+        pipeline.unload_textual_inversion(
+            tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer
+        )
+        pipeline.unload_textual_inversion(
+            tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2
+        )
         ```
         """
 

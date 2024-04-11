@@ -247,33 +247,34 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def dummy_input(self):
         batch_size = 4
         num_channels = 4
-        sizes = (32, 32)
+        sizes = (16, 16)
 
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 8)).to(torch_device)
 
         return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
 
     @property
     def input_shape(self):
-        return (4, 32, 32)
+        return (4, 16, 16)
 
     @property
     def output_shape(self):
-        return (4, 32, 32)
+        return (4, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (32, 64),
+            "block_out_channels": (4, 8),
+            "norm_num_groups": 4,
             "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
             "up_block_types": ("UpBlock2D", "CrossAttnUpBlock2D"),
-            "cross_attention_dim": 32,
-            "attention_head_dim": 8,
+            "cross_attention_dim": 8,
+            "attention_head_dim": 2,
             "out_channels": 4,
             "in_channels": 4,
-            "layers_per_block": 2,
-            "sample_size": 32,
+            "layers_per_block": 1,
+            "sample_size": 16,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -337,6 +338,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_model_with_attention_head_dim_tuple(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         model = self.model_class(**init_dict)
@@ -375,7 +377,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_model_with_cross_attention_dim_tuple(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["cross_attention_dim"] = (32, 32)
+        init_dict["cross_attention_dim"] = (8, 8)
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -443,6 +445,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_model_attention_slicing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         model = self.model_class(**init_dict)
@@ -467,6 +470,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_model_sliceable_head_dim(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         model = self.model_class(**init_dict)
@@ -485,6 +489,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_gradient_checkpointing_is_applied(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         model_class_copy = copy.copy(self.model_class)
@@ -561,6 +566,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         model = self.model_class(**init_dict)
@@ -571,7 +577,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         model.set_attn_processor(processor)
         model(**inputs_dict, cross_attention_kwargs={"number": 123}).sample
 
-        assert processor.counter == 12
+        assert processor.counter == 8
         assert processor.is_run
         assert processor.number == 123
 
@@ -587,7 +593,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_model_xattn_mask(self, mask_dtype):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        model = self.model_class(**{**init_dict, "attention_head_dim": (8, 16)})
+        model = self.model_class(**{**init_dict, "attention_head_dim": (8, 16), "block_out_channels": (16, 32)})
         model.to(torch_device)
         model.eval()
 
@@ -649,6 +655,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         model = self.model_class(**init_dict)
@@ -675,6 +682,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         torch.manual_seed(0)
@@ -714,6 +722,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         torch.manual_seed(0)
@@ -739,6 +748,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         model = self.model_class(**init_dict)
@@ -770,6 +780,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_ip_adapter(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         model = self.model_class(**init_dict)
@@ -782,7 +793,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
         # for ip-adapter image_embeds has shape [batch_size, num_image, embed_dim]
-        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
+        image_embeds = floats_tensor((batch_size, 1, model.config.cross_attention_dim)).to(torch_device)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
 
         # make ip_adapter_1 and ip_adapter_2
@@ -842,6 +853,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_ip_adapter_plus(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
 
         model = self.model_class(**init_dict)
@@ -854,7 +866,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
         # for ip-adapter-plus image_embeds has shape [batch_size, num_image, sequence_length, embed_dim]
-        image_embeds = floats_tensor((batch_size, 1, 1, model.cross_attention_dim)).to(torch_device)
+        image_embeds = floats_tensor((batch_size, 1, 1, model.config.cross_attention_dim)).to(torch_device)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
 
         # make ip_adapter_1 and ip_adapter_2

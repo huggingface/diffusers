@@ -85,7 +85,8 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         trained_betas (`jnp.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         clip_sample (`bool`, default `True`):
-            option to clip predicted sample between for numerical stability. The clip range is determined by `clip_sample_range`.
+            option to clip predicted sample between for numerical stability. The clip range is determined by
+            `clip_sample_range`.
         clip_sample_range (`float`, default `1.0`):
             the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         set_alpha_to_one (`bool`, default `True`):
@@ -93,9 +94,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
             step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
             otherwise it uses the value of alpha at step 0.
         steps_offset (`int`, default `0`):
-            an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
-            stable diffusion.
+            An offset added to the inference steps, as required by some model families.
         prediction_type (`str`, default `epsilon`):
             indicates whether the model predicts the noise (epsilon), or the samples. One of `epsilon`, `sample`.
             `v-prediction` is not supported for this scheduler.
