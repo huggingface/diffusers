@@ -24,26 +24,13 @@ from ..attention import BasicTransformerBlock
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
+from .transformer_2d_utils import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-@dataclass
-class Transformer2DModelOutput(BaseOutput):
-    """
-    The output of [`Transformer2DModel`].
-
-    Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
-            The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
-            distributions for the unnoised latent pixels.
-    """
-
-    sample: torch.FloatTensor
-
-
-class Transformer2DModel(ModelMixin, ConfigMixin):
+class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
     """
     A 2D Transformer model handling inputs that are patches.
 
@@ -289,10 +276,23 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
         # 1. Input
+        batch_size = hidden_states.shape[0]
         height, width = hidden_states.shape[-2] // self.patch_size, hidden_states.shape[-1] // self.patch_size
-        hidden_states, encoder_hidden_states, timestep, embedded_timestep = self._operate_on_patched_inputs(
-            hidden_states, encoder_hidden_states, timestep, added_cond_kwargs
-        )
+        hidden_states = self.pos_embed(hidden_states)
+        embedded_timestep = None
+
+        if self.adaln_single is not None:
+            if self.use_additional_conditions and added_cond_kwargs is None:
+                raise ValueError(
+                    "`added_cond_kwargs` cannot be None when using additional conditions for `adaln_single`."
+                )
+            timestep, embedded_timestep = self.adaln_single(
+                timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
+            )
+
+        if self.caption_projection is not None:
+            encoder_hidden_states = self.caption_projection(encoder_hidden_states)
+            encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
 
         # 2. Blocks
         for block in self.transformer_blocks:
@@ -331,43 +331,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 )
 
         # 3. Output
-        output = self._get_output_for_patched_inputs(
-            hidden_states=hidden_states,
-            timestep=timestep,
-            class_labels=class_labels,
-            embedded_timestep=embedded_timestep,
-            height=height,
-            width=width,
-        )
-
-        if not return_dict:
-            return (output,)
-
-        return Transformer2DModelOutput(sample=output)
-
-    def _operate_on_patched_inputs(self, hidden_states, encoder_hidden_states, timestep, added_cond_kwargs):
-        batch_size = hidden_states.shape[0]
-        hidden_states = self.pos_embed(hidden_states)
-        embedded_timestep = None
-
-        if self.adaln_single is not None:
-            if self.use_additional_conditions and added_cond_kwargs is None:
-                raise ValueError(
-                    "`added_cond_kwargs` cannot be None when using additional conditions for `adaln_single`."
-                )
-            timestep, embedded_timestep = self.adaln_single(
-                timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
-            )
-
-        if self.caption_projection is not None:
-            encoder_hidden_states = self.caption_projection(encoder_hidden_states)
-            encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
-
-        return hidden_states, encoder_hidden_states, timestep, embedded_timestep
-
-    def _get_output_for_patched_inputs(
-        self, hidden_states, timestep, class_labels, embedded_timestep, height=None, width=None
-    ):
         if self.config.norm_type != "ada_norm_single":
             conditioning = self.transformer_blocks[0].norm1.emb(
                 timestep, class_labels, hidden_dtype=hidden_states.dtype
@@ -393,4 +356,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         output = hidden_states.reshape(
             shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
         )
-        return output
+
+        if not return_dict:
+            return (output,)
+
+        return Transformer2DModelOutput(sample=output)

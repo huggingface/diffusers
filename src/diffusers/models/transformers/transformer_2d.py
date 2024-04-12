@@ -24,23 +24,17 @@ from ..attention import BasicTransformerBlock
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
+from .transformer_2d_utils import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-@dataclass
-class Transformer2DModelOutput(BaseOutput):
-    """
-    The output of [`Transformer2DModel`].
 
-    Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
-            The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
-            distributions for the unnoised latent pixels.
-    """
+class Transformer2DModelOutput(Transformer2DModelOutput):
+    deprecation_message = "Importing `Transformer2DModelOutput` from `diffusers.models.transformer_2d` is deprecated and this will be removed in a future version. Please use `from diffusers.models.transformers.transformer_2d_utils import Transformer2DModelOutput`, instead."
+    deprecate("Transformer2DModelOutput", "1.0.0", deprecation_message)
 
-    sample: torch.FloatTensor
 
 
 class Transformer2DModel(ModelMixin, ConfigMixin):
@@ -103,6 +97,16 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
+        # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
+        # Define whether input is continuous or discrete depending on configuration
+        self.is_input_continuous = (in_channels is not None) and (patch_size is None)
+        self.is_input_vectorized = num_vector_embeds is not None
+        self.is_input_patches = in_channels is not None and patch_size is not None
+
+        if self.is_input_patches:
+            deprecation_message = "Using `Transformer2DModel` for patched inputs is deprecated. This class will be removed in the 1.0.0 version. Please use the `PatchedTransformer2DModel` class for this (`from diffusers import PatchedTransformer2DModel`)."
+            deprecate("Transformer2DModelOutput", "1.0.0", deprecation_message)
+
         # Validate inputs.
         if patch_size is not None:
             if norm_type not in ["ada_norm", "ada_norm_zero", "ada_norm_single"]:
@@ -124,12 +128,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.in_channels = in_channels
         self.out_channels = in_channels if out_channels is None else out_channels
         self.gradient_checkpointing = False
-
-        # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
-        # Define whether input is continuous or discrete depending on configuration
-        self.is_input_continuous = (in_channels is not None) and (patch_size is None)
-        self.is_input_vectorized = num_vector_embeds is not None
-        self.is_input_patches = in_channels is not None and patch_size is not None
 
         if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
             deprecation_message = (
