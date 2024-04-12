@@ -169,6 +169,8 @@ class StableDiffusionXLInstructPix2PixPipeline(
             Whether to use the [invisible_watermark library](https://github.com/ShieldMnt/invisible-watermark/) to
             watermark output images. If not defined, it will default to True if the package is installed, otherwise no
             watermarker will be used.
+        is_cosxl_edit (`bool`, *optional*):
+            When set the image latents are scaled.
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
