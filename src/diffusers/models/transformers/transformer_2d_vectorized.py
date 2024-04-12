@@ -30,9 +30,9 @@ from .transformer_2d_utils import Transformer2DModelOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class ContinuousTransformer2DModel(ModelMixin, ConfigMixin):
+class VectorizedTransformer2DModel(ModelMixin, ConfigMixin):
     """
-    A 2D Transformer model for continuous inputs.
+    A 2D Transformer model for discrete inputs.
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
@@ -44,6 +44,9 @@ class ContinuousTransformer2DModel(ModelMixin, ConfigMixin):
         cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
         sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
             This is fixed during training since it is used to learn a number of position embeddings.
+        num_vector_embeds (`int`, *optional*):
+            The number of classes of the vector embeddings of the latent pixels (specify if the input is **discrete**).
+            Includes the class for the masked latent pixel.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
         num_embeds_ada_norm ( `int`, *optional*):
             The number of diffusion steps used during training. Pass if at least one of the norm_layers is
@@ -69,6 +72,7 @@ class ContinuousTransformer2DModel(ModelMixin, ConfigMixin):
         cross_attention_dim: Optional[int] = None,
         attention_bias: bool = False,
         sample_size: Optional[int] = None,
+        num_vector_embeds: Optional[int] = None,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
         use_linear_projection: bool = False,
@@ -83,6 +87,11 @@ class ContinuousTransformer2DModel(ModelMixin, ConfigMixin):
         super().__init__()
 
         # Validate inputs.
+        if sample_size is None:
+            raise ValueError("Transformer2DModel over discrete input must provide sample_size")
+        if num_vector_embeds is None:
+            raise ValueError("Transformer2DModel over discrete input must provide num_embed")
+
         if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
             deprecation_message = (
                 f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
@@ -95,7 +104,7 @@ class ContinuousTransformer2DModel(ModelMixin, ConfigMixin):
             norm_type = "ada_norm"
 
         # Set some common variables used across the board.
-        self.is_input_continuous = (in_channels is not None)
+        self.is_input_vectorized = num_vector_embeds is not None
         self.use_linear_projection = use_linear_projection
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
@@ -105,13 +114,13 @@ class ContinuousTransformer2DModel(ModelMixin, ConfigMixin):
         self.gradient_checkpointing = False
 
         # 2. Initialize the transformer blocks.
-        self.norm = torch.nn.GroupNorm(
-            num_groups=self.config.norm_num_groups, num_channels=self.in_channels, eps=1e-6, affine=True
+        self.height = self.config.sample_size
+        self.width = self.config.sample_size
+        self.num_latent_pixels = self.height * self.width
+
+        self.latent_image_embedding = ImagePositionalEmbeddings(
+            num_embed=self.config.num_vector_embeds, embed_dim=self.inner_dim, height=self.height, width=self.width
         )
-        if self.use_linear_projection:
-            self.proj_in = torch.nn.Linear(self.in_channels, self.inner_dim)
-        else:
-            self.proj_in = torch.nn.Conv2d(self.in_channels, self.inner_dim, kernel_size=1, stride=1, padding=0)
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -135,10 +144,9 @@ class ContinuousTransformer2DModel(ModelMixin, ConfigMixin):
                 for _ in range(self.config.num_layers)
             ]
         )
-        if self.use_linear_projection:
-            self.proj_out = torch.nn.Linear(self.inner_dim, self.out_channels)
-        else:
-            self.proj_out = torch.nn.Conv2d(self.inner_dim, self.out_channels, kernel_size=1, stride=1, padding=0)
+
+        self.norm_out = nn.LayerNorm(self.inner_dim)
+        self.out = nn.Linear(self.inner_dim, self.config.num_vector_embeds - 1)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
@@ -217,18 +225,7 @@ class ContinuousTransformer2DModel(ModelMixin, ConfigMixin):
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
         # 1. Input
-        batch_size, _, height, width = hidden_states.shape
-        residual = hidden_states
-        hidden_states = self.norm(hidden_states)
-
-        if not self.use_linear_projection:
-            hidden_states = self.proj_in(hidden_states)
-            inner_dim = hidden_states.shape[1]
-            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, inner_dim)
-        else:
-            inner_dim = hidden_states.shape[1]
-            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, inner_dim)
-            hidden_states = self.proj_in(hidden_states)
+        hidden_states = self.latent_image_embedding(hidden_states)
 
         # 2. Blocks
         for block in self.transformer_blocks:
@@ -265,20 +262,14 @@ class ContinuousTransformer2DModel(ModelMixin, ConfigMixin):
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=class_labels,
                 )
-
-        # 3. Output
-        if not self.use_linear_projection:
-            hidden_states = (
-                hidden_states.reshape(batch_size, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-            )
-            hidden_states = self.proj_out(hidden_states)
-        else:
-            hidden_states = self.proj_out(hidden_states)
-            hidden_states = (
-                hidden_states.reshape(batch_size, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-            )
-
-        output = hidden_states + residual
+        
+        # 3. Output.
+        hidden_states = self.norm_out(hidden_states)
+        logits = self.out(hidden_states)
+        # (batch, self.num_vector_embeds - 1, self.num_latent_pixels)
+        logits = logits.permute(0, 2, 1)
+        # log(p(x_0))
+        output = F.log_softmax(logits.double(), dim=1).float()
 
         if not return_dict:
             return (output,)
