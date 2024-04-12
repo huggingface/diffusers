@@ -103,9 +103,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.is_input_vectorized = num_vector_embeds is not None
         self.is_input_patches = in_channels is not None and patch_size is not None
 
+        if self.is_input_continuous:
+            deprecation_message = "Using `Transformer2DModel` for continuous inputs is deprecated. This class will be removed in the 1.0.0 version. Please use the `ContinuousTransformer2DModel` class for this (`from diffusers import ContinuousTransformer2DModel`)."
+            deprecate("Transformer2DModelForContinuousInputs", "1.0.0", deprecation_message)
+
         if self.is_input_patches:
             deprecation_message = "Using `Transformer2DModel` for patched inputs is deprecated. This class will be removed in the 1.0.0 version. Please use the `PatchedTransformer2DModel` class for this (`from diffusers import PatchedTransformer2DModel`)."
-            deprecate("Transformer2DModelOutput", "1.0.0", deprecation_message)
+            deprecate("Transformer2DModelForPatchedInputs", "1.0.0", deprecation_message)
 
         # Validate inputs.
         if patch_size is not None:
@@ -117,18 +121,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 raise ValueError(
                     f"When using a `patch_size` and this `norm_type` ({norm_type}), `num_embeds_ada_norm` cannot be None."
                 )
-
-        # Set some common variables used across the board.
-        self.use_linear_projection = use_linear_projection
-        self.interpolation_scale = interpolation_scale
-        self.caption_channels = caption_channels
-        self.num_attention_heads = num_attention_heads
-        self.attention_head_dim = attention_head_dim
-        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
-        self.in_channels = in_channels
-        self.out_channels = in_channels if out_channels is None else out_channels
-        self.gradient_checkpointing = False
-
+            
         if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
             deprecation_message = (
                 f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
@@ -155,6 +148,17 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 f"Has to define `in_channels`: {in_channels}, `num_vector_embeds`: {num_vector_embeds}, or patch_size:"
                 f" {patch_size}. Make sure that `in_channels`, `num_vector_embeds` or `num_patches` is not None."
             )
+
+        # Set some common variables used across the board.
+        self.use_linear_projection = use_linear_projection
+        self.interpolation_scale = interpolation_scale
+        self.caption_channels = caption_channels
+        self.num_attention_heads = num_attention_heads
+        self.attention_head_dim = attention_head_dim
+        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+        self.in_channels = in_channels
+        self.out_channels = in_channels if out_channels is None else out_channels
+        self.gradient_checkpointing = False
 
         # 2. Initialize the right blocks.
         # These functions follow a common structure:

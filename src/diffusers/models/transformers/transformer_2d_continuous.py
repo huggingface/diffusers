@@ -30,9 +30,9 @@ from .transformer_2d_utils import Transformer2DModelOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
+class ContinuousTransformer2DModel(ModelMixin, ConfigMixin):
     """
-    A 2D Transformer model handling inputs that are patches.
+    A 2D Transformer model for continuous inputs.
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
@@ -49,7 +49,6 @@ class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
             The number of diffusion steps used during training. Pass if at least one of the norm_layers is
             `AdaLayerNorm`. This is fixed during training since it is used to learn a number of embeddings that are
             added to the hidden states.
-
             During inference, you can denoise for up to but not more steps than `num_embeds_ada_norm`.
         attention_bias (`bool`, *optional*):
             Configure if the `TransformerBlocks` attention should contain a bias parameter.
@@ -70,9 +69,9 @@ class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
         cross_attention_dim: Optional[int] = None,
         attention_bias: bool = False,
         sample_size: Optional[int] = None,
-        patch_size: Optional[int] = None,
         activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = 1000,
+        num_embeds_ada_norm: Optional[int] = None,
+        use_linear_projection: bool = False,
         only_cross_attention: bool = False,
         double_self_attention: bool = False,
         upcast_attention: bool = False,
@@ -80,37 +79,24 @@ class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         attention_type: str = "default",
-        caption_channels: int = None,
-        interpolation_scale: float = None,
     ):
         super().__init__()
 
         # Validate inputs.
-        if sample_size is None:
-            raise ValueError(f"{self.__class__.__name__} over patched input must provide sample_size.")
-        
-        if in_channels is None and patch_size is None:
-            raise ValueError(
-                f"Has to define `in_channels`: {in_channels}, or patch_size:"
-                f" {patch_size}. Make sure that `in_channels`, and `num_patches` are not None."
-            )
         if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
-            raise ValueError(f"`num_embeds_ada_norm` cannot be None when using `{norm_type=}`")
-        
-        if patch_size is not None:
-            if norm_type not in ["ada_norm", "ada_norm_zero", "ada_norm_single"]:
-                raise NotImplementedError(
-                    f"Forward pass is not implemented when `patch_size` is not None and `norm_type` is '{norm_type}'."
-                )
-            elif norm_type in ["ada_norm", "ada_norm_zero"] and num_embeds_ada_norm is None:
-                raise ValueError(
-                    f"When using a `patch_size` and this `norm_type` ({norm_type}), `num_embeds_ada_norm` cannot be None."
-                )
+            deprecation_message = (
+                f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
+                " incorrectly set to `'layer_norm'`. Make sure to set `norm_type` to `'ada_norm'` in the config."
+                " Please make sure to update the config accordingly as leaving `norm_type` might led to incorrect"
+                " results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it"
+                " would be very nice if you could open a Pull request for the `transformer/config.json` file"
+            )
+            deprecate("norm_type!=num_embeds_ada_norm", "1.0.0", deprecation_message, standard_warn=False)
+            norm_type = "ada_norm"
 
         # Set some common variables used across the board.
-        self.is_input_patches = in_channels is not None and patch_size is not None
-        self.interpolation_scale = interpolation_scale
-        self.caption_channels = caption_channels
+        self.is_input_continuous = (in_channels is not None)
+        self.use_linear_projection = use_linear_projection
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
@@ -118,24 +104,14 @@ class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
         self.out_channels = in_channels if out_channels is None else out_channels
         self.gradient_checkpointing = False
 
-        # 2. Initialize the position embedding and transformer blocks.
-        self.height = self.config.sample_size
-        self.width = self.config.sample_size
-
-        self.patch_size = self.config.patch_size
-        interpolation_scale = (
-            self.config.interpolation_scale
-            if self.config.interpolation_scale is not None
-            else max(self.config.sample_size // 64, 1)
+        # 2. Initialize the transformer blocks.
+        self.norm = torch.nn.GroupNorm(
+            num_groups=self.config.norm_num_groups, num_channels=self.in_channels, eps=1e-6, affine=True
         )
-        self.pos_embed = PatchEmbed(
-            height=self.config.sample_size,
-            width=self.config.sample_size,
-            patch_size=self.config.patch_size,
-            in_channels=self.in_channels,
-            embed_dim=self.inner_dim,
-            interpolation_scale=interpolation_scale,
-        )
+        if self.use_linear_projection:
+            self.proj_in = torch.nn.Linear(self.in_channels, self.inner_dim)
+        else:
+            self.proj_in = torch.nn.Conv2d(self.in_channels, self.inner_dim, kernel_size=1, stride=1, padding=0)
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -159,37 +135,10 @@ class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
                 for _ in range(self.config.num_layers)
             ]
         )
-
-        # 3. Output blocks.
-        if self.config.norm_type != "ada_norm_single":
-            self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
-            self.proj_out_1 = nn.Linear(self.inner_dim, 2 * self.inner_dim)
-            self.proj_out_2 = nn.Linear(
-                self.inner_dim, self.config.patch_size * self.config.patch_size * self.out_channels
-            )
-        elif self.config.norm_type == "ada_norm_single":
-            self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
-            self.scale_shift_table = nn.Parameter(torch.randn(2, self.inner_dim) / self.inner_dim**0.5)
-            self.proj_out = nn.Linear(
-                self.inner_dim, self.config.patch_size * self.config.patch_size * self.out_channels
-            )
-
-        # PixArt-Alpha blocks.
-        self.adaln_single = None
-        self.use_additional_conditions = False
-        if self.config.norm_type == "ada_norm_single":
-            self.use_additional_conditions = self.config.sample_size == 128
-            # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
-            # additional conditions until we find better name
-            self.adaln_single = AdaLayerNormSingle(
-                self.inner_dim, use_additional_conditions=self.use_additional_conditions
-            )
-
-        self.caption_projection = None
-        if self.caption_channels is not None:
-            self.caption_projection = PixArtAlphaTextProjection(
-                in_features=self.caption_channels, hidden_size=self.inner_dim
-            )
+        if self.use_linear_projection:
+            self.proj_out = torch.nn.Linear(self.inner_dim, self.out_channels)
+        else:
+            self.proj_out = torch.nn.Conv2d(self.inner_dim, self.out_channels, kernel_size=1, stride=1, padding=0)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
@@ -269,23 +218,18 @@ class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
         # 1. Input
-        batch_size = hidden_states.shape[0]
-        height, width = hidden_states.shape[-2] // self.patch_size, hidden_states.shape[-1] // self.patch_size
-        hidden_states = self.pos_embed(hidden_states)
-        embedded_timestep = None
+        batch_size, _, height, width = hidden_states.shape
+        residual = hidden_states
+        hidden_states = self.norm(hidden_states)
 
-        if self.adaln_single is not None:
-            if self.use_additional_conditions and added_cond_kwargs is None:
-                raise ValueError(
-                    "`added_cond_kwargs` cannot be None when using additional conditions for `adaln_single`."
-                )
-            timestep, embedded_timestep = self.adaln_single(
-                timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
-            )
-
-        if self.caption_projection is not None:
-            encoder_hidden_states = self.caption_projection(encoder_hidden_states)
-            encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
+        if not self.use_linear_projection:
+            hidden_states = self.proj_in(hidden_states)
+            inner_dim = hidden_states.shape[1]
+            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, inner_dim)
+        else:
+            inner_dim = hidden_states.shape[1]
+            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, inner_dim)
+            hidden_states = self.proj_in(hidden_states)
 
         # 2. Blocks
         for block in self.transformer_blocks:
@@ -324,31 +268,18 @@ class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
                 )
 
         # 3. Output
-        if self.config.norm_type != "ada_norm_single":
-            conditioning = self.transformer_blocks[0].norm1.emb(
-                timestep, class_labels, hidden_dtype=hidden_states.dtype
+        if not self.use_linear_projection:
+            hidden_states = (
+                hidden_states.reshape(batch_size, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
             )
-            shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
-            hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
-            hidden_states = self.proj_out_2(hidden_states)
-        elif self.config.norm_type == "ada_norm_single":
-            shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
-            hidden_states = self.norm_out(hidden_states)
-            # Modulation
-            hidden_states = hidden_states * (1 + scale) + shift
             hidden_states = self.proj_out(hidden_states)
-            hidden_states = hidden_states.squeeze(1)
+        else:
+            hidden_states = self.proj_out(hidden_states)
+            hidden_states = (
+                hidden_states.reshape(batch_size, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
+            )
 
-        # unpatchify
-        if self.adaln_single is None:
-            height = width = int(hidden_states.shape[1] ** 0.5)
-        hidden_states = hidden_states.reshape(
-            shape=(-1, height, width, self.patch_size, self.patch_size, self.out_channels)
-        )
-        hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
-        output = hidden_states.reshape(
-            shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
-        )
+        output = hidden_states + residual
 
         if not return_dict:
             return (output,)
