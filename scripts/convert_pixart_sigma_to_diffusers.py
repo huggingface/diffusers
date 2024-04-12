@@ -209,7 +209,6 @@ if __name__ == "__main__":
         "--micro_condition", action="store_true", help="If use Micro-condition in PixArtMS structure during training."
     )
     parser.add_argument("--qk_norm", action="store_true", help="If use qk norm during training.")
-    parser.add_argument("--kv_compress", action="store_true", help="If use kv compression during training.")
     parser.add_argument(
         "--orig_ckpt_path", default=None, type=str, required=False, help="Path to the checkpoint to convert."
     )
