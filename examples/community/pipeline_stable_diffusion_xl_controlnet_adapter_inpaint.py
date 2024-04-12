@@ -17,7 +17,7 @@
 
 import inspect
 from collections.abc import Callable
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
