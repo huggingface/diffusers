@@ -1136,7 +1136,7 @@ class FromOriginalUNetMixin:
         if is_accelerate_available():
             unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
             if len(unexpected_keys) > 0:
-                logger.warn(
+                logger.warning(
                     f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
                 )
 
