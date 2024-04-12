@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import torch
@@ -19,9 +18,9 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput, deprecate, is_torch_version, logging
+from ...utils import is_torch_version, logging
 from ..attention import BasicTransformerBlock
-from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
+from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
 from .transformer_2d_utils import Transformer2DModelOutput
@@ -88,7 +87,7 @@ class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
         # Validate inputs.
         if sample_size is None:
             raise ValueError(f"{self.__class__.__name__} over patched input must provide sample_size.")
-        
+
         if in_channels is None and patch_size is None:
             raise ValueError(
                 f"Has to define `in_channels`: {in_channels}, or patch_size:"
@@ -96,7 +95,7 @@ class PatchedTransformer2DModel(ModelMixin, ConfigMixin):
             )
         if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
             raise ValueError(f"`num_embeds_ada_norm` cannot be None when using `{norm_type=}`")
-        
+
         if patch_size is not None:
             if norm_type not in ["ada_norm", "ada_norm_zero", "ada_norm_single"]:
                 raise NotImplementedError(

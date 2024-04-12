@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import torch
@@ -19,11 +18,10 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput, deprecate, is_torch_version, logging
+from ...utils import deprecate, is_torch_version, logging
 from ..attention import BasicTransformerBlock
-from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
+from ..embeddings import ImagePositionalEmbeddings
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormSingle
 from .transformer_2d_utils import Transformer2DModelOutput
 
 
@@ -51,8 +49,8 @@ class VectorizedTransformer2DModel(ModelMixin, ConfigMixin):
         num_embeds_ada_norm ( `int`, *optional*):
             The number of diffusion steps used during training. Pass if at least one of the norm_layers is
             `AdaLayerNorm`. This is fixed during training since it is used to learn a number of embeddings that are
-            added to the hidden states.
-            During inference, you can denoise for up to but not more steps than `num_embeds_ada_norm`.
+            added to the hidden states. During inference, you can denoise for up to but not more steps than
+            `num_embeds_ada_norm`.
         attention_bias (`bool`, *optional*):
             Configure if the `TransformerBlocks` attention should contain a bias parameter.
     """
@@ -262,7 +260,7 @@ class VectorizedTransformer2DModel(ModelMixin, ConfigMixin):
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=class_labels,
                 )
-        
+
         # 3. Output.
         hidden_states = self.norm_out(hidden_states)
         logits = self.out(hidden_states)

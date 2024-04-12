@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...utils import BaseOutput
 from dataclasses import dataclass
-import torch 
+
+import torch
+
+from ...utils import BaseOutput
+
 
 @dataclass
 class Transformer2DModelOutput(BaseOutput):
@@ -28,4 +31,3 @@ class Transformer2DModelOutput(BaseOutput):
     """
 
     sample: torch.FloatTensor
-

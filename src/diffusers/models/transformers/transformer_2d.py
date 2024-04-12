@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import torch
@@ -19,7 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput, deprecate, is_torch_version, logging
+from ...utils import deprecate, is_torch_version, logging
 from ..attention import BasicTransformerBlock
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_utils import ModelMixin
@@ -30,11 +29,9 @@ from .transformer_2d_utils import Transformer2DModelOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-
 class Transformer2DModelOutput(Transformer2DModelOutput):
     deprecation_message = "Importing `Transformer2DModelOutput` from `diffusers.models.transformer_2d` is deprecated and this will be removed in a future version. Please use `from diffusers.models.transformers.transformer_2d_utils import Transformer2DModelOutput`, instead."
     deprecate("Transformer2DModelOutput", "1.0.0", deprecation_message)
-
 
 
 class Transformer2DModel(ModelMixin, ConfigMixin):
@@ -125,7 +122,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 raise ValueError(
                     f"When using a `patch_size` and this `norm_type` ({norm_type}), `num_embeds_ada_norm` cannot be None."
                 )
-            
+
         if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
             deprecation_message = (
                 f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
