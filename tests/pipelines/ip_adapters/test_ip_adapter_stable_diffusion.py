@@ -321,13 +321,18 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.set_ip_adapter_scale(0.7)
 
         inputs = self.get_dummy_inputs()
-        inputs["ip_adapter_image"] = load_pt(
-            "https://huggingface.co/datasets/fabiorigano/testing-images/resolve/main/ai_face2.ipadpt"
-        )
+        id_embeds = load_pt("https://huggingface.co/datasets/fabiorigano/testing-images/resolve/main/ai_face2.ipadpt")[
+            0
+        ]
+        id_embeds = id_embeds.reshape((2, 1, 1, 512))
+        inputs["ip_adapter_image_embeds"] = [id_embeds]
+        inputs["ip_adapter_image"] = None
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        expected_slice = np.array([0.1665, 0.1626, 0.2187, 0.1882, 0.1702, 0.2144, 0.1624, 0.2012, 0.2173])
 
+        expected_slice = np.array(
+            [0.32714844, 0.3239746, 0.3466797, 0.31835938, 0.30004883, 0.3251953, 0.3215332, 0.3552246, 0.3251953]
+        )
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 

@@ -425,12 +425,12 @@ pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter("h94/IP-Adapter-FaceID", subfolder=None, weight_name="ip-adapter-faceid_sd15.bin", image_encoder_folder=None)
 pipeline.set_ip_adapter_scale(0.6)
 
-_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_girl1.png")
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_girl1.png")
 
 ref_images_embeds = []
 app = FaceAnalysis(name="buffalo_l", providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 app.prepare(ctx_id=0, det_size=(640, 640))
-image = cv2.cvtColor(np.asarray(_image), cv2.COLOR_BGR2RGB)
+image = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2RGB)
 faces = app.get(image)
 image = torch.from_numpy(faces[0].normed_embedding)
 ref_images_embeds.append(image.unsqueeze(0))
