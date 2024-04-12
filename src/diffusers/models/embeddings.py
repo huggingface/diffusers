@@ -471,6 +471,7 @@ class IPAdapterFullImageProjection(nn.Module):
     def forward(self, image_embeds: torch.FloatTensor):
         return self.norm(self.ff(image_embeds))
 
+
 class IPAdapterFaceIDImageProjection(nn.Module):
     def __init__(self, image_embed_dim=1024, cross_attention_dim=1024, mult=1, num_tokens=1):
         super().__init__()
@@ -809,13 +810,14 @@ class IPAdapterPlusImageProjection(nn.Module):
     """Resampler of IP-Adapter Plus.
 
     Args:
-    ----
         embed_dims (int): The feature dimension. Defaults to 768. output_dims (int): The number of output channels,
         that is the same
             number of the channels in the `unet.config.cross_attention_dim`. Defaults to 1024.
-        hidden_dims (int): The number of hidden channels. Defaults to 1280. depth (int): The number of blocks. Defaults
+        hidden_dims (int):
+            The number of hidden channels. Defaults to 1280. depth (int): The number of blocks. Defaults
         to 8. dim_head (int): The number of head channels. Defaults to 64. heads (int): Parallel attention heads.
-        Defaults to 16. num_queries (int): The number of queries. Defaults to 8. ffn_ratio (float): The expansion ratio
+        Defaults to 16. num_queries (int):
+            The number of queries. Defaults to 8. ffn_ratio (float): The expansion ratio
         of feedforward network hidden
             layer channels. Defaults to 4.
     """
@@ -866,11 +868,8 @@ class IPAdapterPlusImageProjection(nn.Module):
         """Forward pass.
 
         Args:
-        ----
             x (torch.Tensor): Input Tensor.
-
         Returns:
-        -------
             torch.Tensor: Output Tensor.
         """
         latents = self.latents.repeat(x.size(0), 1, 1)
@@ -894,17 +893,13 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
     """FacePerceiverResampler of IP-Adapter Plus.
 
     Args:
-    ----
-        embed_dims (int): The feature dimension. Defaults to 768.
-        output_dims (int): The number of output channels, that is the same
-            number of the channels in the
-            `unet.config.cross_attention_dim`. Defaults to 1024.
-        hidden_dims (int): The number of hidden channels. Defaults to 1280.
-        depth (int): The number of blocks. Defaults to 8.
-        dim_head (int): The number of head channels. Defaults to 64.
-        heads (int): Parallel attention heads. Defaults to 16.
-        num_tokens (int): Number of tokens
-        num_queries (int): The number of queries. Defaults to 8.
+        embed_dims (int): The feature dimension. Defaults to 768. output_dims (int): The number of output channels,
+        that is the same
+            number of the channels in the `unet.config.cross_attention_dim`. Defaults to 1024.
+        hidden_dims (int):
+            The number of hidden channels. Defaults to 1280. depth (int): The number of blocks. Defaults
+        to 8. dim_head (int): The number of head channels. Defaults to 64. heads (int): Parallel attention heads.
+        Defaults to 16. num_tokens (int): Number of tokens num_queries (int): The number of queries. Defaults to 8.
         ffn_ratio (float): The expansion ratio of feedforward network hidden
             layer channels. Defaults to 4.
         ffproj_ratio (float): The expansion ratio of feedforward network hidden
@@ -916,7 +911,7 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         embed_dims: int = 768,
         output_dims: int = 768,
         hidden_dims: int = 1280,
-        id_embeddings_dim = 512,
+        id_embeddings_dim: int = 512,
         depth: int = 4,
         dim_head: int = 64,
         heads: int = 16,
@@ -934,7 +929,7 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         self.shortcut = False
         self.shortcut_scale = 1.0
 
-        self.proj = FeedForward(id_embeddings_dim, embed_dims*num_tokens, activation_fn="gelu", mult=ffproj_ratio)
+        self.proj = FeedForward(id_embeddings_dim, embed_dims * num_tokens, activation_fn="gelu", mult=ffproj_ratio)
         self.norm = nn.LayerNorm(embed_dims)
 
         self.proj_in = nn.Linear(hidden_dims, embed_dims)
@@ -967,11 +962,8 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         """Forward pass.
 
         Args:
-        ----
             id_embeds (torch.Tensor): Input Tensor (ID embeds).
-
         Returns:
-        -------
             torch.Tensor: Output Tensor.
         """
         id_embeds = id_embeds.to(self.clip_embeds.dtype)
