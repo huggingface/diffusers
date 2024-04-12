@@ -136,6 +136,7 @@ def set_additional_components(
     original_config,
     checkpoint=None,
     model_type=None,
+    is_cosxl_edit=False,
 ):
     components = {}
     if pipeline_class_name in REFINER_PIPELINES:
@@ -147,6 +148,8 @@ def set_additional_components(
                 "force_zeros_for_empty_prompt": False if is_refiner else True,
             }
         )
+    if pipeline_class_name == "StableDiffusionXLInstructPix2PixPipeline":
+        components.update({"is_cosxl_edit": is_cosxl_edit})
 
     return components
 
@@ -252,6 +255,7 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        is_cosxl_edit = kwargs.pop("is_cosxl_edit", None)
 
         class_name = cls.__name__
 
@@ -309,7 +313,7 @@ class FromSingleFileMixin:
                 init_kwargs.update(components)
 
         additional_components = set_additional_components(
-            class_name, original_config, checkpoint=checkpoint, model_type=model_type
+            class_name, original_config, checkpoint=checkpoint, model_type=model_type, is_cosxl_edit=is_cosxl_edit
         )
         if additional_components:
             init_kwargs.update(additional_components)
