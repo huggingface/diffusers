@@ -1807,17 +1807,6 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             and getattr(self, "b2", None)
         )
 
-        # In ControlNet-XS, the last resnet/attention and the upsampler are treated together as one group.
-        # So we separate them to pass information from ctrl to base correctly.
-        if self.upsamplers is None:
-            resnets_without_upsampler = self.resnets
-            attn_without_upsampler = self.attentions
-        else:
-            resnets_without_upsampler = self.resnets[:-1]
-            attn_without_upsampler = self.attentions[:-1]
-            resnet_with_upsampler = self.resnets[-1]
-            attn_with_upsampler = self.attentions[-1]
-
         def create_custom_forward(module, return_dict=None):
             def custom_forward(*inputs):
                 if return_dict is not None:
@@ -1843,8 +1832,8 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
                 return hidden_states, res_h_base
 
         for resnet, attn, c2b, res_h_base, res_h_ctrl in zip(
-            resnets_without_upsampler,
-            attn_without_upsampler,
+            self.resnets,
+            self.attentions,
             self.ctrl_to_base,
             reversed(res_hidden_states_tuple_base),
             reversed(res_hidden_states_tuple_ctrl),
@@ -1877,24 +1866,6 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
                 )[0]
 
         if self.upsamplers is not None:
-            c2b = self.ctrl_to_base[-1]
-            res_h_base = res_hidden_states_tuple_base[0]
-            res_h_ctrl = res_hidden_states_tuple_ctrl[0]
-            if apply_control:
-                hidden_states += c2b(res_h_ctrl) * conditioning_scale
-            hidden_states, res_h_base = maybe_apply_freeu_to_subblock(hidden_states, res_h_base)
-            hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
-
-            hidden_states = resnet_with_upsampler(hidden_states, temb)
-            if attn_with_upsampler is not None:
-                hidden_states = attn_with_upsampler(
-                    hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    attention_mask=attention_mask,
-                    encoder_attention_mask=encoder_attention_mask,
-                    return_dict=False,
-                )[0]
             hidden_states = self.upsamplers(hidden_states, upsample_size)
 
         return hidden_states
