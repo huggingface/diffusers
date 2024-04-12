@@ -33,9 +33,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_pixart_alpha import PixArtAlphaPipeline, ASPECT_RATIO_2048_BIN, ASPECT_RATIO_1024_BIN, \
+        from .pipeline_pixart_alpha import PixArtAlphaPipeline, ASPECT_RATIO_1024_BIN, \
             ASPECT_RATIO_512_BIN, ASPECT_RATIO_256_BIN
-        from .pipeline_pixart_sigma import PixArtSigmaPipeline
+        from .pipeline_pixart_sigma import PixArtSigmaPipeline, ASPECT_RATIO_2048_BIN
 
 else:
     import sys
