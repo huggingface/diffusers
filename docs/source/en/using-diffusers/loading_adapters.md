@@ -327,7 +327,7 @@ The IP-Adapter FaceID models are experimental IP Adapters that use image embeddi
 You need to install `insightface` and all its requirements to use these models.
 
 <Tip warning={true}>
-As InsightFace pretrained models are available for non-commercial research purposes, IP-Adapter-FaceID models are released exclusively for research purposes and is not intended for commercial use.
+As InsightFace pretrained models are available for non-commercial research purposes, IP-Adapter-FaceID models are released exclusively for research purposes and are not intended for commercial use.
 </Tip>
 
 ```py
