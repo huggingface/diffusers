@@ -758,7 +758,6 @@ class PromptDataset(Dataset):
         return example
 
 
-
 def tokenize_prompt(tokenizer, prompt, tokenizer_max_length=None):
     if tokenizer_max_length is not None:
         max_length = tokenizer_max_length
