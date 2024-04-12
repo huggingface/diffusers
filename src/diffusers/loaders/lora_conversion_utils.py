@@ -190,6 +190,13 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
             if "conv.shortcut" in diffusers_name:
                 diffusers_name = diffusers_name.replace("conv.shortcut", "conv_shortcut")
 
+            # UNet3DConditionModel specificity.
+            diffusers_name = diffusers_name.replace("transformer.in", "transformer_in")
+            diffusers_name = diffusers_name.replace("temp.attentions", "temp_attentions")
+
+            # UNetMotionModel specificity.
+            diffusers_name = diffusers_name.replace("motion.modules", "motion_modules")
+
             # General coverage.
             if "transformer_blocks" in diffusers_name:
                 if "attn1" in diffusers_name or "attn2" in diffusers_name:
