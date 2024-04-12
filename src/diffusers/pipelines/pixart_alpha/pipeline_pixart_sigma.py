@@ -12,27 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
-import re
-import urllib.parse as ul
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
-    BACKENDS_MAPPING,
     deprecate,
-    is_bs4_available,
-    is_ftfy_available,
-    logging,
     replace_example_docstring,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import ImagePipelineOutput
 from ..pixart_alpha import PixArtAlphaPipeline, ASPECT_RATIO_1024_BIN, ASPECT_RATIO_512_BIN, ASPECT_RATIO_256_BIN
 
 ASPECT_RATIO_2048_BIN = {
