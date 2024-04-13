@@ -136,7 +136,6 @@ def set_additional_components(
     original_config,
     checkpoint=None,
     model_type=None,
-    is_cosxl_edit=False,
 ):
     components = {}
     if pipeline_class_name in REFINER_PIPELINES:
@@ -148,8 +147,6 @@ def set_additional_components(
                 "force_zeros_for_empty_prompt": False if is_refiner else True,
             }
         )
-    if pipeline_class_name == "StableDiffusionXLInstructPix2PixPipeline":
-        components.update({"is_cosxl_edit": is_cosxl_edit})
 
     return components
 
