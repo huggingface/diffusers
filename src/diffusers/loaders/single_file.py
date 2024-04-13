@@ -252,7 +252,6 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        is_cosxl_edit = kwargs.pop("is_cosxl_edit", None)
 
         class_name = cls.__name__
 
@@ -310,7 +309,7 @@ class FromSingleFileMixin:
                 init_kwargs.update(components)
 
         additional_components = set_additional_components(
-            class_name, original_config, checkpoint=checkpoint, model_type=model_type, is_cosxl_edit=is_cosxl_edit
+            class_name, original_config, checkpoint=checkpoint, model_type=model_type
         )
         if additional_components:
             init_kwargs.update(additional_components)
