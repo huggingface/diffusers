@@ -27,6 +27,7 @@ from ..utils import (
     is_transformers_available,
     logging,
 )
+from .ip_adapter_utils import _maybe_expand_ip_scales
 
 
 if is_transformers_available():
@@ -249,6 +250,60 @@ class IPAdapterMixin:
                         f"Expected {len(attn_processor.scale)} but got {len(scale)}."
                     )
                 attn_processor.scale = scale
+    
+    
+    def activate_ip_adapter(self, scale_config: Union[float, Dict]):
+        """
+        Activate IP-Adapter per-transformer block.
+
+        Example:
+
+        ```py
+        # To use original IP-Adapter
+        scale_config = 1.0
+        pipeline.activate_ip_adapter(scale_config)
+
+        # To use style block only
+        scale_config = {
+            "up": {
+                "block_0": [0.0, 1.0, 0.0]
+            },
+        }
+        pipeline.activate_ip_adapter(scale_config)
+
+        # To use style+layout blocks
+        scale_config = {
+            "down": {
+                "block_2": [0.0, 1.0]
+            },
+            "up": {
+                "block_0": [0.0, 1.0, 0.0]
+            },
+        }
+        pipeline.activate_ip_adapter(scale_config)
+        ```
+        """
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        scale_config = _maybe_expand_ip_scales(unet, scale_config)
+        for attn_processor in unet.attn_processors.values():
+            # set all to default: skip=False and scale=1.0
+            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+                attn_processor.skip = True
+                attn_processor.scale = [0.0] * len(attn_processor.scale)
+        
+        for attn_name, attn_processor in unet.attn_processors.items():
+            if not isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)): continue
+            for key, scale in scale_config.items():
+                if attn_name.startswith(key):
+                    attn_processor.skip = True if scale==0.0 else False
+                    _scale = [scale] * len(attn_processor.scale)
+                    if len(attn_processor.scale) != len(_scale):
+                        raise ValueError(
+                            f"`scale` should be a list of same length as the number if ip-adapters "
+                            f"Expected {len(attn_processor.scale)} but got {len(_scale)}."
+                        )
+                    attn_processor.scale = _scale
+
 
     def unload_ip_adapter(self):
         """
