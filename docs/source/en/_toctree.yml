@@ -71,7 +71,7 @@
     - local: using-diffusers/control_brightness
       title: Control image brightness
     - local: using-diffusers/weighted_prompts
-      title: Prompt weighting
+      title: Prompt techniques
     - local: using-diffusers/freeu
       title: Improve generation quality with FreeU
     title: Techniques
@@ -86,6 +86,8 @@
       title: Kandinsky
     - local: using-diffusers/controlnet
       title: ControlNet
+    - local: using-diffusers/t2i_adapter
+      title: T2I-Adapter
     - local: using-diffusers/shap-e
       title: Shap-E
     - local: using-diffusers/diffedit
@@ -358,7 +360,7 @@
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
       - local: api/pipelines/stable_diffusion/adapter
-        title: Stable Diffusion T2I-Adapter
+        title: T2I-Adapter
       - local: api/pipelines/stable_diffusion/gligen
         title: GLIGEN (Grounded Language-to-Image Generation)
       title: Stable Diffusion
