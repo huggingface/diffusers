@@ -680,7 +680,6 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
-    parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
     parser.add_argument(
         "--rank",
         type=int,
@@ -694,6 +693,14 @@ def parse_args(input_args=None):
         help=(
             "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
+        ),
+    )
+    parser.add_argument(
+        "--use_blora",
+        action="store_true",
+        default=False,
+        help=(
+            "Whether to train a B-LoRA as proposed in- Implicit Style-Content Separation using B-LoRA https://arxiv.org/abs/2403.14572. "
         ),
     )
     parser.add_argument(
@@ -738,6 +745,21 @@ def parse_args(input_args=None):
             warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
+
+# Taken from B-LoRA repo https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
+
+def get_blora_target_modules(unet, blocks=None):
+    try:
+        if not blocks:
+            blocks = [('.').join(blk.split('.')[1:]) for blk in BLOCKS['content'] + BLOCKS['style']]
+
+        attns = [attn_processor_name.rsplit('.', 1)[0] for attn_processor_name, _ in unet.attn_processors.items() if
+                 is_belong_to_blocks(attn_processor_name, blocks)]
+
+        target_modules = [f'{attn}.{mat}' for mat in ["to_k", "to_q", "to_v", "to_out.0"] for attn in attns]
+        return target_modules
+    except Exception as e:
+        raise type(e)(f'failed to get_target_modules, due to: {e}')
 
 
 # Taken from https://github.com/replicate/cog-sdxl/blob/main/dataset_and_utils.py
@@ -946,16 +968,20 @@ class DreamBoothDataset(Dataset):
                 transforms.Normalize([0.5], [0.5]),
             ]
         )
+        # if using B-LoRA for single image. do not use transformations
+        single_image = len(self.instance_images) < 2 and args.use_blora
         for image in self.instance_images:
-            image = exif_transpose(image)
+            if not single_image:
+                image = exif_transpose(image)
             if not image.mode == "RGB":
                 image = image.convert("RGB")
             self.original_sizes.append((image.height, image.width))
             image = train_resize(image)
-            if args.random_flip and random.random() < 0.5:
+
+            if not single_image and args.random_flip and random.random() < 0.5:
                 # flip
                 image = train_flip(image)
-            if args.center_crop:
+            if args.center_crop or single_image:
                 y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
                 x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
                 image = train_crop(image)
@@ -1374,12 +1400,19 @@ def main(args):
             text_encoder_two.gradient_checkpointing_enable()
 
     # now we will add new LoRA weights to the attention layers
+
+    if args.use_blora:
+        # if using B-LoRA adding weight only to two blocks
+        target_modules = get_blora_target_modules(unet)
+    else:
+        target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
+
     unet_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
         use_dora=args.use_dora,
         init_lora_weights="gaussian",
-        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+        target_modules=target_modules,
     )
     unet.add_adapter(unet_lora_config)
 
@@ -1505,7 +1538,8 @@ def main(args):
             models = [unet_]
             if args.train_text_encoder:
                 models.extend([text_encoder_one_, text_encoder_two_])
-            cast_training_params(models)
+                # only upcast trainable parameters (LoRA) into fp32
+                cast_training_params(models)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1525,6 +1559,8 @@ def main(args):
         models = [unet]
         if args.train_text_encoder:
             models.extend([text_encoder_one, text_encoder_two])
+
+        # only upcast trainable parameters (LoRA) into fp32
         cast_training_params(models, dtype=torch.float32)
 
     unet_lora_parameters = list(filter(lambda p: p.requires_grad, unet.parameters()))
@@ -1780,7 +1816,12 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("dreambooth-lora-sd-xl", config=vars(args))
+        tracker_name = (
+            "dreambooth-lora-sd-xl"
+            if "playground" not in args.pretrained_model_name_or_path
+            else "dreambooth-lora-playground"
+        )
+        accelerator.init_trackers(tracker_name, config=vars(args))
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1833,7 +1874,6 @@ def main(args):
     )
 
     def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
-        # TODO: revisit other sampling algorithms
         sigmas = noise_scheduler.sigmas.to(device=accelerator.device, dtype=dtype)
         schedule_timesteps = noise_scheduler.timesteps.to(accelerator.device)
         timesteps = timesteps.to(accelerator.device)
@@ -1908,12 +1948,6 @@ def main(args):
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
-                if args.noise_offset:
-                    # https://www.crosslabs.org//blog/diffusion-with-offset-noise
-                    noise += args.noise_offset * torch.randn(
-                        (model_input.shape[0], model_input.shape[1], 1, 1), device=model_input.device
-                    )
-
                 bsz = model_input.shape[0]
 
                 # Sample a random timestep for each image
@@ -1961,7 +1995,6 @@ def main(args):
                 if freeze_text_encoder:
                     unet_added_conditions = {
                         "time_ids": add_time_ids,
-                        # "time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1),
                         "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat_text_embeds, 1),
                     }
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
@@ -2139,10 +2172,6 @@ def main(args):
 
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-                logger.info(
-                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
                 # create pipeline
                 if freeze_text_encoder:
                     text_encoder_one = text_encoder_cls_one.from_pretrained(
