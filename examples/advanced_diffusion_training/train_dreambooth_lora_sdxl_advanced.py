@@ -747,6 +747,34 @@ def parse_args(input_args=None):
     return args
 
 # Taken from B-LoRA repo https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
+BLOCKS = {
+    'content': ['unet.up_blocks.0.attentions.0'],
+    'style': ['unet.up_blocks.0.attentions.1'],
+}
+
+def is_belong_to_blocks(key, blocks):
+    try:
+        for g in blocks:
+            if g in key:
+                return True
+        return False
+    except Exception as e:
+        raise type(e)(f'failed to is_belong_to_block, due to: {e}')
+
+
+def filter_lora(state_dict, blocks_):
+    try:
+        return {k: v for k, v in state_dict.items() if is_belong_to_blocks(k, blocks_)}
+    except Exception as e:
+        raise type(e)(f'failed to filter_lora, due to: {e}')
+
+
+def scale_lora(state_dict, alpha):
+    try:
+        return {k: v * alpha for k, v in state_dict.items()}
+    except Exception as e:
+        raise type(e)(f'failed to scale_lora, due to: {e}')
+
 
 def get_blora_target_modules(unet, blocks=None):
     try:
