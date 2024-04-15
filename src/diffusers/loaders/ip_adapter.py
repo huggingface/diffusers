@@ -226,8 +226,9 @@ class IPAdapterMixin:
 
         # load ip-adapter into unet
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        extra_loras = unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
+        unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
+        extra_loras = unet._load_ip_adapter_loras(state_dicts)
         if extra_loras != {}:
             # apply the IP Adapter Face ID LoRA weights
             peft_config = getattr(unet, "peft_config", {})
