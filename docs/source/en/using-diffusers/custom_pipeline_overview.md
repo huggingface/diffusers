@@ -109,6 +109,48 @@ pipeline = DiffusionPipeline.from_pretrained(
 </hfoption>
 </hfoptions>
 
+### Load from_pipe
+
+Did you know that you can use `from_pipe` with a community pipeline? Let me show you an example of using long negative prompt and prompt weighting!
+
+```bash
+pipe_lpw = DiffusionPipeline.from_pipe(
+    pipe_sd,
+    custom_pipeline="lpw_stable_diffusion",
+).to("cuda")
+
+prompt = "best_quality (1girl:1.3) bow bride brown_hair closed_mouth frilled_bow frilled_hair_tubes frills (full_body:1.3) fox_ear hair_bow hair_tubes happy hood japanese_clothes kimono long_sleeves red_bow smile solo tabi uchikake white_kimono wide_sleeves cherry_blossoms"
+neg_prompt = "lowres, bad_anatomy, error_body, error_hair, error_arm, error_hands, bad_hands, error_fingers, bad_fingers, missing_fingers, error_legs, bad_legs, multiple_legs, missing_legs, error_lighting, error_shadow, error_reflection, text, error, extra_digit, fewer_digits, cropped, worst_quality, low_quality, normal_quality, jpeg_artifacts, signature, watermark, username, blurry"
+generator = torch.Generator(device="cpu").manual_seed(33)
+out_lpw = pipe_lpw.text2img(
+    prompt, 
+    negative_prompt=neg_prompt, 
+    width=512,height=512,
+    max_embeddings_multiples=3, 
+    num_inference_steps=num_inference_steps,
+    generator=generator,
+    ).images[0]
+```
+
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/from_pipe_out_lpw_4.png"/>
+</div>
+
+let’s run StableDiffusionPipeline with the same inputs to compare:  the result from the long prompt weighting pipeline is more aligned with the text prompt.
+
+```
+generator = torch.Generator(device="cpu").manual_seed(33)
+out_sd = pipe_sd(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    generator=generator,
+    num_inference_steps=num_inference_steps,
+).images[0]
+out_sd
+```
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/from_pipe_out_sd_5.png"/>
+</div>
 
 For more information about community pipelines, take a look at the [Community pipelines](custom_pipeline_examples) guide for how to use them and if you're interested in adding a community pipeline check out the [How to contribute a community pipeline](contribute_pipeline) guide!
 

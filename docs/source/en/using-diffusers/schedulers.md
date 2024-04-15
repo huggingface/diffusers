@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Schedulers
+# Load schedulers and models
 
 [[open-in-colab]]
 
@@ -27,6 +27,39 @@ They can be quite complex and often define a trade-off between **denoising speed
 It is extremely difficult to measure quantitatively which scheduler works best for a given diffusion pipeline, so it is often recommended to simply try out which works best.
 
 The following paragraphs show how to do so with the 🧨 Diffusers library.
+
+## Load a scheduler
+
+Schedulers are loaded from the [`SchedulerMixin.from_pretrained`] method, and unlike models, schedulers are **not parameterized** or **trained**; they are defined by a configuration file.
+
+Loading schedulers does not consume any significant amount of memory and the same configuration file can be used for a variety of different schedulers.
+For example, the following schedulers are compatible with [`StableDiffusionPipeline`], which means you can load the same scheduler configuration file in any of these classes:
+
+```python
+from diffusers import StableDiffusionPipeline
+from diffusers import (
+    DDPMScheduler,
+    DDIMScheduler,
+    PNDMScheduler,
+    LMSDiscreteScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    DPMSolverMultistepScheduler,
+)
+
+repo_id = "runwayml/stable-diffusion-v1-5"
+
+ddpm = DDPMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+ddim = DDIMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+pndm = PNDMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+lms = LMSDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
+euler_anc = EulerAncestralDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
+euler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
+dpm = DPMSolverMultistepScheduler.from_pretrained(repo_id, subfolder="scheduler")
+
+# replace `dpm` with any of `ddpm`, `ddim`, `pndm`, `lms`, `euler_anc`, `euler`
+pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm, use_safetensors=True)
+```
 
 ## Load pipeline
 
@@ -329,3 +362,36 @@ The following Flax schedulers are _not yet compatible_ with the Flax Stable Diff
 - `FlaxDDPMScheduler`
 
 </Tip>
+
+## Models
+
+Models are loaded from the [`ModelMixin.from_pretrained`] method, which downloads and caches the latest version of the model weights and configurations. If the latest files are available in the local cache, [`~ModelMixin.from_pretrained`] reuses files in the cache instead of re-downloading them.
+
+Models can be loaded from a subfolder with the `subfolder` argument. For example, the model weights for `runwayml/stable-diffusion-v1-5` are stored in the [`unet`](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/unet) subfolder:
+
+```python
+from diffusers import UNet2DConditionModel
+
+repo_id = "runwayml/stable-diffusion-v1-5"
+model = UNet2DConditionModel.from_pretrained(repo_id, subfolder="unet", use_safetensors=True)
+```
+
+Or directly from a repository's [directory](https://huggingface.co/google/ddpm-cifar10-32/tree/main):
+
+```python
+from diffusers import UNet2DModel
+
+repo_id = "google/ddpm-cifar10-32"
+model = UNet2DModel.from_pretrained(repo_id, use_safetensors=True)
+```
+
+You can also load and save model variants by specifying the `variant` argument in [`ModelMixin.from_pretrained`] and [`ModelMixin.save_pretrained`]:
+
+```python
+from diffusers import UNet2DConditionModel
+
+model = UNet2DConditionModel.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", subfolder="unet", variant="non_ema", use_safetensors=True
+)
+model.save_pretrained("./local-unet", variant="non_ema")
+```
