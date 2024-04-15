@@ -180,6 +180,7 @@ class EMAModel:
         use_ema_warmup: bool = False,
         inv_gamma: Union[float, int] = 1.0,
         power: Union[float, int] = 2 / 3,
+        foreach: bool = True,
         model_cls: Optional[Any] = None,
         model_config: Dict[str, Any] = None,
         **kwargs,
@@ -194,6 +195,7 @@ class EMAModel:
             inv_gamma (float):
                 Inverse multiplicative factor of EMA warmup. Default: 1. Only used if `use_ema_warmup` is True.
             power (float): Exponential factor of EMA warmup. Default: 2/3. Only used if `use_ema_warmup` is True.
+            foreach (bool): Use torch._foreach functions for updating shadow parameters. Should be faster.
             device (Optional[Union[str, torch.device]]): The device to store the EMA weights on. If None, the EMA
                         weights will be stored on CPU.
 
@@ -248,6 +250,7 @@ class EMAModel:
         self.power = power
         self.optimization_step = 0
         self.cur_decay_value = None  # set in `step()`
+        self.foreach = foreach
 
         self.model_cls = model_cls
         self.model_config = model_config
@@ -324,15 +327,37 @@ class EMAModel:
         if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
             import deepspeed
 
-        for s_param, param in zip(self.shadow_params, parameters):
+        if self.foreach:
             if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
-                context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
+                context_manager = deepspeed.zero.GatheredParameters(parameters, modifier_rank=None)
 
             with context_manager():
-                if param.requires_grad:
-                    s_param.sub_(one_minus_decay * (s_param - param))
-                else:
-                    s_param.copy_(param)
+                params_grad = [param for param in parameters if param.requires_grad]
+                s_params_grad = [s_param for s_param, param in zip(self.shadow_params, parameters) if param.requires_grad]
+        
+                if len(params_grad) < len(parameters):
+                    torch._foreach_copy_(
+                        [s_param for s_param, param in zip(self.shadow_params, parameters) if not param.requires_grad],
+                        [param for param in parameters if not param.requires_grad],
+                        non_blocking=True
+                    )
+        
+                torch._foreach_sub_(
+                    s_params_grad,
+                    torch._foreach_sub(s_params_grad, params_grad),
+                    alpha=one_minus_decay
+                )
+
+        else:
+            for s_param, param in zip(self.shadow_params, parameters):
+                if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
+                    context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
+    
+                with context_manager():
+                    if param.requires_grad:
+                        s_param.sub_(one_minus_decay * (s_param - param))
+                    else:
+                        s_param.copy_(param)
 
     def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         """
@@ -344,10 +369,24 @@ class EMAModel:
                 `ExponentialMovingAverage` was initialized will be used.
         """
         parameters = list(parameters)
-        for s_param, param in zip(self.shadow_params, parameters):
-            param.data.copy_(s_param.to(param.device).data)
+        if self.foreach:
+            torch._foreach_copy_(
+                [param.data for param in parameters],
+                [s_param.to(param.device).data for s_param, param in zip(self.shadow_params, parameters)]
+            )
+        else:
+            for s_param, param in zip(self.shadow_params, parameters):
+                param.data.copy_(s_param.to(param.device).data)
 
-    def to(self, device=None, dtype=None) -> None:
+    def pin_memory(self) -> None:
+        r"""
+        Move internal buffers of the ExponentialMovingAverage to pinned memory. Useful for non-blocking transfers
+        for offloading EMA params to the host.
+        """
+
+        self.shadow_params = [p.pin_memory() for p in self.shadow_params]
+    
+    def to(self, device=None, dtype=None, non_blocking=False) -> None:
         r"""Move internal buffers of the ExponentialMovingAverage to `device`.
 
         Args:
@@ -355,8 +394,8 @@ class EMAModel:
         """
         # .to() on the tensors handles None correctly
         self.shadow_params = [
-            p.to(device=device, dtype=dtype) if p.is_floating_point() else p.to(device=device)
-            for p in self.shadow_params
+            p.to(device=device, dtype=dtype, non_blocking=non_blocking) if p.is_floating_point() 
+            else p.to(device=device, non_blocking=non_blocking) for p in self.shadow_params
         ]
 
     def state_dict(self) -> dict:
@@ -399,8 +438,14 @@ class EMAModel:
         """
         if self.temp_stored_params is None:
             raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
-        for c_param, param in zip(self.temp_stored_params, parameters):
-            param.data.copy_(c_param.data)
+        if self.foreach:
+            torch._foreach_copy_(
+                [param.data for param in parameters],
+                [c_param.data for c_param in self.temp_stored_params]
+            )
+        else:
+            for c_param, param in zip(self.temp_stored_params, parameters):
+                param.data.copy_(c_param.data)
 
         # Better memory-wise.
         self.temp_stored_params = None
