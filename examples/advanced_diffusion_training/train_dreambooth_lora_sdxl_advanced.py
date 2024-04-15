@@ -761,21 +761,6 @@ def is_belong_to_blocks(key, blocks):
     except Exception as e:
         raise type(e)(f'failed to is_belong_to_block, due to: {e}')
 
-
-def filter_lora(state_dict, blocks_):
-    try:
-        return {k: v for k, v in state_dict.items() if is_belong_to_blocks(k, blocks_)}
-    except Exception as e:
-        raise type(e)(f'failed to filter_lora, due to: {e}')
-
-
-def scale_lora(state_dict, alpha):
-    try:
-        return {k: v * alpha for k, v in state_dict.items()}
-    except Exception as e:
-        raise type(e)(f'failed to scale_lora, due to: {e}')
-
-
 def get_blora_target_modules(unet, blocks=None):
     try:
         if not blocks:
