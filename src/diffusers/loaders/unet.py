@@ -989,9 +989,7 @@ class UNet2DConditionLoadersMixin:
         # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None
 
-        attn_procs = self._convert_ip_adapter_attn_to_diffusers(
-            state_dicts, low_cpu_mem_usage=low_cpu_mem_usage
-        )
+        attn_procs = self._convert_ip_adapter_attn_to_diffusers(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
         self.set_attn_processor(attn_procs)
 
         # convert IP-Adapter Image Projection layers to diffusers
@@ -1008,7 +1006,6 @@ class UNet2DConditionLoadersMixin:
         self.to(dtype=self.dtype, device=self.device)
 
     def _load_ip_adapter_loras(self, state_dicts):
-
         lora_dicts = {}
         for key_id, name in enumerate(self.attn_processors.keys()):
             for i, state_dict in enumerate(state_dicts):

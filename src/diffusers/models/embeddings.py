@@ -888,15 +888,15 @@ class IPAdapterPlusImageProjection(nn.Module):
         latents = self.proj_out(latents)
         return self.norm_out(latents)
 
-class IPAdapterPlusImageProjectionBlock(nn.Module):
 
+class IPAdapterPlusImageProjectionBlock(nn.Module):
     def __init__(
         self,
         embed_dims: int = 768,
         dim_head: int = 64,
         heads: int = 16,
         ffn_ratio: float = 4,
-        ) -> None:
+    ) -> None:
         super().__init__()
         from .attention import FeedForward
 
@@ -920,6 +920,7 @@ class IPAdapterPlusImageProjectionBlock(nn.Module):
         latents = self.attn(latents, encoder_hidden_states) + residual
         latents = self.ff(latents) + latents
         return latents
+
 
 class IPAdapterFaceIDPlusImageProjection(nn.Module):
     """FacePerceiverResampler of IP-Adapter Plus.
@@ -969,9 +970,9 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         self.proj_out = nn.Linear(embed_dims, output_dims)
         self.norm_out = nn.LayerNorm(output_dims)
 
-        self.layers = nn.ModuleList([
-            IPAdapterPlusImageProjectionBlock(embed_dims, dim_head, heads, ffn_ratio) for _ in range(depth)
-            ])
+        self.layers = nn.ModuleList(
+            [IPAdapterPlusImageProjectionBlock(embed_dims, dim_head, heads, ffn_ratio) for _ in range(depth)]
+        )
 
     def forward(self, id_embeds: torch.Tensor) -> torch.Tensor:
         """Forward pass.
