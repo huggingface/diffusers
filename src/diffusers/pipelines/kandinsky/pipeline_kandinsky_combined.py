@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -129,7 +129,7 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
         prior_prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         prior_image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen image-encoder.
         prior_text_encoder ([`CLIPTextModelWithProjection`]):
@@ -143,6 +143,7 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
 
     _load_connected_pipes = True
     model_cpu_offload_seq = "text_encoder->unet->movq->prior_prior->prior_image_encoder->prior_text_encoder"
+    _exclude_from_cpu_offload = ["prior_prior"]
 
     def __init__(
         self,
@@ -346,7 +347,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
         prior_prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         prior_image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen image-encoder.
         prior_text_encoder ([`CLIPTextModelWithProjection`]):
@@ -360,6 +361,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
 
     _load_connected_pipes = True
     model_cpu_offload_seq = "prior_text_encoder->prior_image_encoder->prior_prior->" "text_encoder->unet->movq"
+    _exclude_from_cpu_offload = ["prior_prior"]
 
     def __init__(
         self,
@@ -586,7 +588,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
         prior_prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         prior_image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen image-encoder.
         prior_text_encoder ([`CLIPTextModelWithProjection`]):
@@ -600,6 +602,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
 
     _load_connected_pipes = True
     model_cpu_offload_seq = "prior_text_encoder->prior_image_encoder->prior_prior->text_encoder->unet->movq"
+    _exclude_from_cpu_offload = ["prior_prior"]
 
     def __init__(
         self,

@@ -1,4 +1,4 @@
-# Copyright 2023 TSAIL Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 TSAIL Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ def betas_for_alpha_bar(
             return math.exp(t * -12.0)
 
     else:
-        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
+        raise ValueError(f"Unsupported alpha_transform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
@@ -69,6 +69,43 @@ def betas_for_alpha_bar(
         t2 = (i + 1) / num_diffusion_timesteps
         betas.append(min(1 - alpha_bar_fn(t2) / alpha_bar_fn(t1), max_beta))
     return torch.tensor(betas, dtype=torch.float32)
+
+
+# Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
+def rescale_zero_terminal_snr(betas):
+    """
+    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
+
+
+    Args:
+        betas (`torch.FloatTensor`):
+            the betas that the scheduler is being initialized with.
+
+    Returns:
+        `torch.FloatTensor`: rescaled betas with zero terminal SNR
+    """
+    # Convert betas to alphas_bar_sqrt
+    alphas = 1.0 - betas
+    alphas_cumprod = torch.cumprod(alphas, dim=0)
+    alphas_bar_sqrt = alphas_cumprod.sqrt()
+
+    # Store old values.
+    alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
+    alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
+
+    # Shift so the last timestep is zero.
+    alphas_bar_sqrt -= alphas_bar_sqrt_T
+
+    # Scale so the first timestep is back to the old value.
+    alphas_bar_sqrt *= alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
+
+    # Convert alphas_bar_sqrt to betas
+    alphas_bar = alphas_bar_sqrt**2  # Revert sqrt
+    alphas = alphas_bar[1:] / alphas_bar[:-1]  # Revert cumprod
+    alphas = torch.cat([alphas_bar[0:1], alphas])
+    betas = 1 - alphas
+
+    return betas
 
 
 class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
@@ -126,9 +163,14 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+            An offset added to the inference steps, as required by some model families.
+        final_sigmas_type (`str`, defaults to `"zero"`):
+            The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final
+            sigma is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
+        rescale_betas_zero_snr (`bool`, defaults to `False`):
+            Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
+            dark samples instead of limiting it to samples with medium brightness. Loosely related to
+            [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -155,6 +197,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas: Optional[bool] = False,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
+        final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
+        rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -169,8 +213,17 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
+        if rescale_betas_zero_snr:
+            self.betas = rescale_zero_terminal_snr(self.betas)
+
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+
+        if rescale_betas_zero_snr:
+            # Close to 0 without being 0 so first sigma is not inf
+            # FP16 smallest positive subnormal works well here
+            self.alphas_cumprod[-1] = 2**-24
+
         # Currently we only support VP-type noise schedule
         self.alpha_t = torch.sqrt(self.alphas_cumprod)
         self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
@@ -198,14 +251,33 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.solver_p = solver_p
         self.last_sample = None
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
@@ -248,10 +320,25 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
-            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+            if self.config.final_sigmas_type == "sigma_min":
+                sigma_last = sigmas[-1]
+            elif self.config.final_sigmas_type == "zero":
+                sigma_last = 0
+            else:
+                raise ValueError(
+                    f"`final_sigmas_type` must be one of 'zero', or 'sigma_min', but got {self.config.final_sigmas_type}"
+                )
+            sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-            sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
+            if self.config.final_sigmas_type == "sigma_min":
+                sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
+            elif self.config.final_sigmas_type == "zero":
+                sigma_last = 0
+            else:
+                raise ValueError(
+                    f"`final_sigmas_type` must be one of 'zero', or 'sigma_min', but got {self.config.final_sigmas_type}"
+                )
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
@@ -269,6 +356,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
@@ -539,7 +627,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             if order == 2:
                 rhos_p = torch.tensor([0.5], dtype=x.dtype, device=device)
             else:
-                rhos_p = torch.linalg.solve(R[:-1, :-1], b[:-1])
+                rhos_p = torch.linalg.solve(R[:-1, :-1], b[:-1]).to(device).to(x.dtype)
         else:
             D1s = None
 
@@ -677,7 +765,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         if order == 1:
             rhos_c = torch.tensor([0.5], dtype=x.dtype, device=device)
         else:
-            rhos_c = torch.linalg.solve(R, b)
+            rhos_c = torch.linalg.solve(R, b).to(device).to(x.dtype)
 
         if self.predict_x0:
             x_t_ = sigma_t / sigma_s0 * x - alpha_t * h_phi_1 * m0
@@ -698,11 +786,12 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         x_t = x_t.to(x.dtype)
         return x_t
 
-    def _init_step_index(self, timestep):
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
 
-        index_candidates = (self.timesteps == timestep).nonzero()
+        index_candidates = (schedule_timesteps == timestep).nonzero()
 
         if len(index_candidates) == 0:
             step_index = len(self.timesteps) - 1
@@ -715,7 +804,20 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = index_candidates[0].item()
 
-        self._step_index = step_index
+        return step_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        """
+        Initialize the step_index counter for the scheduler.
+        """
+
+        if self.begin_index is None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.to(self.timesteps.device)
+            self._step_index = self.index_for_timestep(timestep)
+        else:
+            self._step_index = self._begin_index
 
     def step(
         self,
@@ -830,16 +932,15 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = []
-        for timestep in timesteps:
-            index_candidates = (schedule_timesteps == timestep).nonzero()
-            if len(index_candidates) == 0:
-                step_index = len(schedule_timesteps) - 1
-            elif len(index_candidates) > 1:
-                step_index = index_candidates[1].item()
-            else:
-                step_index = index_candidates[0].item()
-            step_indices.append(step_index)
+        # begin_index is None when the scheduler is used for training or pipeline does not implement set_begin_index
+        if self.begin_index is None:
+            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        elif self.step_index is not None:
+            # add_noise is called after first denoising step (for inpainting)
+            step_indices = [self.step_index] * timesteps.shape[0]
+        else:
+            # add noise is called before first denoising step to create initial latent(img2img)
+            step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

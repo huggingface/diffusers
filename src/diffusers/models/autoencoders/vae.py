@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -926,6 +926,7 @@ class DecoderTiny(nn.Module):
         block_out_channels: Tuple[int, ...],
         upsampling_scaling_factor: int,
         act_fn: str,
+        upsample_fn: str,
     ):
         super().__init__()
 
@@ -942,7 +943,7 @@ class DecoderTiny(nn.Module):
                 layers.append(AutoencoderTinyBlock(num_channels, num_channels, act_fn))
 
             if not is_final_block:
-                layers.append(nn.Upsample(scale_factor=upsampling_scaling_factor))
+                layers.append(nn.Upsample(scale_factor=upsampling_scaling_factor, mode=upsample_fn))
 
             conv_out_channel = num_channels if not is_final_block else out_channels
             layers.append(

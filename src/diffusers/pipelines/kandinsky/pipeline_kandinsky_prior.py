@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -134,7 +134,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
 
     Args:
         prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen image-encoder.
         text_encoder ([`CLIPTextModelWithProjection`]):

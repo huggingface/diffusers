@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023, Haofan Wang, Qixun Wang, All rights reserved.
+# Copyright 2024, Haofan Wang, Qixun Wang, All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Conversion script for the LoRA's safetensors checkpoints. """
+"""Conversion script for the LoRA's safetensors checkpoints."""
 
 import argparse
 

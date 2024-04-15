@@ -1,4 +1,4 @@
-# Copyright 2023 Pix2Pix Zero Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Pix2Pix Zero Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ from ....utils import (
     unscale_lora_layers,
 )
 from ....utils.torch_utils import randn_tensor
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ...stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ...stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
@@ -280,7 +280,7 @@ class Pix2PixZeroAttnProcessor:
         return hidden_states
 
 
-class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
+class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for pixel-level image editing using Pix2Pix Zero. Based on Stable Diffusion.
 
@@ -463,7 +463,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
@@ -545,7 +545,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             else:
                 uncond_tokens = negative_prompt
 
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 

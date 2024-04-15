@@ -1,4 +1,4 @@
-# Copyright 2023 Shuchen Xue, etc. in University of Chinese Academy of Sciences Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Shuchen Xue, etc. in University of Chinese Academy of Sciences Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ def betas_for_alpha_bar(
             return math.exp(t * -12.0)
 
     else:
-        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
+        raise ValueError(f"Unsupported alpha_transform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
@@ -92,19 +92,20 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         trained_betas (`np.ndarray`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
         predictor_order (`int`, defaults to 2):
-            The predictor order which can be `1` or `2` or `3` or '4'. It is recommended to use `predictor_order=2` for guided
-            sampling, and `predictor_order=3` for unconditional sampling.
+            The predictor order which can be `1` or `2` or `3` or '4'. It is recommended to use `predictor_order=2` for
+            guided sampling, and `predictor_order=3` for unconditional sampling.
         corrector_order (`int`, defaults to 2):
-            The corrector order which can be `1` or `2` or `3` or '4'. It is recommended to use `corrector_order=2` for guided
-            sampling, and `corrector_order=3` for unconditional sampling.
+            The corrector order which can be `1` or `2` or `3` or '4'. It is recommended to use `corrector_order=2` for
+            guided sampling, and `corrector_order=3` for unconditional sampling.
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
             Video](https://imagen.research.google/video/paper.pdf) paper).
         tau_func (`Callable`, *optional*):
-            Stochasticity during the sampling. Default in init is `lambda t: 1 if t >= 200 and t <= 800 else 0`. SA-Solver
-            will sample from vanilla diffusion ODE if tau_func is set to `lambda t: 0`. SA-Solver will sample from vanilla
-            diffusion SDE if tau_func is set to `lambda t: 1`. For more details, please check https://arxiv.org/abs/2309.05019
+            Stochasticity during the sampling. Default in init is `lambda t: 1 if t >= 200 and t <= 800 else 0`.
+            SA-Solver will sample from vanilla diffusion ODE if tau_func is set to `lambda t: 0`. SA-Solver will sample
+            from vanilla diffusion SDE if tau_func is set to `lambda t: 1`. For more details, please check
+            https://arxiv.org/abs/2309.05019
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
@@ -114,8 +115,8 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             The threshold value for dynamic thresholding. Valid only when `thresholding=True` and
             `algorithm_type="dpmsolver++"`.
         algorithm_type (`str`, defaults to `data_prediction`):
-            Algorithm type for the solver; can be `data_prediction` or `noise_prediction`. It is recommended to use `data_prediction`
-            with `solver_order=2` for guided sampling like in Stable Diffusion.
+            Algorithm type for the solver; can be `data_prediction` or `noise_prediction`. It is recommended to use
+            `data_prediction` with `solver_order=2` for guided sampling like in Stable Diffusion.
         lower_order_final (`bool`, defaults to `True`):
             Whether to use lower-order solvers in the final steps. Default = True.
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
@@ -131,9 +132,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+            An offset added to the inference steps, as required by some model families.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -212,14 +211,33 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.lower_order_nums = 0
         self.last_sample = None
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def set_timesteps(self, num_inference_steps: int = None, device: Union[str, torch.device] = None):
         """
@@ -283,6 +301,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
@@ -384,14 +403,14 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         **kwargs,
     ) -> torch.FloatTensor:
         """
-        Convert the model output to the corresponding type the data_prediction/noise_prediction algorithm needs. Noise_prediction is
-        designed to discretize an integral of the noise prediction model, and data_prediction is designed to discretize an
-        integral of the data prediction model.
+        Convert the model output to the corresponding type the data_prediction/noise_prediction algorithm needs.
+        Noise_prediction is designed to discretize an integral of the noise prediction model, and data_prediction is
+        designed to discretize an integral of the data prediction model.
 
         <Tip>
 
-        The algorithm and model type are decoupled. You can use either data_prediction or noise_prediction for both noise
-        prediction and data prediction models.
+        The algorithm and model type are decoupled. You can use either data_prediction or noise_prediction for both
+        noise prediction and data prediction models.
 
         </Tip>
 
@@ -925,11 +944,12 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         x_t = x_t.to(x.dtype)
         return x_t
 
-    def _init_step_index(self, timestep):
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
 
-        index_candidates = (self.timesteps == timestep).nonzero()
+        index_candidates = (schedule_timesteps == timestep).nonzero()
 
         if len(index_candidates) == 0:
             step_index = len(self.timesteps) - 1
@@ -942,7 +962,20 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = index_candidates[0].item()
 
-        self._step_index = step_index
+        return step_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        """
+        Initialize the step_index counter for the scheduler.
+        """
+
+        if self.begin_index is None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.to(self.timesteps.device)
+            self._step_index = self.index_for_timestep(timestep)
+        else:
+            self._step_index = self._begin_index
 
     def step(
         self,
@@ -1069,7 +1102,10 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
+        # for the subsequent add_noise calls
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device)
+        alphas_cumprod = self.alphas_cumprod.to(dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5

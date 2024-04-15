@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -430,6 +430,9 @@ def main(args):
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     if accelerator.is_main_process:
         os.makedirs(args.output_dir, exist_ok=True)

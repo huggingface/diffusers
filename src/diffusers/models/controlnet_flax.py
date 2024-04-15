@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -329,15 +329,15 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             controlnet_cond (`jnp.ndarray`): (batch, channel, height, width) the conditional input tensor
             conditioning_scale (`float`, *optional*, defaults to `1.0`): the scale factor for controlnet outputs
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unets.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`models.unets.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of
+                a plain tuple.
             train (`bool`, *optional*, defaults to `False`):
                 Use deterministic functions and disable dropout when not training.
 
         Returns:
             [`~models.unets.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] or `tuple`:
-                [`~models.unets.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] if `return_dict` is True, otherwise a
-                `tuple`. When returning a tuple, the first element is the sample tensor.
+                [`~models.unets.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] if `return_dict` is True, otherwise
+                a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
         channel_order = self.controlnet_conditioning_channel_order
         if channel_order == "bgr":

@@ -8,7 +8,6 @@ from ...models import Kandinsky3UNet, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
     deprecate,
-    is_accelerate_available,
     logging,
     replace_example_docstring,
 )
@@ -24,7 +23,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AutoPipelineForText2Image
         >>> import torch
 
-        >>> pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+        >>> pipe = AutoPipelineForText2Image.from_pretrained(
+        ...     "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
+        ... )
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "A photograph of the inside of a subway train. There are raccoons sitting on the seats. One of them is reading a newspaper. The window shows the city in the background."
@@ -69,20 +70,6 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, unet=unet, scheduler=scheduler, movq=movq
         )
-
-    def remove_all_hooks(self):
-        if is_accelerate_available():
-            from accelerate.hooks import remove_hook_from_module
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        for model in [self.text_encoder, self.unet, self.movq]:
-            if model is not None:
-                remove_hook_from_module(model, recurse=True)
-
-        self.unet_offload_hook = None
-        self.text_encoder_offload_hook = None
-        self.final_offload_hook = None
 
     def process_embeds(self, embeddings, attention_mask, cut_context):
         if cut_context:

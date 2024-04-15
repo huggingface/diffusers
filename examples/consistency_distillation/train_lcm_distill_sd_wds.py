@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Union
 
@@ -71,7 +72,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -252,7 +253,12 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step, name="targe
 
     for _, prompt in enumerate(validation_prompts):
         images = []
-        with torch.autocast("cuda"):
+        if torch.backends.mps.is_available():
+            autocast_ctx = nullcontext()
+        else:
+            autocast_ctx = torch.autocast(accelerator.device.type)
+
+        with autocast_ctx:
             images = pipeline(
                 prompt=prompt,
                 num_inference_steps=4,
@@ -285,7 +291,7 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step, name="targe
 
             tracker.log({f"validation/{name}": formatted_images})
         else:
-            logger.warn(f"image logging not implemented for {tracker.name}")
+            logger.warning(f"image logging not implemented for {tracker.name}")
 
         del pipeline
         gc.collect()
@@ -833,6 +839,12 @@ def encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompt
 
 
 def main(args):
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -933,7 +945,7 @@ def main(args):
 
     # 8. Create target student U-Net. This will be updated via EMA updates (polyak averaging).
     # Initialize from (online) unet
-    target_unet = UNet2DConditionModel(**teacher_unet.config)
+    target_unet = UNet2DConditionModel.from_config(unet.config)
     target_unet.load_state_dict(unet.state_dict())
     target_unet.train()
     target_unet.requires_grad_(False)
@@ -1017,7 +1029,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -1251,7 +1263,12 @@ def main(args):
                 # estimates to predict the data point in the augmented PF-ODE trajectory corresponding to the next ODE
                 # solver timestep.
                 with torch.no_grad():
-                    with torch.autocast("cuda"):
+                    if torch.backends.mps.is_available():
+                        autocast_ctx = nullcontext()
+                    else:
+                        autocast_ctx = torch.autocast(accelerator.device.type)
+
+                    with autocast_ctx:
                         # 1. Get teacher model prediction on noisy_model_input z_{t_{n + k}} and conditional embedding c
                         cond_teacher_output = teacher_unet(
                             noisy_model_input.to(weight_dtype),
@@ -1309,7 +1326,12 @@ def main(args):
 
                 # 9. Get target LCM prediction on x_prev, w, c, t_n (timesteps)
                 with torch.no_grad():
-                    with torch.autocast("cuda", dtype=weight_dtype):
+                    if torch.backends.mps.is_available():
+                        autocast_ctx = nullcontext()
+                    else:
+                        autocast_ctx = torch.autocast(accelerator.device.type, dtype=weight_dtype)
+
+                    with autocast_ctx:
                         target_noise_pred = target_unet(
                             x_prev.float(),
                             timesteps,

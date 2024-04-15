@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 
@@ -264,7 +264,7 @@ class MaskWeightsBuilder:
         return torch.tile(torch.tensor(weights), (self.nbatch, self.latent_space_dim, 1, 1))
 
 
-class StableDiffusionCanvasPipeline(DiffusionPipeline):
+class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
     """Stable Diffusion pipeline that mixes several diffusers in the same canvas"""
 
     def __init__(

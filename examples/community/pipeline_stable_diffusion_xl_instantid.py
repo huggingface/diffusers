@@ -46,6 +46,11 @@ except Exception:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+logger.warning(
+    "To use instant id pipelines, please make sure you have the `insightface` library installed: `pip install insightface`."
+    "Please refer to: https://huggingface.co/InstantX/InstantID for further instructions regarding inference"
+)
+
 
 def FeedForward(dim, mult=4):
     inner_dim = int(dim * mult)
@@ -452,7 +457,7 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
 
                 xformers_version = version.parse(xformers.__version__)
                 if xformers_version == version.parse("0.0.16"):
-                    logger.warn(
+                    logger.warning(
                         "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                     )
                 self.enable_xformers_memory_efficient_attention()
@@ -701,7 +706,7 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
@@ -812,6 +817,9 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
         prompt_image_emb = self._encode_prompt_image_emb(
             image_embeds, device, self.unet.dtype, self.do_classifier_free_guidance
         )
+        bs_embed, seq_len, _ = prompt_image_emb.shape
+        prompt_image_emb = prompt_image_emb.repeat(1, num_images_per_prompt, 1)
+        prompt_image_emb = prompt_image_emb.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):
