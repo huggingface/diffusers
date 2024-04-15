@@ -25,7 +25,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import ImagePipelineOutput
-from ..pixart_alpha import PixArtAlphaPipeline, ASPECT_RATIO_1024_BIN, ASPECT_RATIO_512_BIN, ASPECT_RATIO_256_BIN
+from .pipeline_pixart_alpha import PixArtAlphaPipeline, ASPECT_RATIO_1024_BIN, ASPECT_RATIO_512_BIN, ASPECT_RATIO_256_BIN
 
 ASPECT_RATIO_2048_BIN = {
     "0.25": [1024.0, 4096.0],
