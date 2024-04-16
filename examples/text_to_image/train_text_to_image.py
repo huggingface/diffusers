@@ -373,6 +373,7 @@ def parse_args():
         ),
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
+    parser.add_argument("--offload_ema", action="store_true", help="Offload EMA model to CPU during training step.")
     parser.add_argument(
         "--non_ema_revision",
         type=str,
@@ -643,7 +644,10 @@ def main():
             if args.use_ema:
                 load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
                 ema_unet.load_state_dict(load_model.state_dict())
-                ema_unet.to(accelerator.device)
+                if args.offload_ema:
+                    ema_unet.pin_memory()
+                else:
+                    ema_unet.to(accelerator.device)
                 del load_model
 
             for _ in range(len(models)):
@@ -819,7 +823,10 @@ def main():
     )
 
     if args.use_ema:
-        ema_unet.to(accelerator.device)
+        if args.offload_ema:
+            ema_unet.pin_memory()
+        else:
+            ema_unet.to(accelerator.device)
 
     # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
@@ -985,7 +992,11 @@ def main():
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 if args.use_ema:
+                    if args.offload_ema:
+                        ema_unet.to(device="cuda", non_blocking=True)
                     ema_unet.step(unet.parameters())
+                    if args.offload_ema:
+                        ema_unet.to(device="cpu", non_blocking=True)
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
