@@ -21,28 +21,24 @@ Next, create a `TgateLoader` with a pipeline, the gate step(`add brief descripti
 
 Let's see how to enable this for several different pipelines.
 
-```diff
+```py
 import torch
 from diffusers import PixArtAlphaPipeline
+from tgate import TgatePixArtLoader
 
 pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
-
-+ from tgate import TgatePixArtLoader
-+ gate_step = 8
-+ inference_step = 25
-+ pipe = TgatePixArtLoader(
-+        pipe,
-+        gate_step=gate_step,
-+        num_inference_steps=inference_step,
-+ )
+pipe = TgatePixArtLoader(
+       pipe,
+       gate_step=8,
+       num_inference_steps=25,
+)
 pipe = pipe.to("cuda")
 
-+ image = pipe.tgate(
-+         "An alpaca made of colorful building blocks, cyberpunk.",
-+         gate_step=gate_step,
-+         num_inference_steps=inference_step,
-+ ).images[0]
-```
+image = pipe.tgate(
+       "An alpaca made of colorful building blocks, cyberpunk.",
+        gate_step=gate_step,
+       num_inference_steps=inference_step,
+).images[0]
 
 Accelerate `StableDiffusionXLPipeline` with TGATE:
 
