@@ -822,9 +822,9 @@ class UNet2DConditionLoadersMixin:
 
         elif "norm.weight" in state_dict:
             # IP-Adapter Face ID
-            clip_embeddings_dim_in = state_dict["proj.0.weight"].shape[1]
-            clip_embeddings_dim_out = state_dict["proj.0.weight"].shape[0]
-            multiplier = clip_embeddings_dim_out // clip_embeddings_dim_in
+            id_embeddings_dim_in = state_dict["proj.0.weight"].shape[1]
+            id_embeddings_dim_out = state_dict["proj.0.weight"].shape[0]
+            multiplier = id_embeddings_dim_out // id_embeddings_dim_in
             norm_layer = "norm.weight"
             cross_attention_dim = state_dict[norm_layer].shape[0]
             num_tokens = state_dict["proj.2.weight"].shape[0] // cross_attention_dim
@@ -832,7 +832,7 @@ class UNet2DConditionLoadersMixin:
             with init_context():
                 image_projection = IPAdapterFaceIDImageProjection(
                     cross_attention_dim=cross_attention_dim,
-                    image_embed_dim=clip_embeddings_dim_in,
+                    image_embed_dim=id_embeddings_dim_in,
                     mult=multiplier,
                     num_tokens=num_tokens,
                 )
