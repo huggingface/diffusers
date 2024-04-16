@@ -107,11 +107,11 @@ pipe = TgateSDXLDeepCacheLoader(
        cache_branch_id=0,
 ).to("cuda")
 
-+ image = pipe.tgate(
-+         "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
-+         gate_step=gate_step,
-+         num_inference_steps=inference_step
-+ ).images[0]
+image = pipe.tgate(
+        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
+        gate_step=gate_step,
+        num_inference_steps=inference_step
+).images[0]
 ```
 </hfoption>
 <hfoption id="Latent Consistency Model">
@@ -137,21 +137,21 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 )
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
-+ from tgate import TgateSDXLLoader
-+ gate_step = 1
-+ inference_step = 4
-+ pipe = TgateSDXLLoader(
-+        pipe,
-+        gate_step=gate_step,
-+        num_inference_steps=inference_step,
-+        lcm=True
-+ ).to("cuda")
+from tgate import TgateSDXLLoader
+gate_step = 1
+inference_step = 4
+pipe = TgateSDXLLoader(
+       pipe,
+       gate_step=gate_step,
+       num_inference_steps=inference_step,
+       lcm=True
+).to("cuda")
 
-+ image = pipe.tgate(
-+         "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
-+         gate_step=gate_step,
-+         num_inference_steps=inference_step
-+ ).images[0]
+image = pipe.tgate(
+        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
+        gate_step=gate_step,
+        num_inference_steps=inference_step
+).images[0]
 ```
 </hfoption>
 </hfoptions>
