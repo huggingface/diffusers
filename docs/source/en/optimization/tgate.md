@@ -165,8 +165,4 @@ T-GATE also supports [`StableDiffusionPipeline`] and [PixArt-alpha/PixArt-LCM-XL
 | LCM (Pixart-Alpha)    | 8.563T   | 611.350M  | 4.733s  | 36.086                    |
 | LCM w/ TGATE          | 7.623T   | 462.585M  | 4.543s  | 37.048                    |
 
-The latency is tested on a 1080ti commercial card. 
-
-The MACs and Params are calculated by [calflops](https://github.com/MrYxJ/calculate-flops.pytorch). 
-
-The FID is calculated by [PytorchFID](https://github.com/mseitzer/pytorch-fid).
+The latency is tested on an NVIDIA 1080TI, MACs and Params are calculated with [calflops](https://github.com/MrYxJ/calculate-flops.pytorch), and the FID is calculated with [PytorchFID](https://github.com/mseitzer/pytorch-fid).
