@@ -6,7 +6,7 @@ Before you begin, make sure you install T-GATE.
 
 ```bash
 pip install tgate
-```
+pip install -U pytorch diffusers transformers accelerate DeepCache
 
 #### Requirements
 
