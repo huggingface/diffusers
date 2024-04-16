@@ -422,7 +422,6 @@ class IPAdapterTesterMixin:
         )
 
     def test_ip_adapter_faceid(self, expected_max_diff: float = 1e-4):
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
