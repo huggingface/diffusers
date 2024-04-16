@@ -9,9 +9,17 @@ pip install tgate
 pip install -U pytorch diffusers transformers accelerate DeepCache
 
 
-### 🌟 Usage
+To use T-GATE with a pipeline, you need to use its corresponding loader.
 
-Accelerate `PixArtAlphaPipeline` with TGATE:
+| Pipeline | T-GATE Loader |
+|---|---|
+| PixArt | TgatePixArtLoader |
+| Stable Diffusion XL | TgateSDXLLoader |
+| Stable Diffusion XL + DeepCache | TgateSDXLDeepCacheLoader |
+
+Next, create a `TgateLoader` with a pipeline, the gate step(`add brief description here`), and the number of inference steps. Then call the `tgate` method on the pipeline with a prompt, gate step, and the number of inference steps.
+
+Let's see how to enable this for several different pipelines.
 
 ```diff
 import torch
