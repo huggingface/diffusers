@@ -145,8 +145,7 @@ pipe = pipe.to("cuda")
 + ).images[0]
 ```
 
-TGATE also supports `StableDiffusionPipeline` and `PixArt-alpha/PixArt-LCM-XL-2-1024-MS`.
-More details can be found at [here](https://github.com/HaozheLiu-ST/T-GATE/tree/release-v.0.1.0/main.py).
+T-GATE also supports [`StableDiffusionPipeline`] and [PixArt-alpha/PixArt-LCM-XL-2-1024-MS](https://hf.co/PixArt-alpha/PixArt-LCM-XL-2-1024-MS).
 
 ## 📄 Results
 | Model                 | MACs     | Param     | Latency | Zero-shot 10K-FID on MS-COCO |
