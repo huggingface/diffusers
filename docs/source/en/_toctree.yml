@@ -29,7 +29,7 @@
     - local: using-diffusers/custom_pipeline_overview
       title: Load community pipelines and components
     - local: using-diffusers/schedulers
-      title: Load models and schedulers
+      title: Load schedulers and models
     - local: using-diffusers/using_safetensors
       title: Load safetensors
     - local: using-diffusers/other-formats
