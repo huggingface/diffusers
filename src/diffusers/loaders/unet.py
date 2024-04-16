@@ -774,7 +774,7 @@ class UNet2DConditionLoadersMixin:
                     heads=heads,
                     id_embeddings_dim=id_embeddings_dim,
                 )
-            print(state_dict.keys())
+
             for key, value in state_dict.items():
                 diffusers_name = key.replace("perceiver_resampler.", "")
                 diffusers_name = diffusers_name.replace("0.to", "attn.to")
@@ -819,8 +819,6 @@ class UNet2DConditionLoadersMixin:
                     updated_state_dict["proj.net.2.bias"] = value
                 else:
                     updated_state_dict[diffusers_name] = value
-            print(updated_state_dict.keys())
-            print(image_projection.state_dict().keys())
 
         elif "norm.weight" in state_dict:
             # IP-Adapter Face ID

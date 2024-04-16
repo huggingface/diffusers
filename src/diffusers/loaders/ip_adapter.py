@@ -21,6 +21,7 @@ from safetensors import safe_open
 
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
+    USE_PEFT_BACKEND,
     _get_model_file,
     is_accelerate_available,
     is_torch_version,
@@ -230,12 +231,15 @@ class IPAdapterMixin:
 
         extra_loras = unet._load_ip_adapter_loras(state_dicts)
         if extra_loras != {}:
-            # apply the IP Adapter Face ID LoRA weights
-            peft_config = getattr(unet, "peft_config", {})
-            for k, lora in extra_loras.items():
-                if f"faceid_{k}" not in peft_config:
-                    self.load_lora_weights(lora, adapter_name=f"faceid_{k}")
-                    self.set_adapters([f"faceid_{k}"], adapter_weights=[1.0])
+            if not USE_PEFT_BACKEND:
+                logger.warning("PEFT backend is required to load these weights.")
+            else:
+                # apply the IP Adapter Face ID LoRA weights
+                peft_config = getattr(unet, "peft_config", {})
+                for k, lora in extra_loras.items():
+                    if f"faceid_{k}" not in peft_config:
+                        self.load_lora_weights(lora, adapter_name=f"faceid_{k}")
+                        self.set_adapters([f"faceid_{k}"], adapter_weights=[1.0])
 
     def set_ip_adapter_scale(self, scale):
         """
