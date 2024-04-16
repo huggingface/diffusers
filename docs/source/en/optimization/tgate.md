@@ -1,20 +1,6 @@
-# TGATE
+# T-GATE
 
-[TGATE](https://github.com/HaozheLiu-ST/T-GATE/tree/main) accelerates inferences of [`PixArtAlphaPipeline`], [`StableDiffusionPipeline`], and [`StableDiffusionXLPipeline`] by skipping the calculation of cross-attention once it converges. More details can be found at [technical report](https://huggingface.co/papers/2404.02747).
-
-![](https://github.com/HaozheLiu-ST/T-GATE/assets/53887227/bff43e0e-2372-4edc-9ba1-64dcbc649329)
-
-
-
-
-## 🚀 Major Features 
-
-* Training-Free.
-* Easily Integrate into [Diffusers](https://github.com/huggingface/diffusers/tree/main).
-* Only a few lines of code are required.
-* Complementary to [DeepCache](https://github.com/horseee/DeepCache).
-* Friendly support [Stable Diffusion pipelines](https://huggingface.co/stabilityai), [PixArt](https://pixart-alpha.github.io/), and [Latent Consistency Models](https://latent-consistency-models.github.io/).
-* 10%-50% speed up for different models. 
+[T-GATE](https://github.com/HaozheLiu-ST/T-GATE/tree/main) accelerates inference for [Stable Diffusion](../api/pipelines/stable_diffusion/overview), [PixArt](../api/pipelines/pixart), and [Latency Consistency Model](../api/pipelines/latent_consistency_models.md) pipelines by skipping the cross-attention calculation once it converges. This method doesn't require any additional training and it can speed up inference from 10-50%. T-GATE is also compatible with other optimization methods like [DeepCache](./deepcache).
 
 ## 📖 Quick Start
 
