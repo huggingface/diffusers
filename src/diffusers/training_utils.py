@@ -180,7 +180,7 @@ class EMAModel:
         use_ema_warmup: bool = False,
         inv_gamma: Union[float, int] = 1.0,
         power: Union[float, int] = 2 / 3,
-        foreach: bool = True,
+        foreach: bool = False,
         model_cls: Optional[Any] = None,
         model_config: Dict[str, Any] = None,
         **kwargs,
