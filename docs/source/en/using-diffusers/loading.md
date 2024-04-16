@@ -286,10 +286,10 @@ pipe.sag_unload_ip_adapter()
 
 generator = torch.Generator(device="cpu").manual_seed(33)
 out_sd = pipe_sd(
-    prompt=prompt,
-    negative_prompt=negative_prompt, 
+    prompt="bear eats pizza",
+    negative_prompt="wrong white balance, dark, sketches,worst quality,low quality", 
     ip_adapter_image=image,
-    num_inference_steps=num_inference_steps,
+    num_inference_steps=50,
     generator=generator,
 ).images[0]
 "AttributeError: 'NoneType' object has no attribute 'image_projection_layers'"
