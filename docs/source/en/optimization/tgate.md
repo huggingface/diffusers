@@ -4,7 +4,7 @@
 
 Before you begin, make sure you install T-GATE.
 
-```
+```bash
 pip install tgate
 ```
 
