@@ -2,11 +2,7 @@
 
 [T-GATE](https://github.com/HaozheLiu-ST/T-GATE/tree/main) accelerates inference for [Stable Diffusion](../api/pipelines/stable_diffusion/overview), [PixArt](../api/pipelines/pixart), and [Latency Consistency Model](../api/pipelines/latent_consistency_models.md) pipelines by skipping the cross-attention calculation once it converges. This method doesn't require any additional training and it can speed up inference from 10-50%. T-GATE is also compatible with other optimization methods like [DeepCache](./deepcache).
 
-## 📖 Quick Start
-
-### 🛠️ Installation
-
-Start by installing [TGATE](https://github.com/HaozheLiu-ST/T-GATE/tree/release-v.0.1.0):
+Before you begin, make sure you install T-GATE.
 
 ```
 pip install tgate
