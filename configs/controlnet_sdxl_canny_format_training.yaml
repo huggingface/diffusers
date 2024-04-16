@@ -1,8 +1,8 @@
 # Model & Tokenizer Configuration
 pretrained_model_name_or_path: stabilityai/stable-diffusion-xl-base-1.0
 pretrained_vae_model_name_or_path: madebyollin/sdxl-vae-fp16-fix
-controlnet_model_name_or_path: destitech/controlnet-inpaint-dreamer-sdxl
-pretrained_unet: /home/gkalstn000/diffusers/checkpoints/pretrained/jector_lr1e-3_step00080000.safetensors
+controlnet_model_name_or_path: diffusers/controlnet-canny-sdxl-1.0
+pretrained_unet: /home/gkalstn000/diffusers/checkpoints/pretrained/realvisxlV40_v30Bakedvae.safetensors
 variant: null
 revision: null
 tokenizer_name: null
@@ -12,23 +12,23 @@ cache_dir: null
 seed: 42
 train_batch_size: 1
 num_train_epochs: 1
-max_train_steps: 26000
+max_train_steps: 30000
 checkpointing_steps: 2000
 checkpoints_total_limit: null
 resume_from_checkpoint: null
 gradient_accumulation_steps: 4
 gradient_checkpointing: false
-learning_rate: 2e-7
+learning_rate: 1e-7
 scale_lr: false
 lr_scheduler: constant
 lr_warmup_steps: 500
 lr_num_cycles: 1
 lr_power: 1.0
 use_8bit_adam: false
-use_unknown_noisy_in_training: true
+use_unknown_noisy_in_training: false
 
 # Save Configuration
-output_dir: checkpoints/jector_canny_format_controlnet_lr1e-5_unknown
+output_dir: checkpoints/jector_canny_format_controlnet_lr1e-7
 tracker_project_name: conneckbrick
 logging_dir: logs
 
@@ -62,8 +62,8 @@ validation_prompt:
 validation_image:
   - ./conditioning_image_1.png
   - ./conditioning_image_2.png
-num_validation_images: 5
-validation_steps: 200
+num_validation_images: 7
+validation_steps: 500
 
 # Logging and Reporting
 report_to: wandb
