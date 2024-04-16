@@ -147,7 +147,7 @@ pipe = pipe.to("cuda")
 
 T-GATE also supports [`StableDiffusionPipeline`] and [PixArt-alpha/PixArt-LCM-XL-2-1024-MS](https://hf.co/PixArt-alpha/PixArt-LCM-XL-2-1024-MS).
 
-## 📄 Results
+## Benchmarks
 | Model                 | MACs     | Param     | Latency | Zero-shot 10K-FID on MS-COCO |
 |-----------------------|----------|-----------|---------|---------------------------|
 | SD-1.5                | 16.938T  | 859.520M  | 7.032s  | 23.927                    |
