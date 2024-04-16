@@ -8,13 +8,6 @@ Before you begin, make sure you install T-GATE.
 pip install tgate
 pip install -U pytorch diffusers transformers accelerate DeepCache
 
-#### Requirements
-
-* pytorch>=2.0.0
-* diffusers>=0.27.2
-* transformers==4.37.2
-* DeepCache==0.1.1
-* accelerate
 
 ### 🌟 Usage
 
