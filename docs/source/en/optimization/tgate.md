@@ -7,6 +7,7 @@ Before you begin, make sure you install T-GATE.
 ```bash
 pip install tgate
 pip install -U pytorch diffusers transformers accelerate DeepCache
+```
 
 
 To use T-GATE with a pipeline, you need to use its corresponding loader.
@@ -16,10 +17,17 @@ To use T-GATE with a pipeline, you need to use its corresponding loader.
 | PixArt | TgatePixArtLoader |
 | Stable Diffusion XL | TgateSDXLLoader |
 | Stable Diffusion XL + DeepCache | TgateSDXLDeepCacheLoader |
+| Stable Diffusion | TgateSDLoader |
+| Stable Diffusion + DeepCache | TgateSDDeepCacheLoader |
 
-Next, create a `TgateLoader` with a pipeline, the gate step(`add brief description here`), and the number of inference steps. Then call the `tgate` method on the pipeline with a prompt, gate step, and the number of inference steps.
+Next, create a `TgateLoader` with a pipeline, the gate step (the time step to stop calculating the cross attention), and the number of inference steps. Then call the `tgate` method on the pipeline with a prompt, gate step, and the number of inference steps.
 
 Let's see how to enable this for several different pipelines.
+
+<hfoptions id="pipelines">
+<hfoption id="PixArt">
+
+Accelerate `PixArtAlphaPipeline` with T-GATE:
 
 ```py
 import torch
@@ -31,18 +39,20 @@ pipe = TgatePixArtLoader(
        pipe,
        gate_step=8,
        num_inference_steps=25,
-)
-pipe = pipe.to("cuda")
+).to("cuda")
 
 image = pipe.tgate(
        "An alpaca made of colorful building blocks, cyberpunk.",
         gate_step=gate_step,
        num_inference_steps=inference_step,
 ).images[0]
+```
+</hfoption>
+<hfoption id="Stable Diffusion XL"> 
 
-Accelerate `StableDiffusionXLPipeline` with TGATE:
+Accelerate `StableDiffusionXLPipeline` with T-GATE:
 
-```diff
+```py
 import torch
 from diffusers import StableDiffusionXLPipeline
 from diffusers import DPMSolverMultistepScheduler
@@ -53,29 +63,29 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
             variant="fp16",
             use_safetensors=True,
 )
-
-+ from tgate import TgateSDXLLoader
-+ gate_step = 10
-+ inference_step = 25
-+ pipe = TgateSDXLLoader(
-+        pipe,
-+        gate_step=gate_step,
-+        num_inference_steps=inference_step,
-+ )
-
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-pipe = pipe.to("cuda")
 
-+ image = pipe.tgate(
-+         "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
-+         gate_step=gate_step,
-+         num_inference_steps=inference_step
-+ ).images[0]
+from tgate import TgateSDXLLoader
+gate_step = 10
+inference_step = 25
+pipe = TgateSDXLLoader(
+       pipe,
+       gate_step=gate_step,
+       num_inference_steps=inference_step,
+).to("cuda")
+
+image = pipe.tgate(
+        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
+        gate_step=gate_step,
+        num_inference_steps=inference_step
+).images[0]
 ```
+</hfoption>
+<hfoption id="StableDiffusionXL with DeepCache">
 
-Accelerate `StableDiffusionXLPipeline` with [DeepCache](https://github.com/horseee/DeepCache) and TGATE:
+Accelerate `StableDiffusionXLPipeline` with [DeepCache](https://github.com/horseee/DeepCache) and T-GATE:
 
-```diff
+```py
 import torch
 from diffusers import StableDiffusionXLPipeline
 from diffusers import DPMSolverMultistepScheduler
@@ -86,18 +96,16 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
             variant="fp16",
             use_safetensors=True,
 )
-
-+ from tgate import TgateSDXLDeepCacheLoader
-+ gate_step = 10
-+ inference_step = 25
-+ pipe = TgateSDXLDeepCacheLoader(
-+        pipe,
-+        cache_interval=3,
-+        cache_branch_id=0,
-+ )
-
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-pipe = pipe.to("cuda")
+
+from tgate import TgateSDXLDeepCacheLoader
+gate_step = 10
+inference_step = 25
+pipe = TgateSDXLDeepCacheLoader(
+       pipe,
+       cache_interval=3,
+       cache_branch_id=0,
+).to("cuda")
 
 + image = pipe.tgate(
 +         "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
@@ -105,10 +113,12 @@ pipe = pipe.to("cuda")
 +         num_inference_steps=inference_step
 + ).images[0]
 ```
+</hfoption>
+<hfoption id="Latent Consistency Model">
 
-Accelerate `latent-consistency/lcm-sdxl` with TGATE:
+Accelerate `latent-consistency/lcm-sdxl` with T-GATE:
 
-```diff
+```py
 import torch
 from diffusers import StableDiffusionXLPipeline
 from diffusers import UNet2DConditionModel, LCMScheduler
@@ -135,8 +145,7 @@ pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 +        gate_step=gate_step,
 +        num_inference_steps=inference_step,
 +        lcm=True
-+ )
-pipe = pipe.to("cuda")
++ ).to("cuda")
 
 + image = pipe.tgate(
 +         "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
@@ -144,6 +153,8 @@ pipe = pipe.to("cuda")
 +         num_inference_steps=inference_step
 + ).images[0]
 ```
+</hfoption>
+</hfoptions>
 
 T-GATE also supports [`StableDiffusionPipeline`] and [PixArt-alpha/PixArt-LCM-XL-2-1024-MS](https://hf.co/PixArt-alpha/PixArt-LCM-XL-2-1024-MS).
 
@@ -151,18 +162,18 @@ T-GATE also supports [`StableDiffusionPipeline`] and [PixArt-alpha/PixArt-LCM-XL
 | Model                 | MACs     | Param     | Latency | Zero-shot 10K-FID on MS-COCO |
 |-----------------------|----------|-----------|---------|---------------------------|
 | SD-1.5                | 16.938T  | 859.520M  | 7.032s  | 23.927                    |
-| SD-1.5 w/ TGATE       | 9.875T   | 815.557M  | 4.313s  | 20.789                    |
+| SD-1.5 w/ T-GATE       | 9.875T   | 815.557M  | 4.313s  | 20.789                    |
 | SD-2.1                | 38.041T  | 865.785M  | 16.121s | 22.609                    |
-| SD-2.1 w/ TGATE       | 22.208T  | 815.433 M | 9.878s  | 19.940                    |
+| SD-2.1 w/ T-GATE       | 22.208T  | 815.433 M | 9.878s  | 19.940                    |
 | SD-XL                 | 149.438T | 2.570B    | 53.187s | 24.628                    |
-| SD-XL w/ TGATE        | 84.438T  | 2.024B    | 27.932s | 22.738                    |
+| SD-XL w/ T-GATE        | 84.438T  | 2.024B    | 27.932s | 22.738                    |
 | Pixart-Alpha          | 107.031T | 611.350M  | 61.502s | 38.669                    |
-| Pixart-Alpha w/ TGATE | 65.318T  | 462.585M  | 37.867s | 35.825                    |
+| Pixart-Alpha w/ T-GATE | 65.318T  | 462.585M  | 37.867s | 35.825                    |
 | DeepCache (SD-XL)     | 57.888T  | -         | 19.931s | 23.755                    |
-| DeepCache w/ TGATE    | 43.868T  | -         | 14.666s | 23.999                    |
+| DeepCache w/ T-GATE    | 43.868T  | -         | 14.666s | 23.999                    |
 | LCM (SD-XL)           | 11.955T  | 2.570B    | 3.805s  | 25.044                    |
-| LCM w/ TGATE          | 11.171T  | 2.024B    | 3.533s  | 25.028                    |
+| LCM w/ T-GATE          | 11.171T  | 2.024B    | 3.533s  | 25.028                    |
 | LCM (Pixart-Alpha)    | 8.563T   | 611.350M  | 4.733s  | 36.086                    |
-| LCM w/ TGATE          | 7.623T   | 462.585M  | 4.543s  | 37.048                    |
+| LCM w/ T-GATE          | 7.623T   | 462.585M  | 4.543s  | 37.048                    |
 
 The latency is tested on an NVIDIA 1080TI, MACs and Params are calculated with [calflops](https://github.com/MrYxJ/calculate-flops.pytorch), and the FID is calculated with [PytorchFID](https://github.com/mseitzer/pytorch-fid).
