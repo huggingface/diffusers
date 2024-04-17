@@ -315,6 +315,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 self.inner_dim, use_additional_conditions=self.use_additional_conditions
             )
         else:
+            logger.warning("`use_additional_conditions` is only used when `norm_type` is 'ada_norm_single'.")
             self.use_additional_conditions = False
 
         self.caption_projection = None
