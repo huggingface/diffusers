@@ -35,10 +35,13 @@ from diffusers import PixArtAlphaPipeline
 from tgate import TgatePixArtLoader
 
 pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
+
+gate_step = 8
+inference_step = 25
 pipe = TgatePixArtLoader(
        pipe,
-       gate_step=8,
-       num_inference_steps=25,
+       gate_step=gate_step,
+       num_inference_steps=inference_step,
 ).to("cuda")
 
 image = pipe.tgate(
@@ -56,6 +59,7 @@ Accelerate `StableDiffusionXLPipeline` with T-GATE:
 import torch
 from diffusers import StableDiffusionXLPipeline
 from diffusers import DPMSolverMultistepScheduler
+from tgate import TgateSDXLLoader
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
@@ -65,7 +69,6 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 )
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 
-from tgate import TgateSDXLLoader
 gate_step = 10
 inference_step = 25
 pipe = TgateSDXLLoader(
@@ -89,6 +92,7 @@ Accelerate `StableDiffusionXLPipeline` with [DeepCache](https://github.com/horse
 import torch
 from diffusers import StableDiffusionXLPipeline
 from diffusers import DPMSolverMultistepScheduler
+from tgate import TgateSDXLDeepCacheLoader
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
@@ -98,7 +102,6 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 )
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 
-from tgate import TgateSDXLDeepCacheLoader
 gate_step = 10
 inference_step = 25
 pipe = TgateSDXLDeepCacheLoader(
@@ -123,6 +126,7 @@ import torch
 from diffusers import StableDiffusionXLPipeline
 from diffusers import UNet2DConditionModel, LCMScheduler
 from diffusers import DPMSolverMultistepScheduler
+from tgate import TgateSDXLLoader
 
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
@@ -137,7 +141,6 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 )
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
-from tgate import TgateSDXLLoader
 gate_step = 1
 inference_step = 4
 pipe = TgateSDXLLoader(
