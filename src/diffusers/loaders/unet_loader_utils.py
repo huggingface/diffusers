@@ -38,7 +38,7 @@ def _translate_into_actual_layer_name(name):
     return ".".join((updown, block, attn))
 
 
-def _maybe_expand_lora_scales(unet: "UNet2DConditionModel", weight_scales: List[Union[float, Dict]]):
+def _maybe_expand_lora_scales(unet: "UNet2DConditionModel", weight_scales: List[Union[float, Dict]], default_scale=1.0):
     blocks_with_transformer = {
         "down": [i for i, block in enumerate(unet.down_blocks) if hasattr(block, "attentions")],
         "up": [i for i, block in enumerate(unet.up_blocks) if hasattr(block, "attentions")],
@@ -47,7 +47,7 @@ def _maybe_expand_lora_scales(unet: "UNet2DConditionModel", weight_scales: List[
 
     expanded_weight_scales = [
         _maybe_expand_lora_scales_for_one_adapter(
-            weight_for_adapter, blocks_with_transformer, transformer_per_block, unet.state_dict()
+            weight_for_adapter, blocks_with_transformer, transformer_per_block, unet.state_dict(), default_scale=default_scale
         )
         for weight_for_adapter in weight_scales
     ]
@@ -60,6 +60,7 @@ def _maybe_expand_lora_scales_for_one_adapter(
     blocks_with_transformer: Dict[str, int],
     transformer_per_block: Dict[str, int],
     state_dict: None,
+    default_scale: float=1.0,
 ):
     """
     Expands the inputs into a more granular dictionary. See the example below for more details.
@@ -108,21 +109,27 @@ def _maybe_expand_lora_scales_for_one_adapter(
     scales = copy.deepcopy(scales)
 
     if "mid" not in scales:
-        scales["mid"] = 1
+        scales["mid"] = default_scale
 
     for updown in ["up", "down"]:
         if updown not in scales:
-            scales[updown] = 1
+            scales[updown] = default_scale
 
         # eg {"down": 1} to {"down": {"block_1": 1, "block_2": 1}}}
         if not isinstance(scales[updown], dict):
             scales[updown] = {f"block_{i}": scales[updown] for i in blocks_with_transformer[updown]}
 
-        # eg {"down": "block_1": 1}} to {"down": "block_1": [1, 1]}}
+        # eg {"down": {"block_1": 1}} to {"down": {"block_1": [1, 1]}}
         for i in blocks_with_transformer[updown]:
             block = f"block_{i}"
+            # set not assigned blocks to default scale
+            if block not in scales[updown]:
+                scales[updown][block] = default_scale
             if not isinstance(scales[updown][block], list):
                 scales[updown][block] = [scales[updown][block] for _ in range(transformer_per_block[updown])]
+            else:
+                assert len(scales[updown][block]) == transformer_per_block[updown], \
+                    f"Expected {transformer_per_block[updown]} scales for {updown}.{block}, got {len(scales[updown][block])}."
 
         # eg {"down": "block_1": [1, 1]}}  to {"down.block_1.0": 1, "down.block_1.1": 1}
         for i in blocks_with_transformer[updown]:

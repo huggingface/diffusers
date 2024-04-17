@@ -2108,7 +2108,7 @@ class IPAdapterAttnProcessor(nn.Module):
             the weight scale of image prompt.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0, skip=False):
+    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0):
         super().__init__()
 
         self.hidden_size = hidden_size
@@ -2117,7 +2117,6 @@ class IPAdapterAttnProcessor(nn.Module):
         if not isinstance(num_tokens, (tuple, list)):
             num_tokens = [num_tokens]
         self.num_tokens = num_tokens
-        self.skip = skip
 
         if not isinstance(scale, list):
             scale = [scale] * len(num_tokens)
@@ -2227,10 +2226,10 @@ class IPAdapterAttnProcessor(nn.Module):
             ip_adapter_masks = [None] * len(self.scale)
 
         # for ip-adapter
-        if not self.skip:
-            for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
-                ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
-            ):
+        for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
+            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
+        ):
+            if scale > 0:
                 if mask is not None:
                     if not isinstance(scale, list):
                         scale = [scale]
@@ -2301,7 +2300,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             the weight scale of image prompt.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0, skip=False):
+    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0):
         super().__init__()
 
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -2321,7 +2320,6 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         if len(scale) != len(num_tokens):
             raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
         self.scale = scale
-        self.skip = skip
 
         self.to_k_ip = nn.ModuleList(
             [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
@@ -2439,10 +2437,10 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             ip_adapter_masks = [None] * len(self.scale)
 
         # for ip-adapter
-        if not self.skip:
-            for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
-                ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
-            ):
+        for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
+            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
+        ):
+            if scale > 0:
                 if mask is not None:
                     if not isinstance(scale, list):
                         scale = [scale]

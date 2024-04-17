@@ -27,7 +27,7 @@ from ..utils import (
     is_transformers_available,
     logging,
 )
-from .ip_adapter_utils import _maybe_expand_ip_scales
+from .unet_loader_utils import _maybe_expand_lora_scales
 
 
 if is_transformers_available():
@@ -229,50 +229,28 @@ class IPAdapterMixin:
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
-    def set_ip_adapter_scale(self, scale):
+    def set_ip_adapter_scale(self, scale_configs: Union[float, Dict, List[Union[float, Dict]]], default_scale=0.0):
         """
-        Sets the conditioning scale between text and image.
-
-        Example:
-
-        ```py
-        pipeline.set_ip_adapter_scale(0.5)
-        ```
-        """
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        for attn_processor in unet.attn_processors.values():
-            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
-                if not isinstance(scale, list):
-                    scale = [scale] * len(attn_processor.scale)
-                if len(attn_processor.scale) != len(scale):
-                    raise ValueError(
-                        f"`scale` should be a list of same length as the number if ip-adapters "
-                        f"Expected {len(attn_processor.scale)} but got {len(scale)}."
-                    )
-                attn_processor.scale = scale
-    
-    
-    def activate_ip_adapter(self, scale_config: Union[float, Dict]):
-        """
-        Activate IP-Adapter per-transformer block.
+        Set IP-Adapter scales per-transformer block. Input `scale_configs` could be a single config or a list of configs
+        for granular control over each IP-Adapter behavior. A config can be a float or a dictionary.
 
         Example:
 
         ```py
         # To use original IP-Adapter
-        scale_config = 1.0
-        pipeline.activate_ip_adapter(scale_config)
+        scale_configs = 1.0
+        pipeline.set_ip_adapter_scale(scale_configs)
 
         # To use style block only
-        scale_config = {
+        scale_configs = {
             "up": {
                 "block_0": [0.0, 1.0, 0.0]
             },
         }
-        pipeline.activate_ip_adapter(scale_config)
+        pipeline.set_ip_adapter_scale(scale_configs)
 
         # To use style+layout blocks
-        scale_config = {
+        scale_configs = {
             "down": {
                 "block_2": [0.0, 1.0]
             },
@@ -280,30 +258,45 @@ class IPAdapterMixin:
                 "block_0": [0.0, 1.0, 0.0]
             },
         }
-        pipeline.activate_ip_adapter(scale_config)
+        pipeline.set_ip_adapter_scale(scale_configs)
+
+        # To use style and layout from 2 reference images
+        scale_configs = [
+            {
+                "down": {
+                    "block_2": [0.0, 1.0]
+                }
+            },
+            {
+                "up": {
+                    "block_0": [0.0, 1.0, 0.0]
+                }
+            }
+        ]
+        pipeline.set_ip_adapter_scale(scale_configs)
         ```
         """
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        scale_config = _maybe_expand_ip_scales(unet, scale_config)
-        for attn_processor in unet.attn_processors.values():
-            # set all to default: skip=False and scale=1.0
-            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
-                attn_processor.skip = True
-                attn_processor.scale = [0.0] * len(attn_processor.scale)
-        
-        for attn_name, attn_processor in unet.attn_processors.items():
-            if not isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)): continue
-            for key, scale in scale_config.items():
-                if attn_name.startswith(key):
-                    attn_processor.skip = True if scale==0.0 else False
-                    _scale = [scale] * len(attn_processor.scale)
-                    if len(attn_processor.scale) != len(_scale):
-                        raise ValueError(
-                            f"`scale` should be a list of same length as the number if ip-adapters "
-                            f"Expected {len(attn_processor.scale)} but got {len(_scale)}."
-                        )
-                    attn_processor.scale = _scale
+        if not isinstance(scale_configs, list):
+            scale_configs = [scale_configs]
+        scale_configs = _maybe_expand_lora_scales(unet, scale_configs, default_scale=default_scale)
 
+        for attn_name, attn_processor in unet.attn_processors.items():
+            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+                if len(scale_configs)>1 and len(scale_configs)!=len(attn_processor.scale):
+                    raise ValueError(
+                        f"Cannot assign {len(scale_configs)} scale_configs to "
+                        f"{len(attn_processor.scale)} IP-Adapter."
+                    )
+                elif len(scale_configs)==1:
+                    scale_configs = scale_configs * len(attn_processor.scale)
+                for i, scale_config in enumerate(scale_configs):
+                    if isinstance(scale_config, dict):
+                        for key, scale in scale_config.items():
+                            if attn_name.startswith(key):
+                                attn_processor.scale[i] = scale
+                    else:
+                        attn_processor.scale[i] = scale_config
 
     def unload_ip_adapter(self):
         """
