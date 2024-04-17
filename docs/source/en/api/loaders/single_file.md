@@ -84,7 +84,7 @@ model = StableCascadeUNet.from_single_file(ckpt_path)
 
 ## Override configuration options when using single file loading
 
-Override the default model or pipeline configuration options when using `from_single_file` by passing in the relevant arguments directly to the `from_single_file` method. Any argument that is supported by the Model or Pipeline class can be configured in this way
+Override the default model or pipeline configuration options when using `from_single_file` by passing in the relevant arguments directly to the `from_single_file` method. Any argument that is supported by the model or pipeline class can be configured in this way:
 
 ```python
 from diffusers import StableDiffusionXLImg2ImgPipeline
