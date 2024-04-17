@@ -126,7 +126,9 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, config=repo_id)
 
 ```
 
-This can be useful in cases where model components might have been changed from what was originally distributed or in cases where a checkpoint file might not have the necessary metadata to correctly determine the configuration to use for the pipeline.
+In the example above, since we explicitly passed `repo_id="stabilityai/stable-diffusion-xl-base-1.0"`, it will use this [configuration file](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/unet/config.json) from the "unet" subfolder in `"stabilityai/stable-diffusion-xl-base-1.0"` to configure the unet component included in the checkpoint; Similarly, it will use the `config.json` file from `"vae"` subfolder to configure the vae model, `config.json` file from text_encoder folder to configure text_encoder and so on.
+
+Note that most of the time you do not need to explicitly a `config` argument, `from_single_file` will automatically map the checkpoint to a repo id (we will discuss this in more details in next section). However, this can be useful in cases where model components might have been changed from what was originally distributed or in cases where a checkpoint file might not have the necessary metadata to correctly determine the configuration to use for the pipeline.
 
 <Tip>
 
