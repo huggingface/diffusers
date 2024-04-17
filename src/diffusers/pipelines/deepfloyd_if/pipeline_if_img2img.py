@@ -15,7 +15,6 @@ from ...schedulers import DDPMScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     PIL_INTERPOLATION,
-    is_accelerate_available,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -139,6 +138,7 @@ class IFImg2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
 
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor", "watermarker"]
     model_cpu_offload_seq = "text_encoder->unet"
+    _exclude_from_cpu_offload = ["watermarker"]
 
     def __init__(
         self,
@@ -179,21 +179,6 @@ class IFImg2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
             watermarker=watermarker,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.remove_all_hooks
-    def remove_all_hooks(self):
-        if is_accelerate_available():
-            from accelerate.hooks import remove_hook_from_module
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        for model in [self.text_encoder, self.unet, self.safety_checker]:
-            if model is not None:
-                remove_hook_from_module(model, recurse=True)
-
-        self.unet_offload_hook = None
-        self.text_encoder_offload_hook = None
-        self.final_offload_hook = None
 
     @torch.no_grad()
     def encode_prompt(
@@ -360,9 +345,6 @@ class IFImg2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             nsfw_detected = None
             watermark_detected = None
-
-            if hasattr(self, "unet_offload_hook") and self.unet_offload_hook is not None:
-                self.unet_offload_hook.offload()
 
         return image, nsfw_detected, watermark_detected
 
@@ -633,12 +615,15 @@ class IFImg2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return image
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start:]
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 

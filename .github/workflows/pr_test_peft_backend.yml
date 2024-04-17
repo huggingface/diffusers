@@ -71,7 +71,7 @@ jobs:
 
     name: LoRA - ${{ matrix.lib-versions }}
 
-    runs-on: docker-cpu
+    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
 
     container:
       image: diffusers/diffusers-pytorch-cpu
@@ -89,7 +89,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         if [ "${{ matrix.lib-versions }}" == "main" ]; then
@@ -108,7 +107,7 @@ jobs:
     - name: Run fast PyTorch LoRA CPU tests with PEFT backend
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/lora/

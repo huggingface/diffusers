@@ -53,8 +53,8 @@ enable_full_determinism()
 
 
 def get_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
-    block_out_channels = block_out_channels or [32, 64]
-    norm_num_groups = norm_num_groups or 32
+    block_out_channels = block_out_channels or [2, 4]
+    norm_num_groups = norm_num_groups or 2
     init_dict = {
         "block_out_channels": block_out_channels,
         "in_channels": 3,
@@ -68,8 +68,8 @@ def get_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
 
 
 def get_asym_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
-    block_out_channels = block_out_channels or [32, 64]
-    norm_num_groups = norm_num_groups or 32
+    block_out_channels = block_out_channels or [2, 4]
+    norm_num_groups = norm_num_groups or 2
     init_dict = {
         "in_channels": 3,
         "out_channels": 3,
@@ -102,8 +102,8 @@ def get_autoencoder_tiny_config(block_out_channels=None):
 
 
 def get_consistency_vae_config(block_out_channels=None, norm_num_groups=None):
-    block_out_channels = block_out_channels or [32, 64]
-    norm_num_groups = norm_num_groups or 32
+    block_out_channels = block_out_channels or [2, 4]
+    norm_num_groups = norm_num_groups or 2
     return {
         "encoder_block_out_channels": block_out_channels,
         "encoder_in_channels": 3,

@@ -12,9 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Loading Pipelines and Models via `from_single_file`
 
-The `from_single_file` method allows you to load supported Pipelines using a single checkpoint file as opposed to the folder format used by Diffusers. This is useful if you are working with many of the Stable Diffusion Web UI's that extensively rely on a single file to distribute all the components of a Diffusion Model.
+The `from_single_file` method allows you to load supported pipelines using a single checkpoint file as opposed to the folder format used by Diffusers. This is useful if you are working with many of the Stable Diffusion Web UI's (such as A1111) that extensively rely on a single file to distribute all the components of a diffusion model.
 
-The `from_single_file` method also supports loading models in their originally distributed format. This means that supported models that have been finetuned with other services can be loaded directly into supported Diffusers model objects and Pipelines.
+The `from_single_file` method also supports loading models in their originally distributed format. This means that supported models that have been finetuned with other services can be loaded directly into supported Diffusers model objects and pipelines.
 
 ## Pipelines that currently support `from_single_file` loading
 
@@ -126,7 +126,9 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, config=repo_id)
 
 ```
 
-This can be useful in cases where model components might have been changed from what was originally distributed or in cases where a checkpoint file might not have the necessary metadata to correctly determine the configuration to use for the pipeline.
+In the example above, since we explicitly passed `repo_id="stabilityai/stable-diffusion-xl-base-1.0"`, it will use this [configuration file](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/unet/config.json) from the "unet" subfolder in `"stabilityai/stable-diffusion-xl-base-1.0"` to configure the unet component included in the checkpoint; Similarly, it will use the `config.json` file from `"vae"` subfolder to configure the vae model, `config.json` file from text_encoder folder to configure text_encoder and so on.
+
+Note that most of the time you do not need to explicitly a `config` argument, `from_single_file` will automatically map the checkpoint to a repo id (we will discuss this in more details in next section). However, this can be useful in cases where model components might have been changed from what was originally distributed or in cases where a checkpoint file might not have the necessary metadata to correctly determine the configuration to use for the pipeline.
 
 <Tip>
 
@@ -136,7 +138,7 @@ To learn more about how to load single file weights, see the [Load different Sta
 
 ## Working with local files
 
-As of `diffusers>=0.28.0` the `from_single_file` method will attempt to configure a pipeline or model by first inferring the model type from the checkpoint file and then using the model type to determine the appropriate model repo configuration to use from the Hugging Face Hub. e.g. Any single file checkpoint based on the `StableDiffusionXL` base model will use the `stabilityai/stable-diffusion-xl-base-1.0` model repo to configure the pipeline.
+As of `diffusers>=0.28.0` the `from_single_file` method will attempt to configure a pipeline or model by first inferring the model type from the checkpoint file and then using the model type to determine the appropriate model repo configuration to use from the Hugging Face Hub. For example, any single file checkpoint based on the Stable Diffusion XL base model will use the [`stabilityai/stable-diffusion-xl-base-1.0`](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) model repo to configure the pipeline.
 
 If you are working in an environment with restricted internet access, it is recommended to download the config files and checkpoints for the model to your preferred directory and pass the local paths to the `pretrained_model_link_or_path` and `config` arguments of the `from_single_file` method.
 

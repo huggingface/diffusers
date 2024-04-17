@@ -255,6 +255,20 @@ def require_torch_accelerator(test_case):
     )
 
 
+def require_torch_multi_gpu(test_case):
+    """
+    Decorator marking a test that requires a multi-GPU setup (in PyTorch). These tests are skipped on a machine without
+    multiple GPUs. To run *only* the multi_gpu tests, assuming all test names contain multi_gpu: $ pytest -sv ./tests
+    -k "multi_gpu"
+    """
+    if not is_torch_available():
+        return unittest.skip("test requires PyTorch")(test_case)
+
+    import torch
+
+    return unittest.skipUnless(torch.cuda.device_count() > 1, "test requires multiple GPUs")(test_case)
+
+
 def require_torch_accelerator_with_fp16(test_case):
     """Decorator marking a test that requires an accelerator with support for the FP16 data type."""
     return unittest.skipUnless(_is_torch_fp16_available(torch_device), "test requires accelerator with fp16 support")(
@@ -338,6 +352,18 @@ def require_peft_version_greater(peft_version):
         ) > version.parse(peft_version)
         return unittest.skipUnless(
             correct_peft_version, f"test requires PEFT backend with the version greater than {peft_version}"
+        )(test_case)
+
+    return decorator
+
+
+def require_accelerate_version_greater(accelerate_version):
+    def decorator(test_case):
+        correct_accelerate_version = is_peft_available() and version.parse(
+            version.parse(importlib.metadata.version("accelerate")).base_version
+        ) > version.parse(accelerate_version)
+        return unittest.skipUnless(
+            correct_accelerate_version, f"Test requires accelerate with the version greater than {accelerate_version}."
         )(test_case)
 
     return decorator

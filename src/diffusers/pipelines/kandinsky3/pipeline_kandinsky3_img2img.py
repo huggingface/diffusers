@@ -12,7 +12,6 @@ from ...models import Kandinsky3UNet, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
     deprecate,
-    is_accelerate_available,
     logging,
     replace_example_docstring,
 )
@@ -95,20 +94,6 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         timesteps = self.scheduler.timesteps[t_start:]
 
         return timesteps, num_inference_steps - t_start
-
-    def remove_all_hooks(self):
-        if is_accelerate_available():
-            from accelerate.hooks import remove_hook_from_module
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        for model in [self.text_encoder, self.unet]:
-            if model is not None:
-                remove_hook_from_module(model, recurse=True)
-
-        self.unet_offload_hook = None
-        self.text_encoder_offload_hook = None
-        self.final_offload_hook = None
 
     def _process_embeds(self, embeddings, attention_mask, cut_context):
         # return embeddings, attention_mask
