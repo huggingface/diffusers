@@ -90,6 +90,8 @@ def save_model_card(
     repo_folder=None,
     vae_path=None,
 ):
+    lora = "lora" if not use_dora else "dora"
+
     widget_dict = []
     if images is not None:
         for i, image in enumerate(images):
