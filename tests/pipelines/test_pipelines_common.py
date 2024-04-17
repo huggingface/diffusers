@@ -32,6 +32,7 @@ from diffusers import (
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
+from diffusers.models.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
@@ -1685,7 +1686,10 @@ class PipelineTesterMixin:
         self.assertTrue(hasattr(pipe, "vae") and isinstance(pipe.vae, (AutoencoderKL, AutoencoderTiny)))
         self.assertTrue(
             hasattr(pipe, "unet")
-            and isinstance(pipe.unet, (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel))
+            and isinstance(
+                pipe.unet,
+                (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, UNetControlNetXSModel),
+            )
         )
 
 
