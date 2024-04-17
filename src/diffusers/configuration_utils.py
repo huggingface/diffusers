@@ -449,9 +449,9 @@ class ConfigMixin:
 
         return outputs
 
-    @classmethod
-    def _get_init_keys(cls):
-        return set(dict(inspect.signature(cls.__init__).parameters).keys())
+    @staticmethod
+    def _get_init_keys(input_class):
+        return set(dict(inspect.signature(input_class.__init__).parameters).keys())
 
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
