@@ -177,7 +177,12 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
         latents=None,
         generator=None,
     ):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
 
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
