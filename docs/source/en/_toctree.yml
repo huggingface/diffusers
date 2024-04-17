@@ -172,6 +172,8 @@
       title: Token merging
     - local: optimization/deepcache
       title: DeepCache
+    - local: optimization/tgate
+      title: TGATE
     title: General optimizations
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
