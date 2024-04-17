@@ -1,11 +1,5 @@
-#!/usr/bin/env python
-from __future__ import annotations
 import argparse
 import os
-import sys
-from pathlib import Path
-current_file_path = Path(__file__).resolve()
-sys.path.insert(0, str(current_file_path.parent.parent))
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -176,7 +170,8 @@ def main(args):
     try:
         state_dict.pop("y_embedder.y_embedding")
         state_dict.pop("pos_embed")
-    except:
+    except Exception as e:
+        print(f"Skipping {str(e)}")
         pass
     assert len(state_dict) == 0, f"State dict is not empty, {state_dict.keys()}"
 
