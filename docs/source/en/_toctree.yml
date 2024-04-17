@@ -24,14 +24,12 @@
   title: Tutorials
 - sections:
   - sections:
-    - local: using-diffusers/loading_overview
-      title: Overview
     - local: using-diffusers/loading
-      title: Load pipelines, models, and schedulers
-    - local: using-diffusers/schedulers
-      title: Load and compare different schedulers
+      title: Load pipelines
     - local: using-diffusers/custom_pipeline_overview
       title: Load community pipelines and components
+    - local: using-diffusers/schedulers
+      title: Load schedulers and models
     - local: using-diffusers/using_safetensors
       title: Load safetensors
     - local: using-diffusers/other-formats
