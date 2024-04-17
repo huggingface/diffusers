@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 Diffusion pipelines are a collection of interchangeable schedulers and models that can be mixed and matched to tailor a pipeline to a specific use case. The scheduler encapsulates the entire denoising process such as the number of denoising steps and the algorithm for finding the denoised sample. A scheduler is not parameterized or trained so they don't take very much memory. The model is usually only concerned with the forward pass of going from a noisy input to a less noisy sample.
 
-This guide will show you how to load schedulers and models to customize a pipeline. You'll uss the [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5) throughout this guide, so let's load it first.
+This guide will show you how to load schedulers and models to customize a pipeline. You'll use the [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5) checkpoint throughout this guide, so let's load it first.
 
 ```py
 import torch
@@ -49,7 +49,7 @@ PNDMScheduler {
 
 ## Load a scheduler
 
-Schedulers are defined by a configuration file that can be used with a variety of different schedulers. Load a scheduler with the [`SchedulerMixin.from_pretrained`] method, and specify the `subfolder` parameter to load the configuration file into the correct subfolder of the pipeline repository.
+Schedulers are defined by a configuration file that can be used by a variety of schedulers. Load a scheduler with the [`SchedulerMixin.from_pretrained`] method, and specify the `subfolder` parameter to load the configuration file into the correct subfolder of the pipeline repository.
 
 For example, to load the [`DDIMScheduler`]:
 
@@ -71,7 +71,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 
 Schedulers have their own unique strengths and weaknesses, making it difficult to quantitatively compare which scheduler works best for a pipeline. You typically have to make a trade-off between denoising speed and denoising quality. We recommend trying out different schedulers to find one that works best for your use case. Call the `pipeline.scheduler.compatibles` attribute to see what schedulers are compatible with a pipeline.
 
-Let's compare the [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncrestralDiscreteScheduler`], and the [`DPMSolverMultistepScheduler`] on the following prompt and seed.
+Let's compare the [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`], and the [`DPMSolverMultistepScheduler`] on the following prompt and seed.
 
 ```py
 import torch
@@ -163,9 +163,9 @@ image
   </div>
 </div>
 
-Most images look very similar and are comparable in quality. Again, it often comes down to your specific use case and a good approach is to run multiple different schedulers and compare the results.
+Most images look very similar and are comparable in quality. Again, it often comes down to your specific use case so a good approach is to run multiple different schedulers and compare the results.
 
-### Compare Flax schedulers
+### Flax schedulers
 
 To compare Flax schedulers, you need to additionally load the scheduler state into the model parameters. For example, let's change the default scheduler in [`FlaxStableDiffusionPipeline`] to use the super fast [`FlaxDPMSolverMultistepScheduler`].
 

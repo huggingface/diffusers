@@ -16,11 +16,11 @@ specific language governing permissions and limitations under the License.
 
 ## Community pipelines
 
-Community pipelines are any [`DiffusionPipeline`] class that are different from the original implementation as specified in their paper (for example, the [`StableDiffusionControlNetPipeline`] corresponds to the [Text-to-Image Generation with ControlNet Conditioning](https://arxiv.org/abs/2302.05543) paper). They provide additional functionality or extend the original implementation of a pipeline.
+Community pipelines are any [`DiffusionPipeline`] class that are different from the original paper implementation (for example, the [`StableDiffusionControlNetPipeline`] corresponds to the [Text-to-Image Generation with ControlNet Conditioning](https://arxiv.org/abs/2302.05543) paper). They provide additional functionality or extend the original implementation of a pipeline.
 
 There are many cool community pipelines like [Marigold Depth Estimation](https://github.com/huggingface/diffusers/tree/main/examples/community#marigold-depth-estimation) or [InstantID](https://github.com/huggingface/diffusers/tree/main/examples/community#instantid-pipeline), and you can find all the official community pipelines [here](https://github.com/huggingface/diffusers/tree/main/examples/community).
 
-There are two types of community pipelines, those stored on the Hugging Face Hub and those stored on Diffusers GitHub repository. Refer to this [table](./contribute_pipeline#share-your-pipeline) for a comparison of Hub vs GitHub community pipelines.
+There are two types of community pipelines, those stored on the Hugging Face Hub and those stored on Diffusers GitHub repository. Hub pipelines are completely customizable (scheduler, models, pipeline code, etc.) while Diffusers GitHub pipelines are only limited to custom pipeline code. Refer to this [table](./contribute_pipeline#share-your-pipeline) for a more detailed comparison of Hub vs GitHub community pipelines.
 
 <hfoptions id="community">
 <hfoption id="Hub pipelines">
@@ -85,7 +85,7 @@ By default, community pipelines are loaded from the latest stable version of Dif
 <hfoptions id="version">
 <hfoption id="main">
 
-For example, to load from the `main` branch:
+For example, to load from the main branch:
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
@@ -101,7 +101,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 </hfoption>
 <hfoption id="older version">
 
-For example, to load from a previous version of Diffusers like `v0.25.0`:
+For example, to load from a previous version of Diffusers like v0.25.0:
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
@@ -129,6 +129,7 @@ from diffusers import DiffusionPipeline
 
 pipe_sd = DiffusionPipeline.from_pretrained("emilianJR/CyberRealistic_V3", torch_dtype=torch.float16)
 pipe_sd.to("cuda")
+# load long prompt weighting pipeline
 pipe_lpw = DiffusionPipeline.from_pipe(
     pipe_sd,
     custom_pipeline="lpw_stable_diffusion",
@@ -152,11 +153,11 @@ out_lpw
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/from_pipe_lpw.png" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">Stable Diffusion</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Stable Diffusion with long prompt weighting</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/from_pipe_non_lpw.png" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">Stable Diffusion with long prompt weighting</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Stable Diffusion</figcaption>
   </div>
 </div>
 
@@ -166,7 +167,7 @@ Community components allow users to build pipelines that may have customized com
 
 This section shows how users should use community components to build a community pipeline.
 
-You'll use the [showlab/show-1-base](https://huggingface.co/showlab/show-1-base) pipeline checkpoint as an example. So, let's start loading the components:
+You'll use the [showlab/show-1-base](https://huggingface.co/showlab/show-1-base) pipeline checkpoint as an example.
 
 1. Import and load the text encoder from Transformers:
 
@@ -202,13 +203,13 @@ In steps 4 and 5, the custom [UNet](https://github.com/showlab/Show-1/blob/main/
 
 4. Now you'll load a [custom UNet](https://github.com/showlab/Show-1/blob/main/showone/models/unet_3d_condition.py), which in this example, has already been implemented in [showone_unet_3d_condition.py](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py) for your convenience. You'll notice the [`UNet3DConditionModel`] class name is changed to `ShowOneUNet3DConditionModel` because [`UNet3DConditionModel`] already exists in Diffusers. Any components needed for the `ShowOneUNet3DConditionModel` class should be placed in showone_unet_3d_condition.py.
 
-Once this is done, you can initialize the UNet:
+    Once this is done, you can initialize the UNet:
 
-```python
-from showone_unet_3d_condition import ShowOneUNet3DConditionModel
+    ```python
+    from showone_unet_3d_condition import ShowOneUNet3DConditionModel
 
-unet = ShowOneUNet3DConditionModel.from_pretrained(pipe_id, subfolder="unet")
-```
+    unet = ShowOneUNet3DConditionModel.from_pretrained(pipe_id, subfolder="unet")
+    ```
 
 5. Finally, you'll load the custom pipeline code. For this example, it has already been created for you in [pipeline_t2v_base_pixel.py](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/pipeline_t2v_base_pixel.py). This script contains a custom `TextToVideoIFPipeline` class for generating videos from text. Just like the custom UNet, any code needed for the custom pipeline to work should go in pipeline_t2v_base_pixel.py.
 
@@ -235,7 +236,7 @@ Push the pipeline to the Hub to share with the community!
 pipeline.push_to_hub("custom-t2v-pipeline")
 ```
 
-After the pipeline is successfully pushed, you need a couple of changes:
+After the pipeline is successfully pushed, you need to make a few changes:
 
 1. Change the `_class_name` attribute in [model_index.json](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/model_index.json#L2) to `"pipeline_t2v_base_pixel"` and `"TextToVideoIFPipeline"`.
 2. Upload `showone_unet_3d_condition.py` to the [unet](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py) subfolder.

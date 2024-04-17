@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Diffusion systems often consist of multiple components like parameterized models and schedulers that interact in complex ways. That is why we designed the [`DiffusionPipeline`] to wrap the complexity of the entire diffusion system into an easy-to-use API. At the same time, the [`DiffusionPipeline`] is entirely customizable so you can modify each component to build your own diffusion system for your use case.
+Diffusion systems consist of multiple components like parameterized models and schedulers that interact in complex ways. That is why we designed the [`DiffusionPipeline`] to wrap the complexity of the entire diffusion system into an easy-to-use API. At the same time, the [`DiffusionPipeline`] is entirely customizable so you can modify each component to build a diffusion system for your use case.
 
 This guide will show you how to load:
 
@@ -30,8 +30,8 @@ This guide will show you how to load:
 
 There are two ways to load a pipeline for a task:
 
-1. Load a pipeline with the [`DiffusionPipeline`] class and allow it to automatically detect the correct pipeline class from the checkpoint.
-2. Load a pipeline with its specific pipeline class for a specific task.
+1. Load the generic [`DiffusionPipeline`] class and allow it to automatically detect the correct pipeline class from the checkpoint.
+2. Load a specific pipeline class for a specific task.
 
 <hfoptions id="pipelines">
 <hfoption id="generic pipeline">
@@ -44,7 +44,7 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
 ```
 
-This same checkpoint can also be used for an image-to-image task. The [`DiffusionPipeline`] class can handle any task as long as you provide the appropriate inputs. For example, for a specific task like image-to-image, you need to pass an initial image to the pipeline.
+This same checkpoint can also be used for an image-to-image task. The [`DiffusionPipeline`] class can handle any task as long as you provide the appropriate inputs. For example, for an image-to-image task, you need to pass an initial image to the pipeline.
 
 ```py
 from diffusers import DiffusionPipeline
@@ -59,7 +59,7 @@ image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detai
 </hfoption>
 <hfoption id="specific pipeline">
 
-Checkpoints can also be loaded by their specific pipeline class if you already know it. For example, to load a Stable Diffusion model, use the [`StableDiffusionPipeline`] class.
+Checkpoints can be loaded by their specific pipeline class if you already know it. For example, to load a Stable Diffusion model, use the [`StableDiffusionPipeline`] class.
 
 ```python
 from diffusers import StableDiffusionPipeline
@@ -78,7 +78,7 @@ pipeline = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffu
 </hfoption>
 </hfoptions>
 
-You can use the Space below to gauge a pipeline's memory requirements before you download and load it to see if it runs on your hardware.
+Use the Space below to gauge a pipeline's memory requirements before you download and load it to see if it runs on your hardware.
 
 <div class="block dark:hidden">
 	<iframe 
@@ -104,7 +104,7 @@ git-lfs install
 git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
-This creates a local folder, `./stable-diffusion-v1-5`, on your disk and you can pass its path to [`~DiffusionPipeline.from_pretrained`].
+This creates a local folder, ./stable-diffusion-v1-5, on your disk and you should pass its path to [`~DiffusionPipeline.from_pretrained`].
 
 ```python
 from diffusers import DiffusionPipeline
@@ -118,12 +118,12 @@ The [`~DiffusionPipeline.from_pretrained`] method won't download files from the 
 
 You can customize a pipeline by loading different components into it. This is important because you can:
 
-- change to a scheduler with faster generation speed or higher image quality depending on your needs (call the `scheduler.compatibles` method on your pipeline to see compatible schedulers)
-- change a default pipeline component for a better performing one
+- change to a scheduler with faster generation speed or higher generation quality depending on your needs (call the `scheduler.compatibles` method on your pipeline to see compatible schedulers)
+- change a default pipeline component to a newer and better performing one
 
 For example, let's customize the default [stabilityai/stable-diffusion-xl-base-1.0](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0) checkpoint with:
 
-- The [`HeunDiscreteScheduler`] to generate higher quality images at the expense of slower generation speed. You must pass the `subfolder="scheduler"` parameter in [`HeunDiscreteScheduler.from_pretrained`] to load the scheduler configuration into the correct [subfolder](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main/scheduler) of the pipeline repository.
+- The [`HeunDiscreteScheduler`] to generate higher quality images at the expense of slower generation speed. You must pass the `subfolder="scheduler"` parameter in [`~HeunDiscreteScheduler.from_pretrained`] to load the scheduler configuration into the correct [subfolder](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main/scheduler) of the pipeline repository.
 - A more stable VAE that runs in fp16.
 
 ```py
@@ -149,14 +149,14 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
 
 ## Reuse a pipeline
 
-There are times when it makes sense to reuse a pipeline without loading the model weights into memory multiple times because that would be inefficient, especially if your hardware is already memory-constrained. For example:
+When you load multiple pipelines that share the same model components, it makes sense to reuse the shared components instead of reloading everything into memory again, especially if your hardware is memory-constrained. For example:
 
 1. You generated an image with the [`StableDiffusionPipeline`] but you want to improve its quality with the [`StableDiffusionSAGPipeline`]. Both of these pipelines share the same pretrained model, so it'd be a waste of memory to load the same model twice.
-2. You want to add a model component like a [`MotionAdapter`](../api/pipelines/animatediff#animatediffpipeline) to an [`AnimateDiffPipeline`] instantiated from an existing [`StableDiffusionPipeline`]. Again, both pipelines share the same pretrained model, so it'd be a waste of memory to load an entirely new pipeline again.
+2. You want to add a model component, like a [`MotionAdapter`](../api/pipelines/animatediff#animatediffpipeline), to [`AnimateDiffPipeline`] which was instantiated from an existing [`StableDiffusionPipeline`]. Again, both pipelines share the same pretrained model, so it'd be a waste of memory to load an entirely new pipeline again.
 
-With the [`DiffusionPipeline.from_pipe`] API, you can switch between several pipelines to take advantage of their different features without increasing memory-usage. It is similar to turning on and off a feature on your pipeline. To switch between tasks, use the [`~DiffusionPipeline.from_pipe`] method with the [`AutoPipeline`](../api/pipelines/auto_pipeline) class, which automatically identifies the pipeline class based on the task (learn more in the [AutoPipeline](../tutorials/autopipeline) tutorial).
+With the [`DiffusionPipeline.from_pipe`] API, you can switch between multiple pipelines to take advantage of their different features without increasing memory-usage. It is similar to turning on and off a feature in your pipeline. To switch between tasks, use the [`~DiffusionPipeline.from_pipe`] method with the [`AutoPipeline`](../api/pipelines/auto_pipeline) class, which automatically identifies the pipeline class based on the task (learn more in the [AutoPipeline](../tutorials/autopipeline) tutorial).
 
-Let's start with a [`StableDiffusionPipeline`] and then reuse the already loaded model components to create a [`StableDiffusionSAGPipeline`] to increase generation quality. You'll use the [`StableDiffusionPipeline`] with an [IP-Adapter](./ip_adapter) to generate a bear eating pizza.
+Let's start with a [`StableDiffusionPipeline`] and then reuse the loaded model components to create a [`StableDiffusionSAGPipeline`] to increase generation quality. You'll use the [`StableDiffusionPipeline`] with an [IP-Adapter](./ip_adapter) to generate a bear eating pizza.
 
 ```python
 from diffusers import DiffusionPipeline, StableDiffusionSAGPipeline
@@ -192,9 +192,7 @@ For reference, you can check how much memory this process consumed.
 ```python
 def bytes_to_giga_bytes(bytes):
     return bytes / 1024 / 1024 / 1024
-print(
-    f"Max memory allocated: {bytes_to_giga_bytes(torch.cuda.max_memory_allocated())} GB"
-)
+print(f"Max memory allocated: {bytes_to_giga_bytes(torch.cuda.max_memory_allocated())} GB")
 "Max memory allocated: 4.406213283538818 GB"
 ```
 
@@ -230,9 +228,7 @@ out_sag
 If you check the memory usage, you'll see it remains the same as before because [`StableDiffusionPipeline`] and [`StableDiffusionSAGPipeline`] are sharing the same pipeline components. This allows you to use them interchangeably without any additional memory overhead.
 
 ```py
-print(
-    f"Max memory allocated: {bytes_to_giga_bytes(torch.cuda.max_memory_allocated())} GB"
-)
+print(f"Max memory allocated: {bytes_to_giga_bytes(torch.cuda.max_memory_allocated())} GB")
 "Max memory allocated: 4.406213283538818 GB"
 ```
 
@@ -268,12 +264,10 @@ export_to_gif(out, "out_animate.gif")
   <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/from_pipe_out_animate_3.gif"/>
 </div>
 
-This pipeline is more memory-intensive and consumes 15GB of memory.
+The [`AnimateDiffPipeline`] is more memory-intensive and consumes 15GB of memory (see the [Memory-usage of from_pipe](#memory-usage-of-from_pipe) section to learn what this means for your memory-usage).
 
 ```py
-print(
-    f"Max memory allocated: {bytes_to_giga_bytes(torch.cuda.max_memory_allocated())} GB"
-)
+print(f"Max memory allocated: {bytes_to_giga_bytes(torch.cuda.max_memory_allocated())} GB")
 "Max memory allocated: 15.178664207458496 GB"
 ```
 
@@ -328,9 +322,9 @@ A checkpoint variant is usually a checkpoint whose weights are:
 - Non-exponential mean averaged (EMA) weights which shouldn't be used for inference. You should use this variant to continue finetuning a model.
 
 > [!TIP]
-> When the checkpoints have identical model structures, but they were trained on different datasets and with a different training setup, they should be stored in separate repositories instead of a variant. For example, [stabilityai/stable-diffusion-2](https://hf.co/stabilityai/stable-diffusion-2) and [stabilityai/stable-diffusion-2-1](https://hf.co/stabilityai/stable-diffusion-2-1) are stored in separate repositories.
+> When the checkpoints have identical model structures, but they were trained on different datasets and with a different training setup, they should be stored in separate repositories. For example, [stabilityai/stable-diffusion-2](https://hf.co/stabilityai/stable-diffusion-2) and [stabilityai/stable-diffusion-2-1](https://hf.co/stabilityai/stable-diffusion-2-1) are stored in separate repositories.
 
-Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (like [safetensors](./using_safetensors)), model structure, and the weights have identical tensor shapes.
+Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (like [safetensors](./using_safetensors)), model structure, and their weights have identical tensor shapes.
 
 | **checkpoint type** | **weight name**                             | **argument for loading weights** |
 |---------------------|---------------------------------------------|----------------------------------|
@@ -340,11 +334,11 @@ Otherwise, a variant is **identical** to the original checkpoint. They have exac
 
 There are two important arguments for loading variants:
 
-- `torch_dtype` specifies the floating point precision of the loaded checkpoints. For example, if you want to save bandwidth by loading a fp16 variant, you should specify `variant="fp16"` and `torch_dtype=torch.float16` to *convert the weights* to fp16. Otherwise, the fp16 weights are converted to the default fp32 precision.
+- `torch_dtype` specifies the floating point precision of the loaded checkpoint. For example, if you want to save bandwidth by loading a fp16 variant, you should set `variant="fp16"` and `torch_dtype=torch.float16` to *convert the weights* to fp16. Otherwise, the fp16 weights are converted to the default fp32 precision.
 
   If you only set `torch_dtype=torch.float16`, the default fp32 weights are downloaded first and then converted to fp16.
 
-- `variant` specifies which files should be loaded from the repository. For example, if you want to load a non_ema variant of a UNet from [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5/tree/main/unet), set `variant="non_ema"` to download the `non_ema` file.
+- `variant` specifies which files should be loaded from the repository. For example, if you want to load a non-EMA variant of a UNet from [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5/tree/main/unet), set `variant="non_ema"` to download the `non_ema` file.
 
 <hfoptions id="variants">
 <hfoption id="fp16">
@@ -359,7 +353,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 ```
 
 </hfoption>
-<hfoption id="non_ema">
+<hfoption id="non-EMA">
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
@@ -370,7 +364,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 </hfoption>
 </hfoptions>
 
-Use the `variant` parameter in the [`DiffusionPipeline.save_pretrained`] method to save a checkpoint as a different floating point type or as a non_ema variant. You should try save a variant to the same folder as the original checkpoint, so you have the option of loading both from the same folder.
+Use the `variant` parameter in the [`DiffusionPipeline.save_pretrained`] method to save a checkpoint as a different floating point type or as a non-EMA variant. You should try save a variant to the same folder as the original checkpoint, so you have the option of loading both from the same folder.
 
 <hfoptions id="save">
 <hfoption id="fp16">
