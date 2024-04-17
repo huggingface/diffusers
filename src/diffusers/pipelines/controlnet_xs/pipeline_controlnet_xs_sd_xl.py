@@ -41,7 +41,6 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
-    deprecate,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -462,7 +461,6 @@ class StableDiffusionXLControlNetXSPipeline(
         prompt,
         prompt_2,
         image,
-        callback_steps,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -474,12 +472,6 @@ class StableDiffusionXLControlNetXSPipeline(
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
     ):
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
-
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -744,7 +736,6 @@ class StableDiffusionXLControlNetXSPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -855,11 +846,6 @@ class StableDiffusionXLControlNetXSPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
@@ -873,22 +859,6 @@ class StableDiffusionXLControlNetXSPipeline(
                 returned, otherwise a `tuple` is returned containing the output images.
         """
 
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-
         unet = self.unet._orig_mod if is_compiled_module(self.unet) else self.unet
 
         # 1. Check inputs. Raise error if not correct
@@ -896,7 +866,6 @@ class StableDiffusionXLControlNetXSPipeline(
             prompt,
             prompt_2,
             image,
-            callback_steps,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
@@ -1084,9 +1053,6 @@ class StableDiffusionXLControlNetXSPipeline(
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         # manually for max memory savings
         if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:

@@ -22,7 +22,14 @@ from torch import FloatTensor, nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, is_torch_version, logging
 from ..utils.torch_utils import apply_freeu
-from .attention_processor import Attention, AttentionProcessor
+from .attention_processor import (
+    ADDED_KV_ATTENTION_PROCESSORS,
+    CROSS_ATTENTION_PROCESSORS,
+    Attention,
+    AttentionProcessor,
+    AttnAddedKVProcessor,
+    AttnProcessor,
+)
 from .controlnet import ControlNetConditioningEmbedding
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
@@ -869,7 +876,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
 
         return processors
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
@@ -904,7 +911,23 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    def set_default_attn_processor(self):
+        """
+        Disables custom attention processors and sets the default attention implementation.
+        """
+        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnAddedKVProcessor()
+        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnProcessor()
+        else:
+            raise ValueError(
+                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
+            )
+
+        self.set_attn_processor(processor)
+
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
 
@@ -929,7 +952,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             setattr(upsample_block, "b1", b1)
             setattr(upsample_block, "b2", b2)
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.disable_freeu
     def disable_freeu(self):
         """Disables the FreeU mechanism."""
         freeu_keys = {"s1", "s2", "b1", "b2"}
@@ -938,7 +961,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
     def fuse_qkv_projections(self):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
@@ -962,7 +985,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
+    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
