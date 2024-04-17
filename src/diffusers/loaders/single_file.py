@@ -336,7 +336,7 @@ class FromSingleFileMixin:
         use_safetensors = kwargs.pop("use_safetensors", None)
 
         if config is not None and original_config is not None:
-            raise ValueError("Only one of `config` and `original_config_file` can be provided.")
+            raise ValueError("Only one of `config` and `original_config` can be provided.")
 
         # We shouldn't allow configuring individual models components through a Pipeline creation method
         # These model kwargs should be deprecated
