@@ -135,8 +135,8 @@ class PAGIdentitySelfAttnProcessor:
 
         value = attn.to_v(hidden_states_ptb)
 
-        hidden_states_ptb = torch.zeros(value.shape).to(value.get_device())
-        # hidden_states_ptb = value
+        # hidden_states_ptb = torch.zeros(value.shape).to(value.get_device())
+        hidden_states_ptb = value
 
         hidden_states_ptb = hidden_states_ptb.to(query.dtype)
 
