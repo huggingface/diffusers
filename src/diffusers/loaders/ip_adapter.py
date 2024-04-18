@@ -231,8 +231,8 @@ class IPAdapterMixin:
 
     def set_ip_adapter_scale(self, scale_configs: Union[float, Dict, List[Union[float, Dict]]], default_scale=0.0):
         """
-        Set IP-Adapter scales per-transformer block. Input `scale_configs` could be a single config or a list of configs
-        for granular control over each IP-Adapter behavior. A config can be a float or a dictionary.
+        Set IP-Adapter scales per-transformer block. Input `scale_configs` could be a single config or a list of
+        configs for granular control over each IP-Adapter behavior. A config can be a float or a dictionary.
 
         Example:
 
@@ -243,36 +243,19 @@ class IPAdapterMixin:
 
         # To use style block only
         scale_configs = {
-            "up": {
-                "block_0": [0.0, 1.0, 0.0]
-            },
+            "up": {"block_0": [0.0, 1.0, 0.0]},
         }
         pipeline.set_ip_adapter_scale(scale_configs)
 
         # To use style+layout blocks
         scale_configs = {
-            "down": {
-                "block_2": [0.0, 1.0]
-            },
-            "up": {
-                "block_0": [0.0, 1.0, 0.0]
-            },
+            "down": {"block_2": [0.0, 1.0]},
+            "up": {"block_0": [0.0, 1.0, 0.0]},
         }
         pipeline.set_ip_adapter_scale(scale_configs)
 
         # To use style and layout from 2 reference images
-        scale_configs = [
-            {
-                "down": {
-                    "block_2": [0.0, 1.0]
-                }
-            },
-            {
-                "up": {
-                    "block_0": [0.0, 1.0, 0.0]
-                }
-            }
-        ]
+        scale_configs = [{"down": {"block_2": [0.0, 1.0]}}, {"up": {"block_0": [0.0, 1.0, 0.0]}}]
         pipeline.set_ip_adapter_scale(scale_configs)
         ```
         """
@@ -288,7 +271,7 @@ class IPAdapterMixin:
                         f"Cannot assign {len(scale_configs)} scale_configs to "
                         f"{len(attn_processor.scale)} IP-Adapter."
                     )
-                elif len(scale_configs)==1:
+                elif len(scale_configs) == 1:
                     scale_configs = scale_configs * len(attn_processor.scale)
                 for i, scale_config in enumerate(scale_configs):
                     if isinstance(scale_config, dict):
