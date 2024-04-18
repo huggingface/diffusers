@@ -472,9 +472,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
 
         if (
-            isinstance(timestep, int)
-            or isinstance(timestep, torch.IntTensor)
-            or isinstance(timestep, torch.LongTensor)
+            isinstance(timestep, (int, torch.IntTensor, torch.LongTensor))
         ):
             raise ValueError(
                 (
