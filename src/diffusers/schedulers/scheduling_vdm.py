@@ -77,8 +77,6 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         self.beta_end = 0.02
         self.init_noise_sigma = 1.0
 
-        self.log_snr = partial(log_snr, beta_schedule=beta_schedule)
-
         # For linear beta schedule equivalent to torch.exp(-1e-4 - 10 * t ** 2)
         self.alphas_cumprod = lambda t: torch.sigmoid(self.log_snr(t))  # Equivalent to 1 - self.sigmas
         self.sigmas = lambda t: torch.sigmoid(-self.log_snr(t))  # Equivalent to 1 - self.alphas_cumprod
@@ -95,6 +93,14 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
 
     def __len__(self) -> int:
         return self.num_inference_steps or self.config.num_train_timesteps or 1000
+
+    def log_snr(self, timesteps: torch.Tensor) -> torch.FloatTensor:
+        if not timesteps.is_floating_point():
+            if not self.config.num_train_timesteps:
+                raise TypeError("Discrete timesteps require `self.config.num_train_timesteps` to be set.")
+            timesteps = timesteps / self.config.num_train_timesteps  # Normalize to [0, 1]
+
+        return log_snr(timesteps, beta_schedule=self.config.beta_schedule)
 
     def get_timesteps(self, num_steps: Optional[int] = None) -> np.ndarray:
         if num_steps is None:
@@ -133,21 +139,6 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         timesteps += self.config.steps_offset
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
-        if schedule_timesteps is None:
-            schedule_timesteps = self.timesteps
-
-        indices = (schedule_timesteps == timestep).nonzero()
-
-        # The sigma index that is taken for the **very** first `step`
-        # is always the second index (or the last index if there is only 1)
-        # This way we can ensure we don't accidentally skip a sigma in
-        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-        pos = 1 if len(indices) > 1 else 0
-
-        return indices[pos].item()
-
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.scale_model_input
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
@@ -171,11 +162,6 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
                   noise: torch.FloatTensor,
                   timesteps: Union[torch.FloatTensor, torch.IntTensor, torch.LongTensor]) -> torch.FloatTensor:
 
-        if not timesteps.is_floating_point():
-            if not self.config.num_train_timesteps:
-                raise TypeError("Discrete timesteps require `self.config.num_train_timesteps` to be set.")
-            timesteps = timesteps / self.config.num_train_timesteps  # Normalize to [0, 1]
-
         log_snr = self.log_snr(timesteps)
         log_snr = log_snr.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
 
@@ -187,7 +173,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
 
     def step(self,
              model_output: torch.FloatTensor,
-             timestep: Union[int, float, torch.FloatTensor, torch.IntTensor, torch.LongTensor],
+             timestep: Union[int, float, torch.Tensor],
              sample: torch.FloatTensor,
              generator: Optional[torch.Generator] = None,
              return_dict: bool = True) -> Union[VDMSchedulerOutput, Tuple]:
