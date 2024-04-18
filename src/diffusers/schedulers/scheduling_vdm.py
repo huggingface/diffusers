@@ -17,7 +17,7 @@
 import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
-from functools import partial, cache
+from functools import partial
 
 import numpy as np
 import torch
@@ -26,6 +26,24 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin
+
+
+def log_snr(t: torch.FloatTensor, beta_schedule: str) -> torch.FloatTensor:
+    if t.min() < 0 or t.max() > 1:
+        raise ValueError("`t` must be in range [0, 1].")
+
+    # From https://github.com/Zhengxinyang/LAS-Diffusion/blob/a7eb304a24dec2eb85a8d3899c73338e10435bba/network/model_utils.py#L345
+    if beta_schedule == "linear":
+        return -torch.log(torch.special.expm1(1e-4 + 10 * t ** 2))
+    elif beta_schedule == "squaredcos_cap_v2":
+        return -torch.log(torch.clamp((torch.cos((t + 0.008) / (1 + 0.008) * math.pi * 0.5) ** -2) - 1, min=1e-5))
+    elif beta_schedule == "sigmoid":
+        # From https://colab.research.google.com/github/google-research/vdm/blob/main/colab/SimpleDiffusionColab.ipynb
+        gamma_min = -6  # -13.3 in VDM CIFAR10 experiments
+        gamma_max = 6  # 5.0 in VDM CIFAR10 experiments
+        return gamma_max + (gamma_min - gamma_max) * t
+
+    raise NotImplementedError(f"{beta_schedule} does is not implemented for {VDMScheduler.__class__}")
 
 
 @dataclass
@@ -57,47 +75,26 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         # Hardcoded as continuous schedules in self._log_snr are fitted to these values
         self.beta_start = 1e-4
         self.beta_end = 0.02
+        self.init_noise_sigma = 1.0
 
-        self.num_inference_steps = None
-        self.timesteps = None
-
-        self.log_snr = partial(self._log_snr, beta_schedule=beta_schedule)
-        self._log_snr_cached = cache(self.log_snr)  # Cached version for discrete timesteps and inference
+        self.log_snr = partial(log_snr, beta_schedule=beta_schedule)
 
         # For linear beta schedule equivalent to torch.exp(-1e-4 - 10 * t ** 2)
         self.alphas_cumprod = lambda t: torch.sigmoid(self.log_snr(t))  # Equivalent to 1 - self.sigmas
         self.sigmas = lambda t: torch.sigmoid(-self.log_snr(t))  # Equivalent to 1 - self.alphas_cumprod
 
-        if num_train_timesteps is not None:
-            self.log_snr = self._log_snr_cached  # Use cached version for discrete timesteps
-
+        self.num_inference_steps = None
+        self.timesteps = None
+        if num_train_timesteps:
             # TODO: Might not be exact
-            timesteps = torch.from_numpy(self.get_timesteps(num_train_timesteps or 1000))
-            alphas_cumprod = self.alphas_cumprod(torch.flip(timesteps, dims=(0,)))
+            self.timesteps = torch.from_numpy(self.get_timesteps(len(self)))
+            alphas_cumprod = self.alphas_cumprod(torch.flip(self.timesteps, dims=(0,)))
             alphas = alphas_cumprod[1:] / alphas_cumprod[:-1]
             self.alphas = torch.cat([alphas_cumprod[:1], alphas])
             self.betas = 1 - self.alphas
 
     def __len__(self) -> int:
         return self.num_inference_steps or self.config.num_train_timesteps or 1000
-
-    @staticmethod
-    def _log_snr(t: torch.FloatTensor, beta_schedule: str) -> torch.FloatTensor:
-        if t.min() < 0 or t.max() > 1:
-            raise ValueError("`t` must be in range [0, 1].")
-
-        # From https://github.com/Zhengxinyang/LAS-Diffusion/blob/a7eb304a24dec2eb85a8d3899c73338e10435bba/network/model_utils.py#L345
-        if beta_schedule == "linear":
-            return -torch.log(torch.special.expm1(1e-4 + 10 * t ** 2))
-        elif beta_schedule == "squaredcos_cap_v2":
-            return -torch.log(torch.clamp((torch.cos((t + 0.008) / (1 + 0.008) * math.pi * 0.5) ** -2) - 1, min=1e-5))
-        elif beta_schedule == "sigmoid":
-            # From https://colab.research.google.com/github/google-research/vdm/blob/main/colab/SimpleDiffusionColab.ipynb
-            gamma_min = -6  # -13.3 in VDM CIFAR10 experiments
-            gamma_max = 6  # 5.0 in VDM CIFAR10 experiments
-            return gamma_max + (gamma_min - gamma_max) * t
-
-        raise NotImplementedError(f"{beta_schedule} does is not implemented for {VDMScheduler.__class__}")
 
     def get_timesteps(self, num_steps: Optional[int] = None) -> np.ndarray:
         if num_steps is None:
@@ -113,11 +110,15 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         return timesteps.copy()
 
     def set_timesteps(self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None):
-        if self.config.num_train_timesteps is None:
+        if not self.config.num_train_timesteps:
             timesteps = self.get_timesteps(num_inference_steps)
         else:
             if self.config.timestep_spacing in ["linspace", "leading"]:
-                timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps,
+                start = 0
+                stop = self.config.num_train_timesteps
+                timesteps = np.linspace(start,
+                                        stop - 1 if self.config.timestep_spacing == "linspace" else stop,
+                                        num_inference_steps,
                                         endpoint=self.config.timestep_spacing == "linspace")[::-1]
             elif self.config.timestep_spacing == "trailing":
                 timesteps = np.arange(self.config.num_train_timesteps,
@@ -171,7 +172,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
                   timesteps: Union[torch.FloatTensor, torch.IntTensor, torch.LongTensor]) -> torch.FloatTensor:
 
         if not timesteps.is_floating_point():
-            if self.config.num_train_timesteps is None:
+            if not self.config.num_train_timesteps:
                 raise TypeError("Discrete timesteps require `self.config.num_train_timesteps` to be set.")
             timesteps = timesteps / self.config.num_train_timesteps  # Normalize to [0, 1]
 
@@ -196,18 +197,18 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
                                     dtype=torch.float32 if isinstance(timestep, float) else torch.int64,
                                     device=sample.device)
 
-        if self.timesteps is None:
-            if not timestep.is_floating_point():
-                timestep = timestep / len(self)
-            prev_timestep = (timestep - 1 / len(self)).clamp(0, 1)
-        else:
-            # index + 1 corresponds to t - 1 as timesteps are reversed
-            index = self.index_for_timestep(timestep)
-            prev_timestep = self.timesteps[index + 1] if index < len(self.timesteps) else 0
+        if not timestep.is_floating_point():
+            if not self.config.num_train_timesteps:
+                raise TypeError("Discrete timesteps require `self.config.num_train_timesteps` to be set.")
+            timestep = timestep / self.config.num_train_timesteps  # Normalize to [0, 1]
+        prev_timestep = (timestep - 1 / len(self)).clamp(0, 1)
+
+        if prev_timestep > timestep:
+            raise ValueError("`self.timesteps` must be in descending order.")
 
         # 1. Compute current and previous alpha and sigma values
-        log_snr = self._log_snr_cached(timestep, beta_schedule=self.config.beta_schedule)
-        prev_log_snr = self._log_snr_cached(prev_timestep, beta_schedule=self.config.beta_schedule)
+        log_snr = self.log_snr(timestep)
+        prev_log_snr = self.log_snr(prev_timestep)
 
         alpha, sigma = torch.sigmoid(log_snr), torch.sigmoid(-log_snr)
         prev_alpha, prev_sigma = torch.sigmoid(prev_log_snr), torch.sigmoid(-prev_log_snr)
@@ -224,14 +225,11 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("`prediction_type` must be either `epsilon` or `sample`.")
 
         # 3. Add noise
-        variance = 0
-        if timestep > 0:
-            noise = randn_tensor(model_output.shape,
-                                 generator=generator,
-                                 device=model_output.device,
-                                 dtype=model_output.dtype)
-            variance = torch.sqrt(prev_sigma * c) * noise
-
+        noise = randn_tensor(model_output.shape,
+                             generator=generator,
+                             device=model_output.device,
+                             dtype=model_output.dtype)
+        variance = torch.sqrt(prev_sigma * c) * noise
         pred_prev_sample = pred_prev_sample + variance
 
         if not return_dict:
