@@ -283,7 +283,7 @@ class IPAdapterMixin:
 
         for attn_name, attn_processor in unet.attn_processors.items():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
-                if len(scale_configs)>1 and len(scale_configs)!=len(attn_processor.scale):
+                if len(scale_configs) != len(attn_processor.scale):
                     raise ValueError(
                         f"Cannot assign {len(scale_configs)} scale_configs to "
                         f"{len(attn_processor.scale)} IP-Adapter."
