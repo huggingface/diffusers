@@ -982,7 +982,7 @@ class DreamBoothDataset(Dataset):
             ]
         )
         # if using B-LoRA for single image. do not use transformations
-        single_image = len(self.instance_images) < 2 and args.use_blora
+        single_image = len(self.instance_images) < 2
         for image in self.instance_images:
             if not single_image:
                 image = exif_transpose(image)
@@ -2016,7 +2016,8 @@ def main(args):
                         timesteps,
                         prompt_embeds_input,
                         added_cond_kwargs=unet_added_conditions,
-                    ).sample
+                        return_dict=False,
+                    )[0]
                 else:
                     unet_added_conditions = {"time_ids": add_time_ids}
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
@@ -2034,7 +2035,8 @@ def main(args):
                         timesteps,
                         prompt_embeds_input,
                         added_cond_kwargs=unet_added_conditions,
-                    ).sample
+                        return_dict=False,
+                    )[0]
 
                 weighting = None
                 if args.do_edm_style_training:
