@@ -475,7 +475,6 @@ def _assign_components_to_devices(
     device_ids = list(device_memory.keys())
     device_cycle = device_ids + device_ids[::-1]
     device_memory = device_memory.copy()
-    print(f"{device_memory=}, {device_ids=}, {device_cycle=}, {module_sizes=}")
 
     device_id_component_mapping = {}
     current_device_index = 0
