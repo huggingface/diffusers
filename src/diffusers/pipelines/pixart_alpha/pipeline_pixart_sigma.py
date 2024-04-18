@@ -73,7 +73,7 @@ ASPECT_RATIO_2048_BIN = {
     "3.62": [3712.0, 1024.0],
     "3.75": [3840.0, 1024.0],
     "3.88": [3968.0, 1024.0],
-    "4.0": [4096.0, 1024.0]
+    "4.0": [4096.0, 1024.0],
 }
 
 
@@ -84,7 +84,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import PixArtSigmaPipeline
 
         >>> # You can replace the checkpoint id with "PixArt-alpha/PixArt-Sigma-XL-2-512-MS" too.
-        >>> pipe = PixArtSigmaPipeline.from_pretrained("PixArt-alpha/PixArt-Sigma-XL-2-1024-MS", torch_dtype=torch.float16)
+        >>> pipe = PixArtSigmaPipeline.from_pretrained(
+        ...     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS", torch_dtype=torch.float16
+        ... )
         >>> # Enable memory optimizations.
         >>> # pipe.enable_model_cpu_offload()
 
@@ -92,6 +94,7 @@ EXAMPLE_DOC_STRING = """
         >>> image = pipe(prompt).images[0]
         ```
 """
+
 
 def retrieve_timesteps(
     scheduler,
@@ -143,12 +146,12 @@ class PixArtSigmaPipeline(PixArtAlphaPipeline):
     """
 
     def __init__(
-            self,
-            tokenizer: T5Tokenizer,
-            text_encoder: T5EncoderModel,
-            vae: AutoencoderKL,
-            transformer: Transformer2DModel,
-            scheduler: DPMSolverMultistepScheduler,
+        self,
+        tokenizer: T5Tokenizer,
+        text_encoder: T5EncoderModel,
+        vae: AutoencoderKL,
+        transformer: Transformer2DModel,
+        scheduler: DPMSolverMultistepScheduler,
     ):
         super().__init__(tokenizer, text_encoder, vae, transformer, scheduler)
 

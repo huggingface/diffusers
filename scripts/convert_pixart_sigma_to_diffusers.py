@@ -188,7 +188,8 @@ def main(args):
 
         tokenizer = T5Tokenizer.from_pretrained(f"{ckpt_id}/pixart_sigma_sdxlvae_T5_diffusers", subfolder="tokenizer")
         text_encoder = T5EncoderModel.from_pretrained(
-            f"{ckpt_id}/pixart_sigma_sdxlvae_T5_diffusers", subfolder="text_encoder")
+            f"{ckpt_id}/pixart_sigma_sdxlvae_T5_diffusers", subfolder="text_encoder"
+        )
 
         pipeline = PixArtSigmaPipeline(
             tokenizer=tokenizer, text_encoder=text_encoder, transformer=transformer, vae=vae, scheduler=scheduler
