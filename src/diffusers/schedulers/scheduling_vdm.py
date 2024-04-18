@@ -69,7 +69,12 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
     def __init__(self,
                  num_train_timesteps: Optional[int] = None,
                  beta_schedule: str = "linear",
+                 clip_sample: bool = True,
                  prediction_type: str = "epsilon",
+                 thresholding: bool = False,
+                 dynamic_thresholding_ratio: float = 0.995,
+                 clip_sample_range: float = 1.0,
+                 sample_max_value: float = 1.0,
                  timestep_spacing: str = "leading",
                  steps_offset: Union[int, float] = 0):
         # Hardcoded as continuous schedules in self._log_snr are fitted to these values
@@ -113,7 +118,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise ValueError(f"`{self.config.timestep_spacing}` timestep spacing is not supported."
                              "Choose one of 'linspace', 'leading' or 'trailing'.")
-        return timesteps.copy()
+        return timesteps.astype(np.float32).copy()
 
     def set_timesteps(self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None):
         if not self.config.num_train_timesteps:
@@ -138,6 +143,40 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
         timesteps += self.config.steps_offset
         self.timesteps = torch.from_numpy(timesteps).to(device)
+
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
+    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+        """
+        "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
+        prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
+        s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
+        pixels from saturation at each step. We find that dynamic thresholding results in significantly better
+        photorealism as well as better image-text alignment, especially when using very large guidance weights."
+
+        https://arxiv.org/abs/2205.11487
+        """
+        dtype = sample.dtype
+        batch_size, channels, *remaining_dims = sample.shape
+
+        if dtype not in (torch.float32, torch.float64):
+            sample = sample.float()  # upcast for quantile calculation, and clamp not implemented for cpu half
+
+        # Flatten sample for doing quantile calculation along each image
+        sample = sample.reshape(batch_size, channels * np.prod(remaining_dims))
+
+        abs_sample = sample.abs()  # "a certain percentile absolute pixel value"
+
+        s = torch.quantile(abs_sample, self.config.dynamic_thresholding_ratio, dim=1)
+        s = torch.clamp(
+            s, min=1, max=self.config.sample_max_value
+        )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
+        s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
+        sample = torch.clamp(sample, -s, s) / s  # "we threshold xt0 to the range [-s, s] and then divide by s"
+
+        sample = sample.reshape(batch_size, channels, *remaining_dims)
+        sample = sample.to(dtype)
+
+        return sample
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.scale_model_input
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
@@ -177,6 +216,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
              sample: torch.FloatTensor,
              generator: Optional[torch.Generator] = None,
              return_dict: bool = True) -> Union[VDMSchedulerOutput, Tuple]:
+        # From https://github.com/addtt/variational-diffusion-models/blob/7f81074dfdfc897178ad3d471458ea03e16197e8/vdm.py#L29
 
         if isinstance(timestep, (int, float)):
             timestep = torch.tensor(timestep,
@@ -189,9 +229,6 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             timestep = timestep / self.config.num_train_timesteps  # Normalize to [0, 1]
         prev_timestep = (timestep - 1 / len(self)).clamp(0, 1)
 
-        if prev_timestep > timestep:
-            raise ValueError("`self.timesteps` must be in descending order.")
-
         # 1. Compute current and previous alpha and sigma values
         log_snr = self.log_snr(timestep)
         prev_log_snr = self.log_snr(prev_timestep)
@@ -199,24 +236,37 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         alpha, sigma = torch.sigmoid(log_snr), torch.sigmoid(-log_snr)
         prev_alpha, prev_sigma = torch.sigmoid(prev_log_snr), torch.sigmoid(-prev_log_snr)
 
-        # 2. Compute predicted original sample x_0 and predicted previous sample x_{t-1}
-        c = -torch.expm1(log_snr - prev_log_snr)
+        # 2. Compute predicted original sample x_0
         if self.config.prediction_type == "epsilon":
             pred_original_sample = (sample - torch.sqrt(sigma) * model_output) / torch.sqrt(alpha)
-            pred_prev_sample = torch.sqrt(prev_alpha / alpha) * (sample - c * torch.sqrt(sigma) * model_output)
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
-            pred_prev_sample = torch.sqrt(prev_alpha) * (sample * (1 - c) / torch.sqrt(alpha) + c * model_output)
         else:
             raise ValueError("`prediction_type` must be either `epsilon` or `sample`.")
 
-        # 3. Add noise
-        noise = randn_tensor(model_output.shape,
-                             generator=generator,
-                             device=model_output.device,
-                             dtype=model_output.dtype)
-        variance = torch.sqrt(prev_sigma * c) * noise
-        pred_prev_sample = pred_prev_sample + variance
+        # 3. Clip or threshold "predicted x_0"
+        if self.config.thresholding:
+            pred_original_sample = self._threshold_sample(pred_original_sample)
+        elif self.config.clip_sample:
+            pred_original_sample = pred_original_sample.clamp(-self.config.clip_sample_range,
+                                                              self.config.clip_sample_range)
+
+        # 4. Computed predicted previous sample x_{t-1}
+        c = -torch.expm1(log_snr - prev_log_snr)
+        if self.config.thresholding or self.config.clip_sample:
+            pred_prev_sample = torch.sqrt(prev_alpha) * (sample * (1 - c) / torch.sqrt(alpha) + c * pred_original_sample)
+        else:
+            pred_prev_sample = torch.sqrt(prev_alpha / alpha) * (sample - c * torch.sqrt(sigma) * model_output)
+
+        # 5. (Maybe) add noise
+        noise_scale = torch.sqrt(prev_sigma * c)  # Becomes 0 for prev_timestep = 0
+        if noise_scale > 0:
+            noise = randn_tensor(model_output.shape,
+                                 generator=generator,
+                                 device=model_output.device,
+                                 dtype=model_output.dtype)
+            variance = noise_scale * noise
+            pred_prev_sample = pred_prev_sample + variance
 
         if not return_dict:
             return (pred_prev_sample,)
