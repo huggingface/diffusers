@@ -59,7 +59,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         self.beta_end = 0.02
 
         self.num_inference_steps = None
-        self.timesteps = torch.from_numpy(self.get_timesteps(num_train_timesteps or 1000))
+        self.timesteps = None
 
         self.log_snr = partial(self._log_snr, beta_schedule=beta_schedule)
         self._log_snr_cached = cache(self.log_snr)  # Cached version for discrete timesteps and inference
@@ -72,16 +72,20 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             self.log_snr = self._log_snr_cached  # Use cached version for discrete timesteps
 
             # TODO: Might not be exact
-            alphas_cumprod = self.alphas_cumprod(torch.flip(self.timesteps, dims=(0,)))
+            timesteps = torch.from_numpy(self.get_timesteps(num_train_timesteps or 1000))
+            alphas_cumprod = self.alphas_cumprod(torch.flip(timesteps, dims=(0,)))
             alphas = alphas_cumprod[1:] / alphas_cumprod[:-1]
             self.alphas = torch.cat([alphas_cumprod[:1], alphas])
             self.betas = 1 - self.alphas
 
     def __len__(self) -> int:
-        return self.num_inference_steps or self.config.num_train_timesteps or len(self.timesteps)
+        return self.num_inference_steps or self.config.num_train_timesteps or 1000
 
     @staticmethod
     def _log_snr(t: torch.FloatTensor, beta_schedule: str) -> torch.FloatTensor:
+        if t.min() < 0 or t.max() > 1:
+            raise ValueError("`t` must be in range [0, 1].")
+
         # From https://github.com/Zhengxinyang/LAS-Diffusion/blob/a7eb304a24dec2eb85a8d3899c73338e10435bba/network/model_utils.py#L345
         if beta_schedule == "linear":
             return -torch.log(torch.special.expm1(1e-4 + 10 * t ** 2))
@@ -169,7 +173,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         if not timesteps.is_floating_point():
             if self.config.num_train_timesteps is None:
                 raise TypeError("Discrete timesteps require `self.config.num_train_timesteps` to be set.")
-            timesteps = timesteps / self.config.num_train_timesteps
+            timesteps = timesteps / self.config.num_train_timesteps  # Normalize to [0, 1]
 
         log_snr = self.log_snr(timesteps)
         log_snr = log_snr.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
@@ -192,12 +196,14 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
                                     dtype=torch.float32 if isinstance(timestep, float) else torch.int64,
                                     device=sample.device)
 
-        if timestep.is_floating_point():
-            prev_timestep = timestep - 1 / len(self)
+        if self.timesteps is None:
+            if not timestep.is_floating_point():
+                timestep = timestep / len(self)
+            prev_timestep = (timestep - 1 / len(self)).clamp(0, 1)
         else:
-            T = len(self)
-            prev_timestep = (T - timestep - 1) / T
-            timestep = (T - timestep) / T
+            # index + 1 corresponds to t - 1 as timesteps are reversed
+            index = self.index_for_timestep(timestep)
+            prev_timestep = self.timesteps[index + 1] if index < len(self.timesteps) else 0
 
         # 1. Compute current and previous alpha and sigma values
         log_snr = self._log_snr_cached(timestep, beta_schedule=self.config.beta_schedule)
@@ -215,7 +221,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = model_output
             pred_prev_sample = torch.sqrt(prev_alpha) * (sample * (1 - c) / torch.sqrt(alpha) + c * model_output)
         else:
-            raise ValueError("`prediction_type` must be one of `epsilon`, `sample` or `v_prediction`.")
+            raise ValueError("`prediction_type` must be either `epsilon` or `sample`.")
 
         # 3. Add noise
         variance = 0
