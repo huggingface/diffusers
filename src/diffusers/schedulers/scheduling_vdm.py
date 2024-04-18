@@ -54,24 +54,24 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
                  prediction_type: str = "epsilon",
                  timestep_spacing: str = "leading",
                  steps_offset: Union[int, float] = 0):
+        # Hardcoded as continuous schedules in self._log_snr are fitted to these values
         self.beta_start = 1e-4
         self.beta_end = 0.02
 
-        self.log_snr = partial(self._log_snr, beta_schedule=beta_schedule)
-        self._log_snr_cached = cache(self.log_snr)
-
-        self.timesteps = torch.from_numpy(self.get_timesteps(num_train_timesteps or 1000))
         self.num_inference_steps = None
-        # Equivalent to 1 - self.sigmas
+        self.timesteps = torch.from_numpy(self.get_timesteps(num_train_timesteps or 1000))
+
+        self.log_snr = partial(self._log_snr, beta_schedule=beta_schedule)
+        self._log_snr_cached = cache(self.log_snr)  # Cached version for discrete timesteps and inference
+
         # For linear beta schedule equivalent to torch.exp(-1e-4 - 10 * t ** 2)
-        self.alphas_cumprod = lambda t: torch.sigmoid(self.log_snr(t))
-        # Equivalent to 1 - self.alphas_cumprod
-        self.sigmas = lambda t: torch.sigmoid(-self.log_snr(t))
+        self.alphas_cumprod = lambda t: torch.sigmoid(self.log_snr(t))  # Equivalent to 1 - self.sigmas
+        self.sigmas = lambda t: torch.sigmoid(-self.log_snr(t))  # Equivalent to 1 - self.alphas_cumprod
 
         if num_train_timesteps is not None:
-            self.log_snr = self._log_snr_cached
+            self.log_snr = self._log_snr_cached  # Use cached version for discrete timesteps
 
-            # Fixme: Might not be exact
+            # TODO: Might not be exact
             alphas_cumprod = self.alphas_cumprod(torch.flip(self.timesteps, dims=(0,)))
             alphas = alphas_cumprod[1:] / alphas_cumprod[:-1]
             self.alphas = torch.cat([alphas_cumprod[:1], alphas])
@@ -88,7 +88,10 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         elif beta_schedule == "squaredcos_cap_v2":
             return -torch.log(torch.clamp((torch.cos((t + 0.008) / (1 + 0.008) * math.pi * 0.5) ** -2) - 1, min=1e-5))
         elif beta_schedule == "sigmoid":
-            return 6 - 12 * t
+            # From https://colab.research.google.com/github/google-research/vdm/blob/main/colab/SimpleDiffusionColab.ipynb
+            gamma_min = -6  # -13.3 in VDM CIFAR10 experiments
+            gamma_max = 6  # 5.0 in VDM CIFAR10 experiments
+            return gamma_max + (gamma_min - gamma_max) * t
 
         raise NotImplementedError(f"{beta_schedule} does is not implemented for {VDMScheduler.__class__}")
 
@@ -163,10 +166,10 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
                   noise: torch.FloatTensor,
                   timesteps: Union[torch.FloatTensor, torch.IntTensor, torch.LongTensor]) -> torch.FloatTensor:
 
-        if isinstance(timesteps, (torch.IntTensor, torch.LongTensor)):
+        if not timesteps.is_floating_point():
             if self.config.num_train_timesteps is None:
-                raise TypeError("Discrete timesteps require `num_train_timesteps` to be set.")
-            timesteps /= self.config.num_train_timesteps
+                raise TypeError("Discrete timesteps require `self.config.num_train_timesteps` to be set.")
+            timesteps = timesteps / self.config.num_train_timesteps
 
         log_snr = self.log_snr(timesteps)
         log_snr = log_snr.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
@@ -181,19 +184,20 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
              model_output: torch.FloatTensor,
              timestep: Union[int, float, torch.FloatTensor, torch.IntTensor, torch.LongTensor],
              sample: torch.FloatTensor,
-             generator=None,
+             generator: Optional[torch.Generator] = None,
              return_dict: bool = True) -> Union[VDMSchedulerOutput, Tuple]:
 
         if isinstance(timestep, (int, float)):
-            timestep = torch.tensor(timestep)
-        if isinstance(timestep, torch.FloatTensor):
+            timestep = torch.tensor(timestep,
+                                    dtype=torch.float32 if isinstance(timestep, float) else torch.int64,
+                                    device=sample.device)
+
+        if timestep.is_floating_point():
             prev_timestep = timestep - 1 / len(self)
-        elif isinstance(timestep, (torch.IntTensor, torch.LongTensor)):
+        else:
             T = len(self)
             prev_timestep = (T - timestep - 1) / T
             timestep = (T - timestep) / T
-        else:
-            raise TypeError(f"Unsupported type `{type(timestep)}` for `timestep`.")
 
         # 1. Compute current and previous alpha and sigma values
         log_snr = self._log_snr_cached(timestep, beta_schedule=self.config.beta_schedule)
