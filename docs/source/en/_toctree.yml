@@ -145,24 +145,22 @@
     isExpanded: false
   title: Training
 - sections:
-  - sections:
-    - local: optimization/fp16
-      title: Speed up inference
-    - local: using-diffusers/distilled_sd
-      title: Distilled Stable Diffusion inference
-    - local: optimization/memory
-      title: Reduce memory usage
-    - local: optimization/torch2.0
-      title: PyTorch 2.0
-    - local: optimization/xformers
-      title: xFormers
-    - local: optimization/tome
-      title: Token merging
-    - local: optimization/deepcache
-      title: DeepCache
-    - local: optimization/tgate
-      title: TGATE
-    title: Accelerate inference and reduce memory
+  - local: optimization/fp16
+    title: Speed up inference
+  - local: using-diffusers/distilled_sd
+    title: Distilled Stable Diffusion inference
+  - local: optimization/memory
+    title: Reduce memory usage
+  - local: optimization/torch2.0
+    title: PyTorch 2.0
+  - local: optimization/xformers
+    title: xFormers
+  - local: optimization/tome
+    title: Token merging
+  - local: optimization/deepcache
+    title: DeepCache
+  - local: optimization/tgate
+    title: TGATE
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
@@ -172,14 +170,14 @@
       title: OpenVINO
     - local: optimization/coreml
       title: Core ML
-    title: Optimized model types
+    title: Optimized model formats
   - sections:
     - local: optimization/mps
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
       title: Habana Gaudi
     title: Optimized hardware
-  title: Optimization
+  title: Accelerate inference and reduce memory
 - sections:
   - local: conceptual/philosophy
     title: Philosophy
