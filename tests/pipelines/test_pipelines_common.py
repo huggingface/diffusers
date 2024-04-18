@@ -116,7 +116,7 @@ class SDFunctionTesterMixin:
         inputs["return_dict"] = False
         output_2 = pipe(**inputs)[0]
 
-        assert np.abs(output_2 - output_1).max() < 5e-1
+        assert np.abs(to_np(output_2) - to_np(output_1)).max() < 5e-1
 
         # test that tiled decode works with various shapes
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]

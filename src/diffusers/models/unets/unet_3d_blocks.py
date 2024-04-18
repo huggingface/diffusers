@@ -1461,7 +1461,6 @@ class UpBlockMotion(nn.Module):
         resnet_pre_norm: bool = True,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
-        temporal_norm_num_groups: int = 32,
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
@@ -1493,7 +1492,7 @@ class UpBlockMotion(nn.Module):
                 TransformerTemporalModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
-                    norm_num_groups=temporal_norm_num_groups,
+                    norm_num_groups=resnet_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
                     attention_bias=False,
                     activation_fn="geglu",
