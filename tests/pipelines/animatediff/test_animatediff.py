@@ -53,7 +53,7 @@ class AnimateDiffPipelineFastTests(
     def get_dummy_components(self):
         block_out_channels = (8, 8)
         cross_attention_dim = 8
-        
+
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=block_out_channels,
