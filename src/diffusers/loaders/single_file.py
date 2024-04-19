@@ -401,11 +401,12 @@ class FromSingleFileMixin:
                 )
                 config_dict = pipeline_class._dict_from_json_file(config_file)
 
-            except LocalEntryNotFoundError:
+            except LocalEntryNotFoundError as e:
                 logger.warning(
-                    f"The inferred model repository to configure this pipeline with this checkpoint is: {default_pretrained_model_name_or_path}. "
-                    "A local version of this repository was not found in the cache directory. "
-                    "Attempting to create the pipeline based on inferred components. This might lead to errors with the components are not inferred correctly. "
+                    f"The inferred model repository to configure this pipeline with this checkpoint is: \n"
+                    f"{default_pretrained_model_name_or_path}.\n"
+                    "A local version of this repository was not found in the cache directory.\n"
+                    "Attempting to create the pipeline based on inferred components. This might lead to errors if the components are not inferred correctly. "
                     "Please explicity pass the `config` argument to `from_single_file` with a path to a local diffusers model repository "
                     "or run this pipeline with `local_files_only=False` first to download the necessary config files to the cache. "
                 )

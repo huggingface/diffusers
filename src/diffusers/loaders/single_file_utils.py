@@ -1369,13 +1369,14 @@ def _legacy_load_scheduler_from_scheduler_type(
 
     global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
 
-    num_train_timesteps = getattr(original_config["model"]["params"], "timesteps", None) or 1000
+    if original_config:
+        num_train_timesteps = getattr(original_config["model"]["params"], "timesteps", 1000)
+    else:
+        num_train_timesteps = 1000
+
     scheduler_config["num_train_timesteps"] = num_train_timesteps
 
-    if (
-        "parameterization" in original_config["model"]["params"]
-        and original_config["model"]["params"]["parameterization"] == "v"
-    ):
+    if model_type == "v2":
         if prediction_type is None:
             # NOTE: For stable diffusion 2 base it is recommended to pass `prediction_type=="epsilon"` # as it relies on a brittle global step parameter here
             prediction_type = "epsilon" if global_step == 875000 else "v_prediction"
@@ -1390,8 +1391,14 @@ def _legacy_load_scheduler_from_scheduler_type(
     elif model_type == "playground":
         scheduler_type = "edm_dpm_solver_multistep"
     else:
-        beta_start = original_config["model"]["params"].get("linear_start", 0.02)
-        beta_end = original_config["model"]["params"].get("linear_end", 0.085)
+        if original_config:
+            beta_start = original_config["model"]["params"].get("linear_start")
+            beta_end = original_config["model"]["params"].get("linear_end")
+
+        else:
+            beta_start = 0.02
+            beta_end = 0.085
+
         scheduler_config["beta_start"] = beta_start
         scheduler_config["beta_end"] = beta_end
         scheduler_config["beta_schedule"] = "scaled_linear"

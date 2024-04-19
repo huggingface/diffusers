@@ -3,9 +3,7 @@ import unittest
 
 import torch
 
-from diffusers import (
-    StableDiffusionPipeline,
-)
+from diffusers import DDIMScheduler, PNDMScheduler, StableDiffusionPipeline
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     require_torch_gpu,
@@ -52,6 +50,13 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
 
     def test_single_file_format_inference_is_same_as_pretrained(self):
         super().test_single_file_format_inference_is_same_as_pretrained(expected_max_diff=1e-3)
+
+
+    def test_single_file_legacy_scheduler_loading(self):
+        # Default is PNDM for this checkpoint
+        pipe = self.pipeline_class.from_single_file(self.ckpt_path, scheduler_type="ddim")
+        assert isinstance(pipe.scheduler, DDIMScheduler)
+
 
 
 class StableDiffusion21PipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
