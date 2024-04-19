@@ -330,8 +330,8 @@ class AudioLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
         shape = (
             batch_size,
             num_channels_latents,
-            height // self.vae_scale_factor,
-            self.vocoder.config.model_in_dim // self.vae_scale_factor,
+            int(height) // self.vae_scale_factor,
+            int(self.vocoder.config.model_in_dim) // self.vae_scale_factor,
         )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
