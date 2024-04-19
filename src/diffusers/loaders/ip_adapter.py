@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
@@ -37,6 +38,8 @@ if is_transformers_available():
     )
 
     from ..models.attention_processor import (
+        AttnProcessor,
+        AttnProcessor2_0,
         IPAdapterAttnProcessor,
         IPAdapterAttnProcessor2_0,
     )
@@ -292,4 +295,11 @@ class IPAdapterMixin:
         self.config.encoder_hid_dim_type = None
 
         # restore original Unet attention processors layers
-        self.unet.set_default_attn_processor()
+        attn_procs = {}
+        for name, value in self.unet.attn_processors.items():
+            attn_processor_class = AttnProcessor2_0() if hasattr(
+                F, "scaled_dot_product_attention") else AttnProcessor()
+            attn_procs[name] = attn_processor_class if isinstance(
+                value, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)
+                ) else value.__class__()
+        self.unet.set_attn_processor(attn_procs)
