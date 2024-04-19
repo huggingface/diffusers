@@ -258,7 +258,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
 
         # 4. Computed predicted previous sample x_{t-1}
         c = -torch.expm1(log_snr - prev_log_snr)
-        if self.config.thresholding or self.config.clip_sample:
+        if self.config.thresholding or self.config.clip_sample or self.config.prediction_type == "sample":
             pred_prev_sample = torch.sqrt(prev_alpha) * (sample * (1 - c) / torch.sqrt(alpha) + c * pred_original_sample)
         else:
             pred_prev_sample = torch.sqrt(prev_alpha / alpha) * (sample - c * torch.sqrt(sigma) * model_output)
