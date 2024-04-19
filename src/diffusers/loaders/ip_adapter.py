@@ -297,9 +297,12 @@ class IPAdapterMixin:
         # restore original Unet attention processors layers
         attn_procs = {}
         for name, value in self.unet.attn_processors.items():
-            attn_processor_class = AttnProcessor2_0() if hasattr(
-                F, "scaled_dot_product_attention") else AttnProcessor()
-            attn_procs[name] = attn_processor_class if isinstance(
-                value, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)
-                ) else value.__class__()
+            attn_processor_class = (
+                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnProcessor()
+            )
+            attn_procs[name] = (
+                attn_processor_class
+                if isinstance(value, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0))
+                else value.__class__()
+            )
         self.unet.set_attn_processor(attn_procs)
