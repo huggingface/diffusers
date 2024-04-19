@@ -144,7 +144,7 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
             self.ckpt_path, controlnet=controlnet, safety_checker=None, config=self.repo_id
         )
 
-        super()._compare_component_configs(pipe, pipe_single_file, safety_checker=False)
+        super()._compare_component_configs(pipe, pipe_single_file)
 
     def test_single_file_components_with_diffusers_config_local_files_only(self):
         controlnet = ControlNetModel.from_pretrained(
@@ -168,4 +168,4 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
                 safety_checker=None,
                 local_files_only=True,
             )
-        super()._compare_component_configs(pipe, pipe_single_file, safety_checker=False)
+        super()._compare_component_configs(pipe, pipe_single_file)

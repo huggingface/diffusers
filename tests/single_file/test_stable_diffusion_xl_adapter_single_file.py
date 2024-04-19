@@ -32,7 +32,9 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
     pipeline_class = StableDiffusionXLAdapterPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
-    original_config = "https://github.com/Stability-AI/generative-models/blob/main/configs/inference/sd_xl_base.yaml"
+    original_config = (
+        "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
+    )
 
     def setUp(self):
         super().setUp()
@@ -56,7 +58,6 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             "image": image,
             "generator": generator,
             "num_inference_steps": 2,
-            "strength": 0.75,
             "guidance_scale": 7.5,
             "output_type": "np",
         }
@@ -69,6 +70,7 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             self.ckpt_path,
             adapter=adapter,
             torch_dtype=torch.float16,
+            safety_checker=None,
         )
         pipe_single_file.enable_model_cpu_offload()
         pipe_single_file.set_progress_bar_config(disable=None)
@@ -80,6 +82,7 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             self.repo_id,
             adapter=adapter,
             torch_dtype=torch.float16,
+            safety_checker=None,
         )
         pipe.enable_model_cpu_offload()
 
@@ -101,8 +104,8 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             torch_dtype=torch.float16,
         )
 
-        pipe_single_file = self.pipeline_class.from_single_file(self.ckpt_path, adapter=adapter)
-        super().test_single_file_components(pipe, pipe_single_file, safety_checker=False)
+        pipe_single_file = self.pipeline_class.from_single_file(self.ckpt_path, safety_checker=None, adapter=adapter)
+        super().test_single_file_components(pipe, pipe_single_file)
 
     def test_single_file_components_local_files_only(self):
         adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
@@ -118,10 +121,10 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
 
             single_file_pipe = self.pipeline_class.from_single_file(
-                local_ckpt_path, adapter=adapter, local_files_only=True
+                local_ckpt_path, adapter=adapter, safety_checker=None, local_files_only=True
             )
 
-        self._compare_component_configs(pipe, single_file_pipe, safety_checker=False)
+        self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_components_with_original_config(self):
         adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
@@ -130,12 +133,14 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             variant="fp16",
             adapter=adapter,
             torch_dtype=torch.float16,
+            safety_checker=None,
         )
 
+        upcast_attention = pipe.unet.config.upcast_attention
         pipe_single_file = self.pipeline_class.from_single_file(
-            self.ckpt_path, original_config=self.original_config, adapter=adapter
+            self.ckpt_path, original_config=self.original_config, adapter=adapter, upcast_attention=upcast_attention
         )
-        self._compare_component_configs(pipe, pipe_single_file, safety_checker=False)
+        self._compare_component_configs(pipe, pipe_single_file)
 
     def test_single_file_components_with_original_config_local_files_only(self):
         adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
@@ -149,9 +154,15 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
         with tempfile.TemporaryDirectory() as tmpdir:
             ckpt_filename = self.ckpt_path.split("/")[-1]
             local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
-            local_original_config = download_original_config(self.repo_id, self.original_config, tmpdir)
+            local_original_config = download_original_config(self.original_config, tmpdir)
 
+            upcast_attention = pipe.unet.config.upcast_attention
             pipe_single_file = self.pipeline_class.from_single_file(
-                local_ckpt_path, original_config=local_original_config, adapter=adapter, local_files_only=True
+                local_ckpt_path,
+                original_config=local_original_config,
+                adapter=adapter,
+                upcast_attention=upcast_attention,
+                safety_checker=None,
+                local_files_only=True,
             )
-        self._compare_component_configs(pipe, pipe_single_file, safety_checker=False)
+        self._compare_component_configs(pipe, pipe_single_file)

@@ -24,6 +24,17 @@ import requests
 import yaml
 
 from ..models.modeling_utils import load_state_dict
+from ..schedulers import (
+    DDIMScheduler,
+    DDPMScheduler,
+    DPMSolverMultistepScheduler,
+    EDMDPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    HeunDiscreteScheduler,
+    LMSDiscreteScheduler,
+    PNDMScheduler,
+)
 from ..utils import deprecate, is_accelerate_available, logging
 from ..utils.hub_utils import _get_model_file
 
@@ -201,6 +212,21 @@ SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
     "cond_stage_model.model.transformer.resblocks.23.mlp.c_proj.weight",
     "cond_stage_model.model.text_projection",
 ]
+
+# To support legacy scheduler_type argument
+SCHEDULER_DEFAULT_CONFIG = {
+    "beta_schedule": "scaled_linear",
+    "beta_start": 0.00085,
+    "beta_end": 0.012,
+    "interpolation_type": "linear",
+    "num_train_timesteps": 1000,
+    "prediction_type": "epsilon",
+    "sample_max_value": 1.0,
+    "set_alpha_to_one": False,
+    "skip_prk_steps": True,
+    "steps_offset": 1,
+    "timestep_spacing": "leading",
+}
 
 LDM_VAE_KEY = "first_stage_model."
 LDM_VAE_DEFAULT_SCALING_FACTOR = 0.18215
@@ -439,13 +465,15 @@ def conv_attn_to_linear(checkpoint):
                 checkpoint[key] = checkpoint[key][:, :, 0]
 
 
-def create_unet_diffusers_config_from_ldm(original_config, checkpoint, image_size=None):
+def create_unet_diffusers_config_from_ldm(
+    original_config, checkpoint, image_size=None, upcast_attention=None, num_in_channels=None
+):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
     if image_size is not None:
         deprecation_message = (
-            "Configuring UNet2DConditionModel with the `image_size` argument"
+            "Configuring UNet2DConditionModel with the `image_size` argument to `from_single_file`"
             "is deprecated and will be ignored in future versions."
         )
         deprecate("image_size", "1.0.0", deprecation_message)
@@ -459,6 +487,16 @@ def create_unet_diffusers_config_from_ldm(original_config, checkpoint, image_siz
         unet_params = original_config["model"]["params"]["unet_config"]["params"]
     else:
         unet_params = original_config["model"]["params"]["network_config"]["params"]
+
+    if num_in_channels is not None:
+        deprecation_message = (
+            "Configuring UNet2DConditionModel with the `num_in_channels` argument to `from_single_file`"
+            "is deprecated and will be ignored in future versions."
+        )
+        deprecate("image_size", "1.0.0", deprecation_message)
+        in_channels = num_in_channels
+    else:
+        in_channels = unet_params["in_channels"]
 
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
     block_out_channels = [unet_params["model_channels"] * mult for mult in unet_params["channel_mult"]]
@@ -524,7 +562,7 @@ def create_unet_diffusers_config_from_ldm(original_config, checkpoint, image_siz
 
     config = {
         "sample_size": image_size // vae_scale_factor,
-        "in_channels": unet_params["in_channels"],
+        "in_channels": in_channels,
         "down_block_types": down_block_types,
         "block_out_channels": block_out_channels,
         "layers_per_block": unet_params["num_res_blocks"],
@@ -537,6 +575,14 @@ def create_unet_diffusers_config_from_ldm(original_config, checkpoint, image_siz
         "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
         "transformer_layers_per_block": transformer_layers_per_block,
     }
+
+    if upcast_attention is not None:
+        deprecation_message = (
+            "Configuring UNet2DConditionModel with the `upcast_attention` argument to `from_single_file`"
+            "is deprecated and will be ignored in future versions."
+        )
+        deprecate("image_size", "1.0.0", deprecation_message)
+        config["upcast_attention"] = upcast_attention
 
     if "disable_self_attentions" in unet_params:
         config["only_cross_attention"] = unet_params["disable_self_attentions"]
@@ -645,19 +691,19 @@ def update_unet_resnet_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint, ma
         )
         if mapping:
             diffusers_key = diffusers_key.replace(mapping["old"], mapping["new"])
-        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+        new_checkpoint[diffusers_key] = checkpoint.get(ldm_key)
 
 
 def update_unet_attention_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint, mapping):
     for ldm_key in ldm_keys:
         diffusers_key = ldm_key.replace(mapping["old"], mapping["new"])
-        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+        new_checkpoint[diffusers_key] = checkpoint.get(ldm_key)
 
 
 def update_vae_resnet_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
     for ldm_key in keys:
         diffusers_key = ldm_key.replace(mapping["old"], mapping["new"]).replace("nin_shortcut", "conv_shortcut")
-        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+        new_checkpoint[diffusers_key] = checkpoint.get(ldm_key)
 
 
 def update_vae_attentions_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
@@ -675,7 +721,7 @@ def update_vae_attentions_ldm_to_diffusers(keys, new_checkpoint, checkpoint, map
             .replace("proj_out.weight", "to_out.0.weight")
             .replace("proj_out.bias", "to_out.0.bias")
         )
-        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+        new_checkpoint[diffusers_key] = checkpoint.get(ldm_key)
 
         # proj_attn.weight has to be converted from conv 1D to linear
         shape = new_checkpoint[diffusers_key].shape
@@ -761,7 +807,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False, **kwargs)
         for key in keys:
             if key.startswith("model.diffusion_model"):
                 flat_ema_key = "model_ema." + "".join(key.split(".")[1:])
-                unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
+                unet_state_dict[key.replace(unet_key, "")] = checkpoint.get(flat_ema_key)
     else:
         if sum(k.startswith("model_ema") for k in keys) > 100:
             logger.warninging(
@@ -770,7 +816,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False, **kwargs)
             )
         for key in keys:
             if key.startswith(unet_key):
-                unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(key)
+                unet_state_dict[key.replace(unet_key, "")] = checkpoint.get(key)
 
     new_checkpoint = {}
     ldm_unet_keys = DIFFUSERS_TO_LDM_MAPPING["unet"]["layers"]
@@ -831,10 +877,10 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False, **kwargs)
         )
 
         if f"input_blocks.{i}.0.op.weight" in unet_state_dict:
-            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.weight"] = unet_state_dict.pop(
+            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.weight"] = unet_state_dict.get(
                 f"input_blocks.{i}.0.op.weight"
             )
-            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.bias"] = unet_state_dict.pop(
+            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.bias"] = unet_state_dict.get(
                 f"input_blocks.{i}.0.op.bias"
             )
 
@@ -925,7 +971,7 @@ def convert_controlnet_checkpoint(
         controlnet_key = LDM_CONTROLNET_KEY
         for key in keys:
             if key.startswith(controlnet_key):
-                controlnet_state_dict[key.replace(controlnet_key, "")] = checkpoint.pop(key)
+                controlnet_state_dict[key.replace(controlnet_key, "")] = checkpoint.get(key)
 
     new_checkpoint = {}
     ldm_controlnet_keys = DIFFUSERS_TO_LDM_MAPPING["controlnet"]["layers"]
@@ -959,10 +1005,10 @@ def convert_controlnet_checkpoint(
         )
 
         if f"input_blocks.{i}.0.op.weight" in controlnet_state_dict:
-            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.weight"] = controlnet_state_dict.pop(
+            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.weight"] = controlnet_state_dict.get(
                 f"input_blocks.{i}.0.op.weight"
             )
-            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.bias"] = controlnet_state_dict.pop(
+            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.bias"] = controlnet_state_dict.get(
                 f"input_blocks.{i}.0.op.bias"
             )
 
@@ -977,8 +1023,8 @@ def convert_controlnet_checkpoint(
 
     # controlnet down blocks
     for i in range(num_input_blocks):
-        new_checkpoint[f"controlnet_down_blocks.{i}.weight"] = controlnet_state_dict.pop(f"zero_convs.{i}.0.weight")
-        new_checkpoint[f"controlnet_down_blocks.{i}.bias"] = controlnet_state_dict.pop(f"zero_convs.{i}.0.bias")
+        new_checkpoint[f"controlnet_down_blocks.{i}.weight"] = controlnet_state_dict.get(f"zero_convs.{i}.0.weight")
+        new_checkpoint[f"controlnet_down_blocks.{i}.bias"] = controlnet_state_dict.get(f"zero_convs.{i}.0.bias")
 
     # Retrieves the keys for the middle blocks only
     num_middle_blocks = len(
@@ -1008,8 +1054,8 @@ def convert_controlnet_checkpoint(
             )
 
     # mid block
-    new_checkpoint["controlnet_mid_block.weight"] = controlnet_state_dict.pop("middle_block_out.0.weight")
-    new_checkpoint["controlnet_mid_block.bias"] = controlnet_state_dict.pop("middle_block_out.0.bias")
+    new_checkpoint["controlnet_mid_block.weight"] = controlnet_state_dict.get("middle_block_out.0.weight")
+    new_checkpoint["controlnet_mid_block.bias"] = controlnet_state_dict.get("middle_block_out.0.bias")
 
     # controlnet cond embedding blocks
     cond_embedding_blocks = {
@@ -1023,10 +1069,10 @@ def convert_controlnet_checkpoint(
         diffusers_idx = idx - 1
         cond_block_id = 2 * idx
 
-        new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_idx}.weight"] = controlnet_state_dict.pop(
+        new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_idx}.weight"] = controlnet_state_dict.get(
             f"input_hint_block.{cond_block_id}.weight"
         )
-        new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_idx}.bias"] = controlnet_state_dict.pop(
+        new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_idx}.bias"] = controlnet_state_dict.get(
             f"input_hint_block.{cond_block_id}.bias"
         )
 
@@ -1065,10 +1111,10 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
             mapping={"old": f"down.{i}.block", "new": f"down_blocks.{i}.resnets"},
         )
         if f"encoder.down.{i}.downsample.conv.weight" in vae_state_dict:
-            new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.weight"] = vae_state_dict.pop(
+            new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.weight"] = vae_state_dict.get(
                 f"encoder.down.{i}.downsample.conv.weight"
             )
-            new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.bias"] = vae_state_dict.pop(
+            new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.bias"] = vae_state_dict.get(
                 f"encoder.down.{i}.downsample.conv.bias"
             )
 
@@ -1143,7 +1189,7 @@ def convert_ldm_clip_checkpoint(checkpoint):
         for prefix in remove_prefixes:
             if key.startswith(prefix):
                 diffusers_key = key.replace(prefix, "")
-                text_model_dict[diffusers_key] = checkpoint.pop(key)
+                text_model_dict[diffusers_key] = checkpoint.get(key)
 
     return text_model_dict
 
@@ -1154,11 +1200,15 @@ def convert_open_clip_checkpoint(
     prefix="cond_stage_model.model.",
 ):
     text_model_dict = {}
-    text_proj_dim = (
-        text_model.config.projection_dim
-        if hasattr(text_model.config, "projection_dim")
-        else LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
-    )
+    text_proj_key = prefix + "text_projection"
+
+    if text_proj_key in checkpoint:
+        text_proj_dim = int(checkpoint[text_proj_key].shape[0])
+    elif hasattr(text_model.config, "projection_dim"):
+        text_proj_dim = text_model.config.projection_dim
+    else:
+        text_proj_dim = LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
+
     text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
 
     keys = list(checkpoint.keys())
@@ -1191,7 +1241,7 @@ def convert_open_clip_checkpoint(
             )
 
         if key.endswith(".in_proj_weight"):
-            weight_value = checkpoint.pop(key)
+            weight_value = checkpoint.get(key)
 
             text_model_dict[diffusers_key + ".q_proj.weight"] = weight_value[:text_proj_dim, :].clone().detach()
             text_model_dict[diffusers_key + ".k_proj.weight"] = (
@@ -1200,14 +1250,14 @@ def convert_open_clip_checkpoint(
             text_model_dict[diffusers_key + ".v_proj.weight"] = weight_value[text_proj_dim * 2 :, :].clone().detach()
 
         elif key.endswith(".in_proj_bias"):
-            weight_value = checkpoint.pop(key)
+            weight_value = checkpoint.get(key)
             text_model_dict[diffusers_key + ".q_proj.bias"] = weight_value[:text_proj_dim].clone().detach()
             text_model_dict[diffusers_key + ".k_proj.bias"] = (
                 weight_value[text_proj_dim : text_proj_dim * 2].clone().detach()
             )
             text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :].clone().detach()
         else:
-            text_model_dict[diffusers_key] = checkpoint.pop(key)
+            text_model_dict[diffusers_key] = checkpoint.get(key)
 
     if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
         text_model_dict.pop("text_model.embeddings.position_ids", None)
@@ -1220,9 +1270,9 @@ def create_diffusers_clip_model_from_ldm(
     checkpoint,
     subfolder="",
     config=None,
-    original_config=None,
     torch_dtype=None,
     local_files_only=None,
+    is_legacy_loading=False,
 ):
     if config:
         config = {"pretrained_model_name_or_path": config}
@@ -1232,23 +1282,26 @@ def create_diffusers_clip_model_from_ldm(
     # For backwards compatibility
     # Older versions of `from_single_file` expected CLIP configs to be placed in their original transformers model repo
     # in the cache_dir, rather than in a subfolder of the Diffusers model
-    # This behavior is most noticeable when using `local_files_only=True` and passing in an original config file
-    if (is_clip_model(checkpoint) or is_clip_sdxl_model(checkpoint)) and original_config and local_files_only:
-        clip_config = "openai/clip-vit-large-patch14"
-        config["pretrained_model_name_or_path"] = clip_config
-        subfolder = ""
+    if is_legacy_loading:
+        logger.warning(
+            (
+                "Detected legacy CLIP loading behavior. Please run `from_single_file` with `local_files_only=False once to update "
+                "the local cache directory with the necessary CLIP model config files. "
+                "Attempting to load CLIP model from legacy cache directory."
+            )
+        )
 
-    elif (
-        (is_open_clip_sdxl_model(checkpoint) or is_open_clip_sdxl_refiner_model(checkpoint))
-        and original_config
-        and local_files_only
-    ):
-        clip_config = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-        config["pretrained_model_name_or_path"] = clip_config
-        subfolder = ""
+        if is_clip_model(checkpoint) or is_clip_sdxl_model(checkpoint):
+            clip_config = "openai/clip-vit-large-patch14"
+            config["pretrained_model_name_or_path"] = clip_config
+            subfolder = ""
 
-    model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=False)
+        else:
+            clip_config = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+            config["pretrained_model_name_or_path"] = clip_config
+            subfolder = ""
 
+    model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
         model = cls(model_config)
@@ -1302,3 +1355,103 @@ def create_diffusers_clip_model_from_ldm(
     model.eval()
 
     return model
+
+
+def _legacy_load_scheduler_from_scheduler_type(
+    pipeline_class_name,
+    checkpoint,
+    original_config=None,
+    prediction_type=None,
+    scheduler_type="ddim",
+):
+    scheduler_config = SCHEDULER_DEFAULT_CONFIG
+    model_type = infer_diffusers_model_type(checkpoint=checkpoint)
+
+    global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
+
+    num_train_timesteps = getattr(original_config["model"]["params"], "timesteps", None) or 1000
+    scheduler_config["num_train_timesteps"] = num_train_timesteps
+
+    if (
+        "parameterization" in original_config["model"]["params"]
+        and original_config["model"]["params"]["parameterization"] == "v"
+    ):
+        if prediction_type is None:
+            # NOTE: For stable diffusion 2 base it is recommended to pass `prediction_type=="epsilon"` # as it relies on a brittle global step parameter here
+            prediction_type = "epsilon" if global_step == 875000 else "v_prediction"
+
+    else:
+        prediction_type = prediction_type or "epsilon"
+
+    scheduler_config["prediction_type"] = prediction_type
+
+    if model_type in ["xl_base", "xl_refiner"]:
+        scheduler_type = "euler"
+    elif model_type == "playground":
+        scheduler_type = "edm_dpm_solver_multistep"
+    else:
+        beta_start = original_config["model"]["params"].get("linear_start", 0.02)
+        beta_end = original_config["model"]["params"].get("linear_end", 0.085)
+        scheduler_config["beta_start"] = beta_start
+        scheduler_config["beta_end"] = beta_end
+        scheduler_config["beta_schedule"] = "scaled_linear"
+        scheduler_config["clip_sample"] = False
+        scheduler_config["set_alpha_to_one"] = False
+
+    if scheduler_type == "pndm":
+        scheduler_config["skip_prk_steps"] = True
+        scheduler = PNDMScheduler.from_config(scheduler_config)
+
+    elif scheduler_type == "lms":
+        scheduler = LMSDiscreteScheduler.from_config(scheduler_config)
+
+    elif scheduler_type == "heun":
+        scheduler = HeunDiscreteScheduler.from_config(scheduler_config)
+
+    elif scheduler_type == "euler":
+        scheduler = EulerDiscreteScheduler.from_config(scheduler_config)
+
+    elif scheduler_type == "euler-ancestral":
+        scheduler = EulerAncestralDiscreteScheduler.from_config(scheduler_config)
+
+    elif scheduler_type == "dpm":
+        scheduler = DPMSolverMultistepScheduler.from_config(scheduler_config)
+
+    elif scheduler_type == "ddim":
+        scheduler = DDIMScheduler.from_config(scheduler_config)
+
+    elif scheduler_type == "edm_dpm_solver_multistep":
+        scheduler_config = {
+            "algorithm_type": "dpmsolver++",
+            "dynamic_thresholding_ratio": 0.995,
+            "euler_at_final": False,
+            "final_sigmas_type": "zero",
+            "lower_order_final": True,
+            "num_train_timesteps": 1000,
+            "prediction_type": "epsilon",
+            "rho": 7.0,
+            "sample_max_value": 1.0,
+            "sigma_data": 0.5,
+            "sigma_max": 80.0,
+            "sigma_min": 0.002,
+            "solver_order": 2,
+            "solver_type": "midpoint",
+            "thresholding": False,
+        }
+        scheduler = EDMDPMSolverMultistepScheduler(**scheduler_config)
+
+    else:
+        raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
+
+    if pipeline_class_name == "StableDiffusionUpscalePipeline":
+        scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler")
+        low_res_scheduler = DDPMScheduler.from_pretrained(
+            "stabilityai/stable-diffusion-x4-upscaler", subfolder="low_res_scheduler"
+        )
+
+        return {
+            "scheduler": scheduler,
+            "low_res_scheduler": low_res_scheduler,
+        }
+
+    return {"scheduler": scheduler}
