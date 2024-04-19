@@ -511,8 +511,6 @@ class FromSingleFileMixin:
                 f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
             )
             deprecate("scheduler_type", "1.0.0", deprecation_message)
-
-            prediction_type = kwargs.pop("prediction_type", None)
             scheduler_components = _legacy_load_scheduler_from_scheduler_type(
                 pipeline_class_name=class_name,
                 checkpoint=checkpoint,
