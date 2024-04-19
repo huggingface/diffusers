@@ -876,7 +876,12 @@ class StableUnCLIPPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInver
 
         # 11. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         latents = self.prepare_latents(
             shape=shape,
             dtype=prompt_embeds.dtype,
