@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AutoPipeline
 
-The `AutoPipeline` is designed to make it easy to load a checkpoint for a task without needing to know the specific pipeline class. Based on the task, the `AutoPipeline` automatically retrieves the correct pipeline class from the checkpoint model_index.json file.
+The `AutoPipeline` is designed to make it easy to load a checkpoint for a task without needing to know the specific pipeline class. Based on the task, the `AutoPipeline` automatically retrieves the correct pipeline class from the checkpoint `model_index.json` file.
 
 > [!TIP]
 > Check out the [AutoPipeline](../../tutorials/autopipeline) tutorial to learn how to use this API!

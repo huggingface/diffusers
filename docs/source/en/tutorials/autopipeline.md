@@ -16,7 +16,12 @@ Diffusers provides many pipelines for basic tasks like generating images, videos
 
 The [AutoPipeline](../api/pipelines/auto_pipeline) class is designed to simplify the variety of pipelines in Diffusers. It is a generic *task-first* pipeline that lets you focus on a task ([`AutoPipelineForText2Image`], [`AutoPipelineForImage2Image`], and [`AutoPipelineForInpainting`]) without needing to know the specific pipeline class. The [AutoPipeline](../api/pipelines/auto_pipeline) automatically detects the correct pipeline class to use.
 
-For example, let's use the [dreamlike-art/dreamlike-photoreal-2.0](https://hf.co/dreamlike-art/dreamlike-photoreal-2.0) checkpoint. Under the hood, [AutoPipeline](../api/pipelines/auto_pipeline) detects a `"stable-diffusion"` class from the [model_index.json](https://hf.co/dreamlike-art/dreamlike-photoreal-2.0/blob/main/model_index.json) file, and depending on the task you're interested in, it loads the [`StableDiffusionPipeline`], [`StableDiffusionImg2ImgPipeline`], or [`StableDiffusionInpaintPipeline`]. Any parameter (`strength`, `num_inference_steps`, etc.) you would pass to these specific pipelines can also be passed to the [AutoPipeline](../api/pipelines/auto_pipeline).
+For example, let's use the [dreamlike-art/dreamlike-photoreal-2.0](https://hf.co/dreamlike-art/dreamlike-photoreal-2.0) checkpoint.
+
+Under the hood, [AutoPipeline](../api/pipelines/auto_pipeline):
+
+1. Detects a `"stable-diffusion"` class from the [model_index.json](https://hf.co/dreamlike-art/dreamlike-photoreal-2.0/blob/main/model_index.json) file.
+2. Depending on the task you're interested in, it loads the [`StableDiffusionPipeline`], [`StableDiffusionImg2ImgPipeline`], or [`StableDiffusionInpaintPipeline`]. Any parameter (`strength`, `num_inference_steps`, etc.) you would pass to these specific pipelines can also be passed to the [AutoPipeline](../api/pipelines/auto_pipeline).
 
 <hfoptions id="autopipeline">
 <hfoption id="text-to-image">
@@ -25,13 +30,13 @@ For example, let's use the [dreamlike-art/dreamlike-photoreal-2.0](https://hf.co
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained(
+pipe_txt2img = AutoPipelineForText2Image.from_pretrained(
     "dreamlike-art/dreamlike-photoreal-2.0", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 
 prompt = "cinematic photo of Godzilla eating sushi with a cat in a izakaya, 35mm photograph, film, professional, 4k, highly detailed"
 generator = torch.Generator(device="cpu").manual_seed(37)
-image = pipeline(prompt, generator=generator).images[0]
+image = pipe_txt2img(prompt, generator=generator).images[0]
 image
 ```
 
@@ -47,7 +52,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import load_image
 import torch
 
-pipeline = AutoPipelineForImage2Image.from_pretrained(
+pipe_img2img = AutoPipelineForImage2Image.from_pretrained(
     "dreamlike-art/dreamlike-photoreal-2.0", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 
@@ -55,14 +60,14 @@ init_image = load_image("https://huggingface.co/datasets/huggingface/documentati
 
 prompt = "cinematic photo of Godzilla eating burgers with a cat in a fast food restaurant, 35mm photograph, film, professional, 4k, highly detailed"
 generator = torch.Generator(device="cpu").manual_seed(53)
-image = pipeline(prompt, image=init_image, generator=generator).images[0]
+image = pipe_img2img(prompt, image=init_image, generator=generator).images[0]
 image
 ```
 
 Notice how the [dreamlike-art/dreamlike-photoreal-2.0](https://hf.co/dreamlike-art/dreamlike-photoreal-2.0) checkpoint is used for both text-to-image and image-to-image tasks? To save memory and avoid loading the checkpoint twice, use the [`~DiffusionPipeline.from_pipe`] method.
 
 ```py
-pipe_img2img = AutoPipelineForImage2Image.from_pipe(pipeline).to("cuda")
+pipe_img2img = AutoPipelineForImage2Image.from_pipe(pipe_txt2img).to("cuda")
 image = pipeline(prompt, image=init_image, generator=generator).images[0]
 image
 ```
