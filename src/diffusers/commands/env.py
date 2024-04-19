@@ -165,7 +165,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             except FileNotFoundError:
                 pass
         else:
-            print("?")
+            print("It seems you are running an unusual OS. Could you fill in the accelerator manually?")
 
         info = {
             "`diffusers` version": version,
