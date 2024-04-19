@@ -708,7 +708,7 @@ class StableDiffusionImg2ImgPipeline(
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, sample_mode: str = "sample"):
+    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True, sample_mode: str = "sample"):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -757,11 +757,12 @@ class StableDiffusionImg2ImgPipeline(
         else:
             init_latents = torch.cat([init_latents], dim=0)
 
-        shape = init_latents.shape
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        if add_noise:
+            shape = init_latents.shape
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        # get latents
-        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+            # get latents
+            init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
         latents = init_latents
 
         return latents
