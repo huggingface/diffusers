@@ -658,7 +658,7 @@ class StableDiffusionXLImg2ImgPipeline(
         return timesteps, num_inference_steps - t_start
 
     def prepare_latents(
-        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
+        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True, sample_mode: str = "sample"
     ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -691,12 +691,12 @@ class StableDiffusionXLImg2ImgPipeline(
 
             elif isinstance(generator, list):
                 init_latents = [
-                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i], sample_mode=sample_mode)
                     for i in range(batch_size)
                 ]
                 init_latents = torch.cat(init_latents, dim=0)
             else:
-                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+                init_latents = retrieve_latents(self.vae.encode(image), generator=generator, sample_mode=sample_mode)
 
             if self.vae.config.force_upcast:
                 self.vae.to(dtype)
