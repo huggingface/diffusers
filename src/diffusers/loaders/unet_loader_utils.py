@@ -134,9 +134,9 @@ def _maybe_expand_lora_scales_for_one_adapter(
             if not isinstance(scales[updown][block], list):
                 scales[updown][block] = [scales[updown][block] for _ in range(transformer_per_block[updown])]
             else:
-                assert (
-                    len(scales[updown][block]) == transformer_per_block[updown]
-                ), f"Expected {transformer_per_block[updown]} scales for {updown}.{block}, got {len(scales[updown][block])}."
+                raise ValueError(
+                    f"Expected {transformer_per_block[updown]} scales for {updown}.{block}, got {len(scales[updown][block])}."
+                )
 
         # eg {"down": "block_1": [1, 1]}}  to {"down.block_1.0": 1, "down.block_1.1": 1}
         for i in blocks_with_transformer[updown]:
