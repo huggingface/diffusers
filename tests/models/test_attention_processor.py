@@ -80,7 +80,9 @@ class AttnAddedKVProcessorTests(unittest.TestCase):
 
 class DeprecatedAttentionBlockTests(unittest.TestCase):
     def test_conversion_when_using_device_map(self):
-        pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None)
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
 
         pre_conversion = pipe(
             "foo",
@@ -91,7 +93,7 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
 
         # the initial conversion succeeds
         pipe = DiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe", device_map="balanced", safety_checker=None
+            "hf-internal-testing/tiny-stable-diffusion-torch", device_map="balanced", safety_checker=None
         )
 
         conversion = pipe(
