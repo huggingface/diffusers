@@ -700,6 +700,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             offload_state_dict=offload_state_dict,
                             dtype=torch_dtype,
                             force_hooks=True,
+                            strict=True,
                         )
                     except AttributeError as e:
                         # When using accelerate loading, we do not have the ability to load the state
