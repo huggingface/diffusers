@@ -15,7 +15,7 @@ import importlib
 import os
 
 import torch
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, snapshot_download
 from huggingface_hub.utils import LocalEntryNotFoundError, validate_hf_hub_args
 from packaging import version
 
@@ -206,6 +206,32 @@ def _map_component_types_to_config_dict(component_types):
     return config_dict
 
 
+def _download_diffusers_model_config_from_hub(
+    default_pretrained_model_name_or_path,
+    cache_dir,
+    revision,
+    proxies,
+    force_download=None,
+    resume_download=None,
+    local_files_only=None,
+    token=None,
+):
+    allow_patterns = ["**/*.json", "*.json", "*.txt", "**/*.txt"]
+    cached_folder = snapshot_download(
+        default_pretrained_model_name_or_path,
+        cache_dir=cache_dir,
+        revision=revision,
+        proxies=proxies,
+        force_download=force_download,
+        resume_download=resume_download,
+        local_files_only=local_files_only,
+        token=token,
+        allow_patterns=allow_patterns,
+    )
+
+    return cached_folder
+
+
 class FromSingleFileMixin:
     """
     Load model weights saved in the `.ckpt` format into a [`DiffusionPipeline`].
@@ -375,7 +401,7 @@ class FromSingleFileMixin:
             local_dir=local_dir,
         )
 
-        # Always infer and fetch the default diffusers pretrained_model config from the checkpoint
+        # Always infer the default diffusers pretrained_model config from the checkpoint
         # although it might not be used to configure the pipeline
         config = {"pretrained_model_name_or_path": config} if config else fetch_diffusers_config(checkpoint)
         default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
@@ -401,15 +427,13 @@ class FromSingleFileMixin:
                 )
                 config_dict = pipeline_class._dict_from_json_file(config_file)
 
-            except LocalEntryNotFoundError as e:
+            except LocalEntryNotFoundError:
                 logger.warning(
                     f"The inferred model repository to configure this pipeline with this checkpoint is: \n"
                     f"{default_pretrained_model_name_or_path}.\n"
                     "A local version of this repository was not found in the cache directory.\n"
-                    "Attempting to create the pipeline based on inferred components. This might lead to errors if the components are not inferred correctly. "
-                    "Please explicity pass the `config` argument to `from_single_file` with a path to a local diffusers model repository "
-                    "or run this pipeline with `local_files_only=False` first to download the necessary config files to the cache. "
                 )
+
                 component_types = pipeline_class._get_signature_types()
                 expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
                 component_types = {
@@ -417,6 +441,9 @@ class FromSingleFileMixin:
                 }
                 config_dict = _map_component_types_to_config_dict(component_types)
                 config_dict["_class_name"] = pipeline_class.__name__
+
+                if original_config is None:
+                    raise ValueError("`local_files_only` is set to `True` but no local config files were found.")
 
                 is_legacy_loading = True
 
@@ -450,7 +477,9 @@ class FromSingleFileMixin:
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
-        for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
+        for name, (library_name, class_name) in logging.tqdm(
+            sorted(init_dict.items()), desc="Loading pipeline components..."
+        ):
             loaded_sub_model = None
             is_pipeline_module = hasattr(pipelines, library_name)
 
