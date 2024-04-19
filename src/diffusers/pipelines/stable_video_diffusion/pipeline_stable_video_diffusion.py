@@ -637,7 +637,7 @@ def _filter2d(input, kernel):
 
     height, width = tmp_kernel.shape[-2:]
 
-    padding_shape: list[int] = _compute_padding([height, width])
+    padding_shape: List[int] = _compute_padding([height, width])
     input = torch.nn.functional.pad(input, padding_shape, mode="reflect")
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
