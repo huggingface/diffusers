@@ -197,9 +197,9 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         return sample
 
     def add_noise(self,
-                  original_samples: torch.FloatTensor,
-                  noise: torch.FloatTensor,
-                  timesteps: Union[torch.FloatTensor, torch.IntTensor, torch.LongTensor]) -> torch.FloatTensor:
+                  original_samples: torch.Tensor,
+                  noise: torch.Tensor,
+                  timesteps: torch.Tensor) -> torch.FloatTensor:
 
         log_snr = self.log_snr(timesteps)
         log_snr = log_snr.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
@@ -211,9 +211,9 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         return noisy_samples
 
     def step(self,
-             model_output: torch.FloatTensor,
+             model_output: torch.Tensor,
              timestep: Union[int, float, torch.Tensor],
-             sample: torch.FloatTensor,
+             sample: torch.Tensor,
              generator: Optional[torch.Generator] = None,
              return_dict: bool = True) -> Union[VDMSchedulerOutput, Tuple]:
         # From https://github.com/addtt/variational-diffusion-models/blob/7f81074dfdfc897178ad3d471458ea03e16197e8/vdm.py#L29
@@ -233,12 +233,17 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         log_snr = self.log_snr(timestep)
         prev_log_snr = self.log_snr(prev_timestep)
 
+        # Allow for batched inputs
+        if timestep.ndim > 0:
+            log_snr = log_snr.view(timestep.size(0), *((1,) * (sample.ndim - 1)))
+            prev_log_snr = prev_log_snr.view(timestep.size(0), *((1,) * (sample.ndim - 1)))
+
         alpha, sigma = torch.sigmoid(log_snr), torch.sigmoid(-log_snr)
         prev_alpha, prev_sigma = torch.sigmoid(prev_log_snr), torch.sigmoid(-prev_log_snr)
 
         # 2. Compute predicted original sample x_0
         if self.config.prediction_type == "epsilon":
-            pred_original_sample = (sample - torch.sqrt(sigma) * model_output) / torch.sqrt(alpha)
+            pred_original_sample = (sample - torch.sqrt(sigma) * model_output) / torch.sqrt(alpha)  # Sec. 3.4, eq. 10
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
         else:
@@ -260,13 +265,12 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
 
         # 5. (Maybe) add noise
         noise_scale = torch.sqrt(prev_sigma * c)  # Becomes 0 for prev_timestep = 0
-        if noise_scale > 0:
+        if torch.any(noise_scale > 0):
             noise = randn_tensor(model_output.shape,
                                  generator=generator,
                                  device=model_output.device,
                                  dtype=model_output.dtype)
-            variance = noise_scale * noise
-            pred_prev_sample = pred_prev_sample + variance
+            pred_prev_sample += noise_scale * noise
 
         if not return_dict:
             return (pred_prev_sample,)
