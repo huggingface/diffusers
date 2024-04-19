@@ -17,7 +17,7 @@
 
 import inspect
 from collections.abc import Callable
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
@@ -1073,7 +1073,7 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(
                 # because `num_inference_steps` might be even given that every timestep
                 # (except the highest one) is duplicated. If `num_inference_steps` is even it would
                 # mean that we cut the timesteps in the middle of the denoising step
-                # (between 1st and 2nd devirative) which leads to incorrect results. By adding 1
+                # (between 1st and 2nd derivative) which leads to incorrect results. By adding 1
                 # we ensure that the denoising process always ends after the 2nd derivate step of the scheduler
                 num_inference_steps = num_inference_steps + 1
 
@@ -1211,8 +1211,8 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
-        prompt_2: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[Union[str, List[str]]] = None,
+        prompt_2: Optional[Union[str, List[str]]] = None,
         image: Optional[Union[torch.Tensor, PIL.Image.Image]] = None,
         mask_image: Optional[Union[torch.Tensor, PIL.Image.Image]] = None,
         adapter_image: PipelineImageInput = None,
@@ -1224,11 +1224,11 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(
         denoising_start: Optional[float] = None,
         denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt_2: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt_2: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[Union[torch.FloatTensor]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -1238,12 +1238,12 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
-        original_size: Optional[tuple[int, int]] = None,
-        crops_coords_top_left: Optional[tuple[int, int]] = (0, 0),
-        target_size: Optional[tuple[int, int]] = None,
-        adapter_conditioning_scale: Optional[Union[float, list[float]]] = 1.0,
+        original_size: Optional[Tuple[int, int]] = None,
+        crops_coords_top_left: Optional[Tuple[int, int]] = (0, 0),
+        target_size: Optional[Tuple[int, int]] = None,
+        adapter_conditioning_scale: Optional[Union[float, List[float]]] = 1.0,
         cond_tau: float = 1.0,
         aesthetic_score: float = 6.0,
         negative_aesthetic_score: float = 2.5,

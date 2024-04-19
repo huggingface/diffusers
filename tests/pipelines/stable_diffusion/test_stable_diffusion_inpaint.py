@@ -388,6 +388,15 @@ class StableDiffusionInpaintPipelineFastTests(
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
+    def test_ip_adapter_single(self, from_simple=False, expected_pipe_slice=None):
+        if not from_simple:
+            expected_pipe_slice = None
+            if torch_device == "cpu":
+                expected_pipe_slice = np.array(
+                    [0.4390, 0.5452, 0.3772, 0.5448, 0.6031, 0.4480, 0.5194, 0.4687, 0.4640]
+                )
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
 
 class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipelineFastTests):
     pipeline_class = StableDiffusionInpaintPipeline
@@ -474,6 +483,12 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
             "output_type": "np",
         }
         return inputs
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.6345, 0.5395, 0.5611, 0.5403, 0.5830, 0.5855, 0.5193, 0.5443, 0.5211])
+        return super().test_ip_adapter_single(from_simple=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -1074,6 +1089,11 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
 @nightly
 @require_torch_gpu
 class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

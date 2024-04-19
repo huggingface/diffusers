@@ -297,6 +297,12 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @nightly
 @require_torch_gpu
 class KandinskyInpaintPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()

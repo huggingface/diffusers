@@ -37,6 +37,7 @@ from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     is_flaky,
+    load_pt,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
@@ -50,7 +51,14 @@ enable_full_determinism()
 class IPAdapterNightlyTestsMixin(unittest.TestCase):
     dtype = torch.float16
 
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
+        # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
@@ -299,6 +307,35 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
+    def test_text_to_image_face_id(self):
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter(
+            "h94/IP-Adapter-FaceID",
+            subfolder=None,
+            weight_name="ip-adapter-faceid_sd15.bin",
+            image_encoder_folder=None,
+        )
+        pipeline.set_ip_adapter_scale(0.7)
+
+        inputs = self.get_dummy_inputs()
+        id_embeds = load_pt("https://huggingface.co/datasets/fabiorigano/testing-images/resolve/main/ai_face2.ipadpt")[
+            0
+        ]
+        id_embeds = id_embeds.reshape((2, 1, 1, 512))
+        inputs["ip_adapter_image_embeds"] = [id_embeds]
+        inputs["ip_adapter_image"] = None
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array(
+            [0.32714844, 0.3239746, 0.3466797, 0.31835938, 0.30004883, 0.3251953, 0.3215332, 0.3552246, 0.3251953]
+        )
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
+
 
 @slow
 @require_torch_gpu
@@ -313,7 +350,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs()
@@ -373,7 +410,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs(for_image_to_image=True)
@@ -442,7 +479,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs(for_inpainting=True)
@@ -490,7 +527,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             image_encoder=image_encoder,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter(
             "h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter-plus-face_sdxl_vit-h.safetensors"
         )
@@ -518,7 +555,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             image_encoder=image_encoder,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter(
             "h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"] * 2
         )
@@ -529,6 +566,36 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         processor = IPAdapterMaskProcessor()
         masks = processor.preprocess(masks)
         inputs["cross_attention_kwargs"]["ip_adapter_masks"] = masks
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+        expected_slice = np.array(
+            [0.79474676, 0.7977683, 0.8013954, 0.7988008, 0.7970615, 0.8029355, 0.80614823, 0.8050743, 0.80627424]
+        )
+
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
+
+    def test_ip_adapter_multiple_masks_one_adapter(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            image_encoder=image_encoder,
+            torch_dtype=self.dtype,
+        )
+        pipeline.enable_model_cpu_offload()
+        pipeline.load_ip_adapter(
+            "h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"]
+        )
+        pipeline.set_ip_adapter_scale([[0.7, 0.7]])
+
+        inputs = self.get_dummy_inputs(for_masks=True)
+        masks = inputs["cross_attention_kwargs"]["ip_adapter_masks"]
+        processor = IPAdapterMaskProcessor()
+        masks = processor.preprocess(masks)
+        masks = masks.reshape(1, masks.shape[0], masks.shape[2], masks.shape[3])
+        inputs["cross_attention_kwargs"]["ip_adapter_masks"] = [masks]
+        ip_images = inputs["ip_adapter_image"]
+        inputs["ip_adapter_image"] = [[image[0] for image in ip_images]]
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
         expected_slice = np.array(
