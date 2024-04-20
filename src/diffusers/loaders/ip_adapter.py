@@ -242,7 +242,7 @@ class IPAdapterMixin:
                         self.load_lora_weights(lora, adapter_name=f"faceid_{k}")
                         self.set_adapters([f"faceid_{k}"], adapter_weights=[1.0])
 
-    def set_ip_adapter_scale(self, scale: Union[float, Dict, List[Union[float, Dict]]], default_scale=0.0):
+    def set_ip_adapter_scale(self, scale, default_scale=0.0):
         """
         Set IP-Adapter scales per-transformer block. Input `scale` could be a single config or a list of configs for
         granular control over each IP-Adapter behavior. A config can be a float or a dictionary.
