@@ -73,7 +73,7 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         image_processor = CLIPImageProcessor.from_pretrained(repo_id)
         return image_processor
 
-    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False, for_sdxl=False, for_masks=False):
+    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False, for_sdxl=False, for_masks=False, for_instant_style=False):
         image = load_image(
             "https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png"
         )
@@ -123,6 +123,38 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
                 {
                     "ip_adapter_image": [[face_image1], [face_image2]],
                     "cross_attention_kwargs": {"ip_adapter_masks": [mask1, mask2]},
+                }
+            )
+
+        elif for_instant_style:
+            composition_mask = load_image(
+                "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/1024_whole_mask.png"
+            )
+            female_mask = load_image(
+                "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/ip_adapter_None_20240321125641_mask.png"
+            )
+            male_mask = load_image(
+                "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/ip_adapter_None_20240321125344_mask.png"
+            )
+            background_mask = load_image(
+                "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/ip_adapter_6_20240321130722_mask.png"
+            )
+            ip_composition_image = load_image(
+                "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/ip_adapter__20240321125152.png"
+            )
+            ip_female_style = load_image(
+                "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/ip_adapter__20240321125625.png"
+            )
+            ip_male_style = load_image(
+                "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/ip_adapter__20240321125329.png"
+            )
+            ip_background = load_image(
+                "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/ip_adapter__20240321130643.png"
+            )
+            input_kwargs.update(
+                {
+                    "ip_adapter_image": [ip_composition_image, [ip_female_style, ip_male_style, ip_background]],
+                    "cross_attention_kwargs": {"ip_adapter_masks": [[composition_mask], [female_mask, male_mask, background_mask]]},
                 }
             )
 
@@ -570,6 +602,51 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         image_slice = images[0, :3, :3, -1].flatten()
         expected_slice = np.array(
             [0.79474676, 0.7977683, 0.8013954, 0.7988008, 0.7970615, 0.8029355, 0.80614823, 0.8050743, 0.80627424]
+        )
+
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
+
+    def test_instant_style_multiple_masks(self):
+        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+            "h94/IP-Adapter", subfolder="models/image_encoder", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            "RunDiffusion/Juggernaut-XL-v9", torch_dtype=torch.float16, image_encoder=image_encoder, variant="fp16"
+        ).to("cuda")
+        pipeline.enable_model_cpu_offload()
+
+        pipeline.load_ip_adapter(
+            ["ostris/ip-composition-adapter", "h94/IP-Adapter"],
+            subfolder=["", "sdxl_models"],
+            weight_name=[
+                "ip_plus_composition_sdxl.safetensors",
+                "ip-adapter_sdxl_vit-h.safetensors",
+            ],
+            image_encoder_folder=None,
+        )
+        scale_1 = {
+            "down": [[0.0, 0.0, 1.0]],
+            "mid": [[0.0, 0.0, 1.0]],
+            "up": {
+                "block_0": [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 1.0]],
+                "block_1": [[0.0, 0.0, 1.0]]
+            },
+        }
+        pipeline.set_ip_adapter_scale([1.0, scale_1])
+
+        inputs = self.get_dummy_inputs(for_instant_style=True)
+        processor = IPAdapterMaskProcessor()
+        masks1 = inputs["cross_attention_kwargs"]["ip_adapter_masks"][0]
+        masks2 = inputs["cross_attention_kwargs"]["ip_adapter_masks"][1]
+        masks1 = processor.preprocess(masks1, height=1024, width=1024)
+        masks2 = processor.preprocess(masks2, height=1024, width=1024)
+        masks2 = masks2.reshape(1, masks2.shape[0], masks2.shape[2], masks2.shape[3])
+        inputs["cross_attention_kwargs"]["ip_adapter_masks"] = [masks1, masks2]
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+        expected_slice = np.array(
+            [0.23551631, 0.20476806, 0.14099443, 0.        , 0.07675594, 0.05672678, 0.        , 0.        , 0.02099729]
         )
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)

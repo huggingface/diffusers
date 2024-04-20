@@ -2233,12 +2233,12 @@ class IPAdapterAttnProcessor(nn.Module):
             if isinstance(scale, list):
                 if all(s == 0 for s in scale):
                     skip = True
-            elif isinstance(scale, float) and scale == 0:
+            elif scale == 0:
                 skip = True
             if not skip:
                 if mask is not None:
                     if not isinstance(scale, list):
-                        scale = [scale]
+                        scale = [scale] * mask.shape[1]
 
                     current_num_images = mask.shape[1]
                     for i in range(current_num_images):
@@ -2450,12 +2450,12 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             if isinstance(scale, list):
                 if all(s == 0 for s in scale):
                     skip = True
-            elif isinstance(scale, float) and scale == 0:
+            elif scale == 0:
                 skip = True
             if not skip:
                 if mask is not None:
                     if not isinstance(scale, list):
-                        scale = [scale]
+                        scale = [scale] * mask.shape[1]
 
                     current_num_images = mask.shape[1]
                     for i in range(current_num_images):

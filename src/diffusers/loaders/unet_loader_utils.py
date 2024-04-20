@@ -116,6 +116,13 @@ def _maybe_expand_lora_scales_for_one_adapter(
 
     if "mid" not in scales:
         scales["mid"] = default_scale
+    elif isinstance(scales["mid"], list):
+        if len(scales["mid"]) == 1:
+            scales["mid"] = scales["mid"][0]
+        else:
+            raise ValueError(
+                f"Expected 1 scales for mid, got {len(scales['mid'])}."
+            )
 
     for updown in ["up", "down"]:
         if updown not in scales:
@@ -123,7 +130,7 @@ def _maybe_expand_lora_scales_for_one_adapter(
 
         # eg {"down": 1} to {"down": {"block_1": 1, "block_2": 1}}}
         if not isinstance(scales[updown], dict):
-            scales[updown] = {f"block_{i}": scales[updown] for i in blocks_with_transformer[updown]}
+            scales[updown] = {f"block_{i}": copy.deepcopy(scales[updown]) for i in blocks_with_transformer[updown]}
 
         # eg {"down": {"block_1": 1}} to {"down": {"block_1": [1, 1]}}
         for i in blocks_with_transformer[updown]:
@@ -133,7 +140,10 @@ def _maybe_expand_lora_scales_for_one_adapter(
                 scales[updown][block] = default_scale
             if not isinstance(scales[updown][block], list):
                 scales[updown][block] = [scales[updown][block] for _ in range(transformer_per_block[updown])]
-            else:
+            elif len(scales[updown][block]) == 1:
+                # a list specifying scale to each masked IP input
+                scales[updown][block] = scales[updown][block] * transformer_per_block[updown]
+            elif len(scales[updown][block]) != transformer_per_block[updown]:
                 raise ValueError(
                     f"Expected {transformer_per_block[updown]} scales for {updown}.{block}, got {len(scales[updown][block])}."
                 )
