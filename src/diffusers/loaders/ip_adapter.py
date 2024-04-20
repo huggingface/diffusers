@@ -251,25 +251,25 @@ class IPAdapterMixin:
 
         ```py
         # To use original IP-Adapter
-        >>> scale = 1.0
-        >>> pipeline.set_ip_adapter_scale(scale)
+        scale = 1.0
+        pipeline.set_ip_adapter_scale(scale)
 
         # To use style block only
-        >>> scale = {
-        ...     "up": {"block_0": [0.0, 1.0, 0.0]},
-        ... }
-        >>> pipeline.set_ip_adapter_scale(scale)
+        scale = {
+            "up": {"block_0": [0.0, 1.0, 0.0]},
+        }
+        pipeline.set_ip_adapter_scale(scale)
 
         # To use style+layout blocks
-        >>> scale = {
-        ...     "down": {"block_2": [0.0, 1.0]},
-        ...     "up": {"block_0": [0.0, 1.0, 0.0]},
-        ... }
-        >>> pipeline.set_ip_adapter_scale(scale)
+        scale = {
+            "down": {"block_2": [0.0, 1.0]},
+            "up": {"block_0": [0.0, 1.0, 0.0]},
+        }
+        pipeline.set_ip_adapter_scale(scale)
 
         # To use style and layout from 2 reference images
-        >>> scales = [{"down": {"block_2": [0.0, 1.0]}}, {"up": {"block_0": [0.0, 1.0, 0.0]}}]
-        >>> pipeline.set_ip_adapter_scale(scales)
+        scales = [{"down": {"block_2": [0.0, 1.0]}}, {"up": {"block_0": [0.0, 1.0, 0.0]}}]
+        pipeline.set_ip_adapter_scale(scales)
         ```
         """
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet

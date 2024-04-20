@@ -73,7 +73,9 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         image_processor = CLIPImageProcessor.from_pretrained(repo_id)
         return image_processor
 
-    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False, for_sdxl=False, for_masks=False, for_instant_style=False):
+    def get_dummy_inputs(
+        self, for_image_to_image=False, for_inpainting=False, for_sdxl=False, for_masks=False, for_instant_style=False
+    ):
         image = load_image(
             "https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png"
         )
@@ -154,7 +156,9 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
             input_kwargs.update(
                 {
                     "ip_adapter_image": [ip_composition_image, [ip_female_style, ip_male_style, ip_background]],
-                    "cross_attention_kwargs": {"ip_adapter_masks": [[composition_mask], [female_mask, male_mask, background_mask]]},
+                    "cross_attention_kwargs": {
+                        "ip_adapter_masks": [[composition_mask], [female_mask, male_mask, background_mask]]
+                    },
                 }
             )
 
@@ -628,10 +632,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         scale_1 = {
             "down": [[0.0, 0.0, 1.0]],
             "mid": [[0.0, 0.0, 1.0]],
-            "up": {
-                "block_0": [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 1.0]],
-                "block_1": [[0.0, 0.0, 1.0]]
-            },
+            "up": {"block_0": [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 1.0]], "block_1": [[0.0, 0.0, 1.0]]},
         }
         pipeline.set_ip_adapter_scale([1.0, scale_1])
 
@@ -646,7 +647,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
         expected_slice = np.array(
-            [0.23551631, 0.20476806, 0.14099443, 0.        , 0.07675594, 0.05672678, 0.        , 0.        , 0.02099729]
+            [0.23551631, 0.20476806, 0.14099443, 0.0, 0.07675594, 0.05672678, 0.0, 0.0, 0.02099729]
         )
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
