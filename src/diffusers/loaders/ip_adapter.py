@@ -242,7 +242,7 @@ class IPAdapterMixin:
                         self.load_lora_weights(lora, adapter_name=f"faceid_{k}")
                         self.set_adapters([f"faceid_{k}"], adapter_weights=[1.0])
 
-    def set_ip_adapter_scale(self, scale, default_scale=0.0):
+    def set_ip_adapter_scale(self, scale):
         """
         Set IP-Adapter scales per-transformer block. Input `scale` could be a single config or a list of configs for
         granular control over each IP-Adapter behavior. A config can be a float or a dictionary.
@@ -275,7 +275,7 @@ class IPAdapterMixin:
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         if not isinstance(scale, list):
             scale = [scale]
-        scale_configs = _maybe_expand_lora_scales(unet, scale, default_scale=default_scale)
+        scale_configs = _maybe_expand_lora_scales(unet, scale, default_scale=0.0)
 
         for attn_name, attn_processor in unet.attn_processors.items():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):

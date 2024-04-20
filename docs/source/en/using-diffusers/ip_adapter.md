@@ -675,8 +675,4 @@ image
   </div>
 </div>
 
-Note that you don't have to specify all layers in the dictionary. Those not included in the dictionary will be set to scale 0 which means disable IP-Adapter by default. This default value can also be changed by passing a ```default_scale``` to the [`~loaders.IPAdapterMixin.set_ip_adapter_scale`] method.
-
-```py
-pipeline.set_ip_adapter_scale(scale, default_scale=1.0)
-```
+Note that you don't have to specify all layers in the dictionary. Those not included in the dictionary will be set to scale 0 which means disable IP-Adapter by default.
