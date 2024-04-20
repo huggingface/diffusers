@@ -334,14 +334,14 @@ class EMAModel:
             with context_manager():
                 params_grad = [param for param in parameters if param.requires_grad]
                 s_params_grad = [s_param for s_param, param in zip(self.shadow_params, parameters) if param.requires_grad]
-        
+
                 if len(params_grad) < len(parameters):
                     torch._foreach_copy_(
                         [s_param for s_param, param in zip(self.shadow_params, parameters) if not param.requires_grad],
                         [param for param in parameters if not param.requires_grad],
                         non_blocking=True
                     )
-        
+
                 torch._foreach_sub_(
                     s_params_grad,
                     torch._foreach_sub(s_params_grad, params_grad),
@@ -352,7 +352,7 @@ class EMAModel:
             for s_param, param in zip(self.shadow_params, parameters):
                 if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
                     context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
-    
+
                 with context_manager():
                     if param.requires_grad:
                         s_param.sub_(one_minus_decay * (s_param - param))
@@ -385,7 +385,7 @@ class EMAModel:
         """
 
         self.shadow_params = [p.pin_memory() for p in self.shadow_params]
-    
+
     def to(self, device=None, dtype=None, non_blocking=False) -> None:
         r"""Move internal buffers of the ExponentialMovingAverage to `device`.
 
@@ -394,7 +394,7 @@ class EMAModel:
         """
         # .to() on the tensors handles None correctly
         self.shadow_params = [
-            p.to(device=device, dtype=dtype, non_blocking=non_blocking) if p.is_floating_point() 
+            p.to(device=device, dtype=dtype, non_blocking=non_blocking) if p.is_floating_point()
             else p.to(device=device, non_blocking=non_blocking) for p in self.shadow_params
         ]
 
