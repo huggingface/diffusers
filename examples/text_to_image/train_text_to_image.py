@@ -374,6 +374,7 @@ def parse_args():
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument("--offload_ema", action="store_true", help="Offload EMA model to CPU during training step.")
+    parser.add_argument("--foreach_ema", action="store_true", help="Use faster foreach implementation of EMAModel.")
     parser.add_argument(
         "--non_ema_revision",
         type=str,
@@ -611,7 +612,7 @@ def main():
         ema_unet = UNet2DConditionModel.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
         )
-        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
+        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config, foreach=args.foreach)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -642,7 +643,7 @@ def main():
 
         def load_model_hook(models, input_dir):
             if args.use_ema:
-                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel, foreach=args.foreach)
                 ema_unet.load_state_dict(load_model.state_dict())
                 if args.offload_ema:
                     ema_unet.pin_memory()
