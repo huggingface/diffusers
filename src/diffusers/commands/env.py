@@ -175,7 +175,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         info = {
             "Diffusers version": version,
             "Location": os.path.dirname(os.path.abspath(version)).replace(getpass.getuser(), "USER"),
-            "Platform": f"{platform.freedesktop_os_release()['PRETTY_NAME']} - {platform.platform()}",
+            "Platform": f"{platform.freedesktop_os_release().get('PRETTY_NAME', None)} - {platform.platform()}",
             "Running on a notebook?": is_notebook_str,
             "Running on Google Colab?": is_google_colab_str,
             "Python version": platform.python_version(),
