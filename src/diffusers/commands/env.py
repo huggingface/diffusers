@@ -33,7 +33,6 @@ from ..utils import (
     is_transformers_available,
     is_xformers_available,
 )
-
 from . import BaseDiffusersCLICommand
 
 
@@ -153,7 +152,9 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         elif platform.system() == "Darwin":  # Mac OS
             try:
                 sp = subprocess.Popen(
-                    ["system_profiler", "SPDisplaysDataType"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    ["system_profiler", "SPDisplaysDataType"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                 )
                 out_str, _ = sp.communicate()
                 out_str = out_str.decode("utf-8")
