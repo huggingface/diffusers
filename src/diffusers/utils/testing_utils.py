@@ -47,6 +47,9 @@ from .import_utils import (
 from .logging import get_logger
 
 
+# Set global timeout
+request_timeout = int(os.environ.get("DIFFUSERS_REQUEST_TIMEOUT", 60))
+
 global_rng = random.Random()
 
 logger = get_logger(__name__)
@@ -594,7 +597,7 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
             # local_path can be passed to correct images of tests
             return Path(local_path, arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]).as_posix()
         elif arry.startswith("http://") or arry.startswith("https://"):
-            response = requests.get(arry)
+            response = requests.get(arry, timeout=request_timeout)
             response.raise_for_status()
             arry = np.load(BytesIO(response.content))
         elif os.path.isfile(arry):
@@ -615,7 +618,7 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
 
 
 def load_pt(url: str, map_location: str):
-    response = requests.get(url)
+    response = requests.get(url, timeout=request_timeout)
     response.raise_for_status()
     arry = torch.load(BytesIO(response.content), map_location=map_location)
     return arry
@@ -634,7 +637,7 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     """
     if isinstance(image, str):
         if image.startswith("http://") or image.startswith("https://"):
-            image = PIL.Image.open(requests.get(image, stream=True).raw)
+            image = PIL.Image.open(requests.get(image, stream=True, timeout=request_timeout).raw)
         elif os.path.isfile(image):
             image = PIL.Image.open(image)
         else:

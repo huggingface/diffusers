@@ -1,5 +1,6 @@
 import argparse
 import io
+import os
 
 import requests
 import torch
@@ -13,6 +14,10 @@ from diffusers.pipelines.stable_diffusion.convert_from_ckpt import (
     renew_vae_attention_paths,
     renew_vae_resnet_paths,
 )
+
+
+# Set global timeout
+request_timeout = int(os.environ.get("DIFFUSERS_REQUEST_TIMEOUT", 60))
 
 
 def custom_convert_ldm_vae_checkpoint(checkpoint, config):
@@ -122,7 +127,7 @@ def vae_pt_to_vae_diffuser(
 ):
     # Only support V1
     r = requests.get(
-        " https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
+        " https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml", timeout=request_timeout
     )
     io_obj = io.BytesIO(r.content)
 

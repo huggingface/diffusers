@@ -67,6 +67,10 @@ DATASET_NAME_MAPPING = {
 WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
 
 
+# Set global timeout
+request_timeout = int(os.environ.get("DIFFUSERS_REQUEST_TIMEOUT", 60))
+
+
 def log_validation(
     pipeline,
     args,
@@ -418,7 +422,7 @@ def convert_to_np(image, resolution):
 
 
 def download_image(url):
-    image = PIL.Image.open(requests.get(url, stream=True).raw)
+    image = PIL.Image.open(requests.get(url, stream=True, timeout=request_timeout).raw)
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image

@@ -10,6 +10,10 @@ import requests
 from .import_utils import BACKENDS_MAPPING, is_imageio_available
 
 
+# Set global timeout
+request_timeout = int(os.environ.get("DIFFUSERS_REQUEST_TIMEOUT", 60))
+
+
 def load_image(
     image: Union[str, PIL.Image.Image], convert_method: Optional[Callable[[PIL.Image.Image], PIL.Image.Image]] = None
 ) -> PIL.Image.Image:
@@ -29,7 +33,7 @@ def load_image(
     """
     if isinstance(image, str):
         if image.startswith("http://") or image.startswith("https://"):
-            image = PIL.Image.open(requests.get(image, stream=True).raw)
+            image = PIL.Image.open(requests.get(image, stream=True, timeout=request_timeout).raw)
         elif os.path.isfile(image):
             image = PIL.Image.open(image)
         else:
