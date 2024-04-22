@@ -19,6 +19,7 @@ import torch
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from ...callbacks import CallbackMixin
 from ...configuration_utils import FrozenDict
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
@@ -121,6 +122,7 @@ class StableDiffusionPipeline(
     LoraLoaderMixin,
     IPAdapterMixin,
     FromSingleFileMixin,
+    CallbackMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
@@ -251,6 +253,8 @@ class StableDiffusionPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
+
+        CallbackMixin.__init__(self)
 
     def _encode_prompt(
         self,
@@ -965,10 +969,15 @@ class StableDiffusionPipeline(
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
+
+        self._callback_handler.on_inference_begin(args=self._get_callback_inputs(locals()), control=None)
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+
+                self._callback_handler.on_step_begin(args=self._get_callback_inputs(locals()), control=None)
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
@@ -1013,6 +1022,10 @@ class StableDiffusionPipeline(
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+
+                self._callback_handler.on_step_end(args=self._get_callback_inputs(locals()), control=None)
+
+        self._callback_handler.on_inference_end(args=self._get_callback_inputs(locals()), control=None)
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
