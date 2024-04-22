@@ -1,4 +1,4 @@
-# Copyright 2024 UC Berkeley Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Katherine Crowson and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
 from dataclasses import dataclass
@@ -32,8 +30,7 @@ def log_snr(t: torch.FloatTensor, beta_schedule: str) -> torch.FloatTensor:
     """
     Calculates the logarithm of the signal-to-noise ratio (SNR) for given time steps `t` under a specified beta schedule.
 
-    The function supports multiple beta schedules, which are key to controlling the noise levels in diffusion models.
-    It returns the logarithmic SNR, which is used to compute model parameters at different diffusion steps.
+    See appendix K of the [Variational Diffusion Models](https://arxiv.org/abs/2107.00630) paper for more details.
 
     Args:
         t (torch.FloatTensor): Tensor of time steps, normalized between [0, 1].
@@ -130,12 +127,12 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
                  sample_max_value: float = 1.0,
                  timestep_spacing: str = "leading",
                  steps_offset: Union[int, float] = 0):
-        # Hardcoded as continuous schedules in self._log_snr are fitted to these values
+        # Hardcoded as continuous schedules in `log_snr` are fitted to these values
         self.beta_start = 1e-4
         self.beta_end = 0.02
         self.init_noise_sigma = 1.0
 
-        # For linear beta schedule equivalent to torch.exp(-1e-4 - 10 * t ** 2)
+        # For linear beta schedule, equivalent to torch.exp(-1e-4 - 10 * t ** 2)
         self.alphas_cumprod = lambda t: torch.sigmoid(self.log_snr(t))  # Equivalent to 1 - self.sigmas
         self.sigmas = lambda t: torch.sigmoid(-self.log_snr(t))  # Equivalent to 1 - self.alphas_cumprod
 
@@ -176,7 +173,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
 
     def get_timesteps(self, num_steps: Optional[int] = None) -> np.ndarray:
         """
-        Generates an array of timesteps based on the configured spacing method, either evenly spaced or leading/trailing.
+        Generates timesteps in the range [0, 1] for the continuous formulation.
 
         Args:
             num_steps (int, optional): The number of timesteps to generate. Defaults to `num_train_timesteps`.
@@ -202,7 +199,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None):
         """
-        Sets the discrete timesteps used for the diffusion chain (to be run before inference).
+        Sets the discrete or continuous timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
@@ -308,6 +305,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             torch.FloatTensor: The noisy samples after adding scaled Gaussian noise according to the SNR.
         """
         log_snr = self.log_snr(timesteps)
+        #  Reshape from (1,) to (B, ...) where B is the batch size and ... are the spatial dimensions
         log_snr = log_snr.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
 
         sqrt_alpha_prod = torch.sqrt(torch.sigmoid(log_snr))
