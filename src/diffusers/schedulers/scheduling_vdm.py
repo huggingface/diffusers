@@ -26,18 +26,18 @@ from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
-def log_snr(t: torch.FloatTensor, beta_schedule: str) -> torch.FloatTensor:
+def log_snr(t: torch.Tensor, beta_schedule: str) -> torch.Tensor:
     """
     Calculates the logarithm of the signal-to-noise ratio (SNR) for given time steps `t` under a specified beta schedule.
 
     See appendix K of the [Variational Diffusion Models](https://arxiv.org/abs/2107.00630) paper for more details.
 
     Args:
-        t (torch.FloatTensor): Tensor of time steps, normalized between [0, 1].
+        t (torch.Tensor): Tensor of time steps, normalized between [0, 1].
         beta_schedule (str): The beta schedule type. Supported types include 'linear', 'squaredcos_cap_v2', and 'sigmoid'.
 
     Returns:
-        torch.FloatTensor: The log SNR values corresponding to the input time steps under the given beta schedule.
+        torch.Tensor: The log SNR values corresponding to the input time steps under the given beta schedule.
 
     Raises:
         ValueError: If `t` is outside the range [0, 1] or if the beta_schedule is unsupported.
@@ -65,16 +65,16 @@ class VDMSchedulerOutput(BaseOutput):
     Output class for the scheduler's `step` function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
             `pred_original_sample` can be used to preview progress or for guidance.
     """
 
-    prev_sample: torch.FloatTensor
-    pred_original_sample: Optional[torch.FloatTensor] = None
+    prev_sample: torch.Tensor
+    pred_original_sample: Optional[torch.Tensor] = None
 
 
 class VDMScheduler(SchedulerMixin, ConfigMixin):
@@ -89,15 +89,14 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             The number of diffusion steps to train the model. If not provided, assumes continuous formulation.
         beta_schedule (`str`, defaults to `"linear"`):
             The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
-            `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+            `linear`, `squaredcos_cap_v2` or `sigmoid`.
         clip_sample (`bool`, defaults to `True`):
             Clip the predicted sample for numerical stability.
         clip_sample_range (`float`, defaults to 1.0):
             The maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
-            `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
+            or `sample` (directly predicts the noisy sample`).
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
@@ -137,12 +136,10 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = lambda t: torch.sigmoid(-self.log_snr(t))  # Equivalent to 1 - self.alphas_cumprod
 
         self.num_inference_steps = None
-        self.timesteps = None
+        self.timesteps = torch.from_numpy(self.get_timesteps(len(self)))
         if num_train_timesteps:
-            # TODO: Might not be exact
-            self.timesteps = torch.from_numpy(self.get_timesteps(len(self)))
             alphas_cumprod = self.alphas_cumprod(torch.flip(self.timesteps, dims=(0,)))
-            alphas = alphas_cumprod[1:] / alphas_cumprod[:-1]
+            alphas = alphas_cumprod[1:] / alphas_cumprod[:-1]  # TODO: Might not be exact
             self.alphas = torch.cat([alphas_cumprod[:1], alphas])
             self.betas = 1 - self.alphas
 
@@ -150,7 +147,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         """Returns the number of inference steps or the number of training timesteps or 1000, whichever is set."""
         return self.num_inference_steps or self.config.num_train_timesteps or 1000
 
-    def log_snr(self, timesteps: torch.Tensor) -> torch.FloatTensor:
+    def log_snr(self, timesteps: torch.Tensor) -> torch.Tensor:
         """
         Computes the logarithm of the signal-to-noise ratio for given timesteps using the configured beta schedule.
 
@@ -158,7 +155,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             timesteps (torch.Tensor): Tensor of timesteps, which can be either normalized to [0, 1] range or discrete.
 
         Returns:
-            torch.FloatTensor: The computed log SNR values for the given timesteps.
+            torch.Tensor: The computed log SNR values for the given timesteps.
 
         Raises:
             TypeError: If discrete timesteps are used without setting `num_train_timesteps` in the configuration.
@@ -169,7 +166,6 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             timesteps = timesteps / self.config.num_train_timesteps  # Normalize to [0, 1]
 
         return log_snr(timesteps, beta_schedule=self.config.beta_schedule)
-
 
     def get_timesteps(self, num_steps: Optional[int] = None) -> np.ndarray:
         """
@@ -185,7 +181,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             ValueError: If an unsupported `timestep_spacing` configuration is provided.
         """
         if num_steps is None:
-            num_steps = self.config.num_train_timesteps
+            num_steps = len(self)
         if self.config.timestep_spacing in ["linspace", "leading"]:
             timesteps = np.linspace(0, 1, num_steps,
                                     endpoint=self.config.timestep_spacing == "linspace")[::-1]
@@ -195,7 +191,6 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(f"`{self.config.timestep_spacing}` timestep spacing is not supported."
                              "Choose one of 'linspace', 'leading' or 'trailing'.")
         return timesteps.astype(np.float32).copy()
-
 
     def set_timesteps(self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None):
         """
@@ -235,7 +230,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
-    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+    def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """
         "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
         prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
@@ -269,19 +264,19 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         return sample
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.scale_model_input
-    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
             timestep (`int`, *optional*):
                 The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
         return sample
@@ -289,7 +284,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
     def add_noise(self,
                   original_samples: torch.Tensor,
                   noise: torch.Tensor,
-                  timesteps: torch.Tensor) -> torch.FloatTensor:
+                  timesteps: torch.Tensor) -> torch.Tensor:
         """
         Adds noise to the original samples according to the noise schedule and the specified timesteps.
 
@@ -302,14 +297,14 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             timesteps (torch.Tensor): Timesteps at which the samples are processed.
 
         Returns:
-            torch.FloatTensor: The noisy samples after adding scaled Gaussian noise according to the SNR.
+            torch.Tensor: The noisy samples after adding scaled Gaussian noise according to the SNR.
         """
-        log_snr = self.log_snr(timesteps)
+        gamma = self.log_snr(timesteps).to(original_samples.device)
         #  Reshape from (1,) to (B, ...) where B is the batch size and ... are the spatial dimensions
-        log_snr = log_snr.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
+        gamma = gamma.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
 
-        sqrt_alpha_prod = torch.sqrt(torch.sigmoid(log_snr))
-        sqrt_one_minus_alpha_prod = torch.sqrt(torch.sigmoid(-log_snr))  # sqrt(sigma)
+        sqrt_alpha_prod = torch.sqrt(torch.sigmoid(gamma))
+        sqrt_one_minus_alpha_prod = torch.sqrt(torch.sigmoid(-gamma))  # sqrt(sigma)
 
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples

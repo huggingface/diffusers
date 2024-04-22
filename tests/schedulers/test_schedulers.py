@@ -37,6 +37,7 @@ from diffusers import (
     LMSDiscreteScheduler,
     UniPCMultistepScheduler,
     VQDiffusionScheduler,
+    VDMScheduler,
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
@@ -750,7 +751,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
     def test_trained_betas(self):
         for scheduler_class in self.scheduler_classes:
-            if scheduler_class in (VQDiffusionScheduler, CMStochasticIterativeScheduler):
+            if scheduler_class in (VQDiffusionScheduler, CMStochasticIterativeScheduler, VDMScheduler):
                 continue
 
             scheduler_config = self.get_scheduler_config()
