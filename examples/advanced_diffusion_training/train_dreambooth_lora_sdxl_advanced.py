@@ -40,6 +40,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, hf_hub_download, upload_folder
+from huggingface_hub.utils import insecure_hashlib
 from packaging import version
 from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
@@ -73,9 +74,15 @@ from diffusers.utils import (
     convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
+from blora_utils import get_target_modules
+
+
+if is_wandb_available():
+    import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.28.0.dev0")
@@ -1268,10 +1275,10 @@ def main(args):
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-        model_id = args.hub_model_id or Path(args.output_dir).name
-        repo_id = None
         if args.push_to_hub:
-            repo_id = create_repo(repo_id=model_id, exist_ok=True, token=args.hub_token).repo_id
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+            ).repo_id
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
@@ -1305,17 +1312,17 @@ def main(args):
         logger.info("Performing EDM-style training!")
     elif args.do_edm_style_training:
         noise_scheduler = EulerDiscreteScheduler.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="scheduler"
+            args.pretrained_model_name_or_path, subfolder="scheduler",
         )
         logger.info("Performing EDM-style training!")
     else:
         noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant,
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant,
     )
     vae_path = (
         args.pretrained_model_name_or_path
@@ -1422,8 +1429,8 @@ def main(args):
 
     unet_lora_config = LoraConfig(
         r=args.rank,
-        lora_alpha=args.rank,
         use_dora=args.use_dora,
+        lora_alpha=args.rank,
         init_lora_weights="gaussian",
         target_modules=target_modules,
     )
@@ -1434,8 +1441,8 @@ def main(args):
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
             r=args.rank,
-            lora_alpha=args.rank,
             use_dora=args.use_dora,
+            lora_alpha=args.rank,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
         )
@@ -1538,6 +1545,7 @@ def main(args):
                 )
 
         if args.train_text_encoder:
+            # Do we need to call `scale_lora_layers()` here?
             _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
 
             _set_state_dict_into_text_encoder(
@@ -1564,7 +1572,7 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Make sure the trainable params are in float32.
@@ -2381,7 +2389,7 @@ def main(args):
         save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")
 
         save_model_card(
-            model_id if not args.push_to_hub else repo_id,
+            repo_id,
             use_dora=args.use_dora,
             images=images,
             base_model=args.pretrained_model_name_or_path,
