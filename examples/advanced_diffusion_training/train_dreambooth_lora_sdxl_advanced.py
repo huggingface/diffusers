@@ -46,6 +46,7 @@ from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
+from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
@@ -78,7 +79,6 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 from blora_utils import get_target_modules
-
 
 if is_wandb_available():
     import wandb
@@ -235,7 +235,7 @@ Special VAE used for training: {vae_path}.
 
 
 def import_model_class_from_model_name_or_path(
-    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+        pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path, subfolder=subfolder, revision=revision
@@ -299,16 +299,16 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="The config of the Dataset. In some cases, a dataset may have more than one configuration (for example "
-        "if it contains different subsets of data within, and you only wish to load a specific subset - in that case specify the desired configuration using --dataset_config_name. Leave as "
-        "None if there's only one config.",
+             "if it contains different subsets of data within, and you only wish to load a specific subset - in that case specify the desired configuration using --dataset_config_name. Leave as "
+             "None if there's only one config.",
     )
     parser.add_argument(
         "--instance_data_dir",
         type=str,
         default=None,
         help="A path to local folder containing the training data of instance images. Specify this arg instead of "
-        "--dataset_name if you wish to train using a local folder without custom captions. If you wish to train with custom captions please specify "
-        "--dataset_name instead.",
+             "--dataset_name if you wish to train using a local folder without custom captions. If you wish to train with custom captions please specify "
+             "--dataset_name instead.",
     )
 
     parser.add_argument(
@@ -323,8 +323,8 @@ def parse_args(input_args=None):
         type=str,
         default="image",
         help="The column of the dataset containing the target image. By "
-        "default, the standard Image Dataset maps out 'file_name' "
-        "to 'image'.",
+             "default, the standard Image Dataset maps out 'file_name' "
+             "to 'image'.",
     )
     parser.add_argument(
         "--caption_column",
@@ -354,8 +354,8 @@ def parse_args(input_args=None):
         type=str,
         default="TOK",
         help="identifier specifying the instance(or instances) as used in instance_prompt, validation prompt, "
-        "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma seperated string - e.g. "
-        "'TOK,TOK2,TOK3' etc.",
+             "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma seperated string - e.g. "
+             "'TOK,TOK2,TOK3' etc.",
     )
 
     parser.add_argument(
@@ -363,8 +363,8 @@ def parse_args(input_args=None):
         type=int,
         default=2,
         help="number of new tokens inserted to the tokenizers per token_abstraction identifier when "
-        "--train_text_encoder_ti = True. By default, each --token_abstraction (e.g. TOK) is mapped to 2 new "
-        "tokens - <si><si+1> ",
+             "--train_text_encoder_ti = True. By default, each --token_abstraction (e.g. TOK) is mapped to 2 new "
+             "tokens - <si><si+1> ",
     )
 
     parser.add_argument(
@@ -396,7 +396,6 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--do_edm_style_training",
-        default=False,
         action="store_true",
         help="Flag to conduct training using the EDM formulation as introduced in https://arxiv.org/abs/2206.00364.",
     )
@@ -534,7 +533,7 @@ def parse_args(input_args=None):
         type=float,
         default=None,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
+             "More details here: https://arxiv.org/abs/2303.09556.",
     )
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
@@ -599,7 +598,7 @@ def parse_args(input_args=None):
         type=float,
         default=None,
         help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
-        "uses the value of square root of beta2. Ignored if optimizer is adamW",
+             "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
@@ -625,7 +624,7 @@ def parse_args(input_args=None):
         type=bool,
         default=True,
         help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default. "
-        "Ignored if optimizer is adamW",
+             "Ignored if optimizer is adamW",
     )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
@@ -705,7 +704,6 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--use_blora",
         action="store_true",
-        default=False,
         help=(
             "Whether to train a B-LoRA as proposed in- Implicit Style-Content Separation using B-LoRA https://arxiv.org/abs/2403.14572. "
         ),
@@ -753,11 +751,13 @@ def parse_args(input_args=None):
 
     return args
 
+
 # Taken from B-LoRA repo https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
 BLOCKS = {
     'content': ['unet.up_blocks.0.attentions.0'],
     'style': ['unet.up_blocks.0.attentions.1'],
 }
+
 
 def is_belong_to_blocks(key, blocks):
     try:
@@ -767,6 +767,7 @@ def is_belong_to_blocks(key, blocks):
         return False
     except Exception as e:
         raise type(e)(f'failed to is_belong_to_block, due to: {e}')
+
 
 def get_blora_target_modules(unet, blocks=None):
     try:
@@ -813,10 +814,10 @@ class TokenEmbeddingsHandler:
             print(f"{idx} text encodedr's std_token_embedding: {std_token_embedding}")
 
             text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
-                torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
-                .to(device=self.device)
-                .to(dtype=self.dtype)
-                * std_token_embedding
+                    torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
+                    .to(device=self.device)
+                    .to(dtype=self.dtype)
+                    * std_token_embedding
             )
             self.embeddings_settings[
                 f"original_embeddings_{idx}"
@@ -877,7 +878,7 @@ class TokenEmbeddingsHandler:
             new_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates]
             off_ratio = std_token_embedding / new_embeddings.std()
 
-            new_embeddings = new_embeddings * (off_ratio**0.1)
+            new_embeddings = new_embeddings * (off_ratio ** 0.1)
             text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates] = new_embeddings
 
 
@@ -888,22 +889,22 @@ class DreamBoothDataset(Dataset):
     """
 
     def __init__(
-        self,
-        instance_data_root,
-        instance_prompt,
-        class_prompt,
-        dataset_name,
-        dataset_config_name,
-        cache_dir,
-        image_column,
-        caption_column,
-        train_text_encoder_ti,
-        class_data_root=None,
-        class_num=None,
-        token_abstraction_dict=None,  # token mapping for textual inversion
-        size=1024,
-        repeats=1,
-        center_crop=False,
+            self,
+            instance_data_root,
+            instance_prompt,
+            class_prompt,
+            dataset_name,
+            dataset_config_name,
+            cache_dir,
+            image_column,
+            caption_column,
+            train_text_encoder_ti,
+            class_data_root=None,
+            class_num=None,
+            token_abstraction_dict=None,  # token mapping for textual inversion
+            size=1024,
+            repeats=1,
+            center_crop=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -1915,6 +1916,7 @@ def main(args):
     # flag used for textual inversion
     pivoted = False
     for epoch in range(first_epoch, args.num_train_epochs):
+        unet.train()
         # if performing any kind of optimization of text_encoder params
         if args.train_text_encoder or args.train_text_encoder_ti:
             if epoch == num_train_epochs_text_encoder:
@@ -1932,7 +1934,6 @@ def main(args):
                     text_encoder_one.text_model.embeddings.requires_grad_(True)
                     text_encoder_two.text_model.embeddings.requires_grad_(True)
 
-        unet.train()
         for step, batch in enumerate(train_dataloader):
             if pivoted:
                 # stopping optimization of text_encoder params
@@ -2384,18 +2385,26 @@ def main(args):
                         }
                     )
 
+        # Conver to WebUI format
+        lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
+        peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
+        kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
+        save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")
+
+        save_model_card(
+            repo_id,
+            use_dora=args.use_dora,
+            images=images,
+            base_model=args.pretrained_model_name_or_path,
+            train_text_encoder=args.train_text_encoder,
+            train_text_encoder_ti=args.train_text_encoder_ti,
+            token_abstraction_dict=train_dataset.token_abstraction_dict,
+            instance_prompt=args.instance_prompt,
+            validation_prompt=args.validation_prompt,
+            repo_folder=args.output_dir,
+            vae_path=args.pretrained_vae_model_name_or_path,
+        )
         if args.push_to_hub:
-            save_model_card(
-                repo_id,
-                use_dora=args.use_dora,
-                images=images,
-                base_model=args.pretrained_model_name_or_path,
-                train_text_encoder=args.train_text_encoder,
-                instance_prompt=args.instance_prompt,
-                validation_prompt=args.validation_prompt,
-                repo_folder=args.output_dir,
-                vae_path=args.pretrained_vae_model_name_or_path,
-            )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
