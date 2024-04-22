@@ -60,7 +60,7 @@ jobs:
     runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0 --privileged
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
@@ -69,6 +69,12 @@ jobs:
       - name: NVIDIA-SMI
         run: |
           nvidia-smi
+      - name: Tailscale
+        uses: huggingface/tailscale-action@v1
+        with:
+          authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
+          slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
+          slackToken: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
       - name: Install dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
@@ -87,6 +93,12 @@ jobs:
             -s -v -k "not Flax and not Onnx" \
             --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
             tests/pipelines/${{ matrix.module }}
+      - name: Tailscale Wait
+        if: ${{ failure() || runner.debug == '1' }}
+        uses: huggingface/tailscale-action@v1
+        with:
+           waitForSSH: true
+           authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
       - name: Failure short reports
         if: ${{ failure() }}
         run: |
