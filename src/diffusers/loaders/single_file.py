@@ -16,11 +16,12 @@ import os
 
 import torch
 from huggingface_hub import snapshot_download
-from huggingface_hub.utils import EntryNotFoundError, LocalEntryNotFoundError, validate_hf_hub_args
+from huggingface_hub.utils import LocalEntryNotFoundError, validate_hf_hub_args
 from packaging import version
 
 from ..utils import deprecate, is_transformers_available, logging
 from .single_file_utils import (
+    _is_model_weights_in_cached_folder,
     _legacy_load_clip_tokenizer,
     _legacy_load_safety_checker,
     _legacy_load_scheduler,
@@ -47,12 +48,13 @@ def load_single_file_sub_model(
     checkpoint,
     pipelines,
     is_pipeline_module,
-    cached_folder,
+    cached_model_path,
     original_config=None,
     local_files_only=False,
     torch_dtype=None,
     use_safetensors=None,
     is_legacy_loading=False,
+    cache_dir=None,
     **kwargs,
 ):
     if is_pipeline_module:
@@ -130,7 +132,7 @@ def load_single_file_sub_model(
             name=name,
             original_config=original_config,
             scheduler_type=scheduler_type,
-            prediction_type=prediction_type
+            prediction_type=prediction_type,
         )
 
     else:
@@ -145,6 +147,8 @@ def load_single_file_sub_model(
         loading_kwargs = {}
         loading_kwargs.update(
             {
+                "pretrained_model_name_or_path": cached_model_path,
+                "subfolder": name,
                 "local_files_only": local_files_only,
                 "use_safetensors": use_safetensors,
             }
@@ -163,13 +167,17 @@ def load_single_file_sub_model(
                     f"Attempting to download the component using `from_pretrained` and the inferred model repository: {pretrained_model_name_or_path}."
                 )
             )
+            if not _is_model_weights_in_cached_folder(cached_model_path, name):
+                loading_kwargs.update(
+                    {
+                        "pretrained_model_name_or_path": pretrained_model_name_or_path,
+                        "local_files_only": False,
+                        "cache_dir": cache_dir,
+                    }
+                )
 
         load_method = getattr(class_obj, "from_pretrained")
-        loaded_sub_model = load_method(
-            cached_folder,
-            subfolder=name,
-            **loading_kwargs,
-        )
+        loaded_sub_model = load_method(**loading_kwargs)
 
     return loaded_sub_model
 
@@ -235,7 +243,7 @@ def _download_diffusers_model_config_from_hub(
     token=None,
 ):
     allow_patterns = ["**/*.json", "*.json", "*.txt", "**/*.txt"]
-    cached_folder = snapshot_download(
+    cached_model_path = snapshot_download(
         default_pretrained_model_name_or_path,
         cache_dir=cache_dir,
         revision=revision,
@@ -247,7 +255,7 @@ def _download_diffusers_model_config_from_hub(
         allow_patterns=allow_patterns,
     )
 
-    return cached_folder
+    return cached_model_path
 
 
 class FromSingleFileMixin:
@@ -310,27 +318,6 @@ class FromSingleFileMixin:
                       hosted on the Hub.
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline
                       component configs in Diffusers format.
-            model_type (`str`, *optional*):
-                The type of model to load. If not provided, the model type will be inferred from the checkpoint file.
-            image_size (`int`, *optional*):
-                The size of the image output. It's used to configure the `sample_size` parameter of the UNet and VAE
-                model.
-            load_safety_checker (`bool`, *optional*, defaults to `False`):
-                Whether to load the safety checker model or not. By default, the safety checker is not loaded unless a
-                `safety_checker` component is passed to the `kwargs`.
-            num_in_channels (`int`, *optional*):
-                Specify the number of input channels for the UNet model. Read more about how to configure UNet model
-                with this parameter
-                [here](https://huggingface.co/docs/diffusers/training/adapt_a_model#configure-unet2dconditionmodel-parameters).
-            scaling_factor (`float`, *optional*):
-                The scaling factor to use for the VAE model. If not provided, it is inferred from the config file
-                first. If the scaling factor is not found in the config file, the default value 0.18215 is used.
-            scheduler_type (`str`, *optional*):
-                The type of scheduler to load. If not provided, the scheduler type will be inferred from the checkpoint
-                file.
-            prediction_type (`str`, *optional*):
-                The type of prediction to load. If not provided, the prediction type will be inferred from the
-                checkpoint file.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
@@ -387,13 +374,17 @@ class FromSingleFileMixin:
         # These model kwargs should be deprecated
         scaling_factor = kwargs.get("scaling_factor", None)
         if scaling_factor is not None:
-            deprecation_message = "The `scaling_factor` argument is deprecated and will be ignored in future versions."
+            deprecation_message = (
+                "Passing the `scaling_factor` argument to `from_single_file is deprecated "
+                "and will be ignored in future versions."
+            )
             deprecate("scaling_factor", "1.0.0", deprecation_message)
 
         prediction_type = kwargs.get("prediction_type", None)
         if prediction_type is not None:
             deprecation_message = (
-                "The `prediction_type` argument is deprecated and will be ignored in future versions."
+                "Passing the `prediction_type` argument to `from_single_file is deprecated "
+                "and will be ignored in future versions."
             )
             deprecate("prediction_type", "1.0.0", deprecation_message)
 
@@ -429,8 +420,8 @@ class FromSingleFileMixin:
                     " is neither a valid local path nor a valid repo id. Please check the parameter."
                 )
             try:
-                # Attempt to load the config files for the pipeline
-                cached_folder = _download_diffusers_model_config_from_hub(
+                # Attempt to download the config files for the pipeline
+                cached_model_path = _download_diffusers_model_config_from_hub(
                     default_pretrained_model_name_or_path,
                     cache_dir=cache_dir,
                     revision=revision,
@@ -440,20 +431,21 @@ class FromSingleFileMixin:
                     local_files_only=local_files_only,
                     token=token,
                 )
-                config_dict = pipeline_class.load_config(cached_folder)
+                config_dict = pipeline_class.load_config(cached_model_path)
 
             except LocalEntryNotFoundError:
                 # In this path, `local_files_only=True` but a local diffusers format model config is not available in the cache
                 # If `original_config` is not provided, we need to force download the config files from hub so that we have a way
                 # to configure the pipeline components.
 
-                # If `original_config` is provided, then we need to assume we are using legacy loading of pipeline components.
+                # If `original_config` is provided, then we need to assume we are using legacy loading of pipeline components to preserve
+                # backwards compatibility
                 if original_config is None:
                     logger.warning(
                         "`local_files_only` is True but no local configs were found for this checkpoint.\n"
                         "Attempting to download the necessary config files for this pipeline.\n"
                     )
-                    cached_folder = _download_diffusers_model_config_from_hub(
+                    cached_model_path = _download_diffusers_model_config_from_hub(
                         default_pretrained_model_name_or_path,
                         cache_dir=cache_dir,
                         revision=revision,
@@ -463,7 +455,7 @@ class FromSingleFileMixin:
                         local_files_only=False,
                         token=token,
                     )
-                    config_dict = pipeline_class.load_config(cached_folder)
+                    config_dict = pipeline_class.load_config(cached_model_path)
 
                 else:
                     logger.warning(
@@ -474,7 +466,7 @@ class FromSingleFileMixin:
                         "the necessary config files.\n"
                     )
                     is_legacy_loading = True
-                    cached_folder = None
+                    cached_model_path = None
 
                     component_types = pipeline_class._get_signature_types()
                     expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
@@ -487,8 +479,8 @@ class FromSingleFileMixin:
 
         else:
             # Provide config is a path to a local directory attempt to load directly.
-            cached_folder = default_pretrained_model_name_or_path
-            config_dict = pipeline_class.load_config(cached_folder)
+            cached_model_path = default_pretrained_model_name_or_path
+            config_dict = pipeline_class.load_config(cached_model_path)
 
         #   pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
@@ -532,9 +524,10 @@ class FromSingleFileMixin:
                     class_name=class_name,
                     pretrained_model_name_or_path=default_pretrained_model_name_or_path,
                     is_pipeline_module=is_pipeline_module,
-                    cached_folder=cached_folder,
+                    cached_model_path=cached_model_path,
                     pipelines=pipelines,
                     name=name,
+                    cache_dir=cache_dir,
                     torch_dtype=torch_dtype,
                     original_config=original_config,
                     local_files_only=local_files_only,
