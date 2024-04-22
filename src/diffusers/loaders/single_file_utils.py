@@ -35,9 +35,12 @@ from ..schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ..utils import deprecate, is_accelerate_available, logging
+from ..utils import deprecate, is_accelerate_available, is_transformers_available, logging
 from ..utils.hub_utils import _get_model_file
 
+
+if is_transformers_available():
+    from transformers import AutoImageProcessor
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -1357,7 +1360,7 @@ def create_diffusers_clip_model_from_ldm(
     return model
 
 
-def _legacy_load_scheduler_from_scheduler_type(
+def _legacy_load_scheduler(
     pipeline_class_name,
     checkpoint,
     original_config=None,
@@ -1462,3 +1465,34 @@ def _legacy_load_scheduler_from_scheduler_type(
         }
 
     return {"scheduler": scheduler}
+
+
+def _legacy_load_clip_tokenizer(cls, config, checkpoint):
+    if is_clip_model(checkpoint) or is_clip_sdxl_model(checkpoint):
+        clip_config = "openai/clip-vit-large-patch14"
+        config["pretrained_model_name_or_path"] = clip_config
+        subfolder = ""
+    else:
+        clip_config = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+        config["pretrained_model_name_or_path"] = clip_config
+        subfolder = ""
+
+    tokenizer = cls.from_pretrained(**config, subfolder=subfolder)
+
+    return tokenizer
+
+
+def _legacy_load_safety_checker(local_files_only, torch_dtype):
+    # Support for loading safety checker components using the deprecated
+    # `load_safety_checker` argument.
+
+    from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+
+    feature_extractor = AutoImageProcessor.from_pretrained(
+        "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
+    )
+    safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+        "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only, torch_dtype=torch_dtype
+    )
+
+    return {"safety_checker": safety_checker, "feature_extractor": feature_extractor}

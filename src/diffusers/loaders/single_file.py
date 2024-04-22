@@ -15,13 +15,15 @@ import importlib
 import os
 
 import torch
-from huggingface_hub import hf_hub_download, snapshot_download
+from huggingface_hub import snapshot_download
 from huggingface_hub.utils import LocalEntryNotFoundError, validate_hf_hub_args
 from packaging import version
 
 from ..utils import deprecate, is_transformers_available, logging
 from .single_file_utils import (
-    _legacy_load_scheduler_from_scheduler_type,
+    _legacy_load_clip_tokenizer,
+    _legacy_load_safety_checker,
+    _legacy_load_scheduler,
     create_diffusers_clip_model_from_ldm,
     fetch_diffusers_config,
     fetch_original_config,
@@ -34,7 +36,7 @@ logger = logging.get_logger(__name__)
 
 if is_transformers_available():
     import transformers
-    from transformers import AutoImageProcessor, PreTrainedModel, PreTrainedTokenizer
+    from transformers import PreTrainedModel, PreTrainedTokenizer
 
 
 def load_single_file_sub_model(
@@ -45,6 +47,7 @@ def load_single_file_sub_model(
     checkpoint,
     pipelines,
     is_pipeline_module,
+    cached_folder,
     original_config=None,
     local_files_only=False,
     torch_dtype=None,
@@ -70,10 +73,16 @@ def load_single_file_sub_model(
         and issubclass(class_obj, PreTrainedModel)
         and transformers_version >= version.parse("4.20.0")
     )
+    is_tokenizer = (
+        is_transformers_available()
+        and issubclass(class_obj, PreTrainedTokenizer)
+        and transformers_version >= version.parse("4.20.0")
+    )
 
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     is_diffusers_single_file_model = issubclass(class_obj, diffusers_module.FromOriginalModelMixin)
     is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
+    is_diffusers_scheduler = issubclass(class_obj, diffusers_module.SchedulerMixin)
 
     if is_diffusers_single_file_model:
         load_method = getattr(class_obj, "from_single_file")
@@ -104,6 +113,13 @@ def load_single_file_sub_model(
             is_legacy_loading=is_legacy_loading,
         )
 
+    elif is_tokenizer and is_legacy_loading:
+        loaded_sub_model = _legacy_load_clip_tokenizer(
+            class_obj,
+            config=pretrained_model_name_or_path,
+            checkpoint=checkpoint,
+        )
+
     else:
         if not hasattr(class_obj, "from_pretrained"):
             raise ValueError(
@@ -113,47 +129,36 @@ def load_single_file_sub_model(
                 )
             )
 
-        if is_diffusers_model:
-            logger.warning(
-                (
-                    f"The {name} component weights do not appear to be included in the checkpoint"
-                    f" or {class_obj.__name__} does not currently support single file loading."
-                    f"Attempting to load the component using `from_pretrained` and the inferred model repository: {pretrained_model_name_or_path}."
-                )
-            )
+        loading_kwargs = {}
+        loading_kwargs.update(
+            {
+                "local_files_only": local_files_only,
+                "use_safetensors": use_safetensors,
+            }
+        )
 
         # Schedulers and Tokenizers don't make use of torch_dtype
         # Skip passing it to those objects
-        loading_kwargs = {}
         if issubclass(class_obj, torch.nn.Module):
-            loading_kwargs["torch_dtype"] = torch_dtype
+            loading_kwargs.update({"torch_dtype": torch_dtype})
+
+        if is_diffusers_model:
+            logger.warning(
+                (
+                    f"Pipeline component {name}'s weights do not appear to be included in the checkpoint"
+                    f" or {class_obj.__name__} does not currently support single file loading."
+                    f"Attempting to download the component using `from_pretrained` and the inferred model repository: {pretrained_model_name_or_path}."
+                )
+            )
 
         load_method = getattr(class_obj, "from_pretrained")
         loaded_sub_model = load_method(
-            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            cached_folder,
             subfolder=name,
-            local_files_only=local_files_only,
-            use_safetensors=use_safetensors,
             **loading_kwargs,
         )
 
     return loaded_sub_model
-
-
-def _legacy_load_safety_checker(local_files_only, torch_dtype):
-    # Support for loading safety checker components using the deprecated
-    # `load_safety_checker` argument.
-
-    from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-
-    feature_extractor = AutoImageProcessor.from_pretrained(
-        "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
-    )
-    safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-        "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only, torch_dtype=torch_dtype
-    )
-
-    return {"safety_checker": safety_checker, "feature_extractor": feature_extractor}
 
 
 def _map_component_types_to_config_dict(component_types):
@@ -330,7 +335,7 @@ class FromSingleFileMixin:
 
         >>> # Download pipeline from local file
         >>> # file is downloaded under ./v1-5-pruned-emaonly.ckpt
-        >>> pipeline = StableDiffusionPipeline.from_single_file("./v1-5-pruned-emaonly")
+        >>> pipeline = StableDiffusionPipeline.from_single_file("./v1-5-pruned-emaonly.ckpt")
 
         >>> # Enable float16 and move to GPU
         >>> pipeline = StableDiffusionPipeline.from_single_file(
@@ -414,9 +419,9 @@ class FromSingleFileMixin:
                     " is neither a valid local path nor a valid repo id. Please check the parameter."
                 )
             try:
-                config_file = hf_hub_download(
+                # Attempt to download the config files for the pipeline
+                cached_folder = _download_diffusers_model_config_from_hub(
                     default_pretrained_model_name_or_path,
-                    filename=cls.config_name,
                     cache_dir=cache_dir,
                     revision=revision,
                     proxies=proxies,
@@ -425,31 +430,50 @@ class FromSingleFileMixin:
                     local_files_only=local_files_only,
                     token=token,
                 )
-                config_dict = pipeline_class._dict_from_json_file(config_file)
+                config_dict = pipeline_class.load_config(cached_folder)
 
             except LocalEntryNotFoundError:
-                logger.warning(
-                    f"The inferred model repository to configure this pipeline with this checkpoint is: \n"
-                    f"{default_pretrained_model_name_or_path}.\n"
-                    "A local version of this repository was not found in the cache directory.\n"
-                )
-
-                component_types = pipeline_class._get_signature_types()
-                expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
-                component_types = {
-                    k: v for k, v in component_types.items() if k not in pipeline_class._optional_components
-                }
-                config_dict = _map_component_types_to_config_dict(component_types)
-                config_dict["_class_name"] = pipeline_class.__name__
-
                 if original_config is None:
-                    raise ValueError("`local_files_only` is set to `True` but no local config files were found.")
+                    logger.warning(
+                        "`local_files_only` is True but no local configs were found for this checkpoint.\n"
+                        "Attempting to download the necessary config files for this pipeline.\n"
+                    )
+                    cached_folder = _download_diffusers_model_config_from_hub(
+                        default_pretrained_model_name_or_path,
+                        cache_dir=cache_dir,
+                        revision=revision,
+                        proxies=proxies,
+                        force_download=force_download,
+                        resume_download=resume_download,
+                        local_files_only=False,
+                        token=token,
+                    )
+                    config_dict = pipeline_class.load_config(cached_folder)
 
-                is_legacy_loading = True
+                else:
+                    logger.warning(
+                        " Attempting to create the pipeline based on inferred components."
+                        " This may lead to errors if the model components are not correctly inferred."
+                        " Please explicity pass the `config` argument to `from_single_file` with a path to a local diffusers model repo"
+                        " or run this pipeline with `local_files_only=False` first to avoid raising this warning."
+                    )
+
+                    # We might want to deprecate this behavior as it is brittle and can lead to errors
+                    component_types = pipeline_class._get_signature_types()
+                    expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
+                    component_types = {
+                        k: v for k, v in component_types.items() if k not in pipeline_class._optional_components
+                    }
+
+                    config_dict = _map_component_types_to_config_dict(component_types)
+                    config_dict["_class_name"] = pipeline_class.__name__
+
+                    is_legacy_loading = True
 
         else:
             # Provide config is a path to a local directory attempt to load directly.
-            config_dict = pipeline_class.load_config(default_pretrained_model_name_or_path)
+            cached_folder = default_pretrained_model_name_or_path
+            config_dict = pipeline_class.load_config(cached_folder)
 
         #   pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
@@ -493,6 +517,7 @@ class FromSingleFileMixin:
                     class_name=class_name,
                     pretrained_model_name_or_path=default_pretrained_model_name_or_path,
                     is_pipeline_module=is_pipeline_module,
+                    cached_folder=cached_folder,
                     pipelines=pipelines,
                     name=name,
                     torch_dtype=torch_dtype,
@@ -541,14 +566,14 @@ class FromSingleFileMixin:
                 f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
             )
             deprecate("scheduler_type", "1.0.0", deprecation_message)
-            scheduler_components = _legacy_load_scheduler_from_scheduler_type(
+            scheduler = _legacy_load_scheduler(
                 pipeline_class_name=class_name,
                 checkpoint=checkpoint,
                 original_config=original_config,
                 scheduler_type=scheduler_type,
                 prediction_type=prediction_type,
             )
-            init_kwargs.update(scheduler_components)
+            init_kwargs.update({"scheduler": scheduler})
 
         pipe = pipeline_class(**init_kwargs)
 
