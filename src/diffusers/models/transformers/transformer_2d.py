@@ -314,8 +314,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.adaln_single = AdaLayerNormSingle(
                 self.inner_dim, use_additional_conditions=self.use_additional_conditions
             )
-        else:
+        elif self.config.norm_type != "ada_norm_single" and self.config.use_additional_conditions:
             logger.warning("`use_additional_conditions` is only used when `norm_type` is 'ada_norm_single'.")
+            self.use_additional_conditions = False
+        else:
             self.use_additional_conditions = False
 
         self.caption_projection = None
