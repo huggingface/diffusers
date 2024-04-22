@@ -60,7 +60,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         super().__init__(*args)
         self._accelerate_config_file = accelerate_config_file
 
-    def run(self):
+    def run(self) -> dict:
         hub_version = huggingface_hub.__version__
 
         safetensors_version = "not installed"
