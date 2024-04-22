@@ -29,10 +29,26 @@ from .scheduling_utils import SchedulerMixin
 
 
 def log_snr(t: torch.FloatTensor, beta_schedule: str) -> torch.FloatTensor:
+    """
+    Calculates the logarithm of the signal-to-noise ratio (SNR) for given time steps `t` under a specified beta schedule.
+
+    The function supports multiple beta schedules, which are key to controlling the noise levels in diffusion models.
+    It returns the logarithmic SNR, which is used to compute model parameters at different diffusion steps.
+
+    Args:
+        t (torch.FloatTensor): Tensor of time steps, normalized between [0, 1].
+        beta_schedule (str): The beta schedule type. Supported types include 'linear', 'squaredcos_cap_v2', and 'sigmoid'.
+
+    Returns:
+        torch.FloatTensor: The log SNR values corresponding to the input time steps under the given beta schedule.
+
+    Raises:
+        ValueError: If `t` is outside the range [0, 1] or if the beta_schedule is unsupported.
+    """
     if t.min() < 0 or t.max() > 1:
         raise ValueError("`t` must be in range [0, 1].")
 
-    # From https://github.com/Zhengxinyang/LAS-Diffusion/blob/a7eb304a24dec2eb85a8d3899c73338e10435bba/network/model_utils.py#L345
+    # From https://github.com/Zhengxinyang/LAS-Diffusion/blob/main/network/model_utils.py#L345
     if beta_schedule == "linear":
         return -torch.log(torch.special.expm1(1e-4 + 10 * t ** 2))
     elif beta_schedule == "squaredcos_cap_v2":
@@ -65,15 +81,52 @@ class VDMSchedulerOutput(BaseOutput):
 
 
 class VDMScheduler(SchedulerMixin, ConfigMixin):
+    """
+    Implements the discrete and continuous scheduler as presented in `Variational Diffusion Models` [1].
+
+    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
+    methods the library implements for all schedulers such as loading and saving.
+
+    Args:
+        num_train_timesteps (`int`, defaults to None, *optional*):
+            The number of diffusion steps to train the model. If not provided, assumes continuous formulation.
+        beta_schedule (`str`, defaults to `"linear"`):
+            The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
+            `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+        clip_sample (`bool`, defaults to `True`):
+            Clip the predicted sample for numerical stability.
+        clip_sample_range (`float`, defaults to 1.0):
+            The maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
+        prediction_type (`str`, defaults to `epsilon`, *optional*):
+            Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
+            `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
+            Video](https://imagen.research.google/video/paper.pdf) paper).
+        thresholding (`bool`, defaults to `False`):
+            Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
+            as Stable Diffusion.
+        dynamic_thresholding_ratio (`float`, defaults to 0.995):
+            The ratio for the dynamic thresholding method. Valid only when `thresholding=True`.
+        sample_max_value (`float`, defaults to 1.0):
+            The threshold value for dynamic thresholding. Valid only when `thresholding=True`.
+        timestep_spacing (`str`, defaults to `"leading"`):
+            The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
+            Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
+        steps_offset (`int`, defaults to 0):
+            An offset added to the inference steps, as required by some model families.
+
+    References:
+        [1] "Variational Diffusion Models" by Diederik P. Kingma, Tim Salimans, Ben Poole and Jonathan Ho, ArXiv, 2021.
+    """
+
     @register_to_config
     def __init__(self,
                  num_train_timesteps: Optional[int] = None,
                  beta_schedule: str = "linear",
                  clip_sample: bool = True,
+                 clip_sample_range: float = 1.0,
                  prediction_type: str = "epsilon",
                  thresholding: bool = False,
                  dynamic_thresholding_ratio: float = 0.995,
-                 clip_sample_range: float = 1.0,
                  sample_max_value: float = 1.0,
                  timestep_spacing: str = "leading",
                  steps_offset: Union[int, float] = 0):
@@ -97,9 +150,22 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             self.betas = 1 - self.alphas
 
     def __len__(self) -> int:
+        """Returns the number of inference steps or the number of training timesteps or 1000, whichever is set."""
         return self.num_inference_steps or self.config.num_train_timesteps or 1000
 
     def log_snr(self, timesteps: torch.Tensor) -> torch.FloatTensor:
+        """
+        Computes the logarithm of the signal-to-noise ratio for given timesteps using the configured beta schedule.
+
+        Args:
+            timesteps (torch.Tensor): Tensor of timesteps, which can be either normalized to [0, 1] range or discrete.
+
+        Returns:
+            torch.FloatTensor: The computed log SNR values for the given timesteps.
+
+        Raises:
+            TypeError: If discrete timesteps are used without setting `num_train_timesteps` in the configuration.
+        """
         if not timesteps.is_floating_point():
             if not self.config.num_train_timesteps:
                 raise TypeError("Discrete timesteps require `self.config.num_train_timesteps` to be set.")
@@ -107,20 +173,47 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
 
         return log_snr(timesteps, beta_schedule=self.config.beta_schedule)
 
+
     def get_timesteps(self, num_steps: Optional[int] = None) -> np.ndarray:
+        """
+        Generates an array of timesteps based on the configured spacing method, either evenly spaced or leading/trailing.
+
+        Args:
+            num_steps (int, optional): The number of timesteps to generate. Defaults to `num_train_timesteps`.
+
+        Returns:
+            np.ndarray: An array of timesteps, distributed according to the `timestep_spacing` configuration.
+
+        Raises:
+            ValueError: If an unsupported `timestep_spacing` configuration is provided.
+        """
         if num_steps is None:
             num_steps = self.config.num_train_timesteps
         if self.config.timestep_spacing in ["linspace", "leading"]:
             timesteps = np.linspace(0, 1, num_steps,
                                     endpoint=self.config.timestep_spacing == "linspace")[::-1]
-        elif self.config.time_spacing == "trailing":
+        elif self.config.timestep_spacing == "trailing":
             timesteps = np.arange(1, 0, -1 / num_steps) - 1 / num_steps
         else:
             raise ValueError(f"`{self.config.timestep_spacing}` timestep spacing is not supported."
                              "Choose one of 'linspace', 'leading' or 'trailing'.")
         return timesteps.astype(np.float32).copy()
 
+
     def set_timesteps(self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None):
+        """
+        Sets the discrete timesteps used for the diffusion chain (to be run before inference).
+
+        Args:
+            num_inference_steps (`int`):
+                The number of diffusion steps used when generating samples with a pre-trained model. If used,
+                `timesteps` must be `None`.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+
+        Raises:
+            ValueError: If an unsupported `timestep_spacing` configuration is provided.
+        """
         if not self.config.num_train_timesteps:
             timesteps = self.get_timesteps(num_inference_steps)
         else:
@@ -200,7 +293,20 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
                   original_samples: torch.Tensor,
                   noise: torch.Tensor,
                   timesteps: torch.Tensor) -> torch.FloatTensor:
+        """
+        Adds noise to the original samples according to the noise schedule and the specified timesteps.
 
+        This method calculates the noisy samples by combining the original samples with Gaussian noise
+        scaled according to the time-dependent noise levels dictated by the signal-to-noise ratio.
+
+        Args:
+            original_samples (torch.Tensor): The original samples from the data distribution before noise is added.
+            noise (torch.Tensor): Gaussian noise to be added to the samples.
+            timesteps (torch.Tensor): Timesteps at which the samples are processed.
+
+        Returns:
+            torch.FloatTensor: The noisy samples after adding scaled Gaussian noise according to the SNR.
+        """
         log_snr = self.log_snr(timesteps)
         log_snr = log_snr.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
 
@@ -216,7 +322,22 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
              sample: torch.Tensor,
              generator: Optional[torch.Generator] = None,
              return_dict: bool = True) -> Union[VDMSchedulerOutput, Tuple]:
-        # From https://github.com/addtt/variational-diffusion-models/blob/7f81074dfdfc897178ad3d471458ea03e16197e8/vdm.py#L29
+        """
+        Performs a single step of the diffusion process, computing the previous sample and optionally the predicted
+        original sample based on the model output and current timestep.
+
+        Args:
+            model_output (torch.Tensor): The output from the diffusion model, typically noise predictions.
+            timestep (int, float, torch.Tensor): Current timestep in the diffusion process.
+            sample (torch.Tensor): The current sample at timestep `t`.
+            generator (torch.Generator, *optional*): Generator for random numbers, used for adding noise.
+            return_dict (bool): If True, returns a `VDMSchedulerOutput` object; otherwise, returns a tuple.
+
+        Returns:
+            VDMSchedulerOutput or Tuple: Depending on `return_dict`, returns either a data class containing
+            the previous sample and predicted original sample, or just the previous sample as a tuple.
+        """
+        # Based on https://github.com/addtt/variational-diffusion-models/blob/main/vdm.py#L29
 
         if isinstance(timestep, (int, float)):
             timestep = torch.tensor(timestep,
