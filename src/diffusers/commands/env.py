@@ -135,7 +135,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         is_google_colab_str = "Yes" if is_google_colab() else "No"
 
         accelerator = "NA"
-        if platform.system() in ("Linux", "Windows"):
+        if platform.system() in {"Linux", "Windows"}:
             try:
                 sp = subprocess.Popen(
                     ["nvidia-smi", "--query-gpu=gpu_name,memory.total", "--format=csv,noheader"],
