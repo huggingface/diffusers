@@ -36,7 +36,7 @@ from . import BaseDiffusersCLICommand
 
 
 def info_command_factory(_):
-    return EnvironmentCommand(None)
+    return EnvironmentCommand()
 
 
 def download_command_factory(args):
@@ -55,7 +55,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         )
         download_parser.set_defaults(func=download_command_factory)
 
-    def __init__(self, accelerate_config_file, *args) -> None:
+    def __init__(self, accelerate_config_file: str = None, *args):
         super().__init__(*args)
         self._accelerate_config_file = accelerate_config_file
 
@@ -201,5 +201,5 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         return info
 
     @staticmethod
-    def format_dict(d):
+    def format_dict(d: dict) -> str:
         return "\n".join([f"- {prop}: {val}" for prop, val in d.items()]) + "\n"
