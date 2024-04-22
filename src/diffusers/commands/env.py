@@ -15,6 +15,7 @@
 import os
 import platform
 import subprocess
+import getpass
 from argparse import ArgumentParser
 
 import huggingface_hub
@@ -35,7 +36,7 @@ from . import BaseDiffusersCLICommand
 
 
 def info_command_factory(_):
-    return EnvironmentCommand()
+    return EnvironmentCommand(None)
 
 
 def download_command_factory(args):
@@ -55,6 +56,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         download_parser.set_defaults(func=download_command_factory)
 
     def __init__(self, accelerate_config_file, *args) -> None:
+        super().__init__(*args)
         self._accelerate_config_file = accelerate_config_file
 
     def run(self):
@@ -103,13 +105,16 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             accelerate_version = accelerate.__version__
             # Get the default from the config file.
             # Taken from `transformers`.
-            if self._accelerate_config_file is not None or os.path.isfile(default_config_file):
-                accelerate_config = load_config_from_file(self._accelerate_config_file).to_dict()
+            if self._accelerate_config_file is not None:
+                if self._accelerate_config_file == "default_loc":
+                    accelerate_config = load_config_from_file(default_config_file).to_dict()
+                else:
+                    accelerate_config = load_config_from_file(self._accelerate_config_file).to_dict()
 
             accelerate_config_str = (
-                "\n".join([f"\t- {prop}: {val}" for prop, val in accelerate_config.items()])
+                "\n" + "\n".join([f"\t- {prop}: {val}" for prop, val in accelerate_config.items()])
                 if isinstance(accelerate_config, dict)
-                else f"\t{accelerate_config}"
+                else f"{accelerate_config}"
             )
 
         peft_version = "not installed"
@@ -168,8 +173,9 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             print("It seems you are running an unusual OS. Could you fill in the accelerator manually?")
 
         info = {
-            "`diffusers` version": version,
-            "Platform": platform.platform(),
+            "Diffusers version": version,
+            "Location": os.path.dirname(os.path.abspath(version)).replace(getpass.getuser(), "USER"),
+            "Platform": f"{platform.freedesktop_os_release()['PRETTY_NAME']} - {platform.platform()}",
             "Running on a notebook?": is_notebook_str,
             "Running on Google Colab?": is_google_colab_str,
             "Python version": platform.python_version(),
