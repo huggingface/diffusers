@@ -53,10 +53,14 @@
     title: Depth-to-image
   title: Generative tasks
 - sections:
-  - local: using-diffusers/merge_loras
-    title: Merge LoRAs
+  - local: using-diffusers/overview_techniques
+    title: Overview
   - local: training/distributed_inference
     title: Distributed inference with multiple GPUs
+  - local: using-diffusers/merge_loras
+    title: Merge LoRAs
+  - local: using-diffusers/callback
+    title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
     title: Improve image quality with deterministic generation
   - local: using-diffusers/control_brightness
@@ -65,9 +69,7 @@
     title: Prompt techniques
   - local: using-diffusers/freeu
     title: Improve generation quality with FreeU
-  - local: using-diffusers/callback
-    title: Pipeline callbacks
-  title: Techniques
+  title: Inference techniques
 - sections:
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
