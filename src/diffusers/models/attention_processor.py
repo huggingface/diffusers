@@ -2229,44 +2229,51 @@ class IPAdapterAttnProcessor(nn.Module):
         for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
             ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
         ):
-            if mask is not None:
-                if not isinstance(scale, list):
-                    scale = [scale]
+            skip = False
+            if isinstance(scale, list):
+                if all(s == 0 for s in scale):
+                    skip = True
+            elif scale == 0:
+                skip = True
+            if not skip:
+                if mask is not None:
+                    if not isinstance(scale, list):
+                        scale = [scale] * mask.shape[1]
 
-                current_num_images = mask.shape[1]
-                for i in range(current_num_images):
-                    ip_key = to_k_ip(current_ip_hidden_states[:, i, :, :])
-                    ip_value = to_v_ip(current_ip_hidden_states[:, i, :, :])
+                    current_num_images = mask.shape[1]
+                    for i in range(current_num_images):
+                        ip_key = to_k_ip(current_ip_hidden_states[:, i, :, :])
+                        ip_value = to_v_ip(current_ip_hidden_states[:, i, :, :])
+
+                        ip_key = attn.head_to_batch_dim(ip_key)
+                        ip_value = attn.head_to_batch_dim(ip_value)
+
+                        ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
+                        _current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
+                        _current_ip_hidden_states = attn.batch_to_head_dim(_current_ip_hidden_states)
+
+                        mask_downsample = IPAdapterMaskProcessor.downsample(
+                            mask[:, i, :, :],
+                            batch_size,
+                            _current_ip_hidden_states.shape[1],
+                            _current_ip_hidden_states.shape[2],
+                        )
+
+                        mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
+
+                        hidden_states = hidden_states + scale[i] * (_current_ip_hidden_states * mask_downsample)
+                else:
+                    ip_key = to_k_ip(current_ip_hidden_states)
+                    ip_value = to_v_ip(current_ip_hidden_states)
 
                     ip_key = attn.head_to_batch_dim(ip_key)
                     ip_value = attn.head_to_batch_dim(ip_value)
 
                     ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
-                    _current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
-                    _current_ip_hidden_states = attn.batch_to_head_dim(_current_ip_hidden_states)
+                    current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
+                    current_ip_hidden_states = attn.batch_to_head_dim(current_ip_hidden_states)
 
-                    mask_downsample = IPAdapterMaskProcessor.downsample(
-                        mask[:, i, :, :],
-                        batch_size,
-                        _current_ip_hidden_states.shape[1],
-                        _current_ip_hidden_states.shape[2],
-                    )
-
-                    mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
-
-                    hidden_states = hidden_states + scale[i] * (_current_ip_hidden_states * mask_downsample)
-            else:
-                ip_key = to_k_ip(current_ip_hidden_states)
-                ip_value = to_v_ip(current_ip_hidden_states)
-
-                ip_key = attn.head_to_batch_dim(ip_key)
-                ip_value = attn.head_to_batch_dim(ip_value)
-
-                ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
-                current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
-                current_ip_hidden_states = attn.batch_to_head_dim(current_ip_hidden_states)
-
-                hidden_states = hidden_states + scale * current_ip_hidden_states
+                    hidden_states = hidden_states + scale * current_ip_hidden_states
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
@@ -2439,57 +2446,64 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
             ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
         ):
-            if mask is not None:
-                if not isinstance(scale, list):
-                    scale = [scale]
+            skip = False
+            if isinstance(scale, list):
+                if all(s == 0 for s in scale):
+                    skip = True
+            elif scale == 0:
+                skip = True
+            if not skip:
+                if mask is not None:
+                    if not isinstance(scale, list):
+                        scale = [scale] * mask.shape[1]
 
-                current_num_images = mask.shape[1]
-                for i in range(current_num_images):
-                    ip_key = to_k_ip(current_ip_hidden_states[:, i, :, :])
-                    ip_value = to_v_ip(current_ip_hidden_states[:, i, :, :])
+                    current_num_images = mask.shape[1]
+                    for i in range(current_num_images):
+                        ip_key = to_k_ip(current_ip_hidden_states[:, i, :, :])
+                        ip_value = to_v_ip(current_ip_hidden_states[:, i, :, :])
+
+                        ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                        ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+                        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+                        # TODO: add support for attn.scale when we move to Torch 2.1
+                        _current_ip_hidden_states = F.scaled_dot_product_attention(
+                            query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
+                        )
+
+                        _current_ip_hidden_states = _current_ip_hidden_states.transpose(1, 2).reshape(
+                            batch_size, -1, attn.heads * head_dim
+                        )
+                        _current_ip_hidden_states = _current_ip_hidden_states.to(query.dtype)
+
+                        mask_downsample = IPAdapterMaskProcessor.downsample(
+                            mask[:, i, :, :],
+                            batch_size,
+                            _current_ip_hidden_states.shape[1],
+                            _current_ip_hidden_states.shape[2],
+                        )
+
+                        mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
+                        hidden_states = hidden_states + scale[i] * (_current_ip_hidden_states * mask_downsample)
+                else:
+                    ip_key = to_k_ip(current_ip_hidden_states)
+                    ip_value = to_v_ip(current_ip_hidden_states)
 
                     ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                     ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
                     # the output of sdp = (batch, num_heads, seq_len, head_dim)
                     # TODO: add support for attn.scale when we move to Torch 2.1
-                    _current_ip_hidden_states = F.scaled_dot_product_attention(
+                    current_ip_hidden_states = F.scaled_dot_product_attention(
                         query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
                     )
 
-                    _current_ip_hidden_states = _current_ip_hidden_states.transpose(1, 2).reshape(
+                    current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
                         batch_size, -1, attn.heads * head_dim
                     )
-                    _current_ip_hidden_states = _current_ip_hidden_states.to(query.dtype)
+                    current_ip_hidden_states = current_ip_hidden_states.to(query.dtype)
 
-                    mask_downsample = IPAdapterMaskProcessor.downsample(
-                        mask[:, i, :, :],
-                        batch_size,
-                        _current_ip_hidden_states.shape[1],
-                        _current_ip_hidden_states.shape[2],
-                    )
-
-                    mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
-                    hidden_states = hidden_states + scale[i] * (_current_ip_hidden_states * mask_downsample)
-            else:
-                ip_key = to_k_ip(current_ip_hidden_states)
-                ip_value = to_v_ip(current_ip_hidden_states)
-
-                ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-                # the output of sdp = (batch, num_heads, seq_len, head_dim)
-                # TODO: add support for attn.scale when we move to Torch 2.1
-                current_ip_hidden_states = F.scaled_dot_product_attention(
-                    query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
-                )
-
-                current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
-                    batch_size, -1, attn.heads * head_dim
-                )
-                current_ip_hidden_states = current_ip_hidden_states.to(query.dtype)
-
-                hidden_states = hidden_states + scale * current_ip_hidden_states
+                    hidden_states = hidden_states + scale * current_ip_hidden_states
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
