@@ -41,36 +41,37 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         batch_size = 4
         num_channels = 4
         num_frames = 4
-        sizes = (32, 32)
+        sizes = (16, 16)
 
         noise = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 8)).to(torch_device)
 
         return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
 
     @property
     def input_shape(self):
-        return (4, 4, 32, 32)
+        return (4, 4, 16, 16)
 
     @property
     def output_shape(self):
-        return (4, 4, 32, 32)
+        return (4, 4, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (32, 64),
+            "block_out_channels": (4, 8),
+            "norm_num_groups": 4,
             "down_block_types": (
                 "CrossAttnDownBlock3D",
                 "DownBlock3D",
             ),
             "up_block_types": ("UpBlock3D", "CrossAttnUpBlock3D"),
-            "cross_attention_dim": 32,
-            "attention_head_dim": 8,
+            "cross_attention_dim": 8,
+            "attention_head_dim": 2,
             "out_channels": 4,
             "in_channels": 4,
             "layers_per_block": 1,
-            "sample_size": 32,
+            "sample_size": 16,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -93,7 +94,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     # Overriding to set `norm_num_groups` needs to be different for this model.
     def test_forward_with_norm_groups(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
+        init_dict["block_out_channels"] = (32, 64)
         init_dict["norm_num_groups"] = 32
 
         model = self.model_class(**init_dict)
@@ -140,6 +141,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_model_attention_slicing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = 8
 
         model = self.model_class(**init_dict)
@@ -163,6 +165,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
     def test_feed_forward_chunking(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict["block_out_channels"] = (32, 64)
         init_dict["norm_num_groups"] = 32
 
         model = self.model_class(**init_dict)

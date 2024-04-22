@@ -24,14 +24,12 @@
   title: Tutorials
 - sections:
   - sections:
-    - local: using-diffusers/loading_overview
-      title: Overview
     - local: using-diffusers/loading
-      title: Load pipelines, models, and schedulers
-    - local: using-diffusers/schedulers
-      title: Load and compare different schedulers
+      title: Load pipelines
     - local: using-diffusers/custom_pipeline_overview
       title: Load community pipelines and components
+    - local: using-diffusers/schedulers
+      title: Load schedulers and models
     - local: using-diffusers/using_safetensors
       title: Load safetensors
     - local: using-diffusers/other-formats
@@ -71,7 +69,7 @@
     - local: using-diffusers/control_brightness
       title: Control image brightness
     - local: using-diffusers/weighted_prompts
-      title: Prompt weighting
+      title: Prompt techniques
     - local: using-diffusers/freeu
       title: Improve generation quality with FreeU
     title: Techniques
@@ -86,6 +84,8 @@
       title: Kandinsky
     - local: using-diffusers/controlnet
       title: ControlNet
+    - local: using-diffusers/t2i_adapter
+      title: T2I-Adapter
     - local: using-diffusers/shap-e
       title: Shap-E
     - local: using-diffusers/diffedit
@@ -170,6 +170,8 @@
       title: Token merging
     - local: optimization/deepcache
       title: DeepCache
+    - local: optimization/tgate
+      title: TGATE
     title: General optimizations
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
@@ -280,6 +282,10 @@
       title: ControlNet
     - local: api/pipelines/controlnet_sdxl
       title: ControlNet with Stable Diffusion XL
+    - local: api/pipelines/controlnetxs
+      title: ControlNet-XS
+    - local: api/pipelines/controlnetxs_sdxl
+      title: ControlNet-XS with Stable Diffusion XL
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -358,7 +364,7 @@
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
       - local: api/pipelines/stable_diffusion/adapter
-        title: Stable Diffusion T2I-Adapter
+        title: T2I-Adapter
       - local: api/pipelines/stable_diffusion/gligen
         title: GLIGEN (Grounded Language-to-Image Generation)
       title: Stable Diffusion

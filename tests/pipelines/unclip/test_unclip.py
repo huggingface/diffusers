@@ -421,6 +421,12 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @nightly
 class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -453,6 +459,12 @@ class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class UnCLIPPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()

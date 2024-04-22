@@ -204,6 +204,11 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

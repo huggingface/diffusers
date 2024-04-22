@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import inspect
 import os
 from pathlib import Path
@@ -25,7 +26,7 @@ from packaging import version
 from torch import nn
 
 from .. import __version__
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -36,6 +37,7 @@ from ..utils import (
     get_adapter_name,
     get_peft_kwargs,
     is_accelerate_available,
+    is_peft_version,
     is_transformers_available,
     logging,
     recurse_remove_peft_layers,
@@ -113,7 +115,7 @@ class LoraLoaderMixin:
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
-        is_correct_format = all("lora" in key for key in state_dict.keys())
+        is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
@@ -281,7 +283,7 @@ class LoraLoaderMixin:
                     subfolder=subfolder,
                     user_agent=user_agent,
                 )
-                state_dict = torch.load(model_file, map_location="cpu")
+                state_dict = load_state_dict(model_file)
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
@@ -451,6 +453,15 @@ class LoraLoaderMixin:
                     rank[key] = val.shape[1]
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
+            if "use_dora" in lora_config_kwargs:
+                if lora_config_kwargs["use_dora"]:
+                    if is_peft_version("<", "0.9.0"):
+                        raise ValueError(
+                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                        )
+                else:
+                    if is_peft_version("<", "0.9.0"):
+                        lora_config_kwargs.pop("use_dora")
             lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
@@ -572,6 +583,15 @@ class LoraLoaderMixin:
                     }
 
                 lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+                if "use_dora" in lora_config_kwargs:
+                    if lora_config_kwargs["use_dora"]:
+                        if is_peft_version("<", "0.9.0"):
+                            raise ValueError(
+                                "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                            )
+                    else:
+                        if is_peft_version("<", "0.9.0"):
+                            lora_config_kwargs.pop("use_dora")
                 lora_config = LoraConfig(**lora_config_kwargs)
 
                 # adapter_name
@@ -654,6 +674,13 @@ class LoraLoaderMixin:
                     rank[key] = val.shape[1]
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict)
+            if "use_dora" in lora_config_kwargs:
+                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
+                    raise ValueError(
+                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                    )
+                else:
+                    lora_config_kwargs.pop("use_dora")
             lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
@@ -959,7 +986,7 @@ class LoraLoaderMixin:
         self,
         adapter_names: Union[List[str], str],
         text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
-        text_encoder_weights: List[float] = None,
+        text_encoder_weights: Optional[Union[float, List[float], List[None]]] = None,
     ):
         """
         Sets the adapter layers for the text encoder.
@@ -977,15 +1004,20 @@ class LoraLoaderMixin:
             raise ValueError("PEFT backend is required for this method.")
 
         def process_weights(adapter_names, weights):
-            if weights is None:
-                weights = [1.0] * len(adapter_names)
-            elif isinstance(weights, float):
-                weights = [weights]
+            # Expand weights into a list, one entry per adapter
+            # e.g. for 2 adapters:  7 -> [7,7] ; [3, None] -> [3, None]
+            if not isinstance(weights, list):
+                weights = [weights] * len(adapter_names)
 
             if len(adapter_names) != len(weights):
                 raise ValueError(
                     f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
                 )
+
+            # Set None values to default of 1.0
+            # e.g. [7,7] -> [7,7] ; [3, None] -> [3,1]
+            weights = [w if w is not None else 1.0 for w in weights]
+
             return weights
 
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
@@ -1033,17 +1065,77 @@ class LoraLoaderMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        adapter_weights: Optional[List[float]] = None,
+        adapter_weights: Optional[Union[float, Dict, List[float], List[Dict]]] = None,
     ):
+        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+
+        adapter_weights = copy.deepcopy(adapter_weights)
+
+        # Expand weights into a list, one entry per adapter
+        if not isinstance(adapter_weights, list):
+            adapter_weights = [adapter_weights] * len(adapter_names)
+
+        if len(adapter_names) != len(adapter_weights):
+            raise ValueError(
+                f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(adapter_weights)}"
+            )
+
+        # Decompose weights into weights for unet, text_encoder and text_encoder_2
+        unet_lora_weights, text_encoder_lora_weights, text_encoder_2_lora_weights = [], [], []
+
+        list_adapters = self.get_list_adapters()  # eg {"unet": ["adapter1", "adapter2"], "text_encoder": ["adapter2"]}
+        all_adapters = {
+            adapter for adapters in list_adapters.values() for adapter in adapters
+        }  # eg ["adapter1", "adapter2"]
+        invert_list_adapters = {
+            adapter: [part for part, adapters in list_adapters.items() if adapter in adapters]
+            for adapter in all_adapters
+        }  # eg {"adapter1": ["unet"], "adapter2": ["unet", "text_encoder"]}
+
+        for adapter_name, weights in zip(adapter_names, adapter_weights):
+            if isinstance(weights, dict):
+                unet_lora_weight = weights.pop("unet", None)
+                text_encoder_lora_weight = weights.pop("text_encoder", None)
+                text_encoder_2_lora_weight = weights.pop("text_encoder_2", None)
+
+                if len(weights) > 0:
+                    raise ValueError(
+                        f"Got invalid key '{weights.keys()}' in lora weight dict for adapter {adapter_name}."
+                    )
+
+                if text_encoder_2_lora_weight is not None and not hasattr(self, "text_encoder_2"):
+                    logger.warning(
+                        "Lora weight dict contains text_encoder_2 weights but will be ignored because pipeline does not have text_encoder_2."
+                    )
+
+                # warn if adapter doesn't have parts specified by adapter_weights
+                for part_weight, part_name in zip(
+                    [unet_lora_weight, text_encoder_lora_weight, text_encoder_2_lora_weight],
+                    ["unet", "text_encoder", "text_encoder_2"],
+                ):
+                    if part_weight is not None and part_name not in invert_list_adapters[adapter_name]:
+                        logger.warning(
+                            f"Lora weight dict for adapter '{adapter_name}' contains {part_name}, but this will be ignored because {adapter_name} does not contain weights for {part_name}. Valid parts for {adapter_name} are: {invert_list_adapters[adapter_name]}."
+                        )
+
+            else:
+                unet_lora_weight = weights
+                text_encoder_lora_weight = weights
+                text_encoder_2_lora_weight = weights
+
+            unet_lora_weights.append(unet_lora_weight)
+            text_encoder_lora_weights.append(text_encoder_lora_weight)
+            text_encoder_2_lora_weights.append(text_encoder_2_lora_weight)
+
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         # Handle the UNET
-        unet.set_adapters(adapter_names, adapter_weights)
+        unet.set_adapters(adapter_names, unet_lora_weights)
 
         # Handle the Text Encoder
         if hasattr(self, "text_encoder"):
-            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, adapter_weights)
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, text_encoder_lora_weights)
         if hasattr(self, "text_encoder_2"):
-            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, adapter_weights)
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, text_encoder_2_lora_weights)
 
     def disable_lora(self):
         if not USE_PEFT_BACKEND:
@@ -1175,6 +1267,10 @@ class LoraLoaderMixin:
                 for adapter_name in adapter_names:
                     unet_module.lora_A[adapter_name].to(device)
                     unet_module.lora_B[adapter_name].to(device)
+                    # this is a param, not a module, so device placement is not in-place -> re-assign
+                    unet_module.lora_magnitude_vector[adapter_name] = unet_module.lora_magnitude_vector[
+                        adapter_name
+                    ].to(device)
 
         # Handle the text encoder
         modules_to_process = []
@@ -1191,6 +1287,10 @@ class LoraLoaderMixin:
                     for adapter_name in adapter_names:
                         text_encoder_module.lora_A[adapter_name].to(device)
                         text_encoder_module.lora_B[adapter_name].to(device)
+                        # this is a param, not a module, so device placement is not in-place -> re-assign
+                        text_encoder_module.lora_magnitude_vector[
+                            adapter_name
+                        ] = text_encoder_module.lora_magnitude_vector[adapter_name].to(device)
 
 
 class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
@@ -1243,7 +1343,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             unet_config=self.unet.config,
             **kwargs,
         )
-        is_correct_format = all("lora" in key for key in state_dict.keys())
+        is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 

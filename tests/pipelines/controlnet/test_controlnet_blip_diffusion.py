@@ -28,7 +28,7 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 from src.diffusers.pipelines.blip_diffusion.blip_image_processing import BlipImageProcessor
 from src.diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
 from src.diffusers.pipelines.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
@@ -195,6 +195,12 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
             "output_type": "np",
         }
         return inputs
+
+    def test_dict_tuple_outputs_equivalent(self):
+        expected_slice = None
+        if torch_device == "cpu":
+            expected_slice = np.array([0.4803, 0.3865, 0.1422, 0.6119, 0.2283, 0.6365, 0.5453, 0.5205, 0.3581])
+        super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     def test_blipdiffusion_controlnet(self):
         device = "cpu"

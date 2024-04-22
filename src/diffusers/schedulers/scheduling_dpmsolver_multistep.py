@@ -166,8 +166,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             the sampling process. If `True`, the sigmas and time steps are determined according to a sequence of
             `lambda(t)`.
         final_sigmas_type (`str`, defaults to `"zero"`):
-            The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final sigma
-            is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
+            The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final
+            sigma is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
         lambda_min_clipped (`float`, defaults to `-inf`):
             Clipping threshold for the minimum value of `lambda(t)` for numerical stability. This is critical for the
             cosine (`squaredcos_cap_v2`) noise schedule.
@@ -1018,7 +1018,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             # add_noise is called after first denoising step (for inpainting)
             step_indices = [self.step_index] * timesteps.shape[0]
         else:
-            # add noise is called bevore first denoising step to create inital latent(img2img)
+            # add noise is called before first denoising step to create initial latent(img2img)
             step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()

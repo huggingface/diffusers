@@ -13,14 +13,12 @@
 # limitations under the License.
 
 import inspect
-import math
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL
 import torch
-import torch.fft as fft
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
@@ -61,6 +59,7 @@ EXAMPLE_DOC_STRING = """
         ...     PIAPipeline,
         ... )
         >>> from diffusers.utils import export_to_gif, load_image
+
         >>> adapter = MotionAdapter.from_pretrained("../checkpoints/pia-diffusers")
         >>> pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter)
         >>> pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
@@ -130,71 +129,6 @@ def prepare_mask_coef_by_statistics(num_frames: int, cond_frame: int, motion_sca
     return coef
 
 
-def _get_freeinit_freq_filter(
-    shape: Tuple[int, ...],
-    device: Union[str, torch.dtype],
-    filter_type: str,
-    order: float,
-    spatial_stop_frequency: float,
-    temporal_stop_frequency: float,
-) -> torch.Tensor:
-    r"""Returns the FreeInit filter based on filter type and other input conditions."""
-
-    time, height, width = shape[-3], shape[-2], shape[-1]
-    mask = torch.zeros(shape)
-
-    if spatial_stop_frequency == 0 or temporal_stop_frequency == 0:
-        return mask
-
-    if filter_type == "butterworth":
-
-        def retrieve_mask(x):
-            return 1 / (1 + (x / spatial_stop_frequency**2) ** order)
-    elif filter_type == "gaussian":
-
-        def retrieve_mask(x):
-            return math.exp(-1 / (2 * spatial_stop_frequency**2) * x)
-    elif filter_type == "ideal":
-
-        def retrieve_mask(x):
-            return 1 if x <= spatial_stop_frequency * 2 else 0
-    else:
-        raise NotImplementedError("`filter_type` must be one of gaussian, butterworth or ideal")
-
-    for t in range(time):
-        for h in range(height):
-            for w in range(width):
-                d_square = (
-                    ((spatial_stop_frequency / temporal_stop_frequency) * (2 * t / time - 1)) ** 2
-                    + (2 * h / height - 1) ** 2
-                    + (2 * w / width - 1) ** 2
-                )
-                mask[..., t, h, w] = retrieve_mask(d_square)
-
-    return mask.to(device)
-
-
-def _freq_mix_3d(x: torch.Tensor, noise: torch.Tensor, LPF: torch.Tensor) -> torch.Tensor:
-    r"""Noise reinitialization."""
-    # FFT
-    x_freq = fft.fftn(x, dim=(-3, -2, -1))
-    x_freq = fft.fftshift(x_freq, dim=(-3, -2, -1))
-    noise_freq = fft.fftn(noise, dim=(-3, -2, -1))
-    noise_freq = fft.fftshift(noise_freq, dim=(-3, -2, -1))
-
-    # frequency mix
-    HPF = 1 - LPF
-    x_freq_low = x_freq * LPF
-    noise_freq_high = noise_freq * HPF
-    x_freq_mixed = x_freq_low + noise_freq_high  # mix in freq domain
-
-    # IFFT
-    x_freq_mixed = fft.ifftshift(x_freq_mixed, dim=(-3, -2, -1))
-    x_mixed = fft.ifftn(x_freq_mixed, dim=(-3, -2, -1)).real
-
-    return x_mixed
-
-
 @dataclass
 class PIAPipelineOutput(BaseOutput):
     r"""
@@ -202,9 +136,9 @@ class PIAPipelineOutput(BaseOutput):
 
     Args:
         frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
-        Nested list of length `batch_size` with denoised PIL image sequences of length `num_frames`,
-        NumPy array of shape `(batch_size, num_frames, channels, height, width,
-        Torch tensor of shape `(batch_size, num_frames, channels, height, width)`.
+            Nested list of length `batch_size` with denoised PIL image sequences of length `num_frames`, NumPy array of
+            shape `(batch_size, num_frames, channels, height, width, Torch tensor of shape `(batch_size, num_frames,
+            channels, height, width)`.
     """
 
     frames: Union[torch.Tensor, np.ndarray, List[List[PIL.Image.Image]]]
@@ -788,7 +722,8 @@ class PIAPipeline(
                 The input image to be used for video generation.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            strength (`float`, *optional*, defaults to 1.0): Indicates extent to transform the reference `image`. Must be between 0 and 1.
+            strength (`float`, *optional*, defaults to 1.0):
+                Indicates extent to transform the reference `image`. Must be between 0 and 1.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated video.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -825,16 +760,15 @@ class PIAPipeline(
             ip_adapter_image: (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
-                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
-                if `do_classifier_free_guidance` is set to `True`.
-                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
+                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
+                contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
             motion_scale: (`int`, *optional*, defaults to 0):
-                Parameter that controls the amount and type of motion that is added to the image. Increasing the value increases the amount of motion, while specific
-                ranges of values control the type of motion that is added. Must be between 0 and 8.
-                Set between 0-2 to only increase the amount of motion.
-                Set between 3-5 to create looping motion.
-                Set between 6-8 to perform motion with image style transfer.
+                Parameter that controls the amount and type of motion that is added to the image. Increasing the value
+                increases the amount of motion, while specific ranges of values control the type of motion that is
+                added. Must be between 0 and 8. Set between 0-2 to only increase the amount of motion. Set between 3-5
+                to create looping motion. Set between 6-8 to perform motion with image style transfer.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or
                 `np.array`.
@@ -855,14 +789,14 @@ class PIAPipeline(
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
         Returns:
             [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] is
-                returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
+                If `return_dict` is `True`, [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] is returned, otherwise a
+                `tuple` is returned where the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -979,8 +913,10 @@ class PIAPipeline(
                     latents, free_init_iter, num_inference_steps, device, latents.dtype, generator
                 )
 
+            self._num_timesteps = len(timesteps)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
+
+            with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents

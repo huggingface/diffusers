@@ -169,6 +169,8 @@ class StableDiffusionXLInstructPix2PixPipeline(
             Whether to use the [invisible_watermark library](https://github.com/ShieldMnt/invisible-watermark/) to
             watermark output images. If not defined, it will default to True if the package is installed, otherwise no
             watermarker will be used.
+        is_cosxl_edit (`bool`, *optional*):
+            When set the image latents are scaled.
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
@@ -185,6 +187,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
+        is_cosxl_edit: Optional[bool] = False,
     ):
         super().__init__()
 
@@ -201,6 +204,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.default_sample_size = self.unet.config.sample_size
+        self.is_cosxl_edit = is_cosxl_edit
 
         add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
 
@@ -483,7 +487,12 @@ class StableDiffusionXLInstructPix2PixPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -550,6 +559,9 @@ class StableDiffusionXLInstructPix2PixPipeline(
 
         if image_latents.dtype != self.vae.dtype:
             image_latents = image_latents.to(dtype=self.vae.dtype)
+
+        if self.is_cosxl_edit:
+            image_latents = image_latents * self.vae.config.scaling_factor
 
         return image_latents
 
@@ -659,7 +671,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             image_guidance_scale (`float`, *optional*, defaults to 1.5):
-                Image guidance scale is to push the generated image towards the inital image `image`. Image guidance
+                Image guidance scale is to push the generated image towards the initial image `image`. Image guidance
                 scale is enabled by setting `image_guidance_scale > 1`. Higher image guidance scale encourages to
                 generate images that are closely linked to the source image `image`, usually at the expense of lower
                 image quality. This pipeline requires a value of at least `1`.
@@ -918,7 +930,12 @@ class StableDiffusionXLInstructPix2PixPipeline(
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
+                latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                if latents.dtype != latents_dtype:
+                    if torch.backends.mps.is_available():
+                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                        latents = latents.to(latents_dtype)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -937,6 +954,10 @@ class StableDiffusionXLInstructPix2PixPipeline(
             if needs_upcasting:
                 self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+            elif latents.dtype != self.vae.dtype:
+                if torch.backends.mps.is_available():
+                    # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                    self.vae = self.vae.to(latents.dtype)
 
             # unscale/denormalize the latents
             # denormalize with the mean and std if available and not None

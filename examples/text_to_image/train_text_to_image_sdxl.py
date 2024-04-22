@@ -23,6 +23,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import accelerate
@@ -590,12 +591,22 @@ def main(args):
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
+    if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
+        # due to pytorch#99272, MPS does not yet support bfloat16.
+        raise ValueError(
+            "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
+        )
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -980,6 +991,11 @@ def main(args):
         model = model._orig_mod if is_compiled_module(model) else model
         return model
 
+    if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
+
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1213,7 +1229,7 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.cuda.amp.autocast():
+                with autocast_ctx:
                     images = [
                         pipeline(**pipeline_args, generator=generator, num_inference_steps=25).images[0]
                         for _ in range(args.num_validation_images)
@@ -1235,6 +1251,10 @@ def main(args):
 
                 del pipeline
                 torch.cuda.empty_cache()
+
+                if args.use_ema:
+                    # Switch back to the original UNet parameters.
+                    ema_unet.restore(unet.parameters())
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1268,7 +1288,8 @@ def main(args):
         if args.validation_prompt and args.num_validation_images > 0:
             pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            with torch.cuda.amp.autocast():
+
+            with autocast_ctx:
                 images = [
                     pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
                     for _ in range(args.num_validation_images)
