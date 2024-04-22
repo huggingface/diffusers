@@ -1279,6 +1279,8 @@ def main(args):
             repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
+        else:
+            repo_id = Path(args.output_dir).name
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
