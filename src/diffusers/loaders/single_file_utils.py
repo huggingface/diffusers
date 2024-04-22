@@ -35,7 +35,15 @@ from ..schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ..utils import deprecate, is_accelerate_available, is_transformers_available, logging
+from ..utils import (
+    SAFETENSORS_FILE_EXTENSION,
+    SAFETENSORS_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+    deprecate,
+    is_accelerate_available,
+    is_transformers_available,
+    logging,
+)
 from ..utils.hub_utils import _get_model_file
 
 
@@ -269,6 +277,11 @@ def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
     weights_name = match.group(3)
 
     return repo_id, weights_name
+
+
+def _is_model_weights_in_cached_folder(cached_folder, name):
+    model_path = os.path.join(cached_folder, name)
+
 
 
 def load_single_file_checkpoint(
@@ -1361,7 +1374,7 @@ def create_diffusers_clip_model_from_ldm(
 
 
 def _legacy_load_scheduler(
-    pipeline_class_name,
+    class_name,
     checkpoint,
     original_config=None,
     prediction_type=None,
@@ -1408,11 +1421,11 @@ def _legacy_load_scheduler(
         scheduler_config["clip_sample"] = False
         scheduler_config["set_alpha_to_one"] = False
 
-    if scheduler_type == "pndm":
+    if class_name == "PNDMScheduler" or scheduler_type == "pndm":
         scheduler_config["skip_prk_steps"] = True
         scheduler = PNDMScheduler.from_config(scheduler_config)
 
-    elif scheduler_type == "lms":
+    elif class_name == "LMSDiscreteScheduler" or scheduler_type == "lms":
         scheduler = LMSDiscreteScheduler.from_config(scheduler_config)
 
     elif scheduler_type == "heun":
@@ -1453,7 +1466,7 @@ def _legacy_load_scheduler(
     else:
         raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
 
-    if pipeline_class_name == "StableDiffusionUpscalePipeline":
+    if class_name == "StableDiffusionUpscalePipeline":
         scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler")
         low_res_scheduler = DDPMScheduler.from_pretrained(
             "stabilityai/stable-diffusion-x4-upscaler", subfolder="low_res_scheduler"
