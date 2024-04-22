@@ -18,20 +18,18 @@
   - local: tutorials/basic_training
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
-    title: Inference with PEFT
+    title: Load LoRAs for inference
   - local: tutorials/fast_diffusion
     title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
 - sections:
   - sections:
-    - local: using-diffusers/loading_overview
-      title: Overview
     - local: using-diffusers/loading
-      title: Load pipelines, models, and schedulers
-    - local: using-diffusers/schedulers
-      title: Load and compare different schedulers
+      title: Load pipelines
     - local: using-diffusers/custom_pipeline_overview
       title: Load community pipelines and components
+    - local: using-diffusers/schedulers
+      title: Load schedulers and models
     - local: using-diffusers/using_safetensors
       title: Load safetensors
     - local: using-diffusers/other-formats
@@ -62,6 +60,8 @@
       title: Textual inversion
     - local: using-diffusers/ip_adapter
       title: IP-Adapter
+    - local: using-diffusers/merge_loras
+      title: Merge LoRAs
     - local: training/distributed_inference
       title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
@@ -69,7 +69,7 @@
     - local: using-diffusers/control_brightness
       title: Control image brightness
     - local: using-diffusers/weighted_prompts
-      title: Prompt weighting
+      title: Prompt techniques
     - local: using-diffusers/freeu
       title: Improve generation quality with FreeU
     title: Techniques
@@ -84,6 +84,8 @@
       title: Kandinsky
     - local: using-diffusers/controlnet
       title: ControlNet
+    - local: using-diffusers/t2i_adapter
+      title: T2I-Adapter
     - local: using-diffusers/shap-e
       title: Shap-E
     - local: using-diffusers/diffedit
@@ -102,6 +104,8 @@
       title: Latent Consistency Model-LoRA
     - local: using-diffusers/inference_with_lcm
       title: Latent Consistency Model
+    - local: using-diffusers/inference_with_tcd_lora
+      title: Trajectory Consistency Distillation-LoRA
     - local: using-diffusers/svd
       title: Stable Video Diffusion
     title: Specific pipeline examples
@@ -166,6 +170,8 @@
       title: Token merging
     - local: optimization/deepcache
       title: DeepCache
+    - local: optimization/tgate
+      title: TGATE
     title: General optimizations
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
@@ -276,6 +282,10 @@
       title: ControlNet
     - local: api/pipelines/controlnet_sdxl
       title: ControlNet with Stable Diffusion XL
+    - local: api/pipelines/controlnetxs
+      title: ControlNet-XS
+    - local: api/pipelines/controlnetxs_sdxl
+      title: ControlNet-XS with Stable Diffusion XL
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -302,6 +312,8 @@
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
+    - local: api/pipelines/ledits_pp
+      title: LEDITS++
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
@@ -318,6 +330,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/stable_cascade
+      title: Stable Cascade
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -350,7 +364,7 @@
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
       - local: api/pipelines/stable_diffusion/adapter
-        title: Stable Diffusion T2I-Adapter
+        title: T2I-Adapter
       - local: api/pipelines/stable_diffusion/gligen
         title: GLIGEN (Grounded Language-to-Image Generation)
       title: Stable Diffusion
@@ -392,6 +406,10 @@
       title: DPMSolverSDEScheduler
     - local: api/schedulers/singlestep_dpm_solver
       title: DPMSolverSinglestepScheduler
+    - local: api/schedulers/edm_multistep_dpm_solver
+      title: EDMDPMSolverMultistepScheduler
+    - local: api/schedulers/edm_euler
+      title: EDMEulerScheduler
     - local: api/schedulers/euler_ancestral
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler
@@ -418,6 +436,8 @@
       title: ScoreSdeVeScheduler
     - local: api/schedulers/score_sde_vp
       title: ScoreSdeVpScheduler
+    - local: api/schedulers/tcd
+      title: TCDScheduler
     - local: api/schedulers/unipc
       title: UniPCMultistepScheduler
     - local: api/schedulers/vq_diffusion

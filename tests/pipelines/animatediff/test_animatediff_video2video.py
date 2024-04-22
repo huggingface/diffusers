@@ -18,7 +18,7 @@ from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_PARAMS, VIDEO_TO_VIDEO_BATCH_PARAMS
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineFromPipeTesterMixin, PipelineTesterMixin
 
 
 def to_np(tensor):
@@ -28,7 +28,9 @@ def to_np(tensor):
     return tensor
 
 
-class AnimateDiffVideoToVideoPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class AnimateDiffVideoToVideoPipelineFastTests(
+    IPAdapterTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase
+):
     pipeline_class = AnimateDiffVideoToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = VIDEO_TO_VIDEO_BATCH_PARAMS
@@ -135,6 +137,34 @@ class AnimateDiffVideoToVideoPipelineFastTests(IPAdapterTesterMixin, PipelineTes
     def test_attention_slicing_forward_pass(self):
         pass
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array(
+                [
+                    0.4947,
+                    0.4780,
+                    0.4340,
+                    0.4666,
+                    0.4028,
+                    0.4645,
+                    0.4915,
+                    0.4101,
+                    0.4308,
+                    0.4581,
+                    0.3582,
+                    0.4953,
+                    0.4466,
+                    0.5348,
+                    0.5863,
+                    0.5299,
+                    0.5213,
+                    0.5017,
+                ]
+            )
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_inference_batch_single_identical(
         self,
         batch_size=2,
@@ -237,6 +267,17 @@ class AnimateDiffVideoToVideoPipelineFastTests(IPAdapterTesterMixin, PipelineTes
         inputs = self.get_dummy_inputs(torch_device)
         inputs.pop("prompt")
         inputs["prompt_embeds"] = torch.randn((1, 4, 32), device=torch_device)
+        pipe(**inputs)
+
+    def test_latent_inputs(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["latents"] = torch.randn((1, 4, 1, 32, 32), device=torch_device)
+        inputs.pop("video")
         pipe(**inputs)
 
     @unittest.skipIf(

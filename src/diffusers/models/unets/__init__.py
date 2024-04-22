@@ -10,6 +10,7 @@ if is_torch_available():
     from .unet_kandinsky3 import Kandinsky3UNet
     from .unet_motion_model import MotionAdapter, UNetMotionModel
     from .unet_spatio_temporal_condition import UNetSpatioTemporalConditionModel
+    from .unet_stable_cascade import StableCascadeUNet
     from .uvit_2d import UVit2DModel
 
 

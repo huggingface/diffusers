@@ -111,7 +111,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
 
@@ -278,8 +278,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 A random number generator.
             return_dict (`bool`):
-                Whether or not to return a [`~schedulers.scheduling_euler_discrete.EDMEulerSchedulerOutput`] or
-                tuple.
+                Whether or not to return a [`~schedulers.scheduling_euler_discrete.EDMEulerSchedulerOutput`] or tuple.
 
         Returns:
             [`~schedulers.scheduling_euler_discrete.EDMEulerSchedulerOutput`] or `tuple`:
@@ -367,7 +366,11 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         # self.begin_index is None when scheduler is used for training, or pipeline does not implement set_begin_index
         if self.begin_index is None:
             step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        elif self.step_index is not None:
+            # add_noise is called after first denoising step (for inpainting)
+            step_indices = [self.step_index] * timesteps.shape[0]
         else:
+            # add noise is called before first denoising step to create initial latent(img2img)
             step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()

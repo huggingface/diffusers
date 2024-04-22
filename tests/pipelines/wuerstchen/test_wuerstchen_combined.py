@@ -45,7 +45,6 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         "return_dict",
         "prior_num_inference_steps",
         "output_type",
-        "return_dict",
     ]
     test_xformers_attention = True
 

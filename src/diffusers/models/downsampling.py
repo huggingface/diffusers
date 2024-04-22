@@ -18,8 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import USE_PEFT_BACKEND
-from .lora import LoRACompatibleConv
+from ..utils import deprecate
 from .normalization import RMSNorm
 from .upsampling import upfirdn2d_native
 
@@ -103,7 +102,6 @@ class Downsample2D(nn.Module):
         self.padding = padding
         stride = 2
         self.name = name
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
 
         if norm_type == "ln_norm":
             self.norm = nn.LayerNorm(channels, eps, elementwise_affine)
@@ -115,7 +113,7 @@ class Downsample2D(nn.Module):
             raise ValueError(f"unknown norm_type: {norm_type}")
 
         if use_conv:
-            conv = conv_cls(
+            conv = nn.Conv2d(
                 self.channels, self.out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias
             )
         else:
@@ -131,7 +129,10 @@ class Downsample2D(nn.Module):
         else:
             self.conv = conv
 
-    def forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
         assert hidden_states.shape[1] == self.channels
 
         if self.norm is not None:
@@ -143,13 +144,7 @@ class Downsample2D(nn.Module):
 
         assert hidden_states.shape[1] == self.channels
 
-        if not USE_PEFT_BACKEND:
-            if isinstance(self.conv, LoRACompatibleConv):
-                hidden_states = self.conv(hidden_states, scale)
-            else:
-                hidden_states = self.conv(hidden_states)
-        else:
-            hidden_states = self.conv(hidden_states)
+        hidden_states = self.conv(hidden_states)
 
         return hidden_states
 

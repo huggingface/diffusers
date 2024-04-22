@@ -18,10 +18,9 @@ import numpy as np
 import torch
 from torch import nn
 
-from ..utils import USE_PEFT_BACKEND, deprecate
+from ..utils import deprecate
 from .activations import get_activation
 from .attention_processor import Attention
-from .lora import LoRACompatibleLinear
 
 
 def get_timestep_embedding(
@@ -200,9 +199,8 @@ class TimestepEmbedding(nn.Module):
         sample_proj_bias=True,
     ):
         super().__init__()
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
 
-        self.linear_1 = linear_cls(in_channels, time_embed_dim, sample_proj_bias)
+        self.linear_1 = nn.Linear(in_channels, time_embed_dim, sample_proj_bias)
 
         if cond_proj_dim is not None:
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
@@ -215,7 +213,7 @@ class TimestepEmbedding(nn.Module):
             time_embed_dim_out = out_dim
         else:
             time_embed_dim_out = time_embed_dim
-        self.linear_2 = linear_cls(time_embed_dim, time_embed_dim_out, sample_proj_bias)
+        self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim_out, sample_proj_bias)
 
         if post_act_fn is None:
             self.post_act = None
@@ -472,6 +470,22 @@ class IPAdapterFullImageProjection(nn.Module):
 
     def forward(self, image_embeds: torch.FloatTensor):
         return self.norm(self.ff(image_embeds))
+
+
+class IPAdapterFaceIDImageProjection(nn.Module):
+    def __init__(self, image_embed_dim=1024, cross_attention_dim=1024, mult=1, num_tokens=1):
+        super().__init__()
+        from .attention import FeedForward
+
+        self.num_tokens = num_tokens
+        self.cross_attention_dim = cross_attention_dim
+        self.ff = FeedForward(image_embed_dim, cross_attention_dim * num_tokens, mult=mult, activation_fn="gelu")
+        self.norm = nn.LayerNorm(cross_attention_dim)
+
+    def forward(self, image_embeds: torch.FloatTensor):
+        x = self.ff(image_embeds)
+        x = x.reshape(-1, self.num_tokens, self.cross_attention_dim)
+        return self.norm(x)
 
 
 class CombinedTimestepLabelEmbeddings(nn.Module):
@@ -796,17 +810,15 @@ class IPAdapterPlusImageProjection(nn.Module):
     """Resampler of IP-Adapter Plus.
 
     Args:
-    ----
-        embed_dims (int): The feature dimension. Defaults to 768.
-        output_dims (int): The number of output channels, that is the same
-            number of the channels in the
-            `unet.config.cross_attention_dim`. Defaults to 1024.
-        hidden_dims (int): The number of hidden channels. Defaults to 1280.
-        depth (int): The number of blocks. Defaults to 8.
-        dim_head (int): The number of head channels. Defaults to 64.
-        heads (int): Parallel attention heads. Defaults to 16.
-        num_queries (int): The number of queries. Defaults to 8.
-        ffn_ratio (float): The expansion ratio of feedforward network hidden
+        embed_dims (int): The feature dimension. Defaults to 768. output_dims (int): The number of output channels,
+        that is the same
+            number of the channels in the `unet.config.cross_attention_dim`. Defaults to 1024.
+        hidden_dims (int):
+            The number of hidden channels. Defaults to 1280. depth (int): The number of blocks. Defaults
+        to 8. dim_head (int): The number of head channels. Defaults to 64. heads (int): Parallel attention heads.
+        Defaults to 16. num_queries (int):
+            The number of queries. Defaults to 8. ffn_ratio (float): The expansion ratio
+        of feedforward network hidden
             layer channels. Defaults to 4.
     """
 
@@ -856,11 +868,8 @@ class IPAdapterPlusImageProjection(nn.Module):
         """Forward pass.
 
         Args:
-        ----
             x (torch.Tensor): Input Tensor.
-
         Returns:
-        -------
             torch.Tensor: Output Tensor.
         """
         latents = self.latents.repeat(x.size(0), 1, 1)
@@ -878,6 +887,119 @@ class IPAdapterPlusImageProjection(nn.Module):
 
         latents = self.proj_out(latents)
         return self.norm_out(latents)
+
+
+class IPAdapterPlusImageProjectionBlock(nn.Module):
+    def __init__(
+        self,
+        embed_dims: int = 768,
+        dim_head: int = 64,
+        heads: int = 16,
+        ffn_ratio: float = 4,
+    ) -> None:
+        super().__init__()
+        from .attention import FeedForward
+
+        self.ln0 = nn.LayerNorm(embed_dims)
+        self.ln1 = nn.LayerNorm(embed_dims)
+        self.attn = Attention(
+            query_dim=embed_dims,
+            dim_head=dim_head,
+            heads=heads,
+            out_bias=False,
+        )
+        self.ff = nn.Sequential(
+            nn.LayerNorm(embed_dims),
+            FeedForward(embed_dims, embed_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
+        )
+
+    def forward(self, x, latents, residual):
+        encoder_hidden_states = self.ln0(x)
+        latents = self.ln1(latents)
+        encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
+        latents = self.attn(latents, encoder_hidden_states) + residual
+        latents = self.ff(latents) + latents
+        return latents
+
+
+class IPAdapterFaceIDPlusImageProjection(nn.Module):
+    """FacePerceiverResampler of IP-Adapter Plus.
+
+    Args:
+        embed_dims (int): The feature dimension. Defaults to 768. output_dims (int): The number of output channels,
+        that is the same
+            number of the channels in the `unet.config.cross_attention_dim`. Defaults to 1024.
+        hidden_dims (int):
+            The number of hidden channels. Defaults to 1280. depth (int): The number of blocks. Defaults
+        to 8. dim_head (int): The number of head channels. Defaults to 64. heads (int): Parallel attention heads.
+        Defaults to 16. num_tokens (int): Number of tokens num_queries (int): The number of queries. Defaults to 8.
+        ffn_ratio (float): The expansion ratio of feedforward network hidden
+            layer channels. Defaults to 4.
+        ffproj_ratio (float): The expansion ratio of feedforward network hidden
+            layer channels (for ID embeddings). Defaults to 4.
+    """
+
+    def __init__(
+        self,
+        embed_dims: int = 768,
+        output_dims: int = 768,
+        hidden_dims: int = 1280,
+        id_embeddings_dim: int = 512,
+        depth: int = 4,
+        dim_head: int = 64,
+        heads: int = 16,
+        num_tokens: int = 4,
+        num_queries: int = 8,
+        ffn_ratio: float = 4,
+        ffproj_ratio: int = 2,
+    ) -> None:
+        super().__init__()
+        from .attention import FeedForward
+
+        self.num_tokens = num_tokens
+        self.embed_dim = embed_dims
+        self.clip_embeds = None
+        self.shortcut = False
+        self.shortcut_scale = 1.0
+
+        self.proj = FeedForward(id_embeddings_dim, embed_dims * num_tokens, activation_fn="gelu", mult=ffproj_ratio)
+        self.norm = nn.LayerNorm(embed_dims)
+
+        self.proj_in = nn.Linear(hidden_dims, embed_dims)
+
+        self.proj_out = nn.Linear(embed_dims, output_dims)
+        self.norm_out = nn.LayerNorm(output_dims)
+
+        self.layers = nn.ModuleList(
+            [IPAdapterPlusImageProjectionBlock(embed_dims, dim_head, heads, ffn_ratio) for _ in range(depth)]
+        )
+
+    def forward(self, id_embeds: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            id_embeds (torch.Tensor): Input Tensor (ID embeds).
+        Returns:
+            torch.Tensor: Output Tensor.
+        """
+        id_embeds = id_embeds.to(self.clip_embeds.dtype)
+        id_embeds = self.proj(id_embeds)
+        id_embeds = id_embeds.reshape(-1, self.num_tokens, self.embed_dim)
+        id_embeds = self.norm(id_embeds)
+        latents = id_embeds
+
+        clip_embeds = self.proj_in(self.clip_embeds)
+        x = clip_embeds.reshape(-1, clip_embeds.shape[2], clip_embeds.shape[3])
+
+        for block in self.layers:
+            residual = latents
+            latents = block(x, latents, residual)
+
+        latents = self.proj_out(latents)
+        out = self.norm_out(latents)
+        if self.shortcut:
+            out = id_embeds + self.shortcut_scale * out
+        return out
 
 
 class MultiIPAdapterImageProjection(nn.Module):
