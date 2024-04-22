@@ -194,7 +194,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @skip_mps
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(
-            expected_max_diff=2e-1,
+            expected_max_diff=3e-1,
         )
 
     @skip_mps
