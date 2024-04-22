@@ -36,8 +36,8 @@ from diffusers import (
     IPNDMScheduler,
     LMSDiscreteScheduler,
     UniPCMultistepScheduler,
-    VQDiffusionScheduler,
     VDMScheduler,
+    VQDiffusionScheduler,
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin

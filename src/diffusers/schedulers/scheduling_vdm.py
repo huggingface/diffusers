@@ -14,8 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
-from functools import partial
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -28,13 +27,15 @@ from .scheduling_utils import SchedulerMixin
 
 def log_snr(t: torch.Tensor, beta_schedule: str) -> torch.Tensor:
     """
-    Calculates the logarithm of the signal-to-noise ratio (SNR) for given time steps `t` under a specified beta schedule.
+    Calculates the logarithm of the signal-to-noise ratio (SNR) for given time steps `t` under a specified beta
+    schedule.
 
     See appendix K of the [Variational Diffusion Models](https://arxiv.org/abs/2107.00630) paper for more details.
 
     Args:
         t (torch.Tensor): Tensor of time steps, normalized between [0, 1].
-        beta_schedule (str): The beta schedule type. Supported types include 'linear', 'squaredcos_cap_v2', and 'sigmoid'.
+        beta_schedule (str):
+            The beta schedule type. Supported types include 'linear', 'squaredcos_cap_v2', and 'sigmoid'.
 
     Returns:
         torch.Tensor: The log SNR values corresponding to the input time steps under the given beta schedule.
@@ -47,7 +48,7 @@ def log_snr(t: torch.Tensor, beta_schedule: str) -> torch.Tensor:
 
     # From https://github.com/Zhengxinyang/LAS-Diffusion/blob/main/network/model_utils.py#L345
     if beta_schedule == "linear":
-        return -torch.log(torch.special.expm1(1e-4 + 10 * t ** 2))
+        return -torch.log(torch.special.expm1(1e-4 + 10 * t**2))
     elif beta_schedule == "squaredcos_cap_v2":
         return -torch.log(torch.clamp((torch.cos((t + 0.008) / (1 + 0.008) * math.pi * 0.5) ** -2) - 1, min=1e-5))
     elif beta_schedule == "sigmoid":
@@ -115,17 +116,19 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
     """
 
     @register_to_config
-    def __init__(self,
-                 num_train_timesteps: Optional[int] = None,
-                 beta_schedule: str = "linear",
-                 clip_sample: bool = True,
-                 clip_sample_range: float = 1.0,
-                 prediction_type: str = "epsilon",
-                 thresholding: bool = False,
-                 dynamic_thresholding_ratio: float = 0.995,
-                 sample_max_value: float = 1.0,
-                 timestep_spacing: str = "leading",
-                 steps_offset: Union[int, float] = 0):
+    def __init__(
+        self,
+        num_train_timesteps: Optional[int] = None,
+        beta_schedule: str = "linear",
+        clip_sample: bool = True,
+        clip_sample_range: float = 1.0,
+        prediction_type: str = "epsilon",
+        thresholding: bool = False,
+        dynamic_thresholding_ratio: float = 0.995,
+        sample_max_value: float = 1.0,
+        timestep_spacing: str = "leading",
+        steps_offset: Union[int, float] = 0,
+    ):
         # Hardcoded as continuous schedules in `log_snr` are fitted to these values
         self.beta_start = 1e-4
         self.beta_end = 0.02
@@ -183,13 +186,14 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         if num_steps is None:
             num_steps = len(self)
         if self.config.timestep_spacing in ["linspace", "leading"]:
-            timesteps = np.linspace(0, 1, num_steps,
-                                    endpoint=self.config.timestep_spacing == "linspace")[::-1]
+            timesteps = np.linspace(0, 1, num_steps, endpoint=self.config.timestep_spacing == "linspace")[::-1]
         elif self.config.timestep_spacing == "trailing":
             timesteps = np.arange(1, 0, -1 / num_steps) - 1 / num_steps
         else:
-            raise ValueError(f"`{self.config.timestep_spacing}` timestep spacing is not supported."
-                             "Choose one of 'linspace', 'leading' or 'trailing'.")
+            raise ValueError(
+                f"`{self.config.timestep_spacing}` timestep spacing is not supported."
+                "Choose one of 'linspace', 'leading' or 'trailing'."
+            )
         return timesteps.astype(np.float32).copy()
 
     def set_timesteps(self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None):
@@ -212,17 +216,24 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             if self.config.timestep_spacing in ["linspace", "leading"]:
                 start = 0
                 stop = self.config.num_train_timesteps
-                timesteps = np.linspace(start,
-                                        stop - 1 if self.config.timestep_spacing == "linspace" else stop,
-                                        num_inference_steps,
-                                        endpoint=self.config.timestep_spacing == "linspace")[::-1]
+                timesteps = np.linspace(
+                    start,
+                    stop - 1 if self.config.timestep_spacing == "linspace" else stop,
+                    num_inference_steps,
+                    endpoint=self.config.timestep_spacing == "linspace",
+                )[::-1]
             elif self.config.timestep_spacing == "trailing":
-                timesteps = np.arange(self.config.num_train_timesteps,
-                                      0,
-                                      -self.config.num_train_timesteps / num_inference_steps) - 1
+                timesteps = (
+                    np.arange(
+                        self.config.num_train_timesteps, 0, -self.config.num_train_timesteps / num_inference_steps
+                    )
+                    - 1
+                )
             else:
-                raise ValueError(f"`{self.config.timestep_spacing}` timestep spacing is not supported."
-                                 "Choose one of 'linspace', 'leading' or 'trailing'.")
+                raise ValueError(
+                    f"`{self.config.timestep_spacing}` timestep spacing is not supported."
+                    "Choose one of 'linspace', 'leading' or 'trailing'."
+                )
             timesteps = timesteps.round().astype(np.int64).copy()
 
         self.num_inference_steps = num_inference_steps
@@ -281,15 +292,12 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def add_noise(self,
-                  original_samples: torch.Tensor,
-                  noise: torch.Tensor,
-                  timesteps: torch.Tensor) -> torch.Tensor:
+    def add_noise(self, original_samples: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor) -> torch.Tensor:
         """
         Adds noise to the original samples according to the noise schedule and the specified timesteps.
 
-        This method calculates the noisy samples by combining the original samples with Gaussian noise
-        scaled according to the time-dependent noise levels dictated by the signal-to-noise ratio.
+        This method calculates the noisy samples by combining the original samples with Gaussian noise scaled according
+        to the time-dependent noise levels dictated by the signal-to-noise ratio.
 
         Args:
             original_samples (torch.Tensor): The original samples from the data distribution before noise is added.
@@ -309,12 +317,14 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
 
-    def step(self,
-             model_output: torch.Tensor,
-             timestep: Union[int, float, torch.Tensor],
-             sample: torch.Tensor,
-             generator: Optional[torch.Generator] = None,
-             return_dict: bool = True) -> Union[VDMSchedulerOutput, Tuple]:
+    def step(
+        self,
+        model_output: torch.Tensor,
+        timestep: Union[int, float, torch.Tensor],
+        sample: torch.Tensor,
+        generator: Optional[torch.Generator] = None,
+        return_dict: bool = True,
+    ) -> Union[VDMSchedulerOutput, Tuple]:
         """
         Performs a single step of the diffusion process, computing the previous sample and optionally the predicted
         original sample based on the model output and current timestep.
@@ -327,15 +337,15 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (bool): If True, returns a `VDMSchedulerOutput` object; otherwise, returns a tuple.
 
         Returns:
-            VDMSchedulerOutput or Tuple: Depending on `return_dict`, returns either a data class containing
-            the previous sample and predicted original sample, or just the previous sample as a tuple.
+            VDMSchedulerOutput or Tuple: Depending on `return_dict`, returns either a data class containing the
+            previous sample and predicted original sample, or just the previous sample as a tuple.
         """
         # Based on https://github.com/addtt/variational-diffusion-models/blob/main/vdm.py#L29
 
         if isinstance(timestep, (int, float)):
-            timestep = torch.tensor(timestep,
-                                    dtype=torch.float32 if isinstance(timestep, float) else torch.int64,
-                                    device=sample.device)
+            timestep = torch.tensor(
+                timestep, dtype=torch.float32 if isinstance(timestep, float) else torch.int64, device=sample.device
+            )
 
         if not timestep.is_floating_point():
             if not self.config.num_train_timesteps:
@@ -367,23 +377,25 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         if self.config.thresholding:
             pred_original_sample = self._threshold_sample(pred_original_sample)
         elif self.config.clip_sample:
-            pred_original_sample = pred_original_sample.clamp(-self.config.clip_sample_range,
-                                                              self.config.clip_sample_range)
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
+            )
 
         # 4. Computed predicted previous sample x_{t-1}
         c = -torch.expm1(log_snr - prev_log_snr)
         if self.config.thresholding or self.config.clip_sample or self.config.prediction_type == "sample":
-            pred_prev_sample = torch.sqrt(prev_alpha) * (sample * (1 - c) / torch.sqrt(alpha) + c * pred_original_sample)
+            pred_prev_sample = torch.sqrt(prev_alpha) * (
+                sample * (1 - c) / torch.sqrt(alpha) + c * pred_original_sample
+            )
         else:
             pred_prev_sample = torch.sqrt(prev_alpha / alpha) * (sample - c * torch.sqrt(sigma) * model_output)
 
         # 5. (Maybe) add noise
         noise_scale = torch.sqrt(prev_sigma * c)  # Becomes 0 for prev_timestep = 0
         if torch.any(noise_scale > 0):
-            noise = randn_tensor(model_output.shape,
-                                 generator=generator,
-                                 device=model_output.device,
-                                 dtype=model_output.dtype)
+            noise = randn_tensor(
+                model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
+            )
             pred_prev_sample += noise_scale * noise
 
         if not return_dict:
