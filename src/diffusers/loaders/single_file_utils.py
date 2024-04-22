@@ -381,7 +381,7 @@ def infer_original_config_file(class_name, checkpoint):
     else:
         config_url = CONFIG_URLS["v1"]
 
-    original_config_file = BytesIO(requests.get(config_url).content)
+    original_config_file = BytesIO(requests.get(config_url, timeout=10).content)
 
     return original_config_file
 
@@ -402,7 +402,7 @@ def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=
             original_config_file = fp.read()
 
     elif is_valid_url(original_config_file):
-        original_config_file = BytesIO(requests.get(original_config_file).content)
+        original_config_file = BytesIO(requests.get(original_config_file, timeout=10).content)
 
     else:
         raise ValueError("Invalid `original_config_file` provided. Please set it to a valid file path or URL.")

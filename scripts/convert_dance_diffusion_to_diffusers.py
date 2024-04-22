@@ -74,7 +74,7 @@ class DiffusionUncond(nn.Module):
 
 def download(model_name):
     url = MODELS_MAP[model_name]["url"]
-    r = requests.get(url, stream=True)
+    r = requests.get(url, stream=True, timeout=10)
 
     local_filename = f"./{model_name}.ckpt"
     with open(local_filename, "wb") as fp:

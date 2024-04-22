@@ -25,7 +25,7 @@ def load_image(
     """
     if isinstance(image, str):
         if image.startswith("http://") or image.startswith("https://"):
-            image = PIL.Image.open(requests.get(image, stream=True).raw)
+            image = PIL.Image.open(requests.get(image, stream=True, timeout=10).raw)
         elif os.path.isfile(image):
             image = PIL.Image.open(image)
         else:

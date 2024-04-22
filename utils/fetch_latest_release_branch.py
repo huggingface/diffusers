@@ -27,7 +27,7 @@ def fetch_all_branches(user, repo):
     page = 1  # Start from first page
     while True:
         # Make a request to the GitHub API for the branches
-        response = requests.get(f"https://api.github.com/repos/{user}/{repo}/branches", params={"page": page})
+        response = requests.get(f"https://api.github.com/repos/{user}/{repo}/branches", params={"page": page}, timeout=10)
 
         # Check if the request was successful
         if response.status_code == 200:
