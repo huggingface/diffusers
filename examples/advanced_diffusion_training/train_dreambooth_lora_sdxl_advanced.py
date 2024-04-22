@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import contextlib
 import gc
-import hashlib
 import itertools
 import json
 import logging
@@ -46,7 +46,6 @@ from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
-from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
@@ -397,6 +396,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--do_edm_style_training",
+        default=False,
         action="store_true",
         help="Flag to conduct training using the EDM formulation as introduced in https://arxiv.org/abs/2206.00364.",
     )
@@ -1262,7 +1262,7 @@ def main(args):
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
-                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
@@ -2277,16 +2277,16 @@ def main(args):
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = accelerator.unwrap_model(unet)
+        unet = unwrap_model(unet)
         unet = unet.to(torch.float32)
         unet_lora_layers = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
 
         if args.train_text_encoder:
-            text_encoder_one = accelerator.unwrap_model(text_encoder_one)
+            text_encoder_one = unwrap_model(text_encoder_one)
             text_encoder_lora_layers = convert_state_dict_to_diffusers(
                 get_peft_model_state_dict(text_encoder_one.to(torch.float32))
             )
-            text_encoder_two = accelerator.unwrap_model(text_encoder_two)
+            text_encoder_two = unwrap_model(text_encoder_two)
             text_encoder_2_lora_layers = convert_state_dict_to_diffusers(
                 get_peft_model_state_dict(text_encoder_two.to(torch.float32))
             )
@@ -2384,26 +2384,18 @@ def main(args):
                         }
                     )
 
-        # Conver to WebUI format
-        lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
-        peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
-        kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
-        save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")
-
-        save_model_card(
-            repo_id,
-            use_dora=args.use_dora,
-            images=images,
-            base_model=args.pretrained_model_name_or_path,
-            train_text_encoder=args.train_text_encoder,
-            train_text_encoder_ti=args.train_text_encoder_ti,
-            token_abstraction_dict=train_dataset.token_abstraction_dict,
-            instance_prompt=args.instance_prompt,
-            validation_prompt=args.validation_prompt,
-            repo_folder=args.output_dir,
-            vae_path=args.pretrained_vae_model_name_or_path,
-        )
         if args.push_to_hub:
+            save_model_card(
+                repo_id,
+                use_dora=args.use_dora,
+                images=images,
+                base_model=args.pretrained_model_name_or_path,
+                train_text_encoder=args.train_text_encoder,
+                instance_prompt=args.instance_prompt,
+                validation_prompt=args.validation_prompt,
+                repo_folder=args.output_dir,
+                vae_path=args.pretrained_vae_model_name_or_path,
+            )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
