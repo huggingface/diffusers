@@ -17,6 +17,7 @@ import os
 import platform
 import subprocess
 from argparse import ArgumentParser
+from typing import Optional
 
 import huggingface_hub
 
@@ -32,6 +33,7 @@ from ..utils import (
     is_transformers_available,
     is_xformers_available,
 )
+
 from . import BaseDiffusersCLICommand
 
 
@@ -45,7 +47,7 @@ def download_command_factory(args):
 
 class EnvironmentCommand(BaseDiffusersCLICommand):
     @staticmethod
-    def register_subcommand(parser: ArgumentParser):
+    def register_subcommand(parser: ArgumentParser) -> None:
         download_parser = parser.add_parser("env")
         download_parser.set_defaults(func=info_command_factory)
         download_parser.add_argument(
@@ -55,7 +57,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         )
         download_parser.set_defaults(func=download_command_factory)
 
-    def __init__(self, accelerate_config_file: str = None, *args):
+    def __init__(self, accelerate_config_file: Optional[str] = None, *args) -> None:
         super().__init__(*args)
         self._accelerate_config_file = accelerate_config_file
 
@@ -134,7 +136,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         is_google_colab_str = "Yes" if is_google_colab() else "No"
 
         accelerator = "NA"
-        if platform.system() in ["Linux", "Windows"]:
+        if platform.system() in ("Linux", "Windows"):
             try:
                 sp = subprocess.Popen(
                     ["nvidia-smi", "--query-gpu=gpu_name,memory.total", "--format=csv,noheader"],
@@ -151,7 +153,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         elif platform.system() == "Darwin":  # Mac OS
             try:
                 sp = subprocess.Popen(
-                    ["system_profiler", "SPDisplaysDataType"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                    ["system_profiler", "SPDisplaysDataType"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 )
                 out_str, _ = sp.communicate()
                 out_str = out_str.decode("utf-8")
