@@ -234,7 +234,7 @@ In ComfyUI we will load a LoRA and a textual embedding at the same time.
 SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
 
 ### DoRA training 
-The advanced script now supports DoRA training too!
+The advanced script supports DoRA training too!
 > Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353), 
 **DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters. 
 The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference. 
@@ -303,6 +303,26 @@ accelerate launch train_dreambooth_lora_sdxl_advanced.py \
 
 > [!CAUTION]
 > Min-SNR gamma is not supported with the EDM-style training yet. When training with the PlaygroundAI model, it's recommended to not pass any "variant".
+
+### B-LoRA training 
+The advanced script now supports B-LoRA training too!
+> Proposed in [Implicit Style-Content Separation using B-LoRA](https://b-lora.github.io/B-LoRA/static/source/B-LoRA.pdf), 
+B-LoRA is a method that leverages LoRA to implicitly separate the style and content components of a **single** image.
+It was shown that learning the LoRA weights of two specific blocks (referred to as B-LoRAs) 
+achieves style-content separation that cannot be achieved by training each B-LoRA independently. 
+
+**Usage**
+Enable B-LoRA training by adding this flag
+```bash
+--use_blora
+```
+**Inference** 
+The inference is a bit different:
+1. we need load *specific* unet layers (as opposed to a regular LoRA/DoRA)
+2. the trained layers we load, changes based on our objective (e.g. style/content)
+
+
+
 
 ### Tips and Tricks
 Check out [these recommended practices](https://huggingface.co/blog/sdxl_lora_advanced_script#additional-good-practices)
