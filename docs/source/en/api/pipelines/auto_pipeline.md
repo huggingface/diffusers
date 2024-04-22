@@ -12,42 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # AutoPipeline
 
-`AutoPipeline` is designed to:
+The `AutoPipeline` is designed to make it easy to load a checkpoint for a task without needing to know the specific pipeline class. Based on the task, the `AutoPipeline` automatically retrieves the correct pipeline class from the checkpoint `model_index.json` file.
 
-1. make it easy for you to load a checkpoint for a task without knowing the specific pipeline class to use
-2. use multiple pipelines in your workflow
-
-Based on the task, the `AutoPipeline` class automatically retrieves the relevant pipeline given the name or path to the pretrained weights with the `from_pretrained()` method.
-
-To seamlessly switch between tasks with the same checkpoint without reallocating additional memory, use the `from_pipe()` method to transfer the components from the original pipeline to the new one.
-
-```py
-from diffusers import AutoPipelineForText2Image
-import torch
-
-pipeline = AutoPipelineForText2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
-prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
-
-image = pipeline(prompt, num_inference_steps=25).images[0]
-```
-
-<Tip>
-
-Check out the [AutoPipeline](../../tutorials/autopipeline) tutorial to learn how to use this API!
-
-</Tip>
-
-`AutoPipeline` supports text-to-image, image-to-image, and inpainting for the following diffusion models:
-
-- [Stable Diffusion](./stable_diffusion/overview)
-- [ControlNet](./controlnet)
-- [Stable Diffusion XL (SDXL)](./stable_diffusion/stable_diffusion_xl)
-- [DeepFloyd IF](./deepfloyd_if)
-- [Kandinsky 2.1](./kandinsky)
-- [Kandinsky 2.2](./kandinsky_v22)
-
+> [!TIP]
+> Check out the [AutoPipeline](../../tutorials/autopipeline) tutorial to learn how to use this API!
 
 ## AutoPipelineForText2Image
 
