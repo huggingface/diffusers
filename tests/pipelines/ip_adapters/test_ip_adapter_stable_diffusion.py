@@ -32,7 +32,6 @@ from diffusers import (
     StableDiffusionXLPipeline,
 )
 from diffusers.image_processor import IPAdapterMaskProcessor
-from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -307,6 +306,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline = StableDiffusionPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
         )
+        before_processors = [attn_proc.__class__ for attn_proc in pipeline.unet.attn_processors.values()]
         pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
         pipeline.set_ip_adapter_scale(0.7)
@@ -315,11 +315,9 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
 
         assert getattr(pipeline, "image_encoder") is None
         assert getattr(pipeline, "feature_extractor") is not None
-        processors = [
-            isinstance(attn_proc, (AttnProcessor, AttnProcessor2_0))
-            for name, attn_proc in pipeline.unet.attn_processors.items()
-        ]
-        assert processors == [True] * len(processors)
+        after_processors = [attn_proc.__class__ for attn_proc in pipeline.unet.attn_processors.values()]
+
+        assert before_processors == after_processors
 
     @is_flaky
     def test_multi(self):
