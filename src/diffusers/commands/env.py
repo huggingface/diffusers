@@ -176,7 +176,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             print("It seems you are running an unusual OS. Could you fill in the accelerator manually?")
 
         info = {
-            "Diffusers version": version,
+            "🤗 Diffusers version": version,
             "Location": os.path.dirname(os.path.abspath(version)).replace(getpass.getuser(), "USER"),
             "Platform": f"{platform.freedesktop_os_release().get('PRETTY_NAME', None)} - {platform.platform()}",
             "Running on a notebook?": is_notebook_str,
