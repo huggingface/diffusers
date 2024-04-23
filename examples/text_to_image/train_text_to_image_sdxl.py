@@ -474,7 +474,8 @@ def parse_args(input_args=None):
         args.local_rank = env_local_rank
 
     # Sanity checks
-
+    if args.dataset_name is None and args.train_data_dir is None:
+        raise ValueError("Need either a dataset name or a training folder.")
     if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
 
