@@ -190,7 +190,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         transformer: Transformer2DModel,
         scheduler: DPMSolverMultistepScheduler,
     ):
-        super().__init__(tokenizer, text_encoder, vae, transformer, scheduler)
+        super().__init__()
 
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
