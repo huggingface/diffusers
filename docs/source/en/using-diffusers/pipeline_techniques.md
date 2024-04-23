@@ -77,11 +77,22 @@ pipeline = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None
 ).to("cuda")
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
-generator = torch.Generator(device="cpu").manual_seed(33)
+generator = torch.Generator(device="cpu").manual_seed(67)
 prompt = ""
 image = pipeline(prompt, generator=generator).images[0]
 image
 ```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src=""/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU disabled</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src=""/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU enabled</figcaption>
+  </div>
+</div>
 
 </hfoption>
 <hfoption id="Stable Diffusion v2-1">
@@ -94,11 +105,22 @@ pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, safety_checker=None
 ).to("cuda")
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.4, b2=1.6)
-generator = torch.Generator(device="cpu").manual_seed(33)
+generator = torch.Generator(device="cpu").manual_seed(67)
 prompt = ""
 image = pipeline(prompt, generator=generator).images[0]
 image
 ```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src=""/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU disabled</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src=""/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU enabled</figcaption>
+  </div>
+</div>
 
 </hfoption>
 <hfoption id="Stable Diffusion XL">
@@ -111,11 +133,22 @@ pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16,
 ).to("cuda")
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.3, b2=1.4)
-generator = torch.Generator(device="cpu").manual_seed(33)
+generator = torch.Generator(device="cpu").manual_seed(67)
 prompt = ""
 image = pipeline(prompt, generator=generator).images[0]
 image
 ```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src=""/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU disabled</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src=""/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU enabled</figcaption>
+  </div>
+</div>
 
 </hfoption>
 <hfoption id="Zeroscope">
@@ -131,6 +164,17 @@ pipeline = DiffusionPipeline.from_pretrained(
 # values come from https://github.com/lyn-rgb/FreeU_Diffusers#video-pipelines
 pipeline.enable_freeu(b1=1.2, b2=1.4, s1=0.9, s2=0.2)
 ```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src=""/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU disabled</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src=""/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU enabled</figcaption>
+  </div>
+</div>
 
 </hfoption>
 </hfoptions>
