@@ -209,6 +209,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
             masked_feature = emb * mask[:, None, :, None]
             return masked_feature, emb.shape[2]
 
+    # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -369,6 +370,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.py
     def check_inputs(
         self,
         prompt,
