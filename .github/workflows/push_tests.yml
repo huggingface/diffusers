@@ -98,6 +98,7 @@ jobs:
         uses: huggingface/tailscale-action@v1
         with:
            waitForSSH: true
+           authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
       - name: Failure short reports
         if: ${{ failure() }}
         run: |
