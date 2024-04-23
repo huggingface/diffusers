@@ -64,7 +64,7 @@ image
 
 [FreeU](https://hf.co/papers/2309.11497) improves image details by rebalancing the UNet's backbone and skip connection weights. The skip connections can cause the model to overlook some of the backbone semantics which may lead to unnatural image details in the generated image. This technique does not require any additional training and can be applied on the fly during inference for tasks like image-to-image and text-to-video.
 
-Use the [`~pipelines.pipeline_utils.enable_freeu`] method on your pipeline and configure the scaling factors for the backbone (`b1` and `b2`) and skip connections (`s1` and `s2`). The number after each scaling factor corresponds to the stage in the UNet where the factor is applied. Take a look at the [FreeU](https://github.com/ChenyangSi/FreeU#parameters) repository for reference hyperparameters for different models.
+Use the [`~pipelines.StableDiffusionMixin.enable_freeu`] method on your pipeline and configure the scaling factors for the backbone (`b1` and `b2`) and skip connections (`s1` and `s2`). The number after each scaling factor corresponds to the stage in the UNet where the factor is applied. Take a look at the [FreeU](https://github.com/ChenyangSi/FreeU#parameters) repository for reference hyperparameters for different models.
 
 <hfoptions id="freeu">
 <hfoption id="Stable Diffusion v1-5">
@@ -179,7 +179,7 @@ pipeline.enable_freeu(b1=1.2, b2=1.4, s1=0.9, s2=0.2)
 </hfoption>
 </hfoptions>
 
-Call the [`pipelines.pipeline_utils.disable_freeu`] method to disable FreeU.
+Call the [`pipelines.StableDiffusionMixin.disable_freeu`] method to disable FreeU.
 
 ```py
 pipeline.disable_freeu()
