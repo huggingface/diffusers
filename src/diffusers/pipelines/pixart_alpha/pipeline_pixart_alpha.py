@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 from transformers import T5EncoderModel, T5Tokenizer
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import VaeImageProcessor, PixArtImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
@@ -674,38 +674,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    @staticmethod
-    def classify_height_width_bin(height: int, width: int, ratios: dict) -> Tuple[int, int]:
-        """Returns binned height and width."""
-        ar = float(height / width)
-        closest_ratio = min(ratios.keys(), key=lambda ratio: abs(float(ratio) - ar))
-        default_hw = ratios[closest_ratio]
-        return int(default_hw[0]), int(default_hw[1])
-
-    @staticmethod
-    def resize_and_crop_tensor(samples: torch.Tensor, new_width: int, new_height: int) -> torch.Tensor:
-        orig_height, orig_width = samples.shape[2], samples.shape[3]
-
-        # Check if resizing is needed
-        if orig_height != new_height or orig_width != new_width:
-            ratio = max(new_height / orig_height, new_width / orig_width)
-            resized_width = int(orig_width * ratio)
-            resized_height = int(orig_height * ratio)
-
-            # Resize
-            samples = F.interpolate(
-                samples, size=(resized_height, resized_width), mode="bilinear", align_corners=False
-            )
-
-            # Center Crop
-            start_x = (resized_width - new_width) // 2
-            end_x = start_x + new_width
-            start_y = (resized_height - new_height) // 2
-            end_y = start_y + new_height
-            samples = samples[:, :, start_y:end_y, start_x:end_x]
-
-        return samples
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -826,7 +794,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             else:
                 raise ValueError("Invalid sample size")
             orig_height, orig_width = height, width
-            height, width = self.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
+            height, width = PixArtImageProcessor.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
 
         self.check_inputs(
             prompt,
@@ -972,7 +940,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             if use_resolution_binning:
-                image = self.resize_and_crop_tensor(image, orig_width, orig_height)
+                image = PixArtImageProcessor.resize_and_crop_tensor(image, orig_width, orig_height)
         else:
             image = latents
 

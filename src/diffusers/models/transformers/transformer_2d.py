@@ -129,8 +129,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             if norm_type == "ada_norm_single" and sample_size == 128:
                 use_additional_conditions = True
             else:
-                use_additional_conditions = False    
-       self.use_additional_conditions = use_additional_conditions
+                use_additional_conditions = False
+        self.use_additional_conditions = use_additional_conditions
 
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
