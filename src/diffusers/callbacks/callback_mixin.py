@@ -21,6 +21,8 @@ class CallbackMixin:
         "num_videos_per_prompt",
         "generator",
         "eta",
+        "timesteps",
+        "t",
     ]
 
     def __init__(self) -> None:

@@ -30,6 +30,8 @@ class CallbackInput:
     num_videos_per_prompt: int = None
     generator: torch.Generator = None
     eta: float = None
+    timesteps: Union[List[int], torch.FloatTensor] = None
+    t: Union[int, torch.FloatTensor] = None
 
 
 class BaseCallback:
@@ -163,10 +165,10 @@ class CallbackHandler:
     def clear_callback_results(self) -> None:
         self._callback_results = []
 
-    def _call_event(self, event: str, control: Any, **kwargs: Dict[str, Any]) -> Any:
+    def _call_event(self, event: str, args: CallbackInput, control: Any, **kwargs: Dict[str, Any]) -> Any:
         for callback in self.callbacks:
             cb = getattr(callback, event)
-            result = cb(pipe=self.pipe, control=control, **kwargs)
+            result = cb(pipe=self.pipe, args=args, control=control, **kwargs)
             if self.track_callback_results:
                 self._callback_results.append(CallbackResult(event=event, result=result))
             if result is not None:
