@@ -424,8 +424,3 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         no_res_bin_image_slice = no_res_bin_image[0, -3:, -3:, -1]
 
         assert not np.allclose(image_slice, no_res_bin_image_slice, atol=1e-4, rtol=1e-4)
-
-
-# if __name__ == '__main__':
-#     s = PixArtSigmaPipelineFastTests()
-#     s.test_inference()
