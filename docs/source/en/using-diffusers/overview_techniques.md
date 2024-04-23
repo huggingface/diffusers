@@ -14,5 +14,5 @@ specific language governing permissions and limitations under the License.
 
 The inference pipeline supports and enables a wide range of techniques that are divided into two categories:
 
-* pipeline functionality: add new features to a pipeline with callbacks, use a pipeline in a distributed setup, or merge adapters into a pipeline
-* improve inference quality: enhance your prompts with GPT2 to create better images with lower effort, and broad support for techniques to improve image generation quality
+* Pipeline functionality: these techniques modify the pipeline or extend it for other applications. For example, pipeline callbacks add new features to a pipeline and a pipeline can also be extended for distributed inference.
+* Improve inference quality: these techniques increase the visual quality of the generated images. For example, you can enhance your prompts with GPT2 to create better images with lower effort.
