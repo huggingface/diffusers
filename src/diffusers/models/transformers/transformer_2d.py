@@ -313,7 +313,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # PixArt-Alpha blocks.
         self.adaln_single = None
         if self.config.norm_type == "ada_norm_single":
-            self.use_additional_conditions = self.config.sample_size == 128 and self.use_additional_conditions
             # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
             # additional conditions until we find better name
             self.adaln_single = AdaLayerNormSingle(
