@@ -462,7 +462,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
 
         return [process(t) for t in text]
 
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._clean_caption
+    # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline._clean_caption
     def _clean_caption(self, caption):
         caption = str(caption)
         caption = ul.unquote_plus(caption)
