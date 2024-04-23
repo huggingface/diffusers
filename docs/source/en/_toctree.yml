@@ -63,12 +63,10 @@
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
     title: Reproducible pipelines
-  - local: using-diffusers/control_brightness
-    title: Control image brightness
+  - local: using-diffusers/pipeline_techniques
+    title: Enhance image quality
   - local: using-diffusers/weighted_prompts
     title: Prompt techniques
-  - local: using-diffusers/freeu
-    title: Improve generation quality with FreeU
   title: Inference techniques
 - sections:
   - local: using-diffusers/sdxl

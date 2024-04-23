@@ -97,6 +97,10 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 	- to
 	- components
 
+[[autodoc]] pipelines.pipeline_utils.enable_freeu
+
+[[autodoc]] pipelines.pipeline_utils.disable_freeu
+
 ## FlaxDiffusionPipeline
 
 [[autodoc]] pipelines.pipeline_flax_utils.FlaxDiffusionPipeline
