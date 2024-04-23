@@ -21,7 +21,7 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
-from ...image_processor import PixArtImageProcessor, VaeImageProcessor
+from ...image_processor import PixArtImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
@@ -197,7 +197,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     # copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.py
     def mask_text_embeddings(self, emb, mask):
@@ -714,7 +714,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
             else:
                 raise ValueError("Invalid sample size")
             orig_height, orig_width = height, width
-            height, width = PixArtImageProcessor.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
+            height, width = self.image_processor.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
 
         self.check_inputs(
             prompt,
@@ -845,7 +845,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             if use_resolution_binning:
-                image = PixArtImageProcessor.resize_and_crop_tensor(image, orig_width, orig_height)
+                image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
         else:
             image = latents
 
