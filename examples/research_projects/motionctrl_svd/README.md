@@ -61,8 +61,8 @@ frames = pipe(
     decode_chunk_size=2,
     motion_bucket_id=255,
     fps=15,
-    min_guidance_scale=3.5,
-    max_guidance_scale=1,
+    min_guidance_scale=1,
+    max_guidance_scale=3.5,
     generator=torch.Generator().manual_seed(42)
 ).frames[0]
 export_to_gif(frames, f"animation.gif")

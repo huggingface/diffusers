@@ -392,7 +392,7 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
     @property
     def do_classifier_free_guidance(self):
         if isinstance(self.guidance_scale, (int, float)):
-            return self.guidance_scale
+            return self.guidance_scale > 1
         return self.guidance_scale.max() > 1
 
     @property
@@ -539,7 +539,7 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
             self.vae.to(dtype=torch.float16)
 
         # Repeat the image latents for each frame so we can concatenate them with the noise
-        # image_latents [batch, channels, height, width] ->[batch, num_frames, channels, height, width]
+        # image_latents [batch, channels, height, width] -> [batch, num_frames, channels, height, width]
         image_latents = image_latents.unsqueeze(1).repeat(1, num_frames, 1, 1, 1)
 
         # 5. Get Added Time IDs
@@ -581,10 +581,12 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
         self._guidance_scale = guidance_scale
 
         camera_pose = np.array(camera_pose).reshape(-1, 3, 4)
-        camera_pose[:, :, -1] = camera_pose[:, :, -1] * np.array([3, 1, 4]) * camera_speed  # rescale
+        camera_pose[:, :, -1] = camera_pose[:, :, -1] * camera_speed
         camera_pose = self._to_relative_camera_pose(camera_pose)
         camera_pose = torch.FloatTensor(camera_pose).to(device=device, dtype=image_embeddings.dtype)
-        camera_pose = camera_pose.repeat(2, 1, 1)
+        camera_pose = camera_pose.unsqueeze(0)
+        if self.do_classifier_free_guidance:
+            camera_pose = camera_pose.repeat(2, 1, 1)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
