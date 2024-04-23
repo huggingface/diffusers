@@ -1024,9 +1024,9 @@ class PixArtImageProcessor(VaeImageProcessor):
         do_resize: bool = True,
         vae_scale_factor: int = 8,
         resample: str = "lanczos",
-        do_normalize: bool = False,
-        do_binarize: bool = True,
-        do_convert_grayscale: bool = True,
+        do_normalize: bool = True,
+        do_binarize: bool = False,
+        do_convert_grayscale: bool = False,
     ):
         super().__init__(
             do_resize=do_resize,
