@@ -100,7 +100,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         attention_type: str = "default",
         caption_channels: int = None,
         interpolation_scale: float = None,
-        use_additional_conditions: bool = True,
+        use_additional_conditions: Optional[bool] = None,
     ):
         super().__init__()
 
