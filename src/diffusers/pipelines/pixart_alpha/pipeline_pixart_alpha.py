@@ -19,10 +19,9 @@ import urllib.parse as ul
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from transformers import T5EncoderModel, T5Tokenizer
 
-from ...image_processor import VaeImageProcessor, PixArtImageProcessor
+from ...image_processor import PixArtImageProcessor, VaeImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
