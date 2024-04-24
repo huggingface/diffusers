@@ -23,6 +23,7 @@ from collections import OrderedDict
 from itertools import chain
 from types import ModuleType
 from typing import Any, Union
+import torch.nn.functional as F
 
 from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging import version
@@ -299,6 +300,8 @@ except importlib_metadata.PackageNotFoundError:
 def is_torch_available():
     return _torch_available
 
+def is_torch2_available():
+    return hasattr(F, "scaled_dot_product_attention")
 
 def is_torch_xla_available():
     return _torch_xla_available
