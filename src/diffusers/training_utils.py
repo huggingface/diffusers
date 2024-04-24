@@ -333,19 +333,19 @@ class EMAModel:
 
             with context_manager():
                 params_grad = [param for param in parameters if param.requires_grad]
-                s_params_grad = [s_param for s_param, param in zip(self.shadow_params, parameters) if param.requires_grad]
+                s_params_grad = [
+                    s_param for s_param, param in zip(self.shadow_params, parameters) if param.requires_grad
+                ]
 
                 if len(params_grad) < len(parameters):
                     torch._foreach_copy_(
                         [s_param for s_param, param in zip(self.shadow_params, parameters) if not param.requires_grad],
                         [param for param in parameters if not param.requires_grad],
-                        non_blocking=True
+                        non_blocking=True,
                     )
 
                 torch._foreach_sub_(
-                    s_params_grad,
-                    torch._foreach_sub(s_params_grad, params_grad),
-                    alpha=one_minus_decay
+                    s_params_grad, torch._foreach_sub(s_params_grad, params_grad), alpha=one_minus_decay
                 )
 
         else:
@@ -372,7 +372,7 @@ class EMAModel:
         if self.foreach:
             torch._foreach_copy_(
                 [param.data for param in parameters],
-                [s_param.to(param.device).data for s_param, param in zip(self.shadow_params, parameters)]
+                [s_param.to(param.device).data for s_param, param in zip(self.shadow_params, parameters)],
             )
         else:
             for s_param, param in zip(self.shadow_params, parameters):
@@ -380,8 +380,8 @@ class EMAModel:
 
     def pin_memory(self) -> None:
         r"""
-        Move internal buffers of the ExponentialMovingAverage to pinned memory. Useful for non-blocking transfers
-        for offloading EMA params to the host.
+        Move internal buffers of the ExponentialMovingAverage to pinned memory. Useful for non-blocking transfers for
+        offloading EMA params to the host.
         """
 
         self.shadow_params = [p.pin_memory() for p in self.shadow_params]
@@ -394,8 +394,10 @@ class EMAModel:
         """
         # .to() on the tensors handles None correctly
         self.shadow_params = [
-            p.to(device=device, dtype=dtype, non_blocking=non_blocking) if p.is_floating_point()
-            else p.to(device=device, non_blocking=non_blocking) for p in self.shadow_params
+            p.to(device=device, dtype=dtype, non_blocking=non_blocking)
+            if p.is_floating_point()
+            else p.to(device=device, non_blocking=non_blocking)
+            for p in self.shadow_params
         ]
 
     def state_dict(self) -> dict:
@@ -440,8 +442,7 @@ class EMAModel:
             raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
         if self.foreach:
             torch._foreach_copy_(
-                [param.data for param in parameters],
-                [c_param.data for c_param in self.temp_stored_params]
+                [param.data for param in parameters], [c_param.data for c_param in self.temp_stored_params]
             )
         else:
             for c_param, param in zip(self.temp_stored_params, parameters):
