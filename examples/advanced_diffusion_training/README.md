@@ -310,12 +310,31 @@ The advanced script now supports B-LoRA training too!
 B-LoRA is a method that leverages LoRA to implicitly separate the style and content components of a **single** image.
 It was shown that learning the LoRA weights of two specific blocks (referred to as B-LoRAs) 
 achieves style-content separation that cannot be achieved by training each B-LoRA independently. 
- Once trained, the two B-LoRAs can be used as independent components to allow various image stylization tasks
+Once trained, the two B-LoRAs can be used as independent components to allow various image stylization tasks
 
 **Usage**
 Enable B-LoRA training by adding this flag
 ```bash
 --use_blora
+```
+You can train a B-LoRA with as little as 1 image, and 1000 steps. Try this default configuration as a start:
+```bash
+!accelerate launch train_dreambooth_b-lora_sdxl.py \
+ --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0" \
+ --instance_data_dir="linoyts/B-LoRA_teddy_bear" \
+ --output_dir="B-LoRA_teddy_bear" \
+ --instance_prompt="a [v18]" \
+ --resolution=1024 \
+ --rank=64 \
+ --train_batch_size=1 \
+ --learning_rate=5e-5 \
+ --lr_scheduler="constant" \
+ --lr_warmup_steps=0 \
+ --max_train_steps=1000 \
+ --checkpointing_steps=2000 \
+ --seed="0" \
+ --gradient_checkpointing \
+ --mixed_precision="fp16"
 ```
 **Inference** 
 The inference is a bit different:
@@ -344,16 +363,19 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
         torch_dtype=torch.float16,
     ).to("cuda")
 
-style_B_lora_path = "./"
-content_B_lora_path = "./"
+content_B_lora_path  = "lora-library/B-LoRA-teddybear"
+style_B_lora_path= "lora-library/B-LoRA-pen_sketch"
 
 content_B_LoRA = load_blora(content_B_lora_path,"content",1)
 style_B_LoRA = load_blora(style_B_lora_path,"style",1.1)
 combined_lora = {**content_B_LoRA, **style_B_LoRA}
 
 # Load both loras
-pipeline.load_lora_into_unet(res_lora, None, pipeline.unet)
+pipeline.load_lora_into_unet(combined_lora, None, pipeline.unet)
 
+#generate
+prompt = "a [v18] in [v30] style"
+pipeline(prompt="a [v18] in [v30] style", num_images_per_prompt=4).images
 ```
 
 
