@@ -20,11 +20,20 @@ An attention processor is a class for applying different types of attention mech
 ## AttnProcessor2_0
 [[autodoc]] models.attention_processor.AttnProcessor2_0
 
+## FusedAttnProcessor2_0
+[[autodoc]] models.attention_processor.FusedAttnProcessor2_0
+
+## XFormersAttnProcessor
+[[autodoc]] models.attention_processor.XFormersAttnProcessor
+
 ## AttnAddedKVProcessor
 [[autodoc]] models.attention_processor.AttnAddedKVProcessor
 
 ## AttnAddedKVProcessor2_0
 [[autodoc]] models.attention_processor.AttnAddedKVProcessor2_0
+
+## XFormersAttnAddedKVProcessor
+[[autodoc]] models.attention_processor.XFormersAttnAddedKVProcessor
 
 ## CrossFrameAttnProcessor
 [[autodoc]] pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor
@@ -38,20 +47,14 @@ An attention processor is a class for applying different types of attention mech
 ## CustomDiffusionXFormersAttnProcessor
 [[autodoc]] models.attention_processor.CustomDiffusionXFormersAttnProcessor
 
-## FusedAttnProcessor2_0
-[[autodoc]] models.attention_processor.FusedAttnProcessor2_0
-
-## LoRAAttnAddedKVProcessor
-[[autodoc]] models.attention_processor.LoRAAttnAddedKVProcessor
-
-## LoRAXFormersAttnProcessor
-[[autodoc]] models.attention_processor.LoRAXFormersAttnProcessor
-
 ## SlicedAttnProcessor
 [[autodoc]] models.attention_processor.SlicedAttnProcessor
 
 ## SlicedAttnAddedKVProcessor
 [[autodoc]] models.attention_processor.SlicedAttnAddedKVProcessor
 
-## XFormersAttnProcessor
-[[autodoc]] models.attention_processor.XFormersAttnProcessor
+## IPAdapterAttnProcessor
+[[autodoc]] models.attention_processor.IPAdapterAttnProcessor
+
+## IPAdapterAttnProcessor2_0
+[[autodoc]] models.attention_processor.IPAdapterAttnProcessor2_0

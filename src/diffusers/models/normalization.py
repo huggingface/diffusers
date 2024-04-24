@@ -151,6 +151,10 @@ class AdaGroupNorm(nn.Module):
 
 
 class AdaLayerNormContinuous(nn.Module):
+    r"""
+    Adaptive normalization layer with a norm layer (layer_norm or rms_norm).
+    """
+
     def __init__(
         self,
         embedding_dim: int,
@@ -188,6 +192,8 @@ else:
     # Has optional bias parameter compared to torch layer norm
     # TODO: replace with torch layernorm once min required torch version >= 2.1
     class LayerNorm(nn.Module):
+        r"""LayerNorm with the bias parameter."""
+
         def __init__(self, dim, eps: float = 1e-5, elementwise_affine: bool = True, bias: bool = True):
             super().__init__()
 
@@ -210,6 +216,8 @@ else:
 
 
 class RMSNorm(nn.Module):
+    r"""RMS Norm as introduced in https://arxiv.org/abs/1910.07467 by Zhang et al."""
+
     def __init__(self, dim, eps: float, elementwise_affine: bool = True):
         super().__init__()
 
@@ -242,6 +250,8 @@ class RMSNorm(nn.Module):
 
 
 class GlobalResponseNorm(nn.Module):
+    r"""Global response normalization as introduced in ConvNeXt-v2 (https://arxiv.org/abs/2301.00808)."""
+
     # Taken from https://github.com/facebookresearch/ConvNeXt-V2/blob/3608f67cc1dae164790c5d0aead7bf2d73d9719b/models/utils.py#L105
     def __init__(self, dim):
         super().__init__()

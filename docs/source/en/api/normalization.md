@@ -29,3 +29,19 @@ Customized normalization layers for supporting various models in 🤗 Diffusers.
 ## AdaGroupNorm
 
 [[autodoc]] models.normalization.AdaGroupNorm
+
+## AdaLayerNormContinuous
+
+[[autodoc]] models.normalization.AdaLayerNormContinuous
+
+## LayerNorm
+
+[[autodoc]] models.normalization.LayerNorm
+
+## RMSNorm
+
+[[autodoc]] models.normalization.RMSNorm
+
+## GlobalResponseNorm
+
+[[autodoc]] models.normalization.GlobalResponseNorm
