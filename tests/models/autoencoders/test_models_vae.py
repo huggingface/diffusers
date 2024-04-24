@@ -1153,5 +1153,5 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
         with torch.no_grad():
             for shape in shapes:
-                image = torch.zeros(shape, device=torch_device)
+                image = torch.zeros(shape, device=torch_device, dtype=pipe.vae.dtype)
                 pipe.vae.decode(image)
