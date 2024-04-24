@@ -1,7 +1,7 @@
 import argparse
 
 import torch
-from safetensors.torch import save_file
+from safetensors.torch import load_file, save_file
 
 
 def convert_motion_module(original_state_dict):
@@ -27,6 +27,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ckpt_path", type=str, required=True)
     parser.add_argument("--output_path", type=str, required=True)
+    parser.add_argument("--use_safetensors", type=str, action="store_true")
 
     return parser.parse_args()
 
@@ -34,7 +35,10 @@ def get_args():
 if __name__ == "__main__":
     args = get_args()
 
-    state_dict = torch.load(args.ckpt_path, map_location="cpu")
+    if args.use_safetensors:
+        state_dict = load_file(args.ckpt_path)
+    else:
+        state_dict = torch.load(args.ckpt_path, map_location="cpu")
 
     if "state_dict" in state_dict.keys():
         state_dict = state_dict["state_dict"]
