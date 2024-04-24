@@ -55,6 +55,7 @@ jobs:
         run: |
           python utils/check_copies.py
           python utils/check_dummies.py
+          python utils/check_support_list.py
           make deps_table_check_updated
       - name: Check if failure
         if: ${{ failure() }}
