@@ -62,7 +62,7 @@
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
-    title: Improve image quality with deterministic generation
+    title: Reproducible pipelines
   - local: using-diffusers/control_brightness
     title: Control image brightness
   - local: using-diffusers/weighted_prompts
@@ -89,8 +89,6 @@
     title: Shap-E
   - local: using-diffusers/diffedit
     title: DiffEdit
-  - local: using-diffusers/reproducibility
-    title: Create reproducible pipelines
   - local: using-diffusers/custom_pipeline_examples
     title: Community pipelines
   - local: using-diffusers/contribute_pipeline
