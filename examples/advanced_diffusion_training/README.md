@@ -310,6 +310,7 @@ The advanced script now supports B-LoRA training too!
 B-LoRA is a method that leverages LoRA to implicitly separate the style and content components of a **single** image.
 It was shown that learning the LoRA weights of two specific blocks (referred to as B-LoRAs) 
 achieves style-content separation that cannot be achieved by training each B-LoRA independently. 
+ Once trained, the two B-LoRAs can be used as independent components to allow various image stylization tasks
 
 **Usage**
 Enable B-LoRA training by adding this flag
@@ -321,6 +322,39 @@ The inference is a bit different:
 1. we need load *specific* unet layers (as opposed to a regular LoRA/DoRA)
 2. the trained layers we load, changes based on our objective (e.g. style/content)
 
+```bash
+git clone https://github.com/yardenfren1996/B-LoRA.git
+%cd B-LoRA
+```
+```python
+from blora_utils import BLOCKS, filter_lora, scale_lora
+import torch
+from diffusers import StableDiffusionXLPipeline, AutoencoderKL
+
+def load_blora(lora_path, type, alpha):
+  B_LoRA_sd, _ = pipeline.lora_state_dict(lora_path)
+  B_LoRA = filter_lora(B_LoRA_sd, BLOCKS[type])
+  B_LoRA = scale_lora(B_LoRA, alpha)
+  return B_LoRA
+
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+        "stabilityai/stable-diffusion-xl-base-1.0",
+        vae=vae,
+        torch_dtype=torch.float16,
+    ).to("cuda")
+
+style_B_lora_path = "./"
+content_B_lora_path = "./"
+
+content_B_LoRA = load_blora(content_B_lora_path,"content",1)
+style_B_LoRA = load_blora(style_B_lora_path,"style",1.1)
+combined_lora = {**content_B_LoRA, **style_B_LoRA}
+
+# Load both loras
+pipeline.load_lora_into_unet(res_lora, None, pipeline.unet)
+
+```
 
 
 
