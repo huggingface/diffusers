@@ -1,4 +1,4 @@
-# Copyright 2024 PixArt-Alpha Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 PixArt-Sigma Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,6 +34,11 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from .pipeline_pixart_alpha import (
+    ASPECT_RATIO_256_BIN,
+    ASPECT_RATIO_512_BIN,
+    ASPECT_RATIO_1024_BIN,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -44,129 +49,68 @@ if is_bs4_available():
 if is_ftfy_available():
     import ftfy
 
+
+ASPECT_RATIO_2048_BIN = {
+    "0.25": [1024.0, 4096.0],
+    "0.26": [1024.0, 3968.0],
+    "0.27": [1024.0, 3840.0],
+    "0.28": [1024.0, 3712.0],
+    "0.32": [1152.0, 3584.0],
+    "0.33": [1152.0, 3456.0],
+    "0.35": [1152.0, 3328.0],
+    "0.4": [1280.0, 3200.0],
+    "0.42": [1280.0, 3072.0],
+    "0.48": [1408.0, 2944.0],
+    "0.5": [1408.0, 2816.0],
+    "0.52": [1408.0, 2688.0],
+    "0.57": [1536.0, 2688.0],
+    "0.6": [1536.0, 2560.0],
+    "0.68": [1664.0, 2432.0],
+    "0.72": [1664.0, 2304.0],
+    "0.78": [1792.0, 2304.0],
+    "0.82": [1792.0, 2176.0],
+    "0.88": [1920.0, 2176.0],
+    "0.94": [1920.0, 2048.0],
+    "1.0": [2048.0, 2048.0],
+    "1.07": [2048.0, 1920.0],
+    "1.13": [2176.0, 1920.0],
+    "1.21": [2176.0, 1792.0],
+    "1.29": [2304.0, 1792.0],
+    "1.38": [2304.0, 1664.0],
+    "1.46": [2432.0, 1664.0],
+    "1.67": [2560.0, 1536.0],
+    "1.75": [2688.0, 1536.0],
+    "2.0": [2816.0, 1408.0],
+    "2.09": [2944.0, 1408.0],
+    "2.4": [3072.0, 1280.0],
+    "2.5": [3200.0, 1280.0],
+    "2.89": [3328.0, 1152.0],
+    "3.0": [3456.0, 1152.0],
+    "3.11": [3584.0, 1152.0],
+    "3.62": [3712.0, 1024.0],
+    "3.75": [3840.0, 1024.0],
+    "3.88": [3968.0, 1024.0],
+    "4.0": [4096.0, 1024.0],
+}
+
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import PixArtAlphaPipeline
+        >>> from diffusers import PixArtSigmaPipeline
 
-        >>> # You can replace the checkpoint id with "PixArt-alpha/PixArt-XL-2-512x512" too.
-        >>> pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
+        >>> # You can replace the checkpoint id with "PixArt-alpha/PixArt-Sigma-XL-2-512-MS" too.
+        >>> pipe = PixArtSigmaPipeline.from_pretrained(
+        ...     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS", torch_dtype=torch.float16
+        ... )
         >>> # Enable memory optimizations.
-        >>> pipe.enable_model_cpu_offload()
+        >>> # pipe.enable_model_cpu_offload()
 
         >>> prompt = "A small cactus with a happy face in the Sahara desert."
         >>> image = pipe(prompt).images[0]
         ```
 """
-
-ASPECT_RATIO_1024_BIN = {
-    "0.25": [512.0, 2048.0],
-    "0.28": [512.0, 1856.0],
-    "0.32": [576.0, 1792.0],
-    "0.33": [576.0, 1728.0],
-    "0.35": [576.0, 1664.0],
-    "0.4": [640.0, 1600.0],
-    "0.42": [640.0, 1536.0],
-    "0.48": [704.0, 1472.0],
-    "0.5": [704.0, 1408.0],
-    "0.52": [704.0, 1344.0],
-    "0.57": [768.0, 1344.0],
-    "0.6": [768.0, 1280.0],
-    "0.68": [832.0, 1216.0],
-    "0.72": [832.0, 1152.0],
-    "0.78": [896.0, 1152.0],
-    "0.82": [896.0, 1088.0],
-    "0.88": [960.0, 1088.0],
-    "0.94": [960.0, 1024.0],
-    "1.0": [1024.0, 1024.0],
-    "1.07": [1024.0, 960.0],
-    "1.13": [1088.0, 960.0],
-    "1.21": [1088.0, 896.0],
-    "1.29": [1152.0, 896.0],
-    "1.38": [1152.0, 832.0],
-    "1.46": [1216.0, 832.0],
-    "1.67": [1280.0, 768.0],
-    "1.75": [1344.0, 768.0],
-    "2.0": [1408.0, 704.0],
-    "2.09": [1472.0, 704.0],
-    "2.4": [1536.0, 640.0],
-    "2.5": [1600.0, 640.0],
-    "3.0": [1728.0, 576.0],
-    "4.0": [2048.0, 512.0],
-}
-
-ASPECT_RATIO_512_BIN = {
-    "0.25": [256.0, 1024.0],
-    "0.28": [256.0, 928.0],
-    "0.32": [288.0, 896.0],
-    "0.33": [288.0, 864.0],
-    "0.35": [288.0, 832.0],
-    "0.4": [320.0, 800.0],
-    "0.42": [320.0, 768.0],
-    "0.48": [352.0, 736.0],
-    "0.5": [352.0, 704.0],
-    "0.52": [352.0, 672.0],
-    "0.57": [384.0, 672.0],
-    "0.6": [384.0, 640.0],
-    "0.68": [416.0, 608.0],
-    "0.72": [416.0, 576.0],
-    "0.78": [448.0, 576.0],
-    "0.82": [448.0, 544.0],
-    "0.88": [480.0, 544.0],
-    "0.94": [480.0, 512.0],
-    "1.0": [512.0, 512.0],
-    "1.07": [512.0, 480.0],
-    "1.13": [544.0, 480.0],
-    "1.21": [544.0, 448.0],
-    "1.29": [576.0, 448.0],
-    "1.38": [576.0, 416.0],
-    "1.46": [608.0, 416.0],
-    "1.67": [640.0, 384.0],
-    "1.75": [672.0, 384.0],
-    "2.0": [704.0, 352.0],
-    "2.09": [736.0, 352.0],
-    "2.4": [768.0, 320.0],
-    "2.5": [800.0, 320.0],
-    "3.0": [864.0, 288.0],
-    "4.0": [1024.0, 256.0],
-}
-
-ASPECT_RATIO_256_BIN = {
-    "0.25": [128.0, 512.0],
-    "0.28": [128.0, 464.0],
-    "0.32": [144.0, 448.0],
-    "0.33": [144.0, 432.0],
-    "0.35": [144.0, 416.0],
-    "0.4": [160.0, 400.0],
-    "0.42": [160.0, 384.0],
-    "0.48": [176.0, 368.0],
-    "0.5": [176.0, 352.0],
-    "0.52": [176.0, 336.0],
-    "0.57": [192.0, 336.0],
-    "0.6": [192.0, 320.0],
-    "0.68": [208.0, 304.0],
-    "0.72": [208.0, 288.0],
-    "0.78": [224.0, 288.0],
-    "0.82": [224.0, 272.0],
-    "0.88": [240.0, 272.0],
-    "0.94": [240.0, 256.0],
-    "1.0": [256.0, 256.0],
-    "1.07": [256.0, 240.0],
-    "1.13": [272.0, 240.0],
-    "1.21": [272.0, 224.0],
-    "1.29": [288.0, 224.0],
-    "1.38": [288.0, 208.0],
-    "1.46": [304.0, 208.0],
-    "1.67": [320.0, 192.0],
-    "1.75": [336.0, 192.0],
-    "2.0": [352.0, 176.0],
-    "2.09": [368.0, 176.0],
-    "2.4": [384.0, 160.0],
-    "2.5": [400.0, 160.0],
-    "3.0": [432.0, 144.0],
-    "4.0": [512.0, 128.0],
-}
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -214,27 +158,9 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class PixArtAlphaPipeline(DiffusionPipeline):
+class PixArtSigmaPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using PixArt-Alpha.
-
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
-
-    Args:
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`T5EncoderModel`]):
-            Frozen text-encoder. PixArt-Alpha uses
-            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
-            [t5-v1_1-xxl](https://huggingface.co/PixArt-alpha/PixArt-alpha/tree/main/t5-v1_1-xxl) variant.
-        tokenizer (`T5Tokenizer`):
-            Tokenizer of class
-            [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        transformer ([`Transformer2DModel`]):
-            A text conditioned `Transformer2DModel` to denoise the encoded image latents.
-        scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+    Pipeline for text-to-image generation using PixArt-Sigma.
     """
 
     bad_punct_regex = re.compile(
@@ -273,7 +199,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    # Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/utils.py
+    # copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.py
     def mask_text_embeddings(self, emb, mask):
         if emb.shape[0] == 1:
             keep_index = mask.sum().item()
@@ -443,6 +369,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.py
     def check_inputs(
         self,
         prompt,
@@ -535,7 +462,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         return [process(t) for t in text]
 
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._clean_caption
+    # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline._clean_caption
     def _clean_caption(self, caption):
         caption = str(caption)
         caption = ul.unquote_plus(caption)
@@ -698,7 +625,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         clean_caption: bool = True,
         use_resolution_binning: bool = True,
-        max_sequence_length: int = 120,
+        max_sequence_length: int = 300,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
@@ -745,7 +672,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 provided, text embeddings will be generated from `prompt` input argument.
             prompt_attention_mask (`torch.FloatTensor`, *optional*): Pre-generated attention mask for text embeddings.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. For PixArt-Alpha this negative prompt should be "". If not
+                Pre-generated negative text embeddings. For PixArt-Sigma this negative prompt should be "". If not
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
             negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
@@ -777,14 +704,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images
         """
-        if "mask_feature" in kwargs:
-            deprecation_message = "The use of `mask_feature` is deprecated. It is no longer used in any computation and that doesn't affect the end results. It will be removed in a future version."
-            deprecate("mask_feature", "1.0.0", deprecation_message, standard_warn=False)
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
         if use_resolution_binning:
-            if self.transformer.config.sample_size == 128:
+            if self.transformer.config.sample_size == 256:
+                aspect_ratio_bin = ASPECT_RATIO_2048_BIN
+            elif self.transformer.config.sample_size == 128:
                 aspect_ratio_bin = ASPECT_RATIO_1024_BIN
             elif self.transformer.config.sample_size == 64:
                 aspect_ratio_bin = ASPECT_RATIO_512_BIN
@@ -866,17 +792,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         # 6.1 Prepare micro-conditions.
         added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
-        if self.transformer.config.sample_size == 128:
-            resolution = torch.tensor([height, width]).repeat(batch_size * num_images_per_prompt, 1)
-            aspect_ratio = torch.tensor([float(height / width)]).repeat(batch_size * num_images_per_prompt, 1)
-            resolution = resolution.to(dtype=prompt_embeds.dtype, device=device)
-            aspect_ratio = aspect_ratio.to(dtype=prompt_embeds.dtype, device=device)
-
-            if do_classifier_free_guidance:
-                resolution = torch.cat([resolution, resolution], dim=0)
-                aspect_ratio = torch.cat([aspect_ratio, aspect_ratio], dim=0)
-
-            added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
 
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -923,11 +838,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     noise_pred = noise_pred
 
                 # compute previous image: x_t -> x_t-1
-                if num_inference_steps == 1:
-                    # For DMD one step sampling: https://arxiv.org/abs/2311.18828
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).pred_original_sample
-                else:
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

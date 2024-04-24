@@ -24,7 +24,7 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    PixArtAlphaPipeline,
+    PixArtSigmaPipeline,
     Transformer2DModel,
 )
 from diffusers.utils.testing_utils import (
@@ -42,8 +42,8 @@ from ..test_pipelines_common import PipelineTesterMixin, to_np
 enable_full_determinism()
 
 
-class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = PixArtAlphaPipeline
+class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = PixArtSigmaPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -194,7 +194,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (1, 8, 8, 3))
-        expected_slice = np.array([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.483, 0.2583, 0.5331, 0.4852])
+        expected_slice = np.array([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.4830, 0.2583, 0.5331, 0.4852])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
@@ -211,7 +211,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         self.assertEqual(image.shape, (1, 32, 48, 3))
 
-        expected_slice = np.array([0.6493, 0.537, 0.4081, 0.4762, 0.3695, 0.4711, 0.3026, 0.5218, 0.5263])
+        expected_slice = np.array([0.6493, 0.5370, 0.4081, 0.4762, 0.3695, 0.4711, 0.3026, 0.5218, 0.5263])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
@@ -301,25 +301,9 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (2, 8, 8, 3))
-        expected_slice = np.array([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.483, 0.2583, 0.5331, 0.4852])
+        expected_slice = np.array([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.4830, 0.2583, 0.5331, 0.4852])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
-
-    def test_raises_warning_for_mask_feature(self):
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs.update({"mask_feature": True})
-
-        with self.assertWarns(FutureWarning) as warning_ctx:
-            _ = pipe(**inputs).images
-
-        assert "mask_feature" in str(warning_ctx.warning)
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
@@ -331,9 +315,9 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
-    ckpt_id_1024 = "PixArt-alpha/PixArt-XL-2-1024-MS"
-    ckpt_id_512 = "PixArt-alpha/PixArt-XL-2-512x512"
+class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
+    ckpt_id_1024 = "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS"
+    ckpt_id_512 = "PixArt-alpha/PixArt-Sigma-XL-2-512-MS"
     prompt = "A small cactus with a happy face in the Sahara desert."
 
     def setUp(self):
@@ -349,7 +333,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_1024(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
+        pipe = PixArtSigmaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
         prompt = self.prompt
 
@@ -364,7 +348,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_512(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
+        pipe = PixArtSigmaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
         prompt = self.prompt
@@ -380,7 +364,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_1024_without_resolution_binning(self):
         generator = torch.manual_seed(0)
 
-        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
+        pipe = PixArtSigmaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
         prompt = self.prompt
@@ -414,7 +398,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_512_without_resolution_binning(self):
         generator = torch.manual_seed(0)
 
-        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
+        pipe = PixArtSigmaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
         prompt = self.prompt
