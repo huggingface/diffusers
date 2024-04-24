@@ -91,6 +91,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         attention_type: str = "default",
         caption_channels: int = None,
         interpolation_scale: float = None,
+        use_additional_conditions: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -308,9 +309,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # PixArt-Alpha blocks.
         self.adaln_single = None
-        self.use_additional_conditions = False
         if self.config.norm_type == "ada_norm_single":
-            self.use_additional_conditions = self.config.sample_size == 128
             # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
             # additional conditions until we find better name
             self.adaln_single = AdaLayerNormSingle(
