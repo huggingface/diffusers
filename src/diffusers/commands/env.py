@@ -15,7 +15,6 @@
 import platform
 import subprocess
 from argparse import ArgumentParser
-from typing import Optional
 
 import huggingface_hub
 
@@ -38,25 +37,11 @@ def info_command_factory(_):
     return EnvironmentCommand()
 
 
-def download_command_factory(args):
-    return EnvironmentCommand(args.accelerate_config_file)
-
-
 class EnvironmentCommand(BaseDiffusersCLICommand):
     @staticmethod
     def register_subcommand(parser: ArgumentParser) -> None:
         download_parser = parser.add_parser("env")
         download_parser.set_defaults(func=info_command_factory)
-        download_parser.add_argument(
-            "--accelerate-config_file",
-            default=None,
-            help="The accelerate config file to use for the default values in the launching script.",
-        )
-        download_parser.set_defaults(func=download_command_factory)
-
-    def __init__(self, accelerate_config_file: Optional[str] = None, *args) -> None:
-        super().__init__(*args)
-        self._accelerate_config_file = accelerate_config_file
 
     def run(self) -> dict:
         hub_version = huggingface_hub.__version__
