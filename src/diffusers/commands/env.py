@@ -96,25 +96,10 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             transformers_version = transformers.__version__
 
         accelerate_version = "not installed"
-        accelerate_config = accelerate_config_str = "not found"
         if is_accelerate_available():
             import accelerate
-            from accelerate.commands.config import default_config_file, load_config_from_file
 
             accelerate_version = accelerate.__version__
-            # Get the default from the config file.
-            # Taken from `transformers`.
-            if self._accelerate_config_file is not None:
-                if self._accelerate_config_file == "default_loc":
-                    accelerate_config = load_config_from_file(default_config_file).to_dict()
-                else:
-                    accelerate_config = load_config_from_file(self._accelerate_config_file).to_dict()
-
-            accelerate_config_str = (
-                "\n" + "\n".join([f"\t- {prop}: {val}" for prop, val in accelerate_config.items()])
-                if isinstance(accelerate_config, dict)
-                else f"{accelerate_config}"
-            )
 
         peft_version = "not installed"
         if is_peft_available():
@@ -186,7 +171,6 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             "Huggingface_hub version": hub_version,
             "Transformers version": transformers_version,
             "Accelerate version": accelerate_version,
-            "Accelerate config": accelerate_config_str,
             "PEFT version": peft_version,
             "Safetensors version": safetensors_version,
             "xFormers version": xformers_version,
