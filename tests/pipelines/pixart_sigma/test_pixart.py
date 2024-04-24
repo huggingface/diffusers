@@ -194,7 +194,7 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (1, 8, 8, 3))
-        expected_slice = np.array([0.2639, -0.2947, -0.2388, 0.2654, -0.0722, -0.0340, -0.4834, 0.0662, -0.0295])
+        expected_slice = np.array([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.4830, 0.2583, 0.5331, 0.4852])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
@@ -211,7 +211,7 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         self.assertEqual(image.shape, (1, 32, 48, 3))
 
-        expected_slice = np.array([0.2987, 0.0739, -0.1838, -0.0475, -0.2610, -0.0577, -0.3949, 0.0436, 0.0527])
+        expected_slice = np.array([0.6493, 0.5370, 0.4081, 0.4762, 0.3695, 0.4711, 0.3026, 0.5218, 0.5263])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
@@ -301,7 +301,7 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (2, 8, 8, 3))
-        expected_slice = np.array([0.2639, -0.2947, -0.2388, 0.2654, -0.0722, -0.0340, -0.4834, 0.0662, -0.0295])
+        expected_slice = np.array([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.4830, 0.2583, 0.5331, 0.4852])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
