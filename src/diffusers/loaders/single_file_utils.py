@@ -1436,10 +1436,10 @@ def _legacy_load_scheduler(
     elif class_name == "HeunDiscreteScheduler" or scheduler_type == "heun":
         scheduler = HeunDiscreteScheduler.from_config(scheduler_config)
 
-    elif scheduler_type == "euler":
+    elif class_name == "EulerDiscreteScheduler" or scheduler_type == "euler":
         scheduler = EulerDiscreteScheduler.from_config(scheduler_config)
 
-    elif scheduler_type == "euler-ancestral":
+    elif class_name == "EulerAncestralDiscreteScheduler" or scheduler_type == "euler-ancestral":
         scheduler = EulerAncestralDiscreteScheduler.from_config(scheduler_config)
 
     elif scheduler_type == "dpm":

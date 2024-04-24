@@ -54,7 +54,6 @@ def load_single_file_sub_model(
     torch_dtype=None,
     use_safetensors=None,
     is_legacy_loading=False,
-    cache_dir=None,
     **kwargs,
 ):
     if is_pipeline_module:
@@ -162,17 +161,18 @@ def load_single_file_sub_model(
         if is_diffusers_model:
             logger.warning(
                 (
-                    f"Pipeline component {name}'s weights do not appear to be included in the checkpoint"
-                    f" or {class_obj.__name__} does not currently support single file loading."
-                    f"Attempting to download the component using `from_pretrained` and the inferred model repository: {pretrained_model_name_or_path}."
+                    f"Pipeline component {name}'s weights do not appear to be included in the checkpoint "
+                    f"or {class_obj.__name__} does not currently support single file loading.\n"
+                    "Attempting to load the component using `from_pretrained` and inferred model repository:\n"
+                    f"{pretrained_model_name_or_path}."
                 )
             )
             if not _is_model_weights_in_cached_folder(cached_model_path, name):
+                # download the model weights if they are not in the cached path
                 loading_kwargs.update(
                     {
                         "pretrained_model_name_or_path": pretrained_model_name_or_path,
                         "local_files_only": False,
-                        "cache_dir": cache_dir,
                     }
                 )
 
@@ -527,7 +527,6 @@ class FromSingleFileMixin:
                     cached_model_path=cached_model_path,
                     pipelines=pipelines,
                     name=name,
-                    cache_dir=cache_dir,
                     torch_dtype=torch_dtype,
                     original_config=original_config,
                     local_files_only=local_files_only,
@@ -574,14 +573,14 @@ class FromSingleFileMixin:
                 f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
             )
             deprecate("scheduler_type", "1.0.0", deprecation_message)
-            scheduler = _legacy_load_scheduler(
-                pipeline_class_name=class_name,
+            scheduler_components = _legacy_load_scheduler(
+                class_name=class_name,
                 checkpoint=checkpoint,
                 original_config=original_config,
                 scheduler_type=scheduler_type,
                 prediction_type=prediction_type,
             )
-            init_kwargs.update({"scheduler": scheduler})
+            init_kwargs.update(scheduler_components)
 
         pipe = pipeline_class(**init_kwargs)
 
