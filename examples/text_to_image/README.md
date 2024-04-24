@@ -170,6 +170,12 @@ For our small Pokemons dataset, the effects of Min-SNR weighting strategy might 
 
 Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds.
 
+#### Training with EMA weights
+
+Through the `EMAModel` class, we support a convenient method of tracking an exponential moving average of model parameters.  This helps to smooth out noise in model parameter updates and generally improves model performance.  If enabled with the `--use_ema` argument, the final model checkpoint that is saved at the end of training will use the EMA weights.
+
+EMA weights require an additional full-precision copy of the model parameters to be stored in memory, but otherwise have very little performance overhead.  `--foreach_ema` can be used to further reduce the overhead.  If you are short on VRAM and still want to use EMA weights, you can store them in CPU RAM by using the `--offload_ema` argument.  This will keep the EMA weights in pinned CPU memory during the training step.  Then, once every model parameter update, it will transfer the EMA weights back to the GPU which can then update the parameters on the GPU, before sending them back to the CPU.  Both of these transfers are set up as non-blocking, so CUDA devices should be able to overlap this transfer with other computations.  With sufficient bandwidth between the host and device and a sufficiently long gap between model parameter updates, storing EMA weights in CPU RAM should have no additional performance overhead, as long as no other calls force synchronization.
+
 ## Training with LoRA
 
 Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
