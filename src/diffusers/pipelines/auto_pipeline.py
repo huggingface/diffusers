@@ -216,7 +216,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         ```
 
         Parameters:
-            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+            pretrained_model_or_path (`str` or `os.PathLike`, *optional*):
                 Can be either:
 
                     - A string, the *repo id* (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline
@@ -489,7 +489,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         ```
 
         Parameters:
-            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+            pretrained_model_or_path (`str` or `os.PathLike`, *optional*):
                 Can be either:
 
                     - A string, the *repo id* (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline
@@ -765,7 +765,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         ```
 
         Parameters:
-            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+            pretrained_model_or_path (`str` or `os.PathLike`, *optional*):
                 Can be either:
 
                     - A string, the *repo id* (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline
