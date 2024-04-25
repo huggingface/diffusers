@@ -31,6 +31,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 
 
@@ -68,28 +69,6 @@ EXAMPLE_DOC_STRING = """
         >>> video_path = export_to_gif(frames, "i2v.gif")
         ```
 """
-
-
-# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
-def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
-    batch_size, channels, num_frames, height, width = video.shape
-    outputs = []
-    for batch_idx in range(batch_size):
-        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-        batch_output = processor.postprocess(batch_vid, output_type)
-
-        outputs.append(batch_output)
-
-    if output_type == "np":
-        outputs = np.stack(outputs)
-
-    elif output_type == "pt":
-        outputs = torch.stack(outputs)
-
-    elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
-
-    return outputs
 
 
 @dataclass
@@ -737,7 +716,9 @@ class I2VGenXLPipeline(
             video = latents
         else:
             video_tensor = self.decode_latents(latents, decode_chunk_size=decode_chunk_size)
-            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+            video = VideoProcessor.tensor2vid(
+                video=video_tensor, processor=self.image_processor, output_type=output_type
+            )
 
         # 9. Offload all models
         self.maybe_free_model_hooks()
