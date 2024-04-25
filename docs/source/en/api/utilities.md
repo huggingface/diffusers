@@ -44,4 +44,4 @@ Utility and helper functions for working with 🤗 Diffusers.
 
 ## enable_full_determinism
 
-[[autodoc]] utils.testing_utils.enable_full_determinism
+[[autodoc]] diffusers.utils.testing_utils.enable_full_determinism
