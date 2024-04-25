@@ -680,6 +680,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
+    parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
     parser.add_argument(
         "--rank",
         type=int,
@@ -693,13 +694,6 @@ def parse_args(input_args=None):
         help=(
             "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
-        ),
-    )
-    parser.add_argument(
-        "--use_blora",
-        action="store_true",
-        help=(
-            "Whether to train a B-LoRA as proposed in- Implicit Style-Content Separation using B-LoRA https://arxiv.org/abs/2403.14572. "
         ),
     )
     parser.add_argument(
@@ -1268,12 +1262,10 @@ def main(args):
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
+        model_id = args.hub_model_id or Path(args.output_dir).name
+        repo_id = None
         if args.push_to_hub:
-            repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
-            ).repo_id
-        else:
-            repo_id = Path(args.output_dir).name
+            repo_id = create_repo(repo_id=model_id, exist_ok=True, token=args.hub_token).repo_id
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
@@ -1307,24 +1299,17 @@ def main(args):
         logger.info("Performing EDM-style training!")
     elif args.do_edm_style_training:
         noise_scheduler = EulerDiscreteScheduler.from_pretrained(
-            args.pretrained_model_name_or_path,
-            subfolder="scheduler",
+            args.pretrained_model_name_or_path, subfolder="scheduler"
         )
         logger.info("Performing EDM-style training!")
     else:
         noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="text_encoder",
-        revision=args.revision,
-        variant=args.variant,
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="text_encoder_2",
-        revision=args.revision,
-        variant=args.variant,
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
     )
     vae_path = (
         args.pretrained_model_name_or_path
@@ -1547,7 +1532,6 @@ def main(args):
                 )
 
         if args.train_text_encoder:
-            # Do we need to call `scale_lora_layers()` here?
             _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
 
             _set_state_dict_into_text_encoder(
@@ -1971,6 +1955,12 @@ def main(args):
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
+                if args.noise_offset:
+                    # https://www.crosslabs.org//blog/diffusion-with-offset-noise
+                    noise += args.noise_offset * torch.randn(
+                        (model_input.shape[0], model_input.shape[1], 1, 1), device=model_input.device
+                    )
+
                 bsz = model_input.shape[0]
 
                 # Sample a random timestep for each image
@@ -2018,6 +2008,7 @@ def main(args):
                 if freeze_text_encoder:
                     unet_added_conditions = {
                         "time_ids": add_time_ids,
+                        # "time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1),
                         "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat_text_embeds, 1),
                     }
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
@@ -2197,6 +2188,10 @@ def main(args):
 
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
+                logger.info(
+                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                    f" {args.validation_prompt}."
+                )
                 # create pipeline
                 if freeze_text_encoder:
                     text_encoder_one = text_encoder_cls_one.from_pretrained(
@@ -2277,16 +2272,16 @@ def main(args):
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = unwrap_model(unet)
+        unet = accelerator.unwrap_model(unet)
         unet = unet.to(torch.float32)
         unet_lora_layers = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
 
         if args.train_text_encoder:
-            text_encoder_one = unwrap_model(text_encoder_one)
+            text_encoder_one = accelerator.unwrap_model(text_encoder_one)
             text_encoder_lora_layers = convert_state_dict_to_diffusers(
                 get_peft_model_state_dict(text_encoder_one.to(torch.float32))
             )
-            text_encoder_two = unwrap_model(text_encoder_two)
+            text_encoder_two = accelerator.unwrap_model(text_encoder_two)
             text_encoder_2_lora_layers = convert_state_dict_to_diffusers(
                 get_peft_model_state_dict(text_encoder_two.to(torch.float32))
             )
@@ -2391,7 +2386,7 @@ def main(args):
         save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")
 
         save_model_card(
-            repo_id,
+            model_id if not args.push_to_hub else repo_id,
             use_dora=args.use_dora,
             images=images,
             base_model=args.pretrained_model_name_or_path,

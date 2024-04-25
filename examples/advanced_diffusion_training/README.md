@@ -363,6 +363,7 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
         torch_dtype=torch.float16,
     ).to("cuda")
 
+# pick a blora for content/style (you can also set one to None) 
 content_B_lora_path  = "lora-library/B-LoRA-teddybear"
 style_B_lora_path= "lora-library/B-LoRA-pen_sketch"
 
