@@ -61,6 +61,13 @@ class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSin
     def test_single_file_format_inference_is_same_as_pretrained(self):
         super().test_single_file_format_inference_is_same_as_pretrained(expected_max_diff=1e-3)
 
+    def test_single_file_loading_4_channel_unet(self):
+        # Test loading single file inpaint with a 4 channel UNet
+        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
+        pipe = self.pipeline_class.from_single_file(ckpt_path)
+
+        assert pipe.unet.config.in_channels == 4
+
 
 @slow
 @require_torch_gpu

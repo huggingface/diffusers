@@ -56,6 +56,14 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
         pipe = self.pipeline_class.from_single_file(self.ckpt_path, scheduler_type="ddim")
         assert isinstance(pipe.scheduler, DDIMScheduler)
 
+    def test_single_file_legacy_scaling_factor(self):
+        new_scaling_factor = 10.0
+        init_pipe = self.pipeline_class.from_single_file(self.ckpt_path)
+        pipe = self.pipeline_class.from_single_file(self.ckpt_path, scaling_factor=new_scaling_factor)
+
+        assert init_pipe.vae.config.scaling_factor != new_scaling_factor
+        assert pipe.vae.config.scaling_factor == new_scaling_factor
+
 
 class StableDiffusion21PipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionPipeline
