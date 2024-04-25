@@ -153,6 +153,14 @@ class AdaGroupNorm(nn.Module):
 class AdaLayerNormContinuous(nn.Module):
     r"""
     Adaptive normalization layer with a norm layer (layer_norm or rms_norm).
+
+    Args:
+        embedding_dim (`int`): Embedding dimension to use during projection.
+        conditioning_embedding_dim (`int`): Dimension of the input condition.
+        elementwise_affine (`bool`): Boolean flag to denote if affine transformation should be applied.
+        eps (`int`): Epsilon factor.
+        bias (`bias`): Boolean flag to denote if bias should be use.
+        norm_type (`str`): Normalization layer to use. Values supported: "layer_norm", "rms_norm".
     """
 
     def __init__(
@@ -194,6 +202,12 @@ else:
     class LayerNorm(nn.Module):
         r"""
         LayerNorm with the bias parameter.
+
+        Args:
+            dim (`int`): Dimensionality to use for the parameters.
+            eps (`int`): Epsilon factor.
+            elementwise_affine (`bool`): Boolean flag to denote if affine transformation should be applied.
+            bias (`bias`): Boolean flag to denote if bias should be use.
         """
 
         def __init__(self, dim, eps: float = 1e-5, elementwise_affine: bool = True, bias: bool = True):
@@ -220,6 +234,11 @@ else:
 class RMSNorm(nn.Module):
     r"""
     RMS Norm as introduced in https://arxiv.org/abs/1910.07467 by Zhang et al.
+
+    Args:
+        dim (`int`): Number of dimensions to use for `weights`. Only effective when `elementwise_affine` is True.
+        eps (`float`): Small value to use when calculating the reciprocal of the square-root.
+        elementwise_affine (`bool`): Boolean flag to denote if affine transformation should be applied.
     """
 
     def __init__(self, dim, eps: float, elementwise_affine: bool = True):
@@ -256,6 +275,9 @@ class RMSNorm(nn.Module):
 class GlobalResponseNorm(nn.Module):
     r"""
     Global response normalization as introduced in ConvNeXt-v2 (https://arxiv.org/abs/2301.00808).
+
+    Args:
+        dim (`int`): Number of dimensions to use for the `gamma` and `beta`.
     """
 
     # Taken from https://github.com/facebookresearch/ConvNeXt-V2/blob/3608f67cc1dae164790c5d0aead7bf2d73d9719b/models/utils.py#L105
