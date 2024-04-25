@@ -41,3 +41,7 @@ Utility and helper functions for working with 🤗 Diffusers.
 ## randn_tensor
 
 [[autodoc]] utils.torch_utils.randn_tensor
+
+## enable_full_determinism
+
+[[autodoc]] utils.testing_utils.enable_full_determinism

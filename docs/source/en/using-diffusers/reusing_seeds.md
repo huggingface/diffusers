@@ -79,7 +79,7 @@ image = ddim(num_inference_steps=2, output_type="np", generator=generator).image
 print(np.abs(image).sum())
 ```
 
-To avoid this issue, Diffusers has a [`~utils.torch_utils.randn_tensor`] function for creating random noise on the CPU, and then moving the tensor to a GPU if necessary. The [`~utils.torch_utils.randn_tensor`] function is used everywhere inside the pipeline, allowing the user to **always** pass a CPU `Generator` even if the pipeline is run on a GPU.
+To avoid this issue, Diffusers has a [`~utils.torch_utils.randn_tensor`] function for creating random noise on the CPU, and then moving the tensor to a GPU if necessary. The [`~utils.torch_utils.randn_tensor`] function is used everywhere inside the pipeline. Now you can call [torch.manual_seed](https://pytorch.org/docs/stable/generated/torch.manual_seed.html) which automatically creates a CPU `Generator` that can be passed to the pipeline even if it is being run on a GPU.
 
 ```python
 import torch
@@ -109,16 +109,10 @@ You can also configure PyTorch to use deterministic algorithms to create a repro
 
 Non-deterministic behavior occurs when operations are launched in more than one CUDA stream. To avoid this, set the environment variable [CUBLAS_WORKSPACE_CONFIG](https://docs.nvidia.com/cuda/cublas/index.html#results-reproducibility) to `:16:8` to only use one buffer size during runtime.
 
-PyTorch typically benchmarks multiple algorithms to select the fastest one, but if you want reproducibility, you should disable this feature because the benchmark may select different algorithms each time. Set [torch.use_deterministic_algorithms](https://pytorch.org/docs/stable/generated/torch.use_deterministic_algorithms.html) to `True` to enable deterministic algorithms.
+PyTorch typically benchmarks multiple algorithms to select the fastest one, but if you want reproducibility, you should disable this feature because the benchmark may select different algorithms each time. Set Diffusers [`~utils.testing_utils.enable_full_determinism`] to enable deterministic algorithms.
 
 ```py
-import os
-import torch
-
-os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
-
-torch.backends.cudnn.benchmark = False
-torch.use_deterministic_algorithms(True)
+enable_full_determinism()
 ```
 
 Now when you run the same pipeline twice, you'll get identical results.
