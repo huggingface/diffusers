@@ -43,6 +43,9 @@ Each time the pipeline is run, [torch.randn](https://pytorch.org/docs/stable/gen
 
 But if you need to reliably generate the same image, that depends on whether you're running the pipeline on a CPU or GPU.
 
+> [!TIP]
+> It might seem unintuitive to pass `Generator` objects to a pipeline instead of the integer value representing the seed. However, this is the recommended design when working with probabilistic models in PyTorch because a `Generator` is a *random state* that can be passed to multiple pipelines in a sequence. As soon as the `Generator` is consumed, the *state* is changed in place which means even if you passed the same `Generator` to a different pipeline, it won't produce the same result because the state is already changed.
+
 <hfoptions id="hardware">
 <hfoption id="CPU">
 
@@ -58,9 +61,6 @@ generator = torch.Generator(device="cpu").manual_seed(0)
 image = ddim(num_inference_steps=2, output_type="np", generator=generator).images
 print(np.abs(image).sum())
 ```
-
-> [!TIP]
-> It might seem unintuitive to pass `Generator` objects to a pipeline instead of the integer value representing the seed. However, this is the recommended design when working with probabilistic models in PyTorch because a `Generator` is a *random state* that can be passed to multiple pipelines in a sequence.
 
 </hfoption>
 <hfoption id="GPU">
@@ -94,11 +94,10 @@ print(np.abs(image).sum())
 ```
 
 > [!TIP]
-> If reproducibility is important to your use case, we recommend always passing a CPU `Generator`. The performance loss is often neglectable and you'll generate more similar values than if the pipeline had been run on a GPU.
+> If reproducibility is important to your use case, we recommend always passing a CPU `Generator`. The performance loss is often negligible and you'll generate more similar values than if the pipeline had been run on a GPU.
 
 Finally, more complex pipelines such as [`UnCLIPPipeline`], are often extremely
-susceptible to precision error propagation. Don't expect similar results across
-different GPU hardware or even PyTorch versions. You'll need to use
+susceptible to precision error propagation. You'll need to use
 exactly the same hardware and PyTorch version for full reproducibility.
 
 </hfoption>
@@ -193,4 +192,3 @@ make_image_grid(images, rows=2, cols=2)
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/diffusers/diffusers-images-docs/resolve/main/reusabe_seeds_2.jpg"/>
 </div>
-
