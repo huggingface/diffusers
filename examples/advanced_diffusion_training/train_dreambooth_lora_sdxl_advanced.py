@@ -77,8 +77,6 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
-if is_wandb_available():
-    pass
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.28.0.dev0")
@@ -749,13 +747,8 @@ def parse_args(input_args=None):
     return args
 
 
-# Taken from B-LoRA repo https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
-BLOCKS = {
-    "content": ["unet.up_blocks.0.attentions.0"],
-    "style": ["unet.up_blocks.0.attentions.1"],
-}
 
-
+# Taken (and slightly modified) from B-LoRA repo https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
 def is_belong_to_blocks(key, blocks):
     try:
         for g in blocks:
@@ -766,10 +759,13 @@ def is_belong_to_blocks(key, blocks):
         raise type(e)(f"failed to is_belong_to_block, due to: {e}")
 
 
-def get_blora_target_modules(unet, blocks=None):
+def get_blora_target_modules(unet):
+
+    content_b_lora_blocks = ["unet.up_blocks.0.attentions.0"]
+    style_b_lora_blocks = ["unet.up_blocks.0.attentions.1"]
     try:
-        if not blocks:
-            blocks = [(".").join(blk.split(".")[1:]) for blk in BLOCKS["content"] + BLOCKS["style"]]
+
+        blocks = [(".").join(blk.split(".")[1:]) for blk in content_b_lora_blocks + style_b_lora_blocks]
 
         attns = [
             attn_processor_name.rsplit(".", 1)[0]
