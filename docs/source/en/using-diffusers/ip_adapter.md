@@ -305,13 +305,30 @@ masks = processor.preprocess([mask1, mask2], height=output_height, width=output_
   </div>
 </div>
 
-When there is more than one input IP-Adapter image, load them as a list to ensure each image is assigned to a different IP-Adapter. Each of the input IP-Adapter images here correspond to the masks generated above.
+When there is more than one input IP-Adapter image, you have two methods to assign images to IP Adapters: one is to load them as a list to ensure that each image is assigned to a different IP-Adapter, the other is assign them all to the same IP Adapter. Each of the input IP-Adapter images here correspond to the masks generated above.
 
+Method 1: assign each image to a different IP Adapter
 ```py
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"] * 2)
+pipeline.set_ip_adapter_scale([0.7] * 2)
+
 face_image1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_girl1.png")
 face_image2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_girl2.png")
 
 ip_images = [[face_image1], [face_image2]]
+```
+
+Method 2: assign all images to the same IP Adapter
+```py
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"])
+pipeline.set_ip_adapter_scale([[0.7, 0.7]])  # one scale for each image-mask pair
+
+face_image1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_girl1.png")
+face_image2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_girl2.png")
+
+ip_images = [[face_image1, face_image2]]
+
+masks = [masks.reshape(1, masks.shape[0], masks.shape[2], masks.shape[3])]
 ```
 
 <div class="flex flex-row gap-4">
@@ -328,8 +345,6 @@ ip_images = [[face_image1], [face_image2]]
 Now pass the preprocessed masks to `cross_attention_kwargs` in the pipeline call.
 
 ```py
-pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"] * 2)
-pipeline.set_ip_adapter_scale([0.7] * 2)
 generator = torch.Generator(device="cpu").manual_seed(0)
 num_images = 1
 
@@ -436,7 +451,7 @@ image = torch.from_numpy(faces[0].normed_embedding)
 ref_images_embeds.append(image.unsqueeze(0))
 ref_images_embeds = torch.stack(ref_images_embeds, dim=0).unsqueeze(0)
 neg_ref_images_embeds = torch.zeros_like(ref_images_embeds)
-id_embeds = torch.cat([neg_ref_images_embeds, ref_images_embeds]).to(dtype=torch.float16, device="cuda"))
+id_embeds = torch.cat([neg_ref_images_embeds, ref_images_embeds]).to(dtype=torch.float16, device="cuda")
 
 generator = torch.Generator(device="cpu").manual_seed(42)
 
@@ -452,12 +467,27 @@ images = pipeline(
 Both IP-Adapter FaceID Plus and Plus v2 models require CLIP image embeddings. You can prepare face embeddings as shown previously, then you can extract and pass CLIP embeddings to the hidden image projection layers.
 
 ```py
-clip_embeds = pipeline.prepare_ip_adapter_image_embeds([ip_adapter_images], None, torch.device("cuda"), num_images, True)[0]
+from insightface.utils import face_align
+
+ref_images_embeds = []
+ip_adapter_images = []
+app = FaceAnalysis(name="buffalo_l", providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+app.prepare(ctx_id=0, det_size=(640, 640))
+image = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2RGB)
+faces = app.get(image)
+ip_adapter_images.append(face_align.norm_crop(image, landmark=faces[0].kps, image_size=224))
+image = torch.from_numpy(faces[0].normed_embedding)
+ref_images_embeds.append(image.unsqueeze(0))
+ref_images_embeds = torch.stack(ref_images_embeds, dim=0).unsqueeze(0)
+neg_ref_images_embeds = torch.zeros_like(ref_images_embeds)
+id_embeds = torch.cat([neg_ref_images_embeds, ref_images_embeds]).to(dtype=torch.float16, device="cuda")
+
+clip_embeds = pipeline.prepare_ip_adapter_image_embeds(
+  [ip_adapter_images], None, torch.device("cuda"), num_images, True)[0]
 
 pipeline.unet.encoder_hid_proj.image_projection_layers[0].clip_embeds = clip_embeds.to(dtype=torch.float16)
 pipeline.unet.encoder_hid_proj.image_projection_layers[0].shortcut = False # True if Plus v2
 ```
-
 
 ### Multi IP-Adapter
 
