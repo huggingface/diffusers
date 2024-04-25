@@ -49,7 +49,7 @@ prompt = "portrait photo of a old warrior chief"
 pipeline = pipeline.to("cuda")
 ```
 
-동일한 이미지를 사용하고 개선할 수 있는지 확인하려면 [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html)를 사용하고 [재현성](./using-diffusers/reproducibility)에 대한 시드를 설정하세요:
+동일한 이미지를 사용하고 개선할 수 있는지 확인하려면 [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html)를 사용하고 [재현성](./using-diffusers/reusing_seeds)에 대한 시드를 설정하세요:
 
 ```python
 import torch
