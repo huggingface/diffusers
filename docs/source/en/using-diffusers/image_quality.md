@@ -77,7 +77,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None
 ).to("cuda")
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
-generator = torch.Generator(device="cpu").manual_seed(67)
+generator = torch.Generator(device="cpu").manual_seed(33)
 prompt = ""
 image = pipeline(prompt, generator=generator).images[0]
 image
@@ -85,11 +85,11 @@ image
 
 <div class="flex gap-4">
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdv15-no-freeu.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU disabled</figcaption>
   </div>
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdv15-freeu.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU enabled</figcaption>
   </div>
 </div>
@@ -105,19 +105,19 @@ pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, safety_checker=None
 ).to("cuda")
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.4, b2=1.6)
-generator = torch.Generator(device="cpu").manual_seed(67)
-prompt = ""
+generator = torch.Generator(device="cpu").manual_seed(80)
+prompt = "A squirrel eating a burger"
 image = pipeline(prompt, generator=generator).images[0]
 image
 ```
 
 <div class="flex gap-4">
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdv21-no-freeu.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU disabled</figcaption>
   </div>
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdv21-freeu.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU enabled</figcaption>
   </div>
 </div>
@@ -133,19 +133,19 @@ pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16,
 ).to("cuda")
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.3, b2=1.4)
-generator = torch.Generator(device="cpu").manual_seed(67)
-prompt = ""
+generator = torch.Generator(device="cpu").manual_seed(13)
+prompt = "A squirrel eating a burger"
 image = pipeline(prompt, generator=generator).images[0]
 image
 ```
 
 <div class="flex gap-4">
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-no-freeu.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU disabled</figcaption>
   </div>
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-freeu.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU enabled</figcaption>
   </div>
 </div>
@@ -159,19 +159,23 @@ from diffusers import DiffusionPipeline
 from diffusers.utils import export_to_video
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "cerspense/zeroscope_v2_576w", torch_dtype=torch.float16
+    "damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16
 ).to("cuda")
 # values come from https://github.com/lyn-rgb/FreeU_Diffusers#video-pipelines
 pipeline.enable_freeu(b1=1.2, b2=1.4, s1=0.9, s2=0.2)
+prompt = "Confident teddy bear surfer rides the wave in the tropics"
+generator = torch.Generator(device="cpu").manual_seed(47)
+video_frames = pipeline(prompt, generator=generator).frames[0]
+export_to_video(video_frames, "teddy_bear.mp4", fps=10)
 ```
 
 <div class="flex gap-4">
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/video-no-freeu.gif"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU disabled</figcaption>
   </div>
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/video-freeu.gif"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">FreeU enabled</figcaption>
   </div>
 </div>
