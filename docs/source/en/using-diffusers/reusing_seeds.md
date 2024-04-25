@@ -109,7 +109,7 @@ You can also configure PyTorch to use deterministic algorithms to create a repro
 
 Non-deterministic behavior occurs when operations are launched in more than one CUDA stream. To avoid this, set the environment variable [CUBLAS_WORKSPACE_CONFIG](https://docs.nvidia.com/cuda/cublas/index.html#results-reproducibility) to `:16:8` to only use one buffer size during runtime.
 
-PyTorch typically benchmarks multiple algorithms to select the fastest one, but if you want reproducibility, you should disable this feature because the benchmark may select different algorithms each time. Set Diffusers [`~utils.testing_utils.enable_full_determinism`] to enable deterministic algorithms.
+PyTorch typically benchmarks multiple algorithms to select the fastest one, but if you want reproducibility, you should disable this feature because the benchmark may select different algorithms each time. Set Diffusers [enable_full_determinism](https://github.com/huggingface/diffusers/blob/142f353e1c638ff1d20bd798402b68f72c1ebbdd/src/diffusers/utils/testing_utils.py#L861) to enable deterministic algorithms.
 
 ```py
 enable_full_determinism()
