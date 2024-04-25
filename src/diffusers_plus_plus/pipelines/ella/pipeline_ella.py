@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from packaging import version
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection, T5EncoderModel, T5Tokenizer
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import PipelineImageInput, VaeImageProcessor
@@ -36,7 +36,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionPipelineOutput
-from ...models import ELLA
+from ...models import ELLAProxyUNet
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -202,7 +202,7 @@ class StableDiffusionPipeline(
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         tokenizer2: T5TextEmbedder,
-        unet: UNet2DConditionModel,
+        unet: ELLAProxyUNet,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
