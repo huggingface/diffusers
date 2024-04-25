@@ -148,7 +148,7 @@ def load_single_file_sub_model(
         if issubclass(class_obj, torch.nn.Module):
             loading_kwargs.update({"torch_dtype": torch_dtype})
 
-        if is_diffusers_model:
+        if is_diffusers_model or is_transformers_model:
             logger.warning(
                 (
                     f"Pipeline component {name}'s weights do not appear to be included in the checkpoint "
@@ -283,16 +283,6 @@ class FromSingleFileMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            local_dir (`str`, *optional*):
-                If provided, the downloaded file will be placed under this directory, either as a symlink (default) or
-                a regular file.
-            local_dir_use_symlinks (`str` or `bool`, *optional*):
-                To be used with local_dir. If set to “auto”, the cache directory will be used and the file will either
-                be duplicated or symlinked to the local directory depending on its size. It set to True, a symlink will
-                be created, no matter the file size. If set to False, the file will either be duplicated from cache (if
-                already exists) or downloaded from the Hub and not cached. Find more information in the
-                `huggingface_hub`
-                [documentation](https://huggingface.co/docs/huggingface_hub/package_reference/file_download#huggingface_hub.hf_hub_download.local_dir_use_symlinks).
             token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
@@ -355,7 +345,6 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        local_dir = kwargs.pop("local_dir", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
         is_legacy_loading = False
@@ -386,7 +375,6 @@ class FromSingleFileMixin:
             cache_dir=cache_dir,
             local_files_only=local_files_only,
             revision=revision,
-            local_dir=local_dir,
         )
 
         # Always infer the default diffusers pretrained_model config from the checkpoint
@@ -476,20 +464,24 @@ class FromSingleFileMixin:
 
         from diffusers import pipelines
 
-        init_kwargs = {
-            k: init_dict.pop(k) for k in optional_kwargs if k in init_dict and k not in cls._optional_components
-        }
-        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
-
         # remove `null` components
         def load_module(name, value):
             if value[0] is None:
                 return False
             if name in passed_class_obj and passed_class_obj[name] is None:
                 return False
+            if name in pipeline_class._optional_components:
+                return False
+
             return True
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+        init_kwargs = {
+            k: init_dict.pop(k)
+            for k in optional_kwargs
+            if k in init_dict and k not in pipeline_class._optional_components
+        }
+        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
         for name, (library_name, class_name) in logging.tqdm(
             sorted(init_dict.items()), desc="Loading pipeline components..."
