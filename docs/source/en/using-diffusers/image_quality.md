@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Enhance image quality
+# Controlling image quality
 
 The components of a diffusion model, like the UNet and scheduler, can be optimized to improve the quality of generated images leading to better image lighting and details. These techniques are especially useful if you don't have the resources to simply use a larger model for inference. You can enable these techniques during inference without any additional training.
 

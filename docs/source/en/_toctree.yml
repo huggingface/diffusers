@@ -64,7 +64,7 @@
   - local: using-diffusers/reusing_seeds
     title: Improve image quality with deterministic generation
   - local: using-diffusers/image_quality
-    title: Enhance image quality
+    title: Controlling image quality
   - local: using-diffusers/weighted_prompts
     title: Prompt techniques
   title: Inference techniques
