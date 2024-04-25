@@ -273,15 +273,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    # Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/utils.py
-    def mask_text_embeddings(self, emb, mask):
-        if emb.shape[0] == 1:
-            keep_index = mask.sum().item()
-            return emb[:, :, :keep_index, :], keep_index
-        else:
-            masked_feature = emb * mask[:, None, :, None]
-            return masked_feature, emb.shape[2]
-
     # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
     def encode_prompt(
         self,
