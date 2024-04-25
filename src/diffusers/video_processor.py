@@ -23,6 +23,7 @@ from .image_processor import VaeImageProcessor
 
 class VideoProcessor:
     """Simple video processor."""
+
     @staticmethod
     def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
         """Converts a video tensor to a list of frames for export."""
