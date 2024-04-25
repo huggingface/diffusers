@@ -77,7 +77,6 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
-
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.28.0.dev0")
 
@@ -747,7 +746,6 @@ def parse_args(input_args=None):
     return args
 
 
-
 # Taken (and slightly modified) from B-LoRA repo https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
 def is_belong_to_blocks(key, blocks):
     try:
@@ -760,11 +758,9 @@ def is_belong_to_blocks(key, blocks):
 
 
 def get_blora_target_modules(unet):
-
     content_b_lora_blocks = ["unet.up_blocks.0.attentions.0"]
     style_b_lora_blocks = ["unet.up_blocks.0.attentions.1"]
     try:
-
         blocks = [(".").join(blk.split(".")[1:]) for blk in content_b_lora_blocks + style_b_lora_blocks]
 
         attns = [
