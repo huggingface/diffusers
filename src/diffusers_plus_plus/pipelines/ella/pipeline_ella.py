@@ -113,6 +113,42 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
+class T5TextEmbedder(nn.Module):
+    def __init__(self, pretrained_path="google/flan-t5-xl", max_length=None):
+        super().__init__()
+        self.model = T5EncoderModel.from_pretrained(pretrained_path)
+        self.tokenizer = T5Tokenizer.from_pretrained(pretrained_path)
+        self.max_length = max_length
+
+    def forward(
+        self, caption, text_input_ids=None, attention_mask=None, max_length=None
+    ):
+        if max_length is None:
+            max_length = self.max_length
+
+        if text_input_ids is None or attention_mask is None:
+            if max_length is not None:
+                text_inputs = self.tokenizer(
+                    caption,
+                    return_tensors="pt",
+                    add_special_tokens=True,
+                    max_length=max_length,
+                    padding="max_length",
+                    truncation=True,
+                )
+            else:
+                text_inputs = self.tokenizer(
+                    caption, return_tensors="pt", add_special_tokens=True
+                )
+            text_input_ids = text_inputs.input_ids
+            attention_mask = text_inputs.attention_mask
+        text_input_ids = text_input_ids.to(self.model.device)
+        attention_mask = attention_mask.to(self.model.device)
+        outputs = self.model(text_input_ids, attention_mask=attention_mask)
+
+        embeddings = outputs.last_hidden_state
+        return embeddings
+
 
 class StableDiffusionPipeline(
     DiffusionPipeline,
@@ -165,6 +201,7 @@ class StableDiffusionPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
+        tokenizer2: T5TextEmbedder,
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
@@ -242,6 +279,7 @@ class StableDiffusionPipeline(
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
+            tokenizer2=tokenizer2,
             unet=unet,
             scheduler=scheduler,
             safety_checker=safety_checker,
@@ -291,6 +329,7 @@ class StableDiffusionPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
+        max_length=128,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
@@ -319,6 +358,8 @@ class StableDiffusionPipeline(
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            max_length (`int`, *optional*):
+                Max length for tokenizer.
             lora_scale (`float`, *optional*):
                 A LoRA scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
             clip_skip (`int`, *optional*):
@@ -348,48 +389,30 @@ class StableDiffusionPipeline(
             if isinstance(self, TextualInversionLoaderMixin):
                 prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
-            text_inputs = self.tokenizer(
+            text_inputs = self.tokenizer2(
                 prompt,
                 padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
                 return_tensors="pt",
+                add_special_tokens=True,
+                max_length=max_length,
+                padding="max_length",
+                truncation=True,
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+            attention_mask = text_inputs.attention_mask
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
-                removed_text = self.tokenizer.batch_decode(
-                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
-                )
-                logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
-                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-                )
-
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = text_inputs.attention_mask.to(device)
-            else:
-                attention_mask = None
-
-            if clip_skip is None:
-                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
-                prompt_embeds = prompt_embeds[0]
-            else:
-                prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
-                )
-                # Access the `hidden_states` first, that contains a tuple of
-                # all the hidden states from the encoder layers. Then index into
-                # the tuple to access the hidden states from the desired layer.
-                prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
-                # We also need to apply the final LayerNorm here to not mess with the
-                # representations. The `last_hidden_states` that we typically use for
-                # obtaining the final prompt representations passes through the LayerNorm
-                # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
+            prompt_embeds = self.text_embedder(
+                text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+            )
+            # Access the `hidden_states` first, that contains a tuple of
+            # all the hidden states from the encoder layers. Then index into
+            # the tuple to access the hidden states from the desired layer.
+            #prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
+            # We also need to apply the final LayerNorm here to not mess with the
+            # representations. The `last_hidden_states` that we typically use for
+            # obtaining the final prompt representations passes through the LayerNorm
+            # layer.
+            prompt_embeds = prompt_embeds.last_hidden_state
 
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
