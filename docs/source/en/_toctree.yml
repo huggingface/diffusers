@@ -62,7 +62,7 @@
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
-    title: Improve image quality with deterministic generation
+    title: Reproducible pipelines
   - local: using-diffusers/image_quality
     title: Controlling image quality
   - local: using-diffusers/weighted_prompts
