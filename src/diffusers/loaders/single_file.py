@@ -116,22 +116,12 @@ def load_single_file_sub_model(
 
     elif is_tokenizer and is_legacy_loading:
         loaded_sub_model = _legacy_load_clip_tokenizer(
-            class_obj,
-            config=pretrained_model_name_or_path,
-            checkpoint=checkpoint,
+            class_obj, checkpoint=checkpoint, config=pretrained_model_name_or_path, local_files_only=local_files_only
         )
 
     elif is_diffusers_scheduler and is_legacy_loading:
-        scheduler_type = kwargs.get("scheduler_type", None)
-        prediction_type = kwargs.get("prediction_type", None)
-
         loaded_sub_model = _legacy_load_scheduler(
-            class_obj,
-            checkpoint=checkpoint,
-            name=name,
-            original_config=original_config,
-            scheduler_type=scheduler_type,
-            prediction_type=prediction_type,
+            class_obj, checkpoint=checkpoint, component_name=name, original_config=original_config, **kwargs
         )
 
     else:
@@ -380,14 +370,6 @@ class FromSingleFileMixin:
             )
             deprecate("scaling_factor", "1.0.0", deprecation_message)
 
-        prediction_type = kwargs.get("prediction_type", None)
-        if prediction_type is not None:
-            deprecation_message = (
-                "Passing the `prediction_type` argument to `from_single_file is deprecated "
-                "and will be ignored in future versions."
-            )
-            deprecate("prediction_type", "1.0.0", deprecation_message)
-
         if original_config is not None:
             original_config = fetch_original_config(original_config, local_files_only=local_files_only)
 
@@ -434,12 +416,13 @@ class FromSingleFileMixin:
                 config_dict = pipeline_class.load_config(cached_model_path)
 
             except LocalEntryNotFoundError:
-                # In this path, `local_files_only=True` but a local diffusers format model config is not available in the cache
-                # If `original_config` is not provided, we need to force download the config files from hub so that we have a way
+                # `local_files_only=True` but a local diffusers format model config is not available in the cache
+                # If `original_config` is not provided, we need override `local_files_only` to False
+                # to fetch the config files from the hub so that we have a way
                 # to configure the pipeline components.
 
-                # If `original_config` is provided, then we need to assume we are using legacy loading of pipeline components to preserve
-                # backwards compatibility
+                # For backwards compatibility
+                # If `original_config` is provided, then we need to assume we are using legacy loading for pipeline components
                 if original_config is None:
                     logger.warning(
                         "`local_files_only` is True but no local configs were found for this checkpoint.\n"
@@ -563,24 +546,6 @@ class FromSingleFileMixin:
 
             safety_checker_components = _legacy_load_safety_checker(local_files_only, torch_dtype)
             init_kwargs.update(safety_checker_components)
-
-        scheduler_type = kwargs.pop("scheduler_type", None)
-        if scheduler_type is not None:
-            deprecation_message = (
-                "The `scheduler_type` argument is deprecated and will be ignored in future versions. "
-                "Please pass an instance of a Scheduler object directly to the `scheduler` argument in `from_single_file`."
-                "If no scheduler is provided, it will be loaded based"
-                f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
-            )
-            deprecate("scheduler_type", "1.0.0", deprecation_message)
-            scheduler_components = _legacy_load_scheduler(
-                class_name=class_name,
-                checkpoint=checkpoint,
-                original_config=original_config,
-                scheduler_type=scheduler_type,
-                prediction_type=prediction_type,
-            )
-            init_kwargs.update(scheduler_components)
 
         pipe = pipeline_class(**init_kwargs)
 

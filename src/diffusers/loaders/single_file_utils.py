@@ -26,7 +26,6 @@ import yaml
 from ..models.modeling_utils import load_state_dict
 from ..schedulers import (
     DDIMScheduler,
-    DDPMScheduler,
     DPMSolverMultistepScheduler,
     EDMDPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
@@ -1317,6 +1316,11 @@ def create_diffusers_clip_model_from_ldm(
             config["pretrained_model_name_or_path"] = clip_config
             subfolder = ""
 
+        elif is_open_clip_model(checkpoint):
+            clip_config = "stabilityai/stable-diffusion-2"
+            config["pretrained_model_name_or_path"] = clip_config
+            subfolder = "text_encoder"
+
         else:
             clip_config = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
             config["pretrained_model_name_or_path"] = clip_config
@@ -1379,12 +1383,28 @@ def create_diffusers_clip_model_from_ldm(
 
 
 def _legacy_load_scheduler(
-    class_name,
+    cls,
     checkpoint,
+    component_name,
     original_config=None,
-    prediction_type=None,
-    scheduler_type="ddim",
+    **kwargs,
 ):
+    scheduler_type = kwargs.get("scheduler_type", None)
+    prediction_type = kwargs.get("prediction_type", None)
+
+    if scheduler_type is not None:
+        deprecation_message = (
+            "Please pass an instance of a Scheduler object directly to the `scheduler` argument in `from_single_file`."
+        )
+        deprecate("scheduler_type", "1.0.0", deprecation_message)
+
+    if prediction_type is not None:
+        deprecation_message = (
+            "Please configure an instance of a Scheduler with the appropriate `prediction_type` "
+            "and pass the object directly to the `scheduler` argument in `from_single_file`."
+        )
+        deprecate("prediction_type", "1.0.0", deprecation_message)
+
     scheduler_config = SCHEDULER_DEFAULT_CONFIG
     model_type = infer_diffusers_model_type(checkpoint=checkpoint)
 
@@ -1426,20 +1446,38 @@ def _legacy_load_scheduler(
         scheduler_config["clip_sample"] = False
         scheduler_config["set_alpha_to_one"] = False
 
-    if class_name == "PNDMScheduler" or scheduler_type == "pndm":
+    # to deal with an edge case StableDiffusionUpscale pipeline has two schedulers
+    if component_name == "low_res_scheduler":
+        return cls.from_config(
+            {
+                "beta_end": 0.02,
+                "beta_schedule": "scaled_linear",
+                "beta_start": 0.0001,
+                "clip_sample": True,
+                "num_train_timesteps": 1000,
+                "prediction_type": "epsilon",
+                "trained_betas": None,
+                "variance_type": "fixed_small",
+            }
+        )
+
+    if scheduler_type is None:
+        return cls.from_config(scheduler_config)
+
+    elif scheduler_type == "pndm":
         scheduler_config["skip_prk_steps"] = True
         scheduler = PNDMScheduler.from_config(scheduler_config)
 
-    elif class_name == "LMSDiscreteScheduler" or scheduler_type == "lms":
+    elif scheduler_type == "lms":
         scheduler = LMSDiscreteScheduler.from_config(scheduler_config)
 
-    elif class_name == "HeunDiscreteScheduler" or scheduler_type == "heun":
+    elif scheduler_type == "heun":
         scheduler = HeunDiscreteScheduler.from_config(scheduler_config)
 
-    elif class_name == "EulerDiscreteScheduler" or scheduler_type == "euler":
+    elif scheduler_type == "euler":
         scheduler = EulerDiscreteScheduler.from_config(scheduler_config)
 
-    elif class_name == "EulerAncestralDiscreteScheduler" or scheduler_type == "euler-ancestral":
+    elif scheduler_type == "euler-ancestral":
         scheduler = EulerAncestralDiscreteScheduler.from_config(scheduler_config)
 
     elif scheduler_type == "dpm":
@@ -1471,31 +1509,31 @@ def _legacy_load_scheduler(
     else:
         raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
 
-    if class_name == "StableDiffusionUpscalePipeline":
-        scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler")
-        low_res_scheduler = DDPMScheduler.from_pretrained(
-            "stabilityai/stable-diffusion-x4-upscaler", subfolder="low_res_scheduler"
-        )
-
-        return {
-            "scheduler": scheduler,
-            "low_res_scheduler": low_res_scheduler,
-        }
-
-    return {"scheduler": scheduler}
+    return scheduler
 
 
-def _legacy_load_clip_tokenizer(cls, config, checkpoint):
+def _legacy_load_clip_tokenizer(cls, checkpoint, config=None, local_files_only=False):
+    if config:
+        config = {"pretrained_model_name_or_path": config}
+    else:
+        config = fetch_diffusers_config(checkpoint)
+
     if is_clip_model(checkpoint) or is_clip_sdxl_model(checkpoint):
         clip_config = "openai/clip-vit-large-patch14"
         config["pretrained_model_name_or_path"] = clip_config
         subfolder = ""
+
+    elif is_open_clip_model(checkpoint):
+        clip_config = "stabilityai/stable-diffusion-2"
+        config["pretrained_model_name_or_path"] = clip_config
+        subfolder = "tokenizer"
+
     else:
         clip_config = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
         config["pretrained_model_name_or_path"] = clip_config
         subfolder = ""
 
-    tokenizer = cls.from_pretrained(**config, subfolder=subfolder)
+    tokenizer = cls.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
 
     return tokenizer
 
