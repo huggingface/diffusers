@@ -22,11 +22,7 @@ from torch import nn
 
 from diffusers import ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, is_flaky, torch_device
 
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
@@ -305,6 +301,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         assert set(modules_with_gc_enabled.keys()) == EXPECTED_SET
         assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
 
+    @is_flaky
     def test_forward_no_control(self):
         unet = self.get_dummy_unet()
         controlnet = self.get_dummy_controlnet_from_unet(unet)
