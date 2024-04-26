@@ -277,7 +277,7 @@ images = pipeline(
 
 ### IP-Adapter masking
 
-Binary masks specify which portion of the output image should be assigned to an IP-Adapter. This is useful for composing more than one IP-Adapter image. For each input IP-Adapter image, you must provide a binary mask an an IP-Adapter.
+Binary masks specify which portion of the output image should be assigned to an IP-Adapter. This is useful for composing more than one IP-Adapter image. For each input IP-Adapter image, you must provide a binary mask.
 
 To start, preprocess the input IP-Adapter images with the [`~image_processor.IPAdapterMaskProcessor.preprocess()`] to generate their masks. For optimal results, provide the output height and width to [`~image_processor.IPAdapterMaskProcessor.preprocess()`]. This ensures masks with different aspect ratios are appropriately stretched. If the input masks already match the aspect ratio of the generated image, you don't have to set the `height` and `width`.
 
@@ -305,20 +305,8 @@ masks = processor.preprocess([mask1, mask2], height=output_height, width=output_
   </div>
 </div>
 
-When there is more than one input IP-Adapter image, you have two methods to assign images to IP Adapters: one is to load them as a list to ensure that each image is assigned to a different IP-Adapter, the other is assign them all to the same IP Adapter. Each of the input IP-Adapter images here correspond to the masks generated above.
+When there is more than one input IP-Adapter image, load them as a list and provide the IP-Adapter scale list. Each of the input IP-Adapter images here corresponds to the masks generated above.
 
-Method 1: assign each image to a different IP Adapter
-```py
-pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"] * 2)
-pipeline.set_ip_adapter_scale([0.7] * 2)
-
-face_image1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_girl1.png")
-face_image2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_girl2.png")
-
-ip_images = [[face_image1], [face_image2]]
-```
-
-Method 2: assign all images to the same IP Adapter
 ```py
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"])
 pipeline.set_ip_adapter_scale([[0.7, 0.7]])  # one scale for each image-mask pair
