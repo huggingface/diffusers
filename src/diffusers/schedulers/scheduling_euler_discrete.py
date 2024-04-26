@@ -591,7 +591,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                     " one of the `scheduler.timesteps` as a timestep."
                 ),
             )
-        
+
         if sample.device.type == "mps" and torch.is_floating_point(timesteps):
             # mps does not support float64
             schedule_timesteps = self.timesteps.to(sample.device, dtype=torch.float32)
@@ -606,7 +606,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(sample.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
-        
+
         sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[step_indices]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(sample.shape):
