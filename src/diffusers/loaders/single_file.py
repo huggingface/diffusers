@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import importlib
+import inspect
 import os
 
 import torch
@@ -34,6 +35,11 @@ from .single_file_utils import (
 
 
 logger = logging.get_logger(__name__)
+
+# Legacy behaviour. `from_single_file` does not load the safety checker
+# unless explicitly provided
+SINGLE_FILE_OPTIONAL_COMPONENTS = ["safety_checker"]
+
 
 if is_transformers_available():
     import transformers
@@ -198,7 +204,7 @@ def _map_component_types_to_config_dict(component_types):
             and transformers_version >= version.parse("4.20.0")
         )
 
-        if is_diffusers_model:
+        if is_diffusers_model and component_name not in SINGLE_FILE_OPTIONAL_COMPONENTS:
             config_dict[component_name] = ["diffusers", component_value[0].__name__]
 
         elif is_scheduler_enum or is_scheduler:
@@ -210,14 +216,25 @@ def _map_component_types_to_config_dict(component_types):
             elif is_scheduler:
                 config_dict[component_name] = ["diffusers", component_value[0].__name__]
 
-        elif is_transformers_model or is_transformers_tokenizer:
+        elif (
+            is_transformers_model or is_transformers_tokenizer
+        ) and component_name not in SINGLE_FILE_OPTIONAL_COMPONENTS:
             config_dict[component_name] = ["transformers", component_value[0].__name__]
-
-        elif is_transformers_model and component_value[0].__name__ == "StableDiffusionSafetyChecker":
-            config_dict[component_name] = ["stable_diffusion", component_value[0].__name__]
 
         else:
             config_dict[component_name] = [None, None]
+
+    return config_dict
+
+
+def _infer_pipeline_config_dict(pipeline_class):
+    parameters = inspect.signature(pipeline_class.__init__).parameters
+    required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
+    component_types = pipeline_class._get_signature_types()
+
+    # Ignore parameters that are not required for the pipeline
+    component_types = {k: v for k, v in component_types.items() if k in required_parameters}
+    config_dict = _map_component_types_to_config_dict(component_types)
 
     return config_dict
 
@@ -439,13 +456,7 @@ class FromSingleFileMixin:
                     is_legacy_loading = True
                     cached_model_path = None
 
-                    component_types = pipeline_class._get_signature_types()
-                    expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
-                    component_types = {
-                        k: v for k, v in component_types.items() if k not in pipeline_class._optional_components
-                    }
-
-                    config_dict = _map_component_types_to_config_dict(component_types)
+                    config_dict = _infer_pipeline_config_dict(pipeline_class)
                     config_dict["_class_name"] = pipeline_class.__name__
 
         else:
@@ -471,6 +482,8 @@ class FromSingleFileMixin:
             if value[0] is None:
                 return False
             if name in passed_class_obj and passed_class_obj[name] is None:
+                return False
+            if name in SINGLE_FILE_OPTIONAL_COMPONENTS:
                 return False
 
             return True
