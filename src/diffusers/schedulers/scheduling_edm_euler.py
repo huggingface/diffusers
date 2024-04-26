@@ -94,14 +94,18 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         prediction_type: str = "epsilon",
         rho: float = 7.0,
     ):
-        if sigma_schedule not in ["karras", "linear"]:
-            raise ValueError(f"Wrong value for provided for `sigma_schedule: {sigma_schedule}.`")
+        if sigma_schedule not in ["karras", "exponential"]:
+            raise ValueError(f"Wrong value for provided for `{sigma_schedule=}`.`")
 
         # setable values
         self.num_inference_steps = None
 
         ramp = torch.linspace(0, 1, num_train_timesteps)
-        sigmas = self._compute_sigmas(ramp, sigma_schedule=sigma_schedule)
+        if sigma_schedule == "karras":
+            sigmas = self._compute_karras_sigmas(ramp)
+        elif sigma_schedule == "exponential":
+            sigmas = self._compute_exponential_sigmas(ramp)
+
         self.timesteps = self.precondition_noise(sigmas)
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
@@ -209,7 +213,10 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
 
         ramp = np.linspace(0, 1, self.num_inference_steps)
-        sigmas = self._compute_sigmas(ramp, sigma_schedule=self.config.sigma_schedule)
+        if self.config.sigma_schedule == "karras":
+            sigmas = self._compute_karras_sigmas(ramp)
+        elif self.config.sigma_schedule == "exponential":
+            sigmas = self._compute_exponential_sigmas(ramp)
 
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
         self.timesteps = self.precondition_noise(sigmas)
@@ -220,19 +227,26 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Taken from https://github.com/crowsonkb/k-diffusion/blob/686dbad0f39640ea25c8a8c6a6e56bb40eacefa2/k_diffusion/sampling.py#L17
-    def _compute_sigmas(self, ramp, sigma_min=None, sigma_max=None, sigma_schedule="karras") -> torch.FloatTensor:
+    def _compute_karras_sigmas(self, ramp, sigma_min=None, sigma_max=None) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
         sigma_min = sigma_min or self.config.sigma_min
         sigma_max = sigma_max or self.config.sigma_max
 
-        if sigma_schedule == "karras":
-            rho = self.config.rho
-            min_inv_rho = sigma_min ** (1 / rho)
-            max_inv_rho = sigma_max ** (1 / rho)
-            sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
-        elif sigma_schedule == "linear":
-            sigmas = torch.linspace(math.log(sigma_min), math.log(sigma_max), len(ramp)).exp().flip(0)
+        rho = self.config.rho
+        min_inv_rho = sigma_min ** (1 / rho)
+        max_inv_rho = sigma_max ** (1 / rho)
+        sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
 
+        return sigmas
+
+    def _compute_exponential_sigmas(self, ramp, sigma_min=None, sigma_max=None) -> torch.FloatTensor:
+        """Implementation closely follows k-diffusion.
+
+        https://github.com/crowsonkb/k-diffusion/blob/6ab5146d4a5ef63901326489f31f1d8e7dd36b48/k_diffusion/sampling.py#L26
+        """
+        sigma_min = sigma_min or self.config.sigma_min
+        sigma_max = sigma_max or self.config.sigma_max
+        sigmas = torch.linspace(math.log(sigma_min), math.log(sigma_max), len(ramp)).exp().flip(0)
         return sigmas
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
