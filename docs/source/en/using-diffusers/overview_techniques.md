@@ -10,34 +10,9 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Utilities
+# Overview
 
-Utility and helper functions for working with 🤗 Diffusers.
+The inference pipeline supports and enables a wide range of techniques that are divided into two categories:
 
-## numpy_to_pil
-
-[[autodoc]] utils.numpy_to_pil
-
-## pt_to_pil
-
-[[autodoc]] utils.pt_to_pil
-
-## load_image
-
-[[autodoc]] utils.load_image
-
-## export_to_gif
-
-[[autodoc]] utils.export_to_gif
-
-## export_to_video
-
-[[autodoc]] utils.export_to_video
-
-## make_image_grid
-
-[[autodoc]] utils.make_image_grid
-
-## randn_tensor
-
-[[autodoc]] utils.torch_utils.randn_tensor
+* Pipeline functionality: these techniques modify the pipeline or extend it for other applications. For example, pipeline callbacks add new features to a pipeline and a pipeline can also be extended for distributed inference.
+* Improve inference quality: these techniques increase the visual quality of the generated images. For example, you can enhance your prompts with GPT2 to create better images with lower effort.
