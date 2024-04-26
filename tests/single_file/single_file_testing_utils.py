@@ -76,6 +76,12 @@ class SDSingleFileTesterMixin:
             for param_name, param_value in component.config.items():
                 if param_name in PARAMS_TO_IGNORE:
                     continue
+
+                # Some pretrained configs will set upcast attention to None
+                # In single file loadin it defaults to the value in the class __init__ which is False
+                if param_name == "upcast_attention" and pipe.components[component_name].config[param_name] is None:
+                    pipe.components[component_name].config[param_name] = param_value
+
                 assert (
                     pipe.components[component_name].config[param_name] == param_value
                 ), f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
@@ -237,6 +243,12 @@ class SDXLSingleFileTesterMixin:
             for param_name, param_value in component.config.items():
                 if param_name in PARAMS_TO_IGNORE:
                     continue
+
+                # Some pretrained configs will set upcast attention to None
+                # In single file loadin it defaults to the value in the class __init__ which is False
+                if param_name == "upcast_attention" and pipe.components[component_name].config[param_name] is None:
+                    pipe.components[component_name].config[param_name] = param_value
+
                 assert (
                     pipe.components[component_name].config[param_name] == param_value
                 ), f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"

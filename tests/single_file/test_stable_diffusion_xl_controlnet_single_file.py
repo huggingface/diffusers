@@ -133,7 +133,9 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
         )
 
         pipe_single_file = self.pipeline_class.from_single_file(
-            self.ckpt_path, original_config=self.original_config, controlnet=controlnet
+            self.ckpt_path,
+            original_config=self.original_config,
+            controlnet=controlnet,
         )
         self._compare_component_configs(pipe, pipe_single_file)
 
@@ -153,7 +155,10 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
             local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
-                local_ckpt_path, safety_checker=None, controlnet=controlnet, local_files_only=True
+                local_ckpt_path,
+                safety_checker=None,
+                controlnet=controlnet,
+                local_files_only=True,
             )
         self._compare_component_configs(pipe, pipe_single_file)
 

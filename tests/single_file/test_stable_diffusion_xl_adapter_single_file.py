@@ -18,6 +18,7 @@ from diffusers.utils.testing_utils import (
 
 from .single_file_testing_utils import (
     SDXLSingleFileTesterMixin,
+    download_diffusers_config,
     download_original_config,
     download_single_file_checkpoint,
 )
@@ -126,6 +127,42 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
 
         self._compare_component_configs(pipe, single_file_pipe)
 
+    def test_single_file_components_with_diffusers_config(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
+            variant="fp16",
+            adapter=adapter,
+            torch_dtype=torch.float16,
+            safety_checker=None,
+        )
+
+        pipe_single_file = self.pipeline_class.from_single_file(self.ckpt_path, config=self.repo_id, adapter=adapter)
+        self._compare_component_configs(pipe, pipe_single_file)
+
+    def test_single_file_components_with_diffusers_config_local_files_only(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id,
+            variant="fp16",
+            adapter=adapter,
+            torch_dtype=torch.float16,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
+
+            pipe_single_file = self.pipeline_class.from_single_file(
+                local_ckpt_path,
+                config=local_diffusers_config,
+                adapter=adapter,
+                safety_checker=None,
+                local_files_only=True,
+            )
+        self._compare_component_configs(pipe, pipe_single_file)
+
     def test_single_file_components_with_original_config(self):
         adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
         pipe = self.pipeline_class.from_pretrained(
@@ -136,9 +173,8 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             safety_checker=None,
         )
 
-        upcast_attention = pipe.unet.config.upcast_attention
         pipe_single_file = self.pipeline_class.from_single_file(
-            self.ckpt_path, original_config=self.original_config, adapter=adapter, upcast_attention=upcast_attention
+            self.ckpt_path, original_config=self.original_config, adapter=adapter
         )
         self._compare_component_configs(pipe, pipe_single_file)
 
@@ -156,12 +192,10 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
 
-            upcast_attention = pipe.unet.config.upcast_attention
             pipe_single_file = self.pipeline_class.from_single_file(
                 local_ckpt_path,
                 original_config=local_original_config,
                 adapter=adapter,
-                upcast_attention=upcast_attention,
                 safety_checker=None,
                 local_files_only=True,
             )

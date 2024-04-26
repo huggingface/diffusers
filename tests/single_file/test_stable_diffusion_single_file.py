@@ -53,7 +53,9 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
 
     def test_single_file_legacy_scheduler_loading(self):
         # Default is PNDM for this checkpoint
-        pipe = self.pipeline_class.from_single_file(self.ckpt_path, scheduler_type="ddim")
+        pipe = self.pipeline_class.from_single_file(
+            self.ckpt_path, original_config=self.original_config, local_files_only=True, scheduler_type="ddim"
+        )
         assert isinstance(pipe.scheduler, DDIMScheduler)
 
     def test_single_file_legacy_scaling_factor(self):

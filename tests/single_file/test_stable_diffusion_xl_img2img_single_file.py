@@ -15,13 +15,15 @@ from diffusers.utils.testing_utils import (
     slow,
 )
 
+from .single_file_testing_utils import SDXLSingleFileTesterMixin
+
 
 enable_full_determinism()
 
 
 @slow
 @require_torch_gpu
-class StableDiffusionXLImg2ImgPipelineSingleFileSlowTests(unittest.TestCase):
+class StableDiffusionXLImg2ImgPipelineSingleFileSlowTests(unittest.TestCase, SDXLSingleFileTesterMixin):
     pipeline_class = StableDiffusionXLImg2ImgPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
