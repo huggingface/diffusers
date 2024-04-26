@@ -87,11 +87,10 @@ model = StableCascadeUNet.from_single_file(ckpt_path)
 Override the default model or pipeline configuration options when using `from_single_file` by passing in the relevant arguments directly to the `from_single_file` method. Any argument that is supported by the model or pipeline class can be configured in this way:
 
 ```python
-from diffusers import StableDiffusionXLImg2ImgPipeline
+from diffusers import StableDiffusionXLInstructPix2PixPipeline
 
-ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0_0.9vae.safetensors"
-pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, requires_aesthetics_score=True)
-
+ckpt_path = "https://huggingface.co/stabilityai/cosxl/blob/main/cosxl_edit.safetensors"
+pipe = StableDiffusionXLInstructPix2PixPipeline.from_single_file(ckpt_path, is_cosxl_edit=True)
 ```
 
 ```python
@@ -102,16 +101,6 @@ model = UNet2DConditionModel.from_single_file(ckpt_path, device="cuda", upcast_a
 
 ```
 
-## Downloading a single file checkpoint to a specific directory
-
-```python
-from diffusers import StableDiffusionXLPipeline
-
-ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
-pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, local_dir="my_checkpoints")
-
-```
-
 ## Using a Diffusers model repository to configure single file loading
 
 Under the hood, `from_single_file` will try to determine a model repository to use to configure the components of the pipeline. You can also pass in a repository id to the `config` argument of the `from_single_file` method to explicitly set the repository to use.
@@ -119,14 +108,14 @@ Under the hood, `from_single_file` will try to determine a model repository to u
 ```python
 from diffusers import StableDiffusionXLPipeline
 
-ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
-repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
+ckpt_path = "https://huggingface.co/segmind/SSD-1B/blob/main/SSD-1B.safetensors"
+repo_id = "segmind/SSD-1B"
 
 pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, config=repo_id)
 
 ```
 
-In the example above, since we explicitly passed `repo_id="stabilityai/stable-diffusion-xl-base-1.0"`, it will use this [configuration file](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/unet/config.json) from the "unet" subfolder in `"stabilityai/stable-diffusion-xl-base-1.0"` to configure the unet component included in the checkpoint; Similarly, it will use the `config.json` file from `"vae"` subfolder to configure the vae model, `config.json` file from text_encoder folder to configure text_encoder and so on.
+In the example above, since we explicitly passed `repo_id="segmind/SSD-1B"`, it will use this [configuration file](https://huggingface.co/segmind/SSD-1B/blob/main/unet/config.json) from the "unet" subfolder in `"segmind/SSD-1B"` to configure the unet component included in the checkpoint; Similarly, it will use the `config.json` file from `"vae"` subfolder to configure the vae model, `config.json` file from text_encoder folder to configure text_encoder and so on.
 
 Note that most of the time you do not need to explicitly a `config` argument, `from_single_file` will automatically map the checkpoint to a repo id (we will discuss this in more details in next section). However, this can be useful in cases where model components might have been changed from what was originally distributed or in cases where a checkpoint file might not have the necessary metadata to correctly determine the configuration to use for the pipeline.
 
@@ -146,12 +135,12 @@ If you are working in an environment with restricted internet access, it is reco
 from huggingface_hub import hf_hub_download, snapshot_download
 
 my_local_checkpoint_path = hf_hub_download(
-    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
-    filename="sd_xl_base_1.0_0.9vae.safetensors"
+    repo_id="segmind/SSD-1B",
+    filename="SSD-1B.safetensors"
 )
 
 my_local_config_path = snapshot_download(
-    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+    repo_id="segmind/SSD-1B",
     allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
 )
 
@@ -165,13 +154,13 @@ By default this will download the checkpoints and config files to the [Hugging F
 from huggingface_hub import hf_hub_download, snapshot_download
 
 my_local_checkpoint_path = hf_hub_download(
-    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
-    filename="sd_xl_base_1.0_0.9vae.safetensors",
+    repo_id="segmind/SSD-1B",
+    filename="SSD-1B.safetensors"
     local_dir="my_local_checkpoints"
 )
 
 my_local_config_path = snapshot_download(
-    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+    repo_id="segmind/SSD-1B",
     allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
     local_dir="my_local_config"
 )
@@ -188,18 +177,17 @@ By default the `from_single_file` method relies on the `huggingface_hub` caching
 from huggingface_hub import hf_hub_download, snapshot_download
 
 my_local_checkpoint_path = hf_hub_download(
-    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
-    filename="sd_xl_base_1.0_0.9vae.safetensors"
+    repo_id="segmind/SSD-1B",
+    filename="SSD-1B.safetensors"
     local_dir="my_local_checkpoints",
     local_dir_use_symlinks=False
 )
 print("My local checkpoint: ", my_local_checkpoint_path)
 
 my_local_config_path = snapshot_download(
-    repo_id="stabilityai/stable-diffusion-xl-base-1.0",
-    local_dir="my_local_sdxl_config",
-    local_dir_use_symlinks=False,
+    repo_id="segmind/SSD-1B",
     allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+    local_dir_use_symlinks=False,
 )
 print("My local config: ", my_local_config_path)
 
@@ -232,7 +220,7 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, original_config=ori
 ```
 
 <Tip>
-When using `original_config` with local_files_only=True`, `diffusers` will attempt to infer the components based on the type signatures of pipeline class. This is not as reliable as providing a config path and might lead to errors when configuring the pipeline. Additionally, the pipeline scheduler will default to the `DDIMScheduler` if one isn't provided.
+When using `original_config` with local_files_only=True`, `diffusers` will attempt to infer the components based on the type signatures of pipeline class. This is not as reliable as providing a config path and might lead to errors when configuring the pipeline.
 
 </Tip>
 

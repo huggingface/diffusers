@@ -461,6 +461,8 @@ class FromSingleFileMixin:
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
 
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
+        init_kwargs = {k: init_dict.pop(k) for k in optional_kwargs if k in init_dict}
+        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
         from diffusers import pipelines
 
@@ -470,18 +472,10 @@ class FromSingleFileMixin:
                 return False
             if name in passed_class_obj and passed_class_obj[name] is None:
                 return False
-            if name in pipeline_class._optional_components:
-                return False
 
             return True
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
-        init_kwargs = {
-            k: init_dict.pop(k)
-            for k in optional_kwargs
-            if k in init_dict and k not in pipeline_class._optional_components
-        }
-        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
         for name, (library_name, class_name) in logging.tqdm(
             sorted(init_dict.items()), desc="Loading pipeline components..."
