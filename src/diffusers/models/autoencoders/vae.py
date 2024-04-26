@@ -90,7 +90,6 @@ class Encoder(nn.Module):
             padding=1,
         )
 
-        self.mid_block = None
         self.down_blocks = nn.ModuleList([])
 
         # down
@@ -228,7 +227,6 @@ class Decoder(nn.Module):
             padding=1,
         )
 
-        self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
         temb_channels = in_channels if norm_type == "spatial" else None
@@ -474,7 +472,6 @@ class MaskConditionDecoder(nn.Module):
             padding=1,
         )
 
-        self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
         temb_channels = in_channels if norm_type == "spatial" else None
@@ -926,6 +923,7 @@ class DecoderTiny(nn.Module):
         block_out_channels: Tuple[int, ...],
         upsampling_scaling_factor: int,
         act_fn: str,
+        upsample_fn: str,
     ):
         super().__init__()
 
@@ -942,7 +940,7 @@ class DecoderTiny(nn.Module):
                 layers.append(AutoencoderTinyBlock(num_channels, num_channels, act_fn))
 
             if not is_final_block:
-                layers.append(nn.Upsample(scale_factor=upsampling_scaling_factor))
+                layers.append(nn.Upsample(scale_factor=upsampling_scaling_factor, mode=upsample_fn))
 
             conv_out_channel = num_channels if not is_final_block else out_channels
             layers.append(

@@ -148,9 +148,9 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     use_safetensors=True
 ).to("cuda")
 
-image = pipe(
-    prompt = "A croissant shaped like a cute bear."
-    negative_prompt = "Deformed, ugly, bad anatomy"
+image = pipeline(
+    prompt="A croissant shaped like a cute bear.",
+    negative_prompt="Deformed, ugly, bad anatomy",
     callback_on_step_end=decode_tensors,
     callback_on_step_end_tensor_inputs=["latents"],
 ).images[0]
