@@ -78,7 +78,7 @@ class SDSingleFileTesterMixin:
                     continue
 
                 # Some pretrained configs will set upcast attention to None
-                # In single file loadin it defaults to the value in the class __init__ which is False
+                # In single file loading it defaults to the value in the class __init__ which is False
                 if param_name == "upcast_attention" and pipe.components[component_name].config[param_name] is None:
                     pipe.components[component_name].config[param_name] = param_value
 
@@ -245,7 +245,7 @@ class SDXLSingleFileTesterMixin:
                     continue
 
                 # Some pretrained configs will set upcast attention to None
-                # In single file loadin it defaults to the value in the class __init__ which is False
+                # In single file loading it defaults to the value in the class __init__ which is False
                 if param_name == "upcast_attention" and pipe.components[component_name].config[param_name] is None:
                     pipe.components[component_name].config[param_name] = param_value
 
