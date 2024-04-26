@@ -2,7 +2,7 @@ __version__ = "0.28.0.dev0"
 
 from typing import TYPE_CHECKING
 
-from .utils import (
+from ..diffusers.utils import (
     DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -51,23 +51,10 @@ _import_structure = {
 }
 
 try:
-    if not is_onnx_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_onnx_objects  # noqa F403
-
-    _import_structure["utils.dummy_onnx_objects"] = [
-        name for name in dir(dummy_onnx_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["pipelines"].extend(["OnnxRuntimeModel"])
-
-try:
     if not is_torch_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils import dummy_pt_objects  # noqa F403
+    from ..diffusers.utils import dummy_pt_objects  # noqa F403
 
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 
@@ -77,37 +64,12 @@ else:
             "ELLAProxyUNet",
         ]
     )
-try:
-    if not (is_torch_available() and is_scipy_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_scipy_objects  # noqa F403
-
-    _import_structure["utils.dummy_torch_and_scipy_objects"] = [
-        name for name in dir(dummy_torch_and_scipy_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["schedulers"].extend(["LMSDiscreteScheduler"])
-
-try:
-    if not (is_torch_available() and is_torchsde_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_torchsde_objects  # noqa F403
-
-    _import_structure["utils.dummy_torch_and_torchsde_objects"] = [
-        name for name in dir(dummy_torch_and_torchsde_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["schedulers"].extend(["DPMSolverSDEScheduler"])
 
 try:
     if not (is_torch_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_transformers_objects  # noqa F403
+    from ..diffusers.utils import dummy_torch_and_transformers_objects  # noqa F403
 
     _import_structure["utils.dummy_torch_and_transformers_objects"] = [
         name for name in dir(dummy_torch_and_transformers_objects) if not name.startswith("_")
@@ -120,123 +82,29 @@ else:
         ]
     )
 
-try:
-    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_transformers_and_k_diffusion_objects  # noqa F403
-
-    _import_structure["utils.dummy_torch_and_transformers_and_k_diffusion_objects"] = [
-        name for name in dir(dummy_torch_and_transformers_and_k_diffusion_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["pipelines"].extend(["StableDiffusionKDiffusionPipeline", "StableDiffusionXLKDiffusionPipeline"])
-
-try:
-    if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_transformers_and_onnx_objects  # noqa F403
-
-    _import_structure["utils.dummy_torch_and_transformers_and_onnx_objects"] = [
-        name for name in dir(dummy_torch_and_transformers_and_onnx_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["pipelines"].extend(
-        [
-            "OnnxStableDiffusionImg2ImgPipeline",
-            "OnnxStableDiffusionInpaintPipeline",
-            "OnnxStableDiffusionInpaintPipelineLegacy",
-            "OnnxStableDiffusionPipeline",
-            "OnnxStableDiffusionUpscalePipeline",
-            "StableDiffusionOnnxPipeline",
-        ]
-    )
-
-try:
-    if not (is_torch_available() and is_librosa_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_librosa_objects  # noqa F403
-
-    _import_structure["utils.dummy_torch_and_librosa_objects"] = [
-        name for name in dir(dummy_torch_and_librosa_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["pipelines"].extend(["AudioDiffusionPipeline", "Mel"])
-
-try:
-    if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_transformers_and_torch_and_note_seq_objects  # noqa F403
-
-    _import_structure["utils.dummy_transformers_and_torch_and_note_seq_objects"] = [
-        name for name in dir(dummy_transformers_and_torch_and_note_seq_objects) if not name.startswith("_")
-    ]
-
-
-else:
-    _import_structure["pipelines"].extend(["SpectrogramDiffusionPipeline"])
-
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
 
     try:
-        if not is_onnx_available():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_onnx_objects import *  # noqa F403
-    else:
-        from .pipelines import OnnxRuntimeModel
-
-    try:
         if not is_torch_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from .utils.dummy_pt_objects import *  # noqa F403
+        from ..diffusers.utils.dummy_pt_objects import *  # noqa F403
     else:
         from .models import (
             ELLAProxyUNet,
         )
-    try:
-        if not (is_torch_available() and is_scipy_available()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_torch_and_scipy_objects import *  # noqa F403
-    else:
-        from .schedulers import LMSDiscreteScheduler
-
-    try:
-        if not (is_torch_available() and is_torchsde_available()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_torch_and_torchsde_objects import *  # noqa F403
-    else:
-        from .schedulers import DPMSolverSDEScheduler
-
+    
     try:
         if not (is_torch_available() and is_transformers_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
+        from ..diffusers.utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .pipelines import (
+        from .pipelines_plus_plus import (
             StableDiffusionPipeline,
         )
-
-    try:
-        if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
-    else:
-        from .pipelines import StableDiffusionKDiffusionPipeline, StableDiffusionXLKDiffusionPipeline
-
 
 else:
     import sys
@@ -248,3 +116,4 @@ else:
         module_spec=__spec__,
         extra_objects={"__version__": __version__},
     )
+
