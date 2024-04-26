@@ -305,7 +305,7 @@ masks = processor.preprocess([mask1, mask2], height=output_height, width=output_
   </div>
 </div>
 
-When there is more than one input IP-Adapter image, load them as a list and provide the IP-Adapter scale list. Each of the input IP-Adapter images here corresponds to the masks generated above.
+When there is more than one input IP-Adapter image, load them as a list and provide the IP-Adapter scale list. Each of the input IP-Adapter images here corresponds to one of the masks generated above.
 
 ```py
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"])
