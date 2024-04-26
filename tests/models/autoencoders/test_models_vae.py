@@ -392,7 +392,7 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
         ...
 
 
-class AutoncoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
+class AutoencoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLTemporalDecoder
     main_input_name = "sample"
     base_precision = 1e-2
@@ -829,7 +829,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors",
         )
 
-        assert vae_default.config.scaling_factor == 0.18125
+        assert vae_default.config.scaling_factor == 0.18215
         assert vae_default.config.sample_size == 512
         assert vae_default.dtype == torch.float32
 

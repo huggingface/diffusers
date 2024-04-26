@@ -99,14 +99,13 @@ class SDFunctionTesterMixin:
         assert np.abs(output_2[0].flatten() - output_1[0].flatten()).max() < 1e-2
 
     def test_vae_tiling(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
 
         # make sure here that pndm scheduler skips prk
         if "safety_checker" in components:
             components["safety_checker"] = None
         pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -126,7 +125,7 @@ class SDFunctionTesterMixin:
         # test that tiled decode works with various shapes
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
         for shape in shapes:
-            zeros = torch.zeros(shape).to(device)
+            zeros = torch.zeros(shape).to(torch_device)
             pipe.vae.decode(zeros)
 
     def test_freeu_enabled(self):
@@ -635,10 +634,16 @@ class PipelineTesterMixin:
             "treatment when `do_classifier_free_guidance` is `True`. `pipeline_params.py` provides some common"
             " sets of parameters such as `TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS`. If your pipeline's "
             "set of cfg arguments has minor changes from one of the common sets of cfg arguments, "
-            "do not make modifications to the existing common sets of cfg arguments. I.e. for inpaint pipeine, you "
+            "do not make modifications to the existing common sets of cfg arguments. I.e. for inpaint pipeline, you "
             " need to adjust batch size of `mask` and `masked_image_latents` so should set the attribute as"
             "`callback_cfg_params = TEXT_TO_IMAGE_CFG_PARAMS.union({'mask', 'masked_image_latents'})`"
         )
+
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
@@ -1230,7 +1235,7 @@ class PipelineTesterMixin:
         )
 
         def callback_inputs_subset(pipe, i, t, callback_kwargs):
-            # interate over callback args
+            # iterate over callback args
             for tensor_name, tensor_value in callback_kwargs.items():
                 # check that we're only passing in allowed tensor inputs
                 assert tensor_name in pipe._callback_tensor_inputs
@@ -1241,7 +1246,7 @@ class PipelineTesterMixin:
             for tensor_name in pipe._callback_tensor_inputs:
                 assert tensor_name in callback_kwargs
 
-            # interate over callback args
+            # iterate over callback args
             for tensor_name, tensor_value in callback_kwargs.items():
                 # check that we're only passing in allowed tensor inputs
                 assert tensor_name in pipe._callback_tensor_inputs

@@ -81,9 +81,8 @@ To create the package for PyPI.
 import os
 import re
 import sys
-from distutils.core import Command
 
-from setuptools import find_packages, setup
+from setuptools import Command, find_packages, setup
 
 
 # IMPORTANT:
@@ -163,7 +162,7 @@ def deps_list(*pkgs):
 
 class DepsTableUpdateCommand(Command):
     """
-    A custom distutils command that updates the dependency table.
+    A custom command that updates the dependency table.
     usage: python setup.py deps_table_update
     """
 
@@ -249,7 +248,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.27.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.28.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
