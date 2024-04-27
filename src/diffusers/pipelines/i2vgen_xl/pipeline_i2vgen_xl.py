@@ -135,7 +135,7 @@ class I2VGenXLPipeline(
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         # `do_resize=False` as we do custom resizing.
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_resize=False)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor, do_resize=False)
 
     @property
     def guidance_scale(self):
@@ -716,9 +716,7 @@ class I2VGenXLPipeline(
             video = latents
         else:
             video_tensor = self.decode_latents(latents, decode_chunk_size=decode_chunk_size)
-            video = VideoProcessor.tensor2vid(
-                video=video_tensor, processor=self.image_processor, output_type=output_type
-            )
+            video = self.video_processor.tensor2vid(video=video_tensor, output_type=output_type)
 
         # 9. Offload all models
         self.maybe_free_model_hooks()

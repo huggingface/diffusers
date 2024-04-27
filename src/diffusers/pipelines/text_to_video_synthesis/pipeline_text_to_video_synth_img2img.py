@@ -19,7 +19,6 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet3DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -140,7 +139,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInv
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.video_processor = VideoProcessor(do_resize=False, vae_scale_factor=self.vae_scale_factor)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -686,9 +685,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInv
             video = latents
         else:
             video_tensor = self.decode_latents(latents)
-            video = VideoProcessor.tensor2vid(
-                video=video_tensor, processor=self.image_processor, output_type=output_type
-            )
+            video = self.video_processor.tensor2vid(video=video_tensor, output_type=output_type)
 
         # 10. Offload all models
         self.maybe_free_model_hooks()
