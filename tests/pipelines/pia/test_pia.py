@@ -17,7 +17,7 @@ from diffusers import (
 from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import floats_tensor, torch_device
 
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineFromPipeTesterMixin, PipelineTesterMixin
 
 
 def to_np(tensor):
@@ -27,7 +27,7 @@ def to_np(tensor):
     return tensor
 
 
-class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase):
     pipeline_class = PIAPipeline
     params = frozenset(
         [
@@ -137,6 +137,49 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.T
         pipe = self.pipeline_class(**components)
 
         assert isinstance(pipe.unet, UNetMotionModel)
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array(
+                [
+                    0.5609,
+                    0.5756,
+                    0.4830,
+                    0.4420,
+                    0.4547,
+                    0.5129,
+                    0.3779,
+                    0.4042,
+                    0.3772,
+                    0.4450,
+                    0.5710,
+                    0.5536,
+                    0.4835,
+                    0.4308,
+                    0.5578,
+                    0.5578,
+                    0.4395,
+                    0.5440,
+                    0.6051,
+                    0.4651,
+                    0.6258,
+                    0.5662,
+                    0.3988,
+                    0.5108,
+                    0.4153,
+                    0.3993,
+                    0.4803,
+                ]
+            )
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        expected_slice = None
+        if torch_device == "cpu":
+            expected_slice = np.array([0.3740, 0.4284, 0.4038, 0.5417, 0.4405, 0.5521, 0.4273, 0.4124, 0.4997])
+        return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     @unittest.skip("Attention slicing is not enabled in this pipeline")
     def test_attention_slicing_forward_pass(self):
