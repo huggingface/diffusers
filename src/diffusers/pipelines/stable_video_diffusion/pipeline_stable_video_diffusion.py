@@ -118,7 +118,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.video_processor = VideoProcessor(do_resize=False, vae_scale_factor=self.vae_scale_factor)
+        self.image_processor = VideoProcessor(do_resize=False, vae_scale_factor=self.vae_scale_factor)
 
     def _encode_image(
         self,
@@ -541,7 +541,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             if needs_upcasting:
                 self.vae.to(dtype=torch.float16)
             frames = self.decode_latents(latents, num_frames, decode_chunk_size)
-            frames = self.video_processor.tensor2vid(video=frames, output_type=output_type)
+            frames = self.image_processor.tensor2vid(video=frames, output_type=output_type)
         else:
             frames = latents
 
