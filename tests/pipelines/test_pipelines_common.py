@@ -1373,6 +1373,7 @@ class PipelineTesterMixin:
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload()
+        assert pipe._execution_device.type == pipe._offload_device.type
 
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
@@ -1400,6 +1401,8 @@ class PipelineTesterMixin:
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_model_cpu_offload()
+        assert pipe._execution_device.type == pipe._offload_device.type
+
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
 
@@ -1504,8 +1507,13 @@ class PipelineTesterMixin:
         )
         offloaded_modules_with_incorrect_hooks = {}
         for k, v in offloaded_modules.items():
-            if hasattr(v, "_hf_hook") and not isinstance(v._hf_hook, accelerate.hooks.AlignDevicesHook):
-                offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook)
+            if hasattr(v, "_hf_hook"):
+                if isinstance(v._hf_hook, accelerate.hooks.SequentialHook):
+                    for hook in v._hf_hook.hooks:
+                        if not isinstance(hook, accelerate.hooks.AlignDevicesHook):
+                            offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook.hooks[0])
+                elif not isinstance(v._hf_hook, accelerate.hooks.AlignDevicesHook):
+                    offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook)
 
         self.assertTrue(
             len(offloaded_modules_with_incorrect_hooks) == 0,
