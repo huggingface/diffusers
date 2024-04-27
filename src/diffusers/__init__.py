@@ -28,7 +28,9 @@ from .utils import (
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
     "models": [],
+    "plus_models": [],
     "pipelines": [],
+    "plus_pipelines": [],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -100,6 +102,13 @@ else:
             "VQModel",
         ]
     )
+
+    _import_structure["plus_models"].extend(
+        [
+            "EllaELLAProxyUNet",
+        ]
+    V)
+
 
     _import_structure["optimization"] = [
         "get_constant_schedule",
@@ -319,6 +328,11 @@ else:
             "WuerstchenPriorPipeline",
         ]
     )
+    _import_structure["plus_pipelines"].extend(
+        [
+            "EllaDiffusionPipeline",
+        ]
+    )
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
@@ -491,6 +505,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
             VQModel,
+        )
+        from plus_models import (
+            ELLAProxyUNet,
         )
         from .optimization import (
             get_constant_schedule,
@@ -689,6 +706,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+        )
+        from plus_pipelines import (
+            EllaDiffusionPipeline,
         )
 
     try:
