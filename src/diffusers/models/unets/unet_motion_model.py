@@ -454,20 +454,22 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         model.time_proj.load_state_dict(unet.time_proj.state_dict())
         model.time_embedding.load_state_dict(unet.time_embedding.state_dict())
 
-        if any(isinstance(proc, (
-            IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)) for proc in unet.attn_processors.values()):
+        if any(
+            isinstance(proc, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0))
+            for proc in unet.attn_processors.values()
+        ):
             attn_procs = {}
             for name, processor in unet.attn_processors.items():
                 if name.endswith("attn1.processor"):
                     attn_processor_class = (
-                        AttnProcessor2_0 if hasattr(
-                            F, "scaled_dot_product_attention") else AttnProcessor
+                        AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
                     )
                     attn_procs[name] = attn_processor_class()
                 else:
                     attn_processor_class = (
-                        IPAdapterAttnProcessor2_0 if hasattr(
-                            F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
+                        IPAdapterAttnProcessor2_0
+                        if hasattr(F, "scaled_dot_product_attention")
+                        else IPAdapterAttnProcessor
                     )
                     attn_procs[name] = attn_processor_class(
                         hidden_size=processor.hidden_size,
