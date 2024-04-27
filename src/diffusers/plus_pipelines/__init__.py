@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from ...diffusers.utils import (
+from ..utils import (
     DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -76,7 +76,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         if not (is_torch_available() and is_transformers_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from ...diffusers.utils.dummy_torch_and_transformers_objects import *
+        from ..utils.dummy_torch_and_transformers_objects import *
     else:
        
         from .ella import (

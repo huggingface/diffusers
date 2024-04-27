@@ -14,7 +14,7 @@
 
 from typing import TYPE_CHECKING
 
-from ...diffusers.utils import (
+from ..utils import (
     DIFFUSERS_SLOW_IMPORT,
     _LazyModule,
     is_flax_available,
