@@ -2591,6 +2591,31 @@ result:
 
 <img src=<https://github.com/noskill/diffusers/assets/733626/23a0a71d-51db-471e-926a-107ac62512a8> width="25%" >
 
+### Masked Im2Im Stable Diffusion Pipeline XL
+
+This pipeline implements sketch inpaint feature from A1111 for non-inpaint models. The following code reads two images, original and one with mask painted over it. It computes mask as a difference of two images and does the inpainting in the area defined by the mask. Latent code is initialized from the image with the mask by default so the color of the mask affects the result.
+
+```
+img = PIL.Image.open("./mech.png")
+# read image with mask painted over
+img_paint = PIL.Image.open("./mech_painted.png")
+
+pipeline = MaskedStableDiffusionXLImg2ImgPipeline.from_pretrained("frankjoshua/juggernautXL_v8Rundiffusion", dtype=torch.float16)
+
+pipeline.to('cuda')
+pipeline.enable_xformers_memory_efficient_attention()
+
+prompt = "a mech warrior wearing a mask"
+seed = 8348273636437
+for i in range(10):
+    generator = torch.Generator(device="cuda").manual_seed(seed + i)
+    print(seed + i)
+    result = pipeline(prompt=prompt, blur=48, image=img_paint, original_image=img, strength=0.9,
+                          generator=generator, num_inference_steps=60, num_images_per_prompt=1)
+    im = result.images[0]
+    im.save(f"result{i}.png")
+```
+
 ### Prompt2Prompt Pipeline
 
 Prompt2Prompt allows the following edits:
