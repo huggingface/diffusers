@@ -21,7 +21,8 @@ import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...image_processor import PipelineImageInput
+from ...video_processor import VideoProcessor
 from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -196,7 +197,7 @@ class PIAPipeline(
             image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(do_resize=False, vae_scale_factor=self.vae_scale_factor)
+        self.image_processor = VideoProcessor(do_resize=False, vae_scale_factor=self.vae_scale_factor)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
     def encode_prompt(
