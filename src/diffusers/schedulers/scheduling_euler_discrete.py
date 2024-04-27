@@ -576,7 +576,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = original_samples + noise * sigma
         return noisy_samples
 
-    # Copied from diffusers.schedulers.scheduling_ddpm.get_velocity
     def get_velocity(
         self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.FloatTensor
     ) -> torch.FloatTensor:
@@ -588,7 +587,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 (
                     "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                    " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
+                    " `EulerDiscreteScheduler.get_velocity()` is not supported. Make sure to pass"
                     " one of the `scheduler.timesteps` as a timestep."
                 ),
             )
