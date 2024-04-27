@@ -68,7 +68,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
             The standard deviation of the data distribution. This is set to 0.5 in the EDM paper [1].
         sigma_schedule (`str`, *optional*, defaults to `karras`):
             Sigma schedule to compute the `sigmas`. By default, we the schedule introduced in the EDM paper
-            (https://arxiv.org/abs/2206.00364). Other acceptable value is "linear". The linear schedule was
+            (https://arxiv.org/abs/2206.00364). Other acceptable value is "exponential". The exponential schedule was
             incorporated in this model: https://huggingface.co/stabilityai/cosxl.
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
