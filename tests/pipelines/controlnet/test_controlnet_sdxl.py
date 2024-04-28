@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import gc
 import unittest
 
@@ -24,8 +25,10 @@ from diffusers import (
     AutoencoderKL,
     ControlNetModel,
     EulerDiscreteScheduler,
+    HeunDiscreteScheduler,
     LCMScheduler,
     StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLImg2ImgPipeline,
     UNet2DConditionModel,
 )
 from diffusers.models.unets.unet_2d_blocks import UNetMidBlock2D
@@ -187,6 +190,15 @@ class StableDiffusionXLControlNetPipelineFastTests(
 
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
+
+    def test_ip_adapter_single(self, from_ssd1b=False, expected_pipe_slice=None):
+        if not from_ssd1b:
+            expected_pipe_slice = None
+            if torch_device == "cpu":
+                expected_pipe_slice = np.array(
+                    [0.7331, 0.5907, 0.5667, 0.6029, 0.5679, 0.5968, 0.4033, 0.4761, 0.5090]
+                )
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -364,6 +376,110 @@ class StableDiffusionXLControlNetPipelineFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    # copied from test_stable_diffusion_xl.py:test_stable_diffusion_two_xl_mixture_of_denoiser_fast
+    # with `StableDiffusionXLControlNetPipeline` instead of `StableDiffusionXLPipeline`
+    def test_controlnet_sdxl_two_mixture_of_denoiser_fast(self):
+        components = self.get_dummy_components()
+        pipe_1 = StableDiffusionXLControlNetPipeline(**components).to(torch_device)
+        pipe_1.unet.set_default_attn_processor()
+
+        components_without_controlnet = {k: v for k, v in components.items() if k != "controlnet"}
+        pipe_2 = StableDiffusionXLImg2ImgPipeline(**components_without_controlnet).to(torch_device)
+        pipe_2.unet.set_default_attn_processor()
+
+        def assert_run_mixture(
+            num_steps,
+            split,
+            scheduler_cls_orig,
+            expected_tss,
+            num_train_timesteps=pipe_1.scheduler.config.num_train_timesteps,
+        ):
+            inputs = self.get_dummy_inputs(torch_device)
+            inputs["num_inference_steps"] = num_steps
+
+            class scheduler_cls(scheduler_cls_orig):
+                pass
+
+            pipe_1.scheduler = scheduler_cls.from_config(pipe_1.scheduler.config)
+            pipe_2.scheduler = scheduler_cls.from_config(pipe_2.scheduler.config)
+
+            # Let's retrieve the number of timesteps we want to use
+            pipe_1.scheduler.set_timesteps(num_steps)
+            expected_steps = pipe_1.scheduler.timesteps.tolist()
+
+            if pipe_1.scheduler.order == 2:
+                expected_steps_1 = list(filter(lambda ts: ts >= split, expected_tss))
+                expected_steps_2 = expected_steps_1[-1:] + list(filter(lambda ts: ts < split, expected_tss))
+                expected_steps = expected_steps_1 + expected_steps_2
+            else:
+                expected_steps_1 = list(filter(lambda ts: ts >= split, expected_tss))
+                expected_steps_2 = list(filter(lambda ts: ts < split, expected_tss))
+
+            # now we monkey patch step `done_steps`
+            # list into the step function for testing
+            done_steps = []
+            old_step = copy.copy(scheduler_cls.step)
+
+            def new_step(self, *args, **kwargs):
+                done_steps.append(args[1].cpu().item())  # args[1] is always the passed `t`
+                return old_step(self, *args, **kwargs)
+
+            scheduler_cls.step = new_step
+
+            inputs_1 = {
+                **inputs,
+                **{
+                    "denoising_end": 1.0 - (split / num_train_timesteps),
+                    "output_type": "latent",
+                },
+            }
+            latents = pipe_1(**inputs_1).images[0]
+
+            assert expected_steps_1 == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+            inputs_2 = {
+                **inputs,
+                **{
+                    "denoising_start": 1.0 - (split / num_train_timesteps),
+                    "image": latents,
+                },
+            }
+            pipe_2(**inputs_2).images[0]
+
+            assert expected_steps_2 == done_steps[len(expected_steps_1) :]
+            assert expected_steps == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+        steps = 10
+        for split in [300, 700]:
+            for scheduler_cls_timesteps in [
+                (EulerDiscreteScheduler, [901, 801, 701, 601, 501, 401, 301, 201, 101, 1]),
+                (
+                    HeunDiscreteScheduler,
+                    [
+                        901.0,
+                        801.0,
+                        801.0,
+                        701.0,
+                        701.0,
+                        601.0,
+                        601.0,
+                        501.0,
+                        501.0,
+                        401.0,
+                        401.0,
+                        301.0,
+                        301.0,
+                        201.0,
+                        201.0,
+                        101.0,
+                        101.0,
+                        1.0,
+                        1.0,
+                    ],
+                ),
+            ]:
+                assert_run_mixture(steps, split, scheduler_cls_timesteps[0], scheduler_cls_timesteps[1])
+
 
 class StableDiffusionXLMultiControlNetPipelineFastTests(
     PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
@@ -396,7 +512,7 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -601,7 +717,7 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet = ControlNetModel(
@@ -777,6 +893,11 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 @slow
 @require_torch_gpu
 class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -895,6 +1016,11 @@ class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
         for param_name, param_value in single_file_pipe.unet.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
+
+            # Upcast attention might be set to None in a config file, which is incorrect. It should default to False in the model
+            if param_name == "upcast_attention" and pipe.unet.config[param_name] is None:
+                pipe.unet.config[param_name] = False
+
             assert (
                 pipe.unet.config[param_name] == param_value
             ), f"{param_name} differs between single file loading and pretrained loading"
@@ -929,6 +1055,12 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.6832, 0.5703, 0.5460, 0.6300, 0.5856, 0.6034, 0.4494, 0.4613, 0.5036])
+        return super().test_ip_adapter_single(from_ssd1b=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_controlnet_sdxl_lcm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator

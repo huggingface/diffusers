@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import contextlib
+import gc
 import inspect
 import io
 import re
@@ -29,7 +30,7 @@ from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_
 from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineFromPipeTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
@@ -42,7 +43,7 @@ def to_np(tensor):
     return tensor
 
 
-class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase):
     pipeline_class = TextToVideoZeroSDXLPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -381,6 +382,18 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 @nightly
 @require_torch_gpu
 class TextToVideoZeroSDXLPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def test_full_model(self):
         model_id = "stabilityai/stable-diffusion-xl-base-1.0"
         pipe = TextToVideoZeroSDXLPipeline.from_pretrained(

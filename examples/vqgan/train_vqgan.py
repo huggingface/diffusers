@@ -185,7 +185,8 @@ def log_validation(model, args, validation_transform, accelerator, global_step):
                     "validation": [
                         wandb.Image(image, caption=f"{i}: Original, Generated") for i, image in enumerate(images)
                     ]
-                }
+                },
+                step=global_step
             )
     torch.cuda.empty_cache()
     return images
@@ -437,7 +438,7 @@ def parse_args():
     parser.add_argument(
         "--dataloader_num_workers",
         type=int,
-        default=0,
+        default=4,
         help=(
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
@@ -781,7 +782,6 @@ def main():
             transforms.ToTensor(),
         ]
     )
-
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
         examples["pixel_values"] = [train_transforms(image) for image in images]
@@ -790,7 +790,6 @@ def main():
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # Set the training transforms
         train_dataset = dataset["train"].with_transform(preprocess_train)
 
     def collate_fn(examples):
@@ -929,7 +928,7 @@ def main():
                     loss += commit_loss
                     loss += perceptual_loss
                     loss += adaptive_weight * gen_loss
-                    # Gather thexd losses across all processes for logging (if we use distributed training).
+                    # Gather the losses across all processes for logging (if we use distributed training).
                     avg_gen_loss = accelerator.gather(loss.repeat(args.train_batch_size)).float().mean()
                     accelerator.backward(loss)
 
@@ -969,6 +968,7 @@ def main():
                         and accelerator.is_main_process
                     ):
                         log_grad_norm(discriminator, accelerator, global_step)
+            batch_time_m.update(time.time() - end)
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 global_step += 1
@@ -977,8 +977,6 @@ def main():
                     ema_model.step(model.parameters())
             if accelerator.sync_gradients and not generator_step and accelerator.is_main_process:
                 # wait for both generator and discriminator to settle
-                batch_time_m.update(time.time() - end)
-                end = time.time()
                 # Log metrics
                 if global_step % args.log_steps == 0:
                     samples_per_second_per_gpu = (
@@ -1000,6 +998,7 @@ def main():
                     data_time_m.reset()
                 # Save model checkpoint
                 if global_step % args.checkpointing_steps == 0:
+<<<<<<< HEAD
                     if accelerator.is_main_process:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1025,10 +1024,13 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
+=======
+                    save_checkpoint(model, discriminator, args, accelerator, global_step)
+>>>>>>> e1ed9ee1238da0eccbabf158b3b5d6688a49d3ae
                 # Generate images
                 if global_step % args.validation_steps == 0:
                     log_validation(model, args, validation_transform, accelerator, global_step)
-
+            end = time.time()
             # Stop training if max steps is reached
             if global_step >= args.max_train_steps:
                 break

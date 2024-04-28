@@ -127,7 +127,7 @@ class AmusedImg2ImgPipeline(DiffusionPipeline):
                 on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
                 process runs for the full number of iterations specified in `num_inference_steps`. A value of 1
                 essentially ignores `image`.
-            num_inference_steps (`int`, *optional*, defaults to 16):
+            num_inference_steps (`int`, *optional*, defaults to 12):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 10.0):
@@ -167,10 +167,12 @@ class AmusedImg2ImgPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             micro_conditioning_aesthetic_score (`int`, *optional*, defaults to 6):
-                The targeted aesthetic score according to the laion aesthetic classifier. See https://laion.ai/blog/laion-aesthetics/
-                and the micro-conditioning section of https://arxiv.org/abs/2307.01952.
+                The targeted aesthetic score according to the laion aesthetic classifier. See
+                https://laion.ai/blog/laion-aesthetics/ and the micro-conditioning section of
+                https://arxiv.org/abs/2307.01952.
             micro_conditioning_crop_coord (`Tuple[int]`, *optional*, defaults to (0, 0)):
-                The targeted height, width crop coordinates. See the micro-conditioning section of https://arxiv.org/abs/2307.01952.
+                The targeted height, width crop coordinates. See the micro-conditioning section of
+                https://arxiv.org/abs/2307.01952.
             temperature (`Union[int, Tuple[int, int], List[int]]`, *optional*, defaults to (2, 0)):
                 Configures the temperature scheduler on `self.scheduler` see `AmusedScheduler#set_timesteps`.
 
@@ -191,7 +193,7 @@ class AmusedImg2ImgPipeline(DiffusionPipeline):
             negative_prompt_embeds is None and negative_encoder_hidden_states is not None
         ):
             raise ValueError(
-                "pass either both `negatve_prompt_embeds` and `negative_encoder_hidden_states` or neither"
+                "pass either both `negative_prompt_embeds` and `negative_encoder_hidden_states` or neither"
             )
 
         if (prompt is None and prompt_embeds is None) or (prompt is not None and prompt_embeds is not None):

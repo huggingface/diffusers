@@ -19,7 +19,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 
 from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import replace_example_docstring
+from ...utils import is_torch_version, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
 from .pipeline_stable_cascade import StableCascadeDecoderPipeline
@@ -29,11 +29,13 @@ from .pipeline_stable_cascade_prior import StableCascadePriorPipeline
 TEXT2IMAGE_EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusions import StableCascadeCombinedPipeline
+        >>> import torch
+        >>> from diffusers import StableCascadeCombinedPipeline
 
-        >>> pipe = StableCascadeCombinedPipeline.from_pretrained("stabilityai/stable-cascade-combined", torch_dtype=torch.bfloat16).to(
-        ...     "cuda"
+        >>> pipe = StableCascadeCombinedPipeline.from_pretrained(
+        ...     "stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.bfloat16
         ... )
+        >>> pipe.enable_model_cpu_offload()
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> images = pipe(prompt=prompt)
         ```
@@ -118,25 +120,25 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_model_cpu_offload(self, gpu_id=0):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
         method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
         `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
         """
-        self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id)
-        self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id)
+        self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
+        self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models (`unet`, `text_encoder`, `vae`, and `safety checker` state dicts) to CPU using 🤗
         Accelerate, significantly reducing memory usage. Models are moved to a `torch.device('meta')` and loaded on a
         GPU only when their specific submodule's `forward` method is called. Offloading happens on a submodule basis.
         Memory savings are higher than using `enable_model_cpu_offload`, but performance is lower.
         """
-        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
-        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
+        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id, device=device)
+        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id, device=device)
 
     def progress_bar(self, iterable=None, total=None):
         self.prior_pipe.progress_bar(iterable=iterable, total=total)
@@ -155,14 +157,14 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         height: int = 512,
         width: int = 512,
         prior_num_inference_steps: int = 60,
-        prior_timesteps: Optional[List[float]] = None,
         prior_guidance_scale: float = 4.0,
         num_inference_steps: int = 12,
-        decoder_timesteps: Optional[List[float]] = None,
         decoder_guidance_scale: float = 0.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -187,7 +189,14 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, text embeddings will be generated from `prompt` input argument.
+            prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.*
+                prompt weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
+                input argument.
+            negative_prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.*
                 prompt weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
@@ -236,7 +245,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             prior_callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `prior_callback_on_step_end` function. The tensors specified in the
                 list will be passed as `callback_kwargs` argument. You will only be able to include variables listed in
-                the `._callback_tensor_inputs` attribute of your pipeine class.
+                the `._callback_tensor_inputs` attribute of your pipeline class.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -245,7 +254,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
@@ -253,6 +262,11 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
             otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
+        dtype = self.decoder_pipe.decoder.dtype
+        if is_torch_version("<", "2.2.0") and dtype == torch.bfloat16:
+            raise ValueError(
+                "`StableCascadeCombinedPipeline` requires torch>=2.2.0 when using `torch.bfloat16` dtype."
+            )
 
         prior_outputs = self.prior_pipe(
             prompt=prompt if prompt_embeds is None else None,
@@ -263,7 +277,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             guidance_scale=prior_guidance_scale,
             negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
             prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
             num_images_per_prompt=num_images_per_prompt,
             generator=generator,
             latents=latents,
@@ -274,7 +290,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         )
         image_embeddings = prior_outputs.image_embeddings
         prompt_embeds = prior_outputs.get("prompt_embeds", None)
+        prompt_embeds_pooled = prior_outputs.get("prompt_embeds_pooled", None)
         negative_prompt_embeds = prior_outputs.get("negative_prompt_embeds", None)
+        negative_prompt_embeds_pooled = prior_outputs.get("negative_prompt_embeds_pooled", None)
 
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
@@ -283,7 +301,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             guidance_scale=decoder_guidance_scale,
             negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
             prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
             generator=generator,
             output_type=output_type,
             return_dict=return_dict,

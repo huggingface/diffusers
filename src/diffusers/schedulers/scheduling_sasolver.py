@@ -62,7 +62,7 @@ def betas_for_alpha_bar(
             return math.exp(t * -12.0)
 
     else:
-        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
+        raise ValueError(f"Unsupported alpha_transform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
@@ -92,19 +92,20 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         trained_betas (`np.ndarray`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
         predictor_order (`int`, defaults to 2):
-            The predictor order which can be `1` or `2` or `3` or '4'. It is recommended to use `predictor_order=2` for guided
-            sampling, and `predictor_order=3` for unconditional sampling.
+            The predictor order which can be `1` or `2` or `3` or '4'. It is recommended to use `predictor_order=2` for
+            guided sampling, and `predictor_order=3` for unconditional sampling.
         corrector_order (`int`, defaults to 2):
-            The corrector order which can be `1` or `2` or `3` or '4'. It is recommended to use `corrector_order=2` for guided
-            sampling, and `corrector_order=3` for unconditional sampling.
+            The corrector order which can be `1` or `2` or `3` or '4'. It is recommended to use `corrector_order=2` for
+            guided sampling, and `corrector_order=3` for unconditional sampling.
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
             Video](https://imagen.research.google/video/paper.pdf) paper).
         tau_func (`Callable`, *optional*):
-            Stochasticity during the sampling. Default in init is `lambda t: 1 if t >= 200 and t <= 800 else 0`. SA-Solver
-            will sample from vanilla diffusion ODE if tau_func is set to `lambda t: 0`. SA-Solver will sample from vanilla
-            diffusion SDE if tau_func is set to `lambda t: 1`. For more details, please check https://arxiv.org/abs/2309.05019
+            Stochasticity during the sampling. Default in init is `lambda t: 1 if t >= 200 and t <= 800 else 0`.
+            SA-Solver will sample from vanilla diffusion ODE if tau_func is set to `lambda t: 0`. SA-Solver will sample
+            from vanilla diffusion SDE if tau_func is set to `lambda t: 1`. For more details, please check
+            https://arxiv.org/abs/2309.05019
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
@@ -114,8 +115,8 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             The threshold value for dynamic thresholding. Valid only when `thresholding=True` and
             `algorithm_type="dpmsolver++"`.
         algorithm_type (`str`, defaults to `data_prediction`):
-            Algorithm type for the solver; can be `data_prediction` or `noise_prediction`. It is recommended to use `data_prediction`
-            with `solver_order=2` for guided sampling like in Stable Diffusion.
+            Algorithm type for the solver; can be `data_prediction` or `noise_prediction`. It is recommended to use
+            `data_prediction` with `solver_order=2` for guided sampling like in Stable Diffusion.
         lower_order_final (`bool`, defaults to `True`):
             Whether to use lower-order solvers in the final steps. Default = True.
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
@@ -131,9 +132,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+            An offset added to the inference steps, as required by some model families.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -218,7 +217,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
 
@@ -404,14 +403,14 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         **kwargs,
     ) -> torch.FloatTensor:
         """
-        Convert the model output to the corresponding type the data_prediction/noise_prediction algorithm needs. Noise_prediction is
-        designed to discretize an integral of the noise prediction model, and data_prediction is designed to discretize an
-        integral of the data prediction model.
+        Convert the model output to the corresponding type the data_prediction/noise_prediction algorithm needs.
+        Noise_prediction is designed to discretize an integral of the noise prediction model, and data_prediction is
+        designed to discretize an integral of the data prediction model.
 
         <Tip>
 
-        The algorithm and model type are decoupled. You can use either data_prediction or noise_prediction for both noise
-        prediction and data prediction models.
+        The algorithm and model type are decoupled. You can use either data_prediction or noise_prediction for both
+        noise prediction and data prediction models.
 
         </Tip>
 

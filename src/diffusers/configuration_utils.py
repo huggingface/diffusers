@@ -13,7 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" ConfigMixin base class and utilities."""
+"""ConfigMixin base class and utilities."""
+
 import dataclasses
 import functools
 import importlib
@@ -449,8 +450,8 @@ class ConfigMixin:
         return outputs
 
     @staticmethod
-    def _get_init_keys(cls):
-        return set(dict(inspect.signature(cls.__init__).parameters).keys())
+    def _get_init_keys(input_class):
+        return set(dict(inspect.signature(input_class.__init__).parameters).keys())
 
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
