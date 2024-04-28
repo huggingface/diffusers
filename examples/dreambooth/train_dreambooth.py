@@ -757,6 +757,16 @@ class PromptDataset(Dataset):
         example["index"] = index
         return example
 
+def model_has_vae(args):
+    config_file_name = os.path.join("vae", AutoencoderKL.config_name)
+    if platform.system() == "Windows":
+        config_file_name = config_file_name.replace('\\', '/')
+    if os.path.isdir(args.pretrained_model_name_or_path):
+        config_file_name = os.path.join(args.pretrained_model_name_or_path, config_file_name)
+        return os.path.isfile(config_file_name)
+    else:
+        files_in_repo = model_info(args.pretrained_model_name_or_path, revision=args.revision).siblings
+        return any(file.rfilename == config_file_name for file in files_in_repo)
 
 def tokenize_prompt(tokenizer, prompt, tokenizer_max_length=None):
     if tokenizer_max_length is not None:
@@ -923,13 +933,11 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
 
-    try:
+    if model_has_vae(args):
         vae = AutoencoderKL.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
         )
-    except OSError:
-        # IF does not have a VAE so let's just set it to None
-        # We don't have to error out here
+    else:
         vae = None
 
     unet = UNet2DConditionModel.from_pretrained(
