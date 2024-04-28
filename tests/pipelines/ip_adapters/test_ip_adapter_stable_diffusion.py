@@ -32,7 +32,6 @@ from diffusers import (
     StableDiffusionXLPipeline,
 )
 from diffusers.image_processor import IPAdapterMaskProcessor
-from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -73,7 +72,9 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         image_processor = CLIPImageProcessor.from_pretrained(repo_id)
         return image_processor
 
-    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False, for_sdxl=False, for_masks=False, for_instant_style=False):
+    def get_dummy_inputs(
+        self, for_image_to_image=False, for_inpainting=False, for_sdxl=False, for_masks=False, for_instant_style=False
+    ):
         image = load_image(
             "https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png"
         )
@@ -154,7 +155,9 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
             input_kwargs.update(
                 {
                     "ip_adapter_image": [ip_composition_image, [ip_female_style, ip_male_style, ip_background]],
-                    "cross_attention_kwargs": {"ip_adapter_masks": [[composition_mask], [female_mask, male_mask, background_mask]]},
+                    "cross_attention_kwargs": {
+                        "ip_adapter_masks": [[composition_mask], [female_mask, male_mask, background_mask]]
+                    },
                 }
             )
 
@@ -303,6 +306,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline = StableDiffusionPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
         )
+        before_processors = [attn_proc.__class__ for attn_proc in pipeline.unet.attn_processors.values()]
         pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
         pipeline.set_ip_adapter_scale(0.7)
@@ -311,11 +315,9 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
 
         assert getattr(pipeline, "image_encoder") is None
         assert getattr(pipeline, "feature_extractor") is not None
-        processors = [
-            isinstance(attn_proc, (AttnProcessor, AttnProcessor2_0))
-            for name, attn_proc in pipeline.unet.attn_processors.items()
-        ]
-        assert processors == [True] * len(processors)
+        after_processors = [attn_proc.__class__ for attn_proc in pipeline.unet.attn_processors.values()]
+
+        assert before_processors == after_processors
 
     @is_flaky
     def test_multi(self):
@@ -628,10 +630,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         scale_1 = {
             "down": [[0.0, 0.0, 1.0]],
             "mid": [[0.0, 0.0, 1.0]],
-            "up": {
-                "block_0": [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 1.0]],
-                "block_1": [[0.0, 0.0, 1.0]]
-            },
+            "up": {"block_0": [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 1.0]], "block_1": [[0.0, 0.0, 1.0]]},
         }
         pipeline.set_ip_adapter_scale([1.0, scale_1])
 
@@ -646,7 +645,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
         expected_slice = np.array(
-            [0.23551631, 0.20476806, 0.14099443, 0.        , 0.07675594, 0.05672678, 0.        , 0.        , 0.02099729]
+            [0.23551631, 0.20476806, 0.14099443, 0.0, 0.07675594, 0.05672678, 0.0, 0.0, 0.02099729]
         )
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)

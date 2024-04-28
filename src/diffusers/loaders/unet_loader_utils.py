@@ -120,9 +120,7 @@ def _maybe_expand_lora_scales_for_one_adapter(
         if len(scales["mid"]) == 1:
             scales["mid"] = scales["mid"][0]
         else:
-            raise ValueError(
-                f"Expected 1 scales for mid, got {len(scales['mid'])}."
-            )
+            raise ValueError(f"Expected 1 scales for mid, got {len(scales['mid'])}.")
 
     for updown in ["up", "down"]:
         if updown not in scales:

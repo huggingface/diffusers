@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
@@ -38,6 +39,8 @@ if is_transformers_available():
     )
 
     from ..models.attention_processor import (
+        AttnProcessor,
+        AttnProcessor2_0,
         IPAdapterAttnProcessor,
         IPAdapterAttnProcessor2_0,
     )
@@ -251,25 +254,25 @@ class IPAdapterMixin:
 
         ```py
         # To use original IP-Adapter
-        >>> scale = 1.0
-        >>> pipeline.set_ip_adapter_scale(scale)
+        scale = 1.0
+        pipeline.set_ip_adapter_scale(scale)
 
         # To use style block only
-        >>> scale = {
-        ...     "up": {"block_0": [0.0, 1.0, 0.0]},
-        ... }
-        >>> pipeline.set_ip_adapter_scale(scale)
+        scale = {
+            "up": {"block_0": [0.0, 1.0, 0.0]},
+        }
+        pipeline.set_ip_adapter_scale(scale)
 
         # To use style+layout blocks
-        >>> scale = {
-        ...     "down": {"block_2": [0.0, 1.0]},
-        ...     "up": {"block_0": [0.0, 1.0, 0.0]},
-        ... }
-        >>> pipeline.set_ip_adapter_scale(scale)
+        scale = {
+            "down": {"block_2": [0.0, 1.0]},
+            "up": {"block_0": [0.0, 1.0, 0.0]},
+        }
+        pipeline.set_ip_adapter_scale(scale)
 
         # To use style and layout from 2 reference images
-        >>> scales = [{"down": {"block_2": [0.0, 1.0]}}, {"up": {"block_0": [0.0, 1.0, 0.0]}}]
-        >>> pipeline.set_ip_adapter_scale(scales)
+        scales = [{"down": {"block_2": [0.0, 1.0]}}, {"up": {"block_0": [0.0, 1.0, 0.0]}}]
+        pipeline.set_ip_adapter_scale(scales)
         ```
         """
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
@@ -323,4 +326,14 @@ class IPAdapterMixin:
         self.config.encoder_hid_dim_type = None
 
         # restore original Unet attention processors layers
-        self.unet.set_default_attn_processor()
+        attn_procs = {}
+        for name, value in self.unet.attn_processors.items():
+            attn_processor_class = (
+                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnProcessor()
+            )
+            attn_procs[name] = (
+                attn_processor_class
+                if isinstance(value, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0))
+                else value.__class__()
+            )
+        self.unet.set_attn_processor(attn_procs)
