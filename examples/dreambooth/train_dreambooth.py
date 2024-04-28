@@ -21,7 +21,6 @@ import itertools
 import logging
 import math
 import os
-import platform
 import shutil
 import warnings
 from pathlib import Path
@@ -759,9 +758,7 @@ class PromptDataset(Dataset):
         return example
 
 def model_has_vae(args):
-    config_file_name = os.path.join("vae", AutoencoderKL.config_name)
-    if platform.system() == "Windows":
-        config_file_name = config_file_name.replace('\\', '/')
+    config_file_name = f"vae/{AutoencoderKL.config_name}"
     if os.path.isdir(args.pretrained_model_name_or_path):
         config_file_name = os.path.join(args.pretrained_model_name_or_path, config_file_name)
         return os.path.isfile(config_file_name)
