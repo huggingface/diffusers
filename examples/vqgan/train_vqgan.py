@@ -186,7 +186,7 @@ def log_validation(model, args, validation_transform, accelerator, global_step):
                         wandb.Image(image, caption=f"{i}: Original, Generated") for i, image in enumerate(images)
                     ]
                 },
-                step=global_step
+                step=global_step,
             )
     torch.cuda.empty_cache()
     return images
@@ -782,6 +782,7 @@ def main():
             transforms.ToTensor(),
         ]
     )
+
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
         examples["pixel_values"] = [train_transforms(image) for image in images]
@@ -998,7 +999,6 @@ def main():
                     data_time_m.reset()
                 # Save model checkpoint
                 if global_step % args.checkpointing_steps == 0:
-<<<<<<< HEAD
                     if accelerator.is_main_process:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1024,9 +1024,6 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-=======
-                    save_checkpoint(model, discriminator, args, accelerator, global_step)
->>>>>>> e1ed9ee1238da0eccbabf158b3b5d6688a49d3ae
                 # Generate images
                 if global_step % args.validation_steps == 0:
                     log_validation(model, args, validation_transform, accelerator, global_step)
