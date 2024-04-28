@@ -180,10 +180,7 @@ class VQModel(ModelMixin, ConfigMixin):
 
         if not return_dict:
             if return_loss:
-                return (
-                    dec.sample,
-                    dec.commit_loss,
-                )
+                return dec.sample, dec.commit_loss
             return (dec.sample,)
         if return_loss:
             return dec
