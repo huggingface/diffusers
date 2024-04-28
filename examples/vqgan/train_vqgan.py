@@ -14,12 +14,13 @@
 # limitations under the License.
 
 import argparse
-import json
 import math
 import os
+import shutil
 import time
 from pathlib import Path
 
+import accelerate
 import numpy as np
 import PIL
 import PIL.Image
@@ -32,6 +33,7 @@ from accelerate.utils import DistributedType, ProjectConfiguration, set_seed
 from datasets import load_dataset
 from discriminator import Discriminator
 from huggingface_hub import create_repo
+from packaging import version
 from PIL import Image
 from timm.data import resolve_data_config
 from timm.data.transforms_factory import create_transform
@@ -48,13 +50,9 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.22.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
-
-DATASET_NAME_MAPPING = {
-    "lambdalabs/pokemon-blip-captions": ("image", "text"),
-}
 
 
 class AverageMeter(object):
@@ -191,28 +189,6 @@ def log_validation(model, args, validation_transform, accelerator, global_step):
             )
     torch.cuda.empty_cache()
     return images
-
-
-def save_checkpoint(model, discriminator, args, accelerator, global_step):
-    save_path = Path(args.output_dir) / f"checkpoint-{global_step}"
-
-    # retrieve the model on all processes for deepspeed stage 3 to work then save on one process (we are not using stage 3 yet)
-    # XXX: could also make this conditional on deepspeed
-    state_dict = accelerator.get_state_dict(model)
-    discr_state_dict = accelerator.get_state_dict(discriminator)
-
-    if accelerator.is_main_process:
-        unwrapped_model = accelerator.unwrap_model(model)
-        unwrapped_model.save_pretrained(
-            save_path / "unwrapped_model",
-            save_function=accelerator.save,
-            state_dict=state_dict,
-        )
-        torch.save(discr_state_dict, save_path / "unwrapped_discriminator")
-        json.dump({"global_step": global_step}, (save_path / "metadata.json").open("w+"))
-        logger.info(f"Saved state to {save_path}")
-
-    accelerator.save_state(save_path)
 
 
 def log_grad_norm(model, accelerator, global_step):
@@ -691,6 +667,33 @@ def main():
     if args.enable_xformers_memory_efficient_attention:
         model.enable_xformers_memory_efficient_attention()
 
+    # `accelerate` 0.16.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+        def save_model_hook(models, weights, output_dir):
+            if accelerator.is_main_process:
+                vqmodel = models[0]
+                discriminator = models[1]
+                vqmodel.save_pretrained(os.path.join(output_dir, "vqmodel"))
+                discriminator.save_pretrained(os.path.join(output_dir, "discriminator"))
+                weights.pop()
+                weights.pop()
+
+        def load_model_hook(models, input_dir):
+            discriminator = models.pop()
+            load_model = Discriminator.from_pretrained(input_dir, subfolder="discriminator")
+            discriminator.register_to_config(**load_model.config)
+            discriminator.load_state_dict(load_model.state_dict())
+            del load_model
+            vqmodel = models.pop()
+            load_model = VQModel.from_pretrained(input_dir, subfolder="vqmodel")
+            vqmodel.register_to_config(**load_model.config)
+            vqmodel.load_state_dict(load_model.state_dict())
+            del load_model
+
+        accelerator.register_save_state_pre_hook(save_model_hook)
+        accelerator.register_load_state_pre_hook(load_model_hook)
+
     learning_rate = args.learning_rate
     if args.scale_lr:
         learning_rate = (
@@ -759,15 +762,10 @@ def main():
     column_names = dataset["train"].column_names
 
     # 6. Get the column names for input/target.
-    dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
-    if args.image_column is None:
-        image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
-    else:
-        image_column = args.image_column
-        if image_column not in column_names:
-            raise ValueError(
-                f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
-            )
+    assert args.image_column is not None
+    image_column = args.image_column
+    if image_column not in column_names:
+        raise ValueError(f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}")
     # Preprocessing the datasets.
     train_transforms = transforms.Compose(
         [
@@ -887,6 +885,7 @@ def main():
     avg_gen_loss, avg_discr_loss = None, None
     for epoch in range(first_epoch, args.num_train_epochs):
         model.train()
+        discriminator.train()
         for i, batch in enumerate(train_dataloader):
             pixel_values = batch["pixel_values"]
             pixel_values = pixel_values.to(accelerator.device, non_blocking=True)
@@ -1001,7 +1000,30 @@ def main():
                     data_time_m.reset()
                 # Save model checkpoint
                 if global_step % args.checkpointing_steps == 0:
-                    save_checkpoint(model, discriminator, args, accelerator, global_step)
+                    if accelerator.is_main_process:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
+
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
+
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
 
                 # Generate images
                 if global_step % args.validation_steps == 0:
@@ -1014,15 +1036,14 @@ def main():
 
     accelerator.wait_for_everyone()
 
-    # Evaluate and save checkpoint at the end of training
-    save_checkpoint(model, discriminator, args, accelerator, global_step)
-
     # Save the final trained checkpoint
     if accelerator.is_main_process:
         model = accelerator.unwrap_model(model)
+        discriminator = accelerator.unwrap_model(discriminator)
         if args.use_ema:
             ema_model.copy_to(model.parameters())
-        model.save_pretrained(args.output_dir)
+        model.save_pretrained(os.path.join(args.output_dir, "vqmodel"))
+        discriminator.save_pretrained(os.path.join(args.output_dir, "discriminator"))
 
     accelerator.end_training()
 
