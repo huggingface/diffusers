@@ -703,7 +703,7 @@ image
     <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter image</figcaption>
   </div>
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/136cc2b8a2a34df1bbafa88a6c407816f0e35aff/datasets/cat_style_layout.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/datasets/cat_style_layout.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
   </div>
 </div>
@@ -732,11 +732,11 @@ image
 
 <div class="flex flex-row gap-4">
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/136cc2b8a2a34df1bbafa88a6c407816f0e35aff/datasets/cat_style_only.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/datasets/cat_style_only.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter only in style layer</figcaption>
   </div>
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/136cc2b8a2a34df1bbafa88a6c407816f0e35aff/datasets/cat_ip_adapter.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/datasets/cat_ip_adapter.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter in all layers</figcaption>
   </div>
 </div>
