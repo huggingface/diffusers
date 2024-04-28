@@ -1429,7 +1429,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare latent variables
-        if latents in None:
+        if latents is None:
             latents = self.prepare_latents(
                 image,
                 latent_timestep,
