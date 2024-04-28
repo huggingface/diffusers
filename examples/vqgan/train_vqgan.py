@@ -257,13 +257,13 @@ def parse_args():
         "--model_config_name_or_path",
         type=str,
         default=None,
-        help="The config of the Vq model to train, leave as None to use standard DDPM configuration.",
+        help="The config of the Vq model to train, leave as None to use standard Vq model configuration.",
     )
     parser.add_argument(
         "--discriminator_config_name_or_path",
         type=str,
         default=None,
-        help="The config of the discriminator model to train, leave as None to use standard DDPM configuration.",
+        help="The config of the discriminator model to train, leave as None to use standard Vq model configuration.",
     )
     parser.add_argument(
         "--revision",
@@ -438,7 +438,7 @@ def parse_args():
     parser.add_argument(
         "--dataloader_num_workers",
         type=int,
-        default=4,
+        default=0,
         help=(
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
@@ -624,7 +624,7 @@ def main():
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
             vq_embed_dim=4,
         )
-    elif args.pretrained_model_name_or_path is None:
+    elif args.pretrained_model_name_or_path is not None:
         model = VQModel.from_pretrained(args.pretrained_model_name_or_path)
     else:
         config = VQModel.load_config(args.model_config_name_or_path)
@@ -673,6 +673,8 @@ def main():
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
             if accelerator.is_main_process:
+                if args.use_ema:
+                    ema_model.save_pretrained(os.path.join(output_dir, "vqmodel_ema"))
                 vqmodel = models[0]
                 discriminator = models[1]
                 vqmodel.save_pretrained(os.path.join(output_dir, "vqmodel"))
@@ -681,6 +683,11 @@ def main():
                 weights.pop()
 
         def load_model_hook(models, input_dir):
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "vqmodel_ema"), VQModel)
+                ema_model.load_state_dict(load_model.state_dict())
+                ema_model.to(accelerator.device)
+                del load_model
             discriminator = models.pop()
             load_model = Discriminator.from_pretrained(input_dir, subfolder="discriminator")
             discriminator.register_to_config(**load_model.config)
@@ -826,6 +833,8 @@ def main():
     model, discriminator, optimizer, discr_optimizer, lr_scheduler, discr_lr_scheduler = accelerator.prepare(
         model, discriminator, optimizer, discr_optimizer, lr_scheduler, discr_lr_scheduler
     )
+    if args.use_ema:
+        ema_model.to(accelerator.device)
     # Train!
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
@@ -1026,7 +1035,14 @@ def main():
 
                 # Generate images
                 if global_step % args.validation_steps == 0:
+                    if args.use_ema:
+                        # Store the VQGAN parameters temporarily and load the EMA parameters to perform inference.
+                        ema_model.store(model.parameters())
+                        ema_model.copy_to(model.parameters())
                     log_validation(model, args, validation_transform, accelerator, global_step)
+                    if args.use_ema:
+                        # Switch back to the original VQGAN parameters.
+                        ema_model.restore(model.parameters())
             end = time.time()
             # Stop training if max steps is reached
             if global_step >= args.max_train_steps:
