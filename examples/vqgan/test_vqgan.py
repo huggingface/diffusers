@@ -14,15 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import os
 import shutil
 import sys
 import tempfile
+
 import torch
 
 from diffusers import VQModel
-import json
+
+
 sys.path.append("..")
 from test_examples_utils import ExamplesTestsAccelerate, run_command  # noqa: E402
 
@@ -59,8 +62,9 @@ class TextToImage(ExamplesTestsAccelerate):
             "up_block_types": [
                 "UpDecoderBlock2D",
             ],
-            "vq_embed_dim": 4
+            "vq_embed_dim": 4,
         }
+
     @property
     def test_discriminator_config(self):
         return {
@@ -69,16 +73,18 @@ class TextToImage(ExamplesTestsAccelerate):
             "in_channels": 3,
             "cond_channels": 0,
             "hidden_channels": 8,
-            "depth": 4
+            "depth": 4,
         }
+
     def get_vq_and_discriminator_configs(self, tmpdir):
-        vqmodel_config_path = os.path.join(tmpdir, 'vqmodel.json')
-        discriminator_config_path = os.path.join(tmpdir, 'discriminator.json')
-        with open(vqmodel_config_path, 'w') as fp:
+        vqmodel_config_path = os.path.join(tmpdir, "vqmodel.json")
+        discriminator_config_path = os.path.join(tmpdir, "discriminator.json")
+        with open(vqmodel_config_path, "w") as fp:
             json.dump(self.test_vqmodel_config, fp)
-        with open(discriminator_config_path, 'w') as fp:
+        with open(discriminator_config_path, "w") as fp:
             json.dump(self.test_discriminator_config, fp)
         return vqmodel_config_path, discriminator_config_path
+
     def test_vqmodel(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
@@ -101,7 +107,9 @@ class TextToImage(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "discriminator", "diffusion_pytorch_model.safetensors")))
+            self.assertTrue(
+                os.path.isfile(os.path.join(tmpdir, "discriminator", "diffusion_pytorch_model.safetensors"))
+            )
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "vqmodel", "diffusion_pytorch_model.safetensors")))
 
     def test_vqmodel_checkpointing(self):

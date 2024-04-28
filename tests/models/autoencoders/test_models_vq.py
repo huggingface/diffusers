@@ -99,6 +99,7 @@ class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         expected_output_slice = torch.tensor([-0.0153, -0.4044, -0.1880, -0.5161, -0.2418, -0.4072, -0.1612, -0.0633, -0.0143])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
     def test_loss_pretrained(self):
         model = VQModel.from_pretrained("fusing/vqgan-dummy")
         model.to(torch_device).eval()
