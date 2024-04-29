@@ -135,7 +135,7 @@ class I2VGenXLPipeline(
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         # `do_resize=False` as we do custom resizing.
-        self.image_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor, do_resize=False)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor, do_resize=False)
 
     @property
     def guidance_scale(self):
@@ -321,8 +321,8 @@ class I2VGenXLPipeline(
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
-            image = self.image_processor.pil_to_numpy(image)
-            image = self.image_processor.numpy_to_pt(image)
+            image = self.video_processor.pil_to_numpy(image)
+            image = self.video_processor.numpy_to_pt(image)
 
             # Normalize the image with CLIP training stats.
             image = self.feature_extractor(
@@ -636,7 +636,7 @@ class I2VGenXLPipeline(
 
         # 3.2.2 Image latents.
         resized_image = _center_crop_wide(image, (width, height))
-        image = self.image_processor.preprocess(resized_image).to(device=device, dtype=image_embeddings.dtype)
+        image = self.video_processor.preprocess(resized_image).to(device=device, dtype=image_embeddings.dtype)
         image_latents = self.prepare_image_latents(
             image,
             device=device,
@@ -716,7 +716,7 @@ class I2VGenXLPipeline(
             video = latents
         else:
             video_tensor = self.decode_latents(latents, decode_chunk_size=decode_chunk_size)
-            video = self.image_processor.tensor2vid(video=video_tensor, output_type=output_type)
+            video = self.video_processor.tensor2vid(video=video_tensor, output_type=output_type)
 
         # 9. Offload all models
         self.maybe_free_model_hooks()
