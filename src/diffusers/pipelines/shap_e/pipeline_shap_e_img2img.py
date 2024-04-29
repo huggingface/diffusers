@@ -239,15 +239,15 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
         num_embeddings = self.prior.config.num_embeddings
         embedding_dim = self.prior.config.embedding_dim
-
-        latents = self.prepare_latents(
-            (batch_size, num_embeddings * embedding_dim),
-            image_embeds.dtype,
-            device,
-            generator,
-            latents,
-            self.scheduler,
-        )
+        if latents is None:
+            latents = self.prepare_latents(
+                (batch_size, num_embeddings * embedding_dim),
+                image_embeds.dtype,
+                device,
+                generator,
+                latents,
+                self.scheduler,
+            )
 
         # YiYi notes: for testing only to match ldm, we can directly create a latents with desired shape: batch_size, num_embeddings, embedding_dim
         latents = latents.reshape(latents.shape[0], num_embeddings, embedding_dim)
