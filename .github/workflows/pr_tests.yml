@@ -40,9 +40,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install .[quality]
       - name: Check quality
-        run: |
-          ruff check examples tests src utils scripts
-          ruff format examples tests src utils scripts --check
+        run: make quality
       - name: Check if failure
         if: ${{ failure() }}
         run: |
@@ -61,7 +59,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .[quality]
-      - name: Check quality
+      - name: Check repo consistency
         run: |
           python utils/check_copies.py
           python utils/check_dummies.py
@@ -79,22 +77,22 @@ jobs:
         config:
           - name: Fast PyTorch Pipeline CPU tests
             framework: pytorch_pipelines
-            runner: docker-cpu
+            runner: [ self-hosted, intel-cpu, 32-cpu, 256-ram, ci ]
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_pipelines
           - name: Fast PyTorch Models & Schedulers CPU tests
             framework: pytorch_models
-            runner: docker-cpu
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_models_schedulers
           - name: Fast Flax CPU tests
             framework: flax
-            runner: docker-cpu
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-flax-cpu
             report: flax_cpu
           - name: PyTorch Example CPU tests
             framework: pytorch_examples
-            runner: docker-cpu
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-pytorch-cpu
             report: torch_example_cpu
 
@@ -118,7 +116,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         python -m uv pip install accelerate
@@ -132,7 +129,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 8 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
@@ -141,7 +138,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
@@ -150,7 +147,7 @@ jobs:
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests
@@ -160,7 +157,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install peft
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
 
@@ -183,7 +180,7 @@ jobs:
         config:
           - name: Hub tests for models, schedulers, and pipelines
             framework: hub_tests_pytorch
-            runner: docker-cpu
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-pytorch-cpu
             report: torch_hub
 
@@ -207,7 +204,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
 

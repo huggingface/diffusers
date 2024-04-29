@@ -23,12 +23,13 @@ To create the package for PyPI.
    If releasing on a special branch, copy the updated README.md on the main branch for the commit you will make
    for the post-release and run `make fix-copies` on the main branch as well.
 
-2. Run Tests for Amazon Sagemaker. The documentation is located in `./tests/sagemaker/README.md`, otherwise @philschmid.
+2. Unpin specific versions from setup.py that use a git install.
 
-3. Unpin specific versions from setup.py that use a git install.
-
-4. Checkout the release branch (v<RELEASE>-release, for example v4.19-release), and commit these changes with the
+3. Checkout the release branch (v<RELEASE>-release, for example v4.19-release), and commit these changes with the
    message: "Release: <RELEASE>" and push.
+
+4. Manually trigger the "Nightly and release tests on main/release branch" workflow from the release branch. Wait for
+   the tests to complete. We can safely ignore the known test failures.
 
 5. Wait for the tests on main to be completed and be green (otherwise revert and fix bugs).
 
@@ -94,7 +95,7 @@ from setuptools import Command, find_packages, setup
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
-    "accelerate>=0.11.0",
+    "accelerate>=0.29.3",
     "compel==0.1.8",
     "datasets",
     "filelock",
@@ -133,6 +134,7 @@ _deps = [
     "torchvision",
     "transformers>=4.25.1",
     "urllib3<=2.0.0",
+    "black",
 ]
 
 # this is a lookup table with items like:

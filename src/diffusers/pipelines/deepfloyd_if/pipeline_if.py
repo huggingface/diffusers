@@ -12,7 +12,6 @@ from ...models import UNet2DConditionModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
     BACKENDS_MAPPING,
-    is_accelerate_available,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -115,6 +114,7 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
 
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor", "watermarker"]
     model_cpu_offload_seq = "text_encoder->unet"
+    _exclude_from_cpu_offload = ["watermarker"]
 
     def __init__(
         self,
@@ -155,20 +155,6 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
             watermarker=watermarker,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    def remove_all_hooks(self):
-        if is_accelerate_available():
-            from accelerate.hooks import remove_hook_from_module
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        for model in [self.text_encoder, self.unet, self.safety_checker]:
-            if model is not None:
-                remove_hook_from_module(model, recurse=True)
-
-        self.unet_offload_hook = None
-        self.text_encoder_offload_hook = None
-        self.final_offload_hook = None
 
     @torch.no_grad()
     def encode_prompt(
@@ -334,9 +320,6 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             nsfw_detected = None
             watermark_detected = None
-
-            if hasattr(self, "unet_offload_hook") and self.unet_offload_hook is not None:
-                self.unet_offload_hook.offload()
 
         return image, nsfw_detected, watermark_detected
 
@@ -690,6 +673,9 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             self.scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = self.scheduler.timesteps
+
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(0)
 
         # 5. Prepare intermediate images
         intermediate_images = self.prepare_intermediate_images(

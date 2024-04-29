@@ -1,6 +1,7 @@
-name: Nightly tests on main
+name: Nightly and release tests on main/release branch
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
 
@@ -69,7 +70,6 @@ jobs:
       
       - name: Install dependencies
         run: |
-          apt-get update && apt-get install libsndfile1-dev libgl1 -y
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
@@ -130,7 +130,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
@@ -201,7 +200,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
@@ -245,6 +243,8 @@ jobs:
   run_flax_tpu_tests:
     name: Nightly Flax TPU Tests
     runs-on: docker-tpu
+    if: github.event_name == 'schedule'
+    
     container:
       image: diffusers/diffusers-flax-tpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --privileged
@@ -259,7 +259,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
@@ -355,6 +354,7 @@ jobs:
   run_nightly_tests_apple_m1:
     name: Nightly PyTorch MPS tests on MacOS
     runs-on: [ self-hosted, apple-m1 ]
+    if: github.event_name == 'schedule'
 
     steps:
       - name: Checkout diffusers
