@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import math
 from importlib import import_module
 from typing import Callable, List, Optional, Union
 
@@ -21,10 +22,12 @@ from torch import nn
 
 from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, logging
-from ..utils.import_utils import is_xformers_available
+from ..utils.import_utils import is_xformers_available, is_torch_npu_available
 from ..utils.torch_utils import maybe_allow_in_graph
 from .lora import LoRALinearLayer
 
+if is_torch_npu_available():
+    import torch_npu
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -1273,9 +1276,22 @@ class AttnProcessor2_0:
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
+        if is_torch_npu_available() and query.dtype in (torch.float16, torch.bfloat16):
+            hidden_states = torch_npu.npu_fusion_attention(
+                query, key, value, attn.heads, input_layout="BNSD",
+                pse=None,
+                atten_mask=attention_mask,
+                scale=1.0 / math.sqrt(query.shape[-1]),
+                pre_tockens=65536,
+                next_tockens=65536,
+                keep_prob=1.,
+                sync=False,
+                inner_precise=0,
+            )[0]
+        else:
+            hidden_states = F.scaled_dot_product_attention(
+                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
