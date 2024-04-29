@@ -341,19 +341,24 @@ The inference is a bit different:
 1. we need load *specific* unet layers (as opposed to a regular LoRA/DoRA)
 2. the trained layers we load, changes based on our objective (e.g. style/content)
 
-```bash
-git clone https://github.com/yardenfren1996/B-LoRA.git && cd B-LoRA && git reset --hard 1a20064
-```
 ```python
-from blora_utils import BLOCKS, filter_lora, scale_lora
 import torch
 from diffusers import StableDiffusionXLPipeline, AutoencoderKL
 
-def load_blora(lora_path, type, alpha):
-  B_LoRA_sd, _ = pipeline.lora_state_dict(lora_path)
-  B_LoRA = filter_lora(B_LoRA_sd, BLOCKS[type])
-  B_LoRA = scale_lora(B_LoRA, alpha)
-  return B_LoRA
+# taken & modified from B-LoRA repo - https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
+def is_belong_to_blocks(key, blocks):
+    try:
+        for g in blocks:
+            if g in key:
+                return True
+        return False
+    except Exception as e:
+        raise type(e)(f'failed to is_belong_to_block, due to: {e}')
+    
+def lora_lora_unet_blocks(lora_path, alpha, target_blocks):  
+  state_dict, _ = pipeline.lora_state_dict(lora_path)
+  filtered_state_dict = {k: v * alpha for k, v in state_dict.items() if is_belong_to_blocks(k, target_blocks)}
+  return filtered_state_dict
 
 vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
 pipeline = StableDiffusionXLPipeline.from_pretrained(
@@ -366,8 +371,9 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
 content_B_lora_path  = "lora-library/B-LoRA-teddybear"
 style_B_lora_path= "lora-library/B-LoRA-pen_sketch"
 
-content_B_LoRA = load_blora(content_B_lora_path,"content",1)
-style_B_LoRA = load_blora(style_B_lora_path,"style",1.1)
+
+content_B_LoRA = lora_lora_unet_blocks(content_B_lora_path,alpha=1,target_blocks=["unet.up_blocks.0.attentions.0"])
+style_B_LoRA = lora_lora_unet_blocks(style_B_lora_path,alpha=1.1,target_blocks=["unet.up_blocks.0.attentions.1"])
 combined_lora = {**content_B_LoRA, **style_B_LoRA}
 
 # Load both loras
@@ -377,8 +383,6 @@ pipeline.load_lora_into_unet(combined_lora, None, pipeline.unet)
 prompt = "a [v18] in [v30] style"
 pipeline(prompt="a [v18] in [v30] style", num_images_per_prompt=4).images
 ```
-
-
 
 ### Tips and Tricks
 Check out [these recommended practices](https://huggingface.co/blog/sdxl_lora_advanced_script#additional-good-practices)
