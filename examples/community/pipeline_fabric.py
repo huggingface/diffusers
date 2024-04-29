@@ -26,7 +26,10 @@ from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.schedulers import EulerAncestralDiscreteScheduler, KarrasDiffusionSchedulers
+from diffusers.schedulers import (
+    EulerAncestralDiscreteScheduler,
+    KarrasDiffusionSchedulers,
+)
 from diffusers.utils import (
     deprecate,
     logging,
@@ -68,23 +71,35 @@ class FabricCrossAttnProcessor:
         lora_scale=1.0,
     ):
         batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+            hidden_states.shape
+            if encoder_hidden_states is None
+            else encoder_hidden_states.shape
         )
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(
+            attention_mask, sequence_length, batch_size
+        )
 
         if isinstance(attn.processor, LoRAAttnProcessor):
-            query = attn.to_q(hidden_states) + lora_scale * attn.processor.to_q_lora(hidden_states)
+            query = attn.to_q(hidden_states) + lora_scale * attn.processor.to_q_lora(
+                hidden_states
+            )
         else:
             query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+            encoder_hidden_states = attn.norm_encoder_hidden_states(
+                encoder_hidden_states
+            )
 
         if isinstance(attn.processor, LoRAAttnProcessor):
-            key = attn.to_k(encoder_hidden_states) + lora_scale * attn.processor.to_k_lora(encoder_hidden_states)
-            value = attn.to_v(encoder_hidden_states) + lora_scale * attn.processor.to_v_lora(encoder_hidden_states)
+            key = attn.to_k(
+                encoder_hidden_states
+            ) + lora_scale * attn.processor.to_k_lora(encoder_hidden_states)
+            value = attn.to_v(
+                encoder_hidden_states
+            ) + lora_scale * attn.processor.to_v_lora(encoder_hidden_states)
         else:
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
@@ -99,14 +114,18 @@ class FabricCrossAttnProcessor:
             if weights.shape[0] != 1:
                 weights = weights.repeat_interleave(attn.heads, dim=0)
             attention_probs = attention_probs * weights[:, None]
-            attention_probs = attention_probs / attention_probs.sum(dim=-1, keepdim=True)
+            attention_probs = attention_probs / attention_probs.sum(
+                dim=-1, keepdim=True
+            )
 
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
         if isinstance(attn.processor, LoRAAttnProcessor):
-            hidden_states = attn.to_out[0](hidden_states) + lora_scale * attn.processor.to_out_lora(hidden_states)
+            hidden_states = attn.to_out[0](
+                hidden_states
+            ) + lora_scale * attn.processor.to_out_lora(hidden_states)
         else:
             hidden_states = attn.to_out[0](hidden_states)
         # dropout
@@ -150,10 +169,16 @@ class FabricPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+        is_unet_version_less_0_9_0 = hasattr(
+            unet.config, "_diffusers_version"
+        ) and version.parse(
             version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        ) < version.parse(
+            "0.9.0.dev0"
+        )
+        is_unet_sample_size_less_64 = (
+            hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        )
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -167,7 +192,9 @@ class FabricPipeline(DiffusionPipeline):
                 " the `unet/config.json` file"
             )
 
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "sample_size<64", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
@@ -245,11 +272,13 @@ class FabricPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+            untruncated_ids = self.tokenizer(
+                prompt, padding="longest", return_tensors="pt"
+            ).input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[
+                -1
+            ] and not torch.equal(text_input_ids, untruncated_ids):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -258,7 +287,10 @@ class FabricPipeline(DiffusionPipeline):
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -281,7 +313,9 @@ class FabricPipeline(DiffusionPipeline):
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -317,7 +351,10 @@ class FabricPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -332,10 +369,16 @@ class FabricPipeline(DiffusionPipeline):
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(
+                dtype=prompt_embeds_dtype, device=device
+            )
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(
+                1, num_images_per_prompt, 1
+            )
+            negative_prompt_embeds = negative_prompt_embeds.view(
+                batch_size * num_images_per_prompt, seq_len, -1
+            )
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -380,8 +423,12 @@ class FabricPipeline(DiffusionPipeline):
         if cached_pos_hiddens is None and cached_neg_hiddens is None:
             return self.unet(z_all, t, encoder_hidden_states=prompt_embd)
 
-        local_pos_weights = torch.linspace(*pos_weights, steps=len(self.unet.down_blocks) + 1)[:-1].tolist()
-        local_neg_weights = torch.linspace(*neg_weights, steps=len(self.unet.down_blocks) + 1)[:-1].tolist()
+        local_pos_weights = torch.linspace(
+            *pos_weights, steps=len(self.unet.down_blocks) + 1
+        )[:-1].tolist()
+        local_neg_weights = torch.linspace(
+            *neg_weights, steps=len(self.unet.down_blocks) + 1
+        )[:-1].tolist()
         for block, pos_weight, neg_weight in zip(
             self.unet.down_blocks + [self.unet.mid_block] + self.unet.up_blocks,
             local_pos_weights + [pos_weights[1]] + local_pos_weights[::-1],
@@ -401,14 +448,22 @@ class FabricPipeline(DiffusionPipeline):
                         batch_size, d_model = cond_hiddens.shape[:2]
                         device, dtype = hidden_states.device, hidden_states.dtype
 
-                        weights = torch.ones(batch_size, d_model, device=device, dtype=dtype)
+                        weights = torch.ones(
+                            batch_size, d_model, device=device, dtype=dtype
+                        )
                         out_pos = self.old_forward(hidden_states)
                         out_neg = self.old_forward(hidden_states)
 
                         if cached_pos_hiddens is not None:
-                            cached_pos_hs = cached_pos_hiddens.pop(0).to(hidden_states.device)
-                            cond_pos_hs = torch.cat([cond_hiddens, cached_pos_hs], dim=1)
-                            pos_weights = weights.clone().repeat(1, 1 + cached_pos_hs.shape[1] // d_model)
+                            cached_pos_hs = cached_pos_hiddens.pop(0).to(
+                                hidden_states.device
+                            )
+                            cond_pos_hs = torch.cat(
+                                [cond_hiddens, cached_pos_hs], dim=1
+                            )
+                            pos_weights = weights.clone().repeat(
+                                1, 1 + cached_pos_hs.shape[1] // d_model
+                            )
                             pos_weights[:, d_model:] = pos_weight
                             attn_with_weights = FabricCrossAttnProcessor()
                             out_pos = attn_with_weights(
@@ -421,9 +476,15 @@ class FabricPipeline(DiffusionPipeline):
                             out_pos = self.old_forward(cond_hiddens)
 
                         if cached_neg_hiddens is not None:
-                            cached_neg_hs = cached_neg_hiddens.pop(0).to(hidden_states.device)
-                            uncond_neg_hs = torch.cat([uncond_hiddens, cached_neg_hs], dim=1)
-                            neg_weights = weights.clone().repeat(1, 1 + cached_neg_hs.shape[1] // d_model)
+                            cached_neg_hs = cached_neg_hiddens.pop(0).to(
+                                hidden_states.device
+                            )
+                            uncond_neg_hs = torch.cat(
+                                [uncond_hiddens, cached_neg_hs], dim=1
+                            )
+                            neg_weights = weights.clone().repeat(
+                                1, 1 + cached_neg_hs.shape[1] // d_model
+                            )
                             neg_weights[:, d_model:] = neg_weight
                             attn_with_weights = FabricCrossAttnProcessor()
                             out_neg = attn_with_weights(
@@ -451,10 +512,14 @@ class FabricPipeline(DiffusionPipeline):
 
         return out
 
-    def preprocess_feedback_images(self, images, vae, dim, device, dtype, generator) -> torch.tensor:
+    def preprocess_feedback_images(
+        self, images, vae, dim, device, dtype, generator
+    ) -> torch.tensor:
         images_t = [self.image_to_tensor(img, dim, dtype) for img in images]
         images_t = torch.stack(images_t).to(device)
-        latents = vae.config.scaling_factor * vae.encode(images_t).latent_dist.sample(generator)
+        latents = vae.config.scaling_factor * vae.encode(images_t).latent_dist.sample(
+            generator
+        )
 
         return torch.cat([latents], dim=0)
 
@@ -469,19 +534,28 @@ class FabricPipeline(DiffusionPipeline):
     ):
         if prompt is None:
             raise ValueError("Provide `prompt`. Cannot leave both `prompt` undefined.")
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        elif prompt is not None and (
+            not isinstance(prompt, str) and not isinstance(prompt, list)
+        ):
+            raise ValueError(
+                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
+            )
 
         if negative_prompt is not None and (
-            not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
+            not isinstance(negative_prompt, str)
+            and not isinstance(negative_prompt, list)
         ):
-            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
+            raise ValueError(
+                f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}"
+            )
 
         if liked is not None and not isinstance(liked, list):
             raise ValueError(f"`liked` has to be of type `list` but is {type(liked)}")
 
         if disliked is not None and not isinstance(disliked, list):
-            raise ValueError(f"`disliked` has to be of type `list` but is {type(disliked)}")
+            raise ValueError(
+                f"`disliked` has to be of type `list` but is {type(disliked)}"
+            )
 
         if height is not None and not isinstance(height, int):
             raise ValueError(f"`height` has to be of type `int` but is {type(height)}")
@@ -494,7 +568,9 @@ class FabricPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = "",
-        negative_prompt: Optional[Union[str, List[str]]] = "lowres, bad anatomy, bad hands, cropped, worst quality",
+        negative_prompt: Optional[
+            Union[str, List[str]]
+        ] = "lowres, bad anatomy, bad hands, cropped, worst quality",
         liked: Optional[Union[List[str], List[Image.Image]]] = [],
         disliked: Optional[Union[List[str], List[Image.Image]]] = [],
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -581,7 +657,9 @@ class FabricPipeline(DiffusionPipeline):
         elif isinstance(prompt, list) and prompt is not None:
             batch_size = len(prompt)
         else:
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+            raise ValueError(
+                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
+            )
 
         if isinstance(negative_prompt, str):
             negative_prompt = negative_prompt
@@ -604,7 +682,9 @@ class FabricPipeline(DiffusionPipeline):
         )
 
         positive_latents = (
-            self.preprocess_feedback_images(liked, self.vae, (height, width), device, dtype, generator)
+            self.preprocess_feedback_images(
+                liked, self.vae, (height, width), device, dtype, generator
+            )
             if liked and len(liked) > 0
             else torch.tensor(
                 [],
@@ -613,7 +693,9 @@ class FabricPipeline(DiffusionPipeline):
             )
         )
         negative_latents = (
-            self.preprocess_feedback_images(disliked, self.vae, (height, width), device, dtype, generator)
+            self.preprocess_feedback_images(
+                disliked, self.vae, (height, width), device, dtype, generator
+            )
             if disliked and len(disliked) > 0
             else torch.tensor(
                 [],
@@ -642,7 +724,10 @@ class FabricPipeline(DiffusionPipeline):
             truncation=True,
         )
 
-        if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+        if (
+            hasattr(self.text_encoder.config, "use_attention_mask")
+            and self.text_encoder.config.use_attention_mask
+        ):
             attention_mask = null_tokens.attention_mask.to(device)
         else:
             attention_mask = None
@@ -665,7 +750,11 @@ class FabricPipeline(DiffusionPipeline):
 
         with self.progress_bar(total=num_inference_steps) as pbar:
             for i, t in enumerate(timesteps):
-                sigma = self.scheduler.sigma_t[t] if hasattr(self.scheduler, "sigma_t") else 0
+                sigma = (
+                    self.scheduler.sigma_t[t]
+                    if hasattr(self.scheduler, "sigma_t")
+                    else 0
+                )
                 if hasattr(self.scheduler, "sigmas"):
                     sigma = self.scheduler.sigmas[i]
 
@@ -681,26 +770,39 @@ class FabricPipeline(DiffusionPipeline):
                     weight_factor = min_weight
 
                 pos_ws = (weight_factor, weight_factor * pos_bottleneck_scale)
-                neg_ws = (weight_factor * neg_scale, weight_factor * neg_scale * neg_bottleneck_scale)
+                neg_ws = (
+                    weight_factor * neg_scale,
+                    weight_factor * neg_scale * neg_bottleneck_scale,
+                )
 
                 if z_ref.size(0) > 0 and weight_factor > 0:
                     noise = torch.randn_like(z_ref)
                     if isinstance(self.scheduler, EulerAncestralDiscreteScheduler):
-                        z_ref_noised = (alpha_hat**0.5 * z_ref + (1 - alpha_hat) ** 0.5 * noise).type(dtype)
+                        z_ref_noised = (
+                            alpha_hat**0.5 * z_ref + (1 - alpha_hat) ** 0.5 * noise
+                        ).type(dtype)
                     else:
                         z_ref_noised = self.scheduler.add_noise(z_ref, noise, t)
 
                     ref_prompt_embd = torch.cat(
-                        [null_prompt_emb] * (len(positive_latents) + len(negative_latents)), dim=0
+                        [null_prompt_emb]
+                        * (len(positive_latents) + len(negative_latents)),
+                        dim=0,
                     )
-                    cached_hidden_states = self.get_unet_hidden_states(z_ref_noised, t, ref_prompt_embd)
+                    cached_hidden_states = self.get_unet_hidden_states(
+                        z_ref_noised, t, ref_prompt_embd
+                    )
 
                     n_pos, n_neg = positive_latents.shape[0], negative_latents.shape[0]
                     cached_pos_hs, cached_neg_hs = [], []
                     for hs in cached_hidden_states:
                         cached_pos, cached_neg = hs.split([n_pos, n_neg], dim=0)
-                        cached_pos = cached_pos.view(1, -1, *cached_pos.shape[2:]).expand(num_images, -1, -1)
-                        cached_neg = cached_neg.view(1, -1, *cached_neg.shape[2:]).expand(num_images, -1, -1)
+                        cached_pos = cached_pos.view(
+                            1, -1, *cached_pos.shape[2:]
+                        ).expand(num_images, -1, -1)
+                        cached_neg = cached_neg.view(
+                            1, -1, *cached_neg.shape[2:]
+                        ).expand(num_images, -1, -1)
                         cached_pos_hs.append(cached_pos)
                         cached_neg_hs.append(cached_neg)
 
@@ -725,10 +827,14 @@ class FabricPipeline(DiffusionPipeline):
                 noise_pred = noise_uncond + guidance_scale * guidance
                 latent_noise = self.scheduler.step(noise_pred, t, latent_noise)[0]
 
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if i == len(timesteps) - 1 or (
+                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                ):
                     pbar.update()
 
-        y = self.vae.decode(latent_noise / self.vae.config.scaling_factor, return_dict=False)[0]
+        y = self.vae.decode(
+            latent_noise / self.vae.config.scaling_factor, return_dict=False
+        )[0]
         imgs = self.image_processor.postprocess(
             y,
             output_type=output_type,

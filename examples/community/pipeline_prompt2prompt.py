@@ -63,12 +63,16 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
     Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
     """
-    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_text = noise_pred_text.std(
+        dim=list(range(1, noise_pred_text.ndim)), keepdim=True
+    )
     std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
     # rescale the results from guidance (fixes overexposure)
     noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    noise_cfg = (
+        guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    )
     return noise_cfg
 
 
@@ -131,7 +135,10 @@ class Prompt2PromptPipeline(
     ):
         super().__init__()
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+        if (
+            hasattr(scheduler.config, "steps_offset")
+            and scheduler.config.steps_offset != 1
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -140,12 +147,17 @@ class Prompt2PromptPipeline(
                 " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
                 " file"
             )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
+        if (
+            hasattr(scheduler.config, "clip_sample")
+            and scheduler.config.clip_sample is True
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
                 " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
@@ -153,7 +165,9 @@ class Prompt2PromptPipeline(
                 " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
                 " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
             )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "clip_sample not set", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
@@ -174,10 +188,16 @@ class Prompt2PromptPipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+        is_unet_version_less_0_9_0 = hasattr(
+            unet.config, "_diffusers_version"
+        ) and version.parse(
             version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        ) < version.parse(
+            "0.9.0.dev0"
+        )
+        is_unet_sample_size_less_64 = (
+            hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        )
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -190,7 +210,9 @@ class Prompt2PromptPipeline(
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
                 " the `unet/config.json` file"
             )
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "sample_size<64", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
@@ -315,11 +337,13 @@ class Prompt2PromptPipeline(
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+            untruncated_ids = self.tokenizer(
+                prompt, padding="longest", return_tensors="pt"
+            ).input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[
+                -1
+            ] and not torch.equal(text_input_ids, untruncated_ids):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -328,13 +352,18 @@ class Prompt2PromptPipeline(
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
 
             if clip_skip is None:
-                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+                prompt_embeds = self.text_encoder(
+                    text_input_ids.to(device), attention_mask=attention_mask
+                )
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
@@ -350,7 +379,9 @@ class Prompt2PromptPipeline(
                 # representations. The `last_hidden_states` that we typically use for
                 # obtaining the final prompt representations passes through the LayerNorm
                 # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
+                prompt_embeds = self.text_encoder.text_model.final_layer_norm(
+                    prompt_embeds
+                )
 
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
@@ -364,7 +395,9 @@ class Prompt2PromptPipeline(
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -400,7 +433,10 @@ class Prompt2PromptPipeline(
                 return_tensors="pt",
             )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -415,10 +451,16 @@ class Prompt2PromptPipeline(
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(
+                dtype=prompt_embeds_dtype, device=device
+            )
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(
+                1, num_images_per_prompt, 1
+            )
+            negative_prompt_embeds = negative_prompt_embeds.view(
+                batch_size * num_images_per_prompt, seq_len, -1
+            )
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
@@ -432,10 +474,14 @@ class Prompt2PromptPipeline(
             has_nsfw_concept = None
         else:
             if torch.is_tensor(image):
-                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+                feature_extractor_input = self.image_processor.postprocess(
+                    image, output_type="pil"
+                )
             else:
                 feature_extractor_input = self.image_processor.numpy_to_pil(image)
-            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            safety_checker_input = self.feature_extractor(
+                feature_extractor_input, return_tensors="pt"
+            ).to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -448,13 +494,17 @@ class Prompt2PromptPipeline(
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_eta = "eta" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_generator = "generator" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -474,15 +524,20 @@ class Prompt2PromptPipeline(
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
+            )
 
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+        if callback_steps is not None and (
+            not isinstance(callback_steps, int) or callback_steps <= 0
+        ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs
+            for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -497,8 +552,12 @@ class Prompt2PromptPipeline(
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        elif prompt is not None and (
+            not isinstance(prompt, str) and not isinstance(prompt, list)
+        ):
+            raise ValueError(
+                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
+            )
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -544,7 +603,9 @@ class Prompt2PromptPipeline(
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(
+                shape, generator=generator, device=device, dtype=dtype
+            )
         else:
             latents = latents.to(device)
 
@@ -680,7 +741,9 @@ class Prompt2PromptPipeline(
 
         # 3. Encode input prompt
         text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+            cross_attention_kwargs.get("scale", None)
+            if cross_attention_kwargs is not None
+            else None
         )
         prompt_embeds = self._encode_prompt(
             prompt,
@@ -718,29 +781,43 @@ class Prompt2PromptPipeline(
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = (
+                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                )
+                latent_model_input = self.scheduler.scale_model_input(
+                    latent_model_input, t
+                )
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
+                noise_pred = self.unet(
+                    latent_model_input, t, encoder_hidden_states=prompt_embeds
+                ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+                    noise_pred = rescale_noise_cfg(
+                        noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, **extra_step_kwargs
+                ).prev_sample
 
                 # step callback
                 latents = self.controller.step_callback(latents)
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if i == len(timesteps) - 1 or (
+                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                ):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
@@ -748,8 +825,12 @@ class Prompt2PromptPipeline(
 
         # 8. Post-processing
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            image = self.vae.decode(
+                latents / self.vae.config.scaling_factor, return_dict=False
+            )[0]
+            image, has_nsfw_concept = self.run_safety_checker(
+                image, device, prompt_embeds.dtype
+            )
         else:
             image = latents
             has_nsfw_concept = None
@@ -760,7 +841,9 @@ class Prompt2PromptPipeline(
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        image = self.image_processor.postprocess(
+            image, output_type=output_type, do_denormalize=do_denormalize
+        )
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
@@ -769,13 +852,19 @@ class Prompt2PromptPipeline(
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(
+            images=image, nsfw_content_detected=has_nsfw_concept
+        )
 
     def register_attention_control(self, controller):
         attn_procs = {}
         cross_att_count = 0
         for name in self.unet.attn_processors.keys():
-            (None if name.endswith("attn1.processor") else self.unet.config.cross_attention_dim)
+            (
+                None
+                if name.endswith("attn1.processor")
+                else self.unet.config.cross_attention_dim
+            )
             if name.startswith("mid_block"):
                 self.unet.config.block_out_channels[-1]
                 place_in_unet = "mid"
@@ -790,7 +879,9 @@ class Prompt2PromptPipeline(
             else:
                 continue
             cross_att_count += 1
-            attn_procs[name] = P2PCrossAttnProcessor(controller=controller, place_in_unet=place_in_unet)
+            attn_procs[name] = P2PCrossAttnProcessor(
+                controller=controller, place_in_unet=place_in_unet
+            )
 
         self.unet.set_attn_processor(attn_procs)
         controller.num_att_layers = cross_att_count
@@ -810,12 +901,18 @@ class P2PCrossAttnProcessor:
         attention_mask=None,
     ):
         batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(
+            attention_mask, sequence_length, batch_size
+        )
 
         query = attn.to_q(hidden_states)
 
         is_cross = encoder_hidden_states is not None
-        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        encoder_hidden_states = (
+            encoder_hidden_states
+            if encoder_hidden_states is not None
+            else hidden_states
+        )
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -909,7 +1006,9 @@ def create_controller(
         assert len(equalizer_words) == len(
             equalizer_strengths
         ), "equalizer_words and equalizer_strengths must be of same length."
-        equalizer = get_equalizer(prompts[1], equalizer_words, equalizer_strengths, tokenizer=tokenizer)
+        equalizer = get_equalizer(
+            prompts[1], equalizer_words, equalizer_strengths, tokenizer=tokenizer
+        )
         return AttentionReweight(
             prompts,
             num_inference_steps,
@@ -920,7 +1019,9 @@ def create_controller(
             equalizer=equalizer,
         )
 
-    raise ValueError(f"Edit type {edit_type} not recognized. Use one of: replace, refine, reweight.")
+    raise ValueError(
+        f"Edit type {edit_type} not recognized. Use one of: replace, refine, reweight."
+    )
 
 
 class AttentionControl(abc.ABC):
@@ -993,7 +1094,8 @@ class AttentionStore(AttentionControl):
 
     def get_average_attention(self):
         average_attention = {
-            key: [item / self.cur_step for item in self.attention_store[key]] for key in self.attention_store
+            key: [item / self.cur_step for item in self.attention_store[key]]
+            for key in self.attention_store
         }
         return average_attention
 
@@ -1012,7 +1114,10 @@ class LocalBlend:
     def __call__(self, x_t, attention_store):
         k = 1
         maps = attention_store["down_cross"][2:4] + attention_store["up_cross"][:3]
-        maps = [item.reshape(self.alpha_layers.shape[0], -1, 1, 16, 16, self.max_num_words) for item in maps]
+        maps = [
+            item.reshape(self.alpha_layers.shape[0], -1, 1, 16, 16, self.max_num_words)
+            for item in maps
+        ]
         maps = torch.cat(maps, dim=1)
         maps = (maps * self.alpha_layers).sum(-1).mean(1)
         mask = F.max_pool2d(maps, (k * 2 + 1, k * 2 + 1), (1, 1), padding=(k, k))
@@ -1064,7 +1169,9 @@ class AttentionControlEdit(AttentionStore, abc.ABC):
     def forward(self, attn, is_cross: bool, place_in_unet: str):
         super(AttentionControlEdit, self).forward(attn, is_cross, place_in_unet)
         # FIXME not replace correctly
-        if is_cross or (self.num_self_replace[0] <= self.cur_step < self.num_self_replace[1]):
+        if is_cross or (
+            self.num_self_replace[0] <= self.cur_step < self.num_self_replace[1]
+        ):
             h = attn.shape[0] // (self.batch_size)
             attn = attn.reshape(self.batch_size, h, *attn.shape[1:])
             attn_base, attn_repalce = attn[0], attn[1:]
@@ -1084,7 +1191,9 @@ class AttentionControlEdit(AttentionStore, abc.ABC):
         self,
         prompts,
         num_steps: int,
-        cross_replace_steps: Union[float, Tuple[float, float], Dict[str, Tuple[float, float]]],
+        cross_replace_steps: Union[
+            float, Tuple[float, float], Dict[str, Tuple[float, float]]
+        ],
         self_replace_steps: Union[float, Tuple[float, float]],
         local_blend: Optional[LocalBlend],
         tokenizer,
@@ -1102,7 +1211,9 @@ class AttentionControlEdit(AttentionStore, abc.ABC):
         ).to(self.device)
         if isinstance(self_replace_steps, float):
             self_replace_steps = 0, self_replace_steps
-        self.num_self_replace = int(num_steps * self_replace_steps[0]), int(num_steps * self_replace_steps[1])
+        self.num_self_replace = int(num_steps * self_replace_steps[0]), int(
+            num_steps * self_replace_steps[1]
+        )
         self.local_blend = local_blend  # 在外面定义后传进来
 
 
@@ -1165,7 +1276,9 @@ class AttentionRefine(AttentionControlEdit):
 class AttentionReweight(AttentionControlEdit):
     def replace_cross_attention(self, attn_base, att_replace):
         if self.prev_controller is not None:
-            attn_base = self.prev_controller.replace_cross_attention(attn_base, att_replace)
+            attn_base = self.prev_controller.replace_cross_attention(
+                attn_base, att_replace
+            )
         attn_replace = attn_base[None, :, :, :] * self.equalizer[:, None, None, :]
         return attn_replace
 
@@ -1225,14 +1338,23 @@ def get_time_words_attention_alpha(
         cross_replace_steps["default_"] = (0.0, 1.0)
     alpha_time_words = torch.zeros(num_steps + 1, len(prompts) - 1, max_num_words)
     for i in range(len(prompts) - 1):
-        alpha_time_words = update_alpha_time_word(alpha_time_words, cross_replace_steps["default_"], i)
+        alpha_time_words = update_alpha_time_word(
+            alpha_time_words, cross_replace_steps["default_"], i
+        )
     for key, item in cross_replace_steps.items():
         if key != "default_":
-            inds = [get_word_inds(prompts[i], key, tokenizer) for i in range(1, len(prompts))]
+            inds = [
+                get_word_inds(prompts[i], key, tokenizer)
+                for i in range(1, len(prompts))
+            ]
             for i, ind in enumerate(inds):
                 if len(ind) > 0:
-                    alpha_time_words = update_alpha_time_word(alpha_time_words, item, i, ind)
-    alpha_time_words = alpha_time_words.reshape(num_steps + 1, len(prompts) - 1, 1, 1, max_num_words)
+                    alpha_time_words = update_alpha_time_word(
+                        alpha_time_words, item, i, ind
+                    )
+    alpha_time_words = alpha_time_words.reshape(
+        num_steps + 1, len(prompts) - 1, 1, 1, max_num_words
+    )
     return alpha_time_words
 
 
@@ -1245,7 +1367,9 @@ def get_word_inds(text: str, word_place: int, tokenizer):
         word_place = [word_place]
     out = []
     if len(word_place) > 0:
-        words_encode = [tokenizer.decode([item]).strip("#") for item in tokenizer.encode(text)][1:-1]
+        words_encode = [
+            tokenizer.decode([item]).strip("#") for item in tokenizer.encode(text)
+        ][1:-1]
         cur_len, ptr = 0, 0
 
         for i in range(len(words_encode)):

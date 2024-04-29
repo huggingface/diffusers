@@ -27,7 +27,10 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_ella"] = ["EllaFixedDiffusionPipeline","EllaFlexDiffusionPipeline"]
+    _import_structure["pipeline_ella"] = [
+        "EllaFixedDiffusionPipeline",
+        "EllaFlexDiffusionPipeline",
+    ]
     _import_structure["safety_checker"] = ["StableDiffusionSafetyChecker"]
 
 
@@ -60,4 +63,3 @@ else:
         setattr(sys.modules[__name__], name, value)
     for name, value in _additional_imports.items():
         setattr(sys.modules[__name__], name, value)
-

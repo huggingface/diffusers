@@ -329,7 +329,8 @@ else:
     )
     _import_structure["plus_pipelines"].extend(
         [
-            "EllaDiffusionPipeline",
+            "EllaFixedDiffusionPipeline",
+            "EllaFlexDiffusionPipeline",
         ]
     )
 
@@ -708,7 +709,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenPriorPipeline,
         )
         from plus_pipelines import (
-            EllaDiffusionPipeline,
+            EllaFixedDiffusionPipeline,
+            EllaFlexDiffusionPipeline,
         )
 
     try:

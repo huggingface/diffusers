@@ -15,7 +15,9 @@ from diffusers.utils.torch_utils import randn_tensor
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def _encode_image(self, image, device, num_images_per_prompt, do_classifier_free_guidance):
+def _encode_image(
+    self, image, device, num_images_per_prompt, do_classifier_free_guidance
+):
     image = image.to(device=device)
     image_embeddings = image  # take image as image_embeddings
     image_embeddings = image_embeddings.unsqueeze(1)
@@ -23,7 +25,9 @@ def _encode_image(self, image, device, num_images_per_prompt, do_classifier_free
     # duplicate image embeddings for each generation per prompt, using mps friendly method
     bs_embed, seq_len, _ = image_embeddings.shape
     image_embeddings = image_embeddings.repeat(1, num_images_per_prompt, 1)
-    image_embeddings = image_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
+    image_embeddings = image_embeddings.view(
+        bs_embed * num_images_per_prompt, seq_len, -1
+    )
 
     if do_classifier_free_guidance:
         uncond_embeddings = torch.zeros_like(image_embeddings)
@@ -47,16 +51,24 @@ class StableUnCLIPPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        decoder_pipe_kwargs = {"image_encoder": None} if decoder_pipe_kwargs is None else decoder_pipe_kwargs
+        decoder_pipe_kwargs = (
+            {"image_encoder": None}
+            if decoder_pipe_kwargs is None
+            else decoder_pipe_kwargs
+        )
 
-        decoder_pipe_kwargs["torch_dtype"] = decoder_pipe_kwargs.get("torch_dtype", None) or prior.dtype
+        decoder_pipe_kwargs["torch_dtype"] = (
+            decoder_pipe_kwargs.get("torch_dtype", None) or prior.dtype
+        )
 
         self.decoder_pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             "lambdalabs/sd-image-variations-diffusers", **decoder_pipe_kwargs
         )
 
         # replace `_encode_image` method
-        self.decoder_pipe._encode_image = types.MethodType(_encode_image, self.decoder_pipe)
+        self.decoder_pipe._encode_image = types.MethodType(
+            _encode_image, self.decoder_pipe
+        )
 
         self.register_modules(
             prior=prior,
@@ -87,7 +99,9 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             text_mask = text_inputs.attention_mask.bool().to(device)
 
             if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-                removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
+                removed_text = self.tokenizer.batch_decode(
+                    text_input_ids[:, self.tokenizer.model_max_length :]
+                )
                 logger.warning(
                     "The following part of your input was truncated because CLIP can only handle sequences up to"
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
@@ -101,11 +115,18 @@ class StableUnCLIPPipeline(DiffusionPipeline):
 
         else:
             batch_size = text_model_output[0].shape[0]
-            text_embeddings, text_encoder_hidden_states = text_model_output[0], text_model_output[1]
+            text_embeddings, text_encoder_hidden_states = (
+                text_model_output[0],
+                text_model_output[1],
+            )
             text_mask = text_attention_mask
 
-        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
-        text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+        text_embeddings = text_embeddings.repeat_interleave(
+            num_images_per_prompt, dim=0
+        )
+        text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(
+            num_images_per_prompt, dim=0
+        )
         text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
@@ -119,23 +140,33 @@ class StableUnCLIPPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             uncond_text_mask = uncond_input.attention_mask.bool().to(device)
-            uncond_embeddings_text_encoder_output = self.text_encoder(uncond_input.input_ids.to(device))
+            uncond_embeddings_text_encoder_output = self.text_encoder(
+                uncond_input.input_ids.to(device)
+            )
 
             uncond_embeddings = uncond_embeddings_text_encoder_output.text_embeds
-            uncond_text_encoder_hidden_states = uncond_embeddings_text_encoder_output.last_hidden_state
+            uncond_text_encoder_hidden_states = (
+                uncond_embeddings_text_encoder_output.last_hidden_state
+            )
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
 
             seq_len = uncond_embeddings.shape[1]
             uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len)
+            uncond_embeddings = uncond_embeddings.view(
+                batch_size * num_images_per_prompt, seq_len
+            )
 
             seq_len = uncond_text_encoder_hidden_states.shape[1]
-            uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.repeat(1, num_images_per_prompt, 1)
+            uncond_text_encoder_hidden_states = (
+                uncond_text_encoder_hidden_states.repeat(1, num_images_per_prompt, 1)
+            )
             uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.view(
                 batch_size * num_images_per_prompt, seq_len, -1
             )
-            uncond_text_mask = uncond_text_mask.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_text_mask = uncond_text_mask.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
 
             # done duplicates
 
@@ -143,7 +174,9 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-            text_encoder_hidden_states = torch.cat([uncond_text_encoder_hidden_states, text_encoder_hidden_states])
+            text_encoder_hidden_states = torch.cat(
+                [uncond_text_encoder_hidden_states, text_encoder_hidden_states]
+            )
 
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
@@ -169,10 +202,14 @@ class StableUnCLIPPipeline(DiffusionPipeline):
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(
+                shape, generator=generator, device=device, dtype=dtype
+            )
         else:
             if latents.shape != shape:
-                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
+                raise ValueError(
+                    f"Unexpected latents shape, got {latents.shape}, expected {shape}"
+                )
             latents = latents.to(device)
 
         latents = latents * scheduler.init_noise_sigma
@@ -208,7 +245,9 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             elif isinstance(prompt, list):
                 batch_size = len(prompt)
             else:
-                raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+                raise ValueError(
+                    f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
+                )
         else:
             batch_size = text_model_output[0].shape[0]
 
@@ -216,10 +255,17 @@ class StableUnCLIPPipeline(DiffusionPipeline):
 
         batch_size = batch_size * num_images_per_prompt
 
-        do_classifier_free_guidance = prior_guidance_scale > 1.0 or decoder_guidance_scale > 1.0
+        do_classifier_free_guidance = (
+            prior_guidance_scale > 1.0 or decoder_guidance_scale > 1.0
+        )
 
         text_embeddings, text_encoder_hidden_states, text_mask = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, text_model_output, text_attention_mask
+            prompt,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            text_model_output,
+            text_attention_mask,
         )
 
         # prior
@@ -240,7 +286,11 @@ class StableUnCLIPPipeline(DiffusionPipeline):
 
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([prior_latents] * 2) if do_classifier_free_guidance else prior_latents
+            latent_model_input = (
+                torch.cat([prior_latents] * 2)
+                if do_classifier_free_guidance
+                else prior_latents
+            )
 
             predicted_image_embedding = self.prior(
                 latent_model_input,
@@ -251,9 +301,17 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             ).predicted_image_embedding
 
             if do_classifier_free_guidance:
-                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
-                predicted_image_embedding = predicted_image_embedding_uncond + prior_guidance_scale * (
-                    predicted_image_embedding_text - predicted_image_embedding_uncond
+                (
+                    predicted_image_embedding_uncond,
+                    predicted_image_embedding_text,
+                ) = predicted_image_embedding.chunk(2)
+                predicted_image_embedding = (
+                    predicted_image_embedding_uncond
+                    + prior_guidance_scale
+                    * (
+                        predicted_image_embedding_text
+                        - predicted_image_embedding_uncond
+                    )
                 )
 
             if i + 1 == prior_timesteps_tensor.shape[0]:

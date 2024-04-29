@@ -25,10 +25,18 @@ from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 # from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 # from . import StableDiffusionPipelineOutput
 # from .safety_checker import StableDiffusionSafetyChecker
-from diffusers import AutoencoderKL, DiffusionPipeline, StableDiffusionMixin, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    UNet2DConditionModel,
+)
 from diffusers.configuration_utils import ConfigMixin, FrozenDict
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion import (
+    StableDiffusionPipelineOutput,
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     deprecate,
@@ -108,7 +116,10 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
     ):
         super().__init__()
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+        if (
+            hasattr(scheduler.config, "steps_offset")
+            and scheduler.config.steps_offset != 1
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -117,12 +128,17 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
                 " file"
             )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
+        if (
+            hasattr(scheduler.config, "clip_sample")
+            and scheduler.config.clip_sample is True
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
                 " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
@@ -130,7 +146,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
                 " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
             )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "clip_sample not set", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
@@ -151,10 +169,16 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+        is_unet_version_less_0_9_0 = hasattr(
+            unet.config, "_diffusers_version"
+        ) and version.parse(
             version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        ) < version.parse(
+            "0.9.0.dev0"
+        )
+        is_unet_sample_size_less_64 = (
+            hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        )
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -167,7 +191,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
                 " the `unet/config.json` file"
             )
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "sample_size<64", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
@@ -235,11 +261,13 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+            untruncated_ids = self.tokenizer(
+                prompt, padding="longest", return_tensors="pt"
+            ).input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[
+                -1
+            ] and not torch.equal(text_input_ids, untruncated_ids):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -248,7 +276,10 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -264,7 +295,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -296,7 +329,10 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 return_tensors="pt",
             )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -311,10 +347,16 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(
+                dtype=self.text_encoder.dtype, device=device
+            )
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(
+                1, num_images_per_prompt, 1
+            )
+            negative_prompt_embeds = negative_prompt_embeds.view(
+                batch_size * num_images_per_prompt, seq_len, -1
+            )
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -330,19 +372,29 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         # follow openai preprocessing to keep exact same, input tensor [-1, 1], otherwise the preprocessing will be different, https://github.com/huggingface/transformers/pull/22608
         if isinstance(x, torch.Tensor):
             if x.min() < -1.0 or x.max() > 1.0:
-                raise ValueError("Expected input tensor to have values in the range [-1, 1]")
+                raise ValueError(
+                    "Expected input tensor to have values in the range [-1, 1]"
+                )
         x = kornia.geometry.resize(
-            x.to(torch.float32), (224, 224), interpolation="bicubic", align_corners=True, antialias=False
+            x.to(torch.float32),
+            (224, 224),
+            interpolation="bicubic",
+            align_corners=True,
+            antialias=False,
         ).to(dtype=dtype)
         x = (x + 1.0) / 2.0
         # renormalize according to clip
         x = kornia.enhance.normalize(
-            x, torch.Tensor([0.48145466, 0.4578275, 0.40821073]), torch.Tensor([0.26862954, 0.26130258, 0.27577711])
+            x,
+            torch.Tensor([0.48145466, 0.4578275, 0.40821073]),
+            torch.Tensor([0.26862954, 0.26130258, 0.27577711]),
         )
         return x
 
     # from image_variation
-    def _encode_image(self, image, device, num_images_per_prompt, do_classifier_free_guidance):
+    def _encode_image(
+        self, image, device, num_images_per_prompt, do_classifier_free_guidance
+    ):
         dtype = next(self.image_encoder.parameters()).dtype
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -352,7 +404,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         if isinstance(image, torch.Tensor):
             # Batch single image
             if image.ndim == 3:
-                assert image.shape[0] == 3, "Image outside a batch should be of shape (3, H, W)"
+                assert (
+                    image.shape[0] == 3
+                ), "Image outside a batch should be of shape (3, H, W)"
                 image = image.unsqueeze(0)
 
             assert image.ndim == 4, "Image must have 4 dimensions"
@@ -387,7 +441,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         # duplicate image embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = image_embeddings.shape
         image_embeddings = image_embeddings.repeat(1, num_images_per_prompt, 1)
-        image_embeddings = image_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        image_embeddings = image_embeddings.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
 
         if do_classifier_free_guidance:
             negative_prompt_embeds = torch.zeros_like(image_embeddings)
@@ -399,7 +455,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
 
         return image_embeddings
 
-    def _encode_pose(self, pose, device, num_images_per_prompt, do_classifier_free_guidance):
+    def _encode_pose(
+        self, pose, device, num_images_per_prompt, do_classifier_free_guidance
+    ):
         dtype = next(self.cc_projection.parameters()).dtype
         if isinstance(pose, torch.Tensor):
             pose_embeddings = pose.unsqueeze(1).to(device=device, dtype=dtype)
@@ -408,16 +466,30 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 pose = torch.Tensor(pose)
             else:
                 pose = torch.Tensor([pose])
-            x, y, z = pose[:, 0].unsqueeze(1), pose[:, 1].unsqueeze(1), pose[:, 2].unsqueeze(1)
+            x, y, z = (
+                pose[:, 0].unsqueeze(1),
+                pose[:, 1].unsqueeze(1),
+                pose[:, 2].unsqueeze(1),
+            )
             pose_embeddings = (
-                torch.cat([torch.deg2rad(x), torch.sin(torch.deg2rad(y)), torch.cos(torch.deg2rad(y)), z], dim=-1)
+                torch.cat(
+                    [
+                        torch.deg2rad(x),
+                        torch.sin(torch.deg2rad(y)),
+                        torch.cos(torch.deg2rad(y)),
+                        z,
+                    ],
+                    dim=-1,
+                )
                 .unsqueeze(1)
                 .to(device=device, dtype=dtype)
             )  # B, 1, 4
         # duplicate pose embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = pose_embeddings.shape
         pose_embeddings = pose_embeddings.repeat(1, num_images_per_prompt, 1)
-        pose_embeddings = pose_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        pose_embeddings = pose_embeddings.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
         if do_classifier_free_guidance:
             negative_prompt_embeds = torch.zeros_like(pose_embeddings)
 
@@ -427,9 +499,15 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             pose_embeddings = torch.cat([negative_prompt_embeds, pose_embeddings])
         return pose_embeddings
 
-    def _encode_image_with_pose(self, image, pose, device, num_images_per_prompt, do_classifier_free_guidance):
-        img_prompt_embeds = self._encode_image(image, device, num_images_per_prompt, False)
-        pose_prompt_embeds = self._encode_pose(pose, device, num_images_per_prompt, False)
+    def _encode_image_with_pose(
+        self, image, pose, device, num_images_per_prompt, do_classifier_free_guidance
+    ):
+        img_prompt_embeds = self._encode_image(
+            image, device, num_images_per_prompt, False
+        )
+        pose_prompt_embeds = self._encode_pose(
+            pose, device, num_images_per_prompt, False
+        )
         prompt_embeds = torch.cat([img_prompt_embeds, pose_prompt_embeds], dim=-1)
         prompt_embeds = self.cc_projection(prompt_embeds)
         # prompt_embeds = img_prompt_embeds
@@ -441,7 +519,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+            safety_checker_input = self.feature_extractor(
+                self.numpy_to_pil(image), return_tensors="pt"
+            ).to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -463,13 +543,17 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_eta = "eta" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_generator = "generator" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -486,18 +570,36 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             )
 
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
+            )
 
         if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+            callback_steps is not None
+            and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -505,7 +607,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(
+                shape, generator=generator, device=device, dtype=dtype
+            )
         else:
             latents = latents.to(device)
 
@@ -513,7 +617,15 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def prepare_img_latents(self, image, batch_size, dtype, device, generator=None, do_classifier_free_guidance=False):
+    def prepare_img_latents(
+        self,
+        image,
+        batch_size,
+        dtype,
+        device,
+        generator=None,
+        do_classifier_free_guidance=False,
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -522,7 +634,9 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         if isinstance(image, torch.Tensor):
             # Batch single image
             if image.ndim == 3:
-                assert image.shape[0] == 3, "Image outside a batch should be of shape (3, H, W)"
+                assert (
+                    image.shape[0] == 3
+                ), "Image outside a batch should be of shape (3, H, W)"
                 image = image.unsqueeze(0)
 
             assert image.ndim == 4, "Image must have 4 dimensions"
@@ -569,11 +683,15 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             bs_embed, emb_c, emb_h, emb_w = init_latents.shape
             init_latents = init_latents.unsqueeze(1)
             init_latents = init_latents.repeat(1, num_images_per_prompt, 1, 1, 1)
-            init_latents = init_latents.view(bs_embed * num_images_per_prompt, emb_c, emb_h, emb_w)
+            init_latents = init_latents.view(
+                bs_embed * num_images_per_prompt, emb_c, emb_h, emb_w
+            )
 
         # init_latents = torch.cat([init_latents]*2) if do_classifier_free_guidance else init_latents   # follow zero123
         init_latents = (
-            torch.cat([torch.zeros_like(init_latents), init_latents]) if do_classifier_free_guidance else init_latents
+            torch.cat([torch.zeros_like(init_latents), init_latents])
+            if do_classifier_free_guidance
+            else init_latents
         )
 
         init_latents = init_latents.to(device=device, dtype=dtype)
@@ -705,7 +823,11 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
 
         # 3. Encode input image with pose as prompt
         prompt_embeds = self._encode_image_with_pose(
-            prompt_imgs, poses, device, num_images_per_prompt, do_classifier_free_guidance
+            prompt_imgs,
+            poses,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
         )
 
         # 4. Prepare timesteps
@@ -742,24 +864,36 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = (
+                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                )
+                latent_model_input = self.scheduler.scale_model_input(
+                    latent_model_input, t
+                )
                 latent_model_input = torch.cat([latent_model_input, img_latents], dim=1)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
+                noise_pred = self.unet(
+                    latent_model_input, t, encoder_hidden_states=prompt_embeds
+                ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
                 # latents = self.scheduler.step(noise_pred.to(dtype=torch.float32), t, latents.to(dtype=torch.float32)).prev_sample.to(prompt_embeds.dtype)
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if i == len(timesteps) - 1 or (
+                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                ):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
@@ -785,4 +919,6 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(
+            images=image, nsfw_content_detected=has_nsfw_concept
+        )

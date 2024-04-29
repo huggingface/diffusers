@@ -14,7 +14,9 @@ from diffusers import (
 )
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 
 
 pipe1_model_id = "CompVis/stable-diffusion-v1-1"
@@ -78,11 +80,18 @@ class StableDiffusionComparisonPipeline(DiffusionPipeline, StableDiffusionMixin)
             requires_safety_checker=requires_safety_checker,
         )
 
-        self.register_modules(pipeline1=self.pipe1, pipeline2=self.pipe2, pipeline3=self.pipe3, pipeline4=self.pipe4)
+        self.register_modules(
+            pipeline1=self.pipe1,
+            pipeline2=self.pipe2,
+            pipeline3=self.pipe3,
+            pipeline4=self.pipe4,
+        )
 
     @property
     def layers(self) -> Dict[str, Any]:
-        return {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
+        return {
+            k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")
+        }
 
     @torch.no_grad()
     def text2img_sd1_1(
@@ -299,7 +308,9 @@ class StableDiffusionComparisonPipeline(DiffusionPipeline, StableDiffusionMixin)
 
         # Checks if the height and width are divisible by 8 or not
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` must be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` must be divisible by 8 but are {height} and {width}."
+            )
 
         # Get first result from Stable Diffusion Checkpoint v1.1
         res1 = self.text2img_sd1_1(

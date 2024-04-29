@@ -27,12 +27,20 @@ class MagicMixPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        self.register_modules(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
+        self.register_modules(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            scheduler=scheduler,
+        )
 
     # convert PIL image to latents
     def encode(self, img):
         with torch.no_grad():
-            latent = self.vae.encode(tfms.ToTensor()(img).unsqueeze(0).to(self.device) * 2 - 1)
+            latent = self.vae.encode(
+                tfms.ToTensor()(img).unsqueeze(0).to(self.device) * 2 - 1
+            )
             latent = 0.18215 * latent.latent_dist.sample()
         return latent
 
@@ -116,7 +124,9 @@ class MagicMixPipeline(DiffusionPipeline):
         pred_uncond, pred_text = pred.chunk(2)
         pred = pred_uncond + guidance_scale * (pred_text - pred_uncond)
 
-        latents = self.scheduler.step(pred, self.scheduler.timesteps[tmax], latents).prev_sample
+        latents = self.scheduler.step(
+            pred, self.scheduler.timesteps[tmax], latents
+        ).prev_sample
 
         for i, t in enumerate(tqdm(self.scheduler.timesteps)):
             if i > tmax:
@@ -127,9 +137,9 @@ class MagicMixPipeline(DiffusionPipeline):
                         timesteps=t,
                     )
 
-                    input = (
-                        (mix_factor * latents) + (1 - mix_factor) * orig_latents
-                    )  # interpolating between layout noise and conditionally generated noise to preserve layout sematics
+                    input = (mix_factor * latents) + (
+                        1 - mix_factor
+                    ) * orig_latents  # interpolating between layout noise and conditionally generated noise to preserve layout sematics
                     input = torch.cat([input] * 2)
 
                 else:  # content generation phase

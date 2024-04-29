@@ -54,7 +54,9 @@ class ControlNet(ExamplesTestsAccelerate):
                 {"checkpoint-4", "checkpoint-6"},
             )
 
-    def test_controlnet_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
+    def test_controlnet_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet.py
@@ -93,7 +95,10 @@ class ControlNet(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + resume_run_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-6", "checkpoint-8"})
+            self.assertEqual(
+                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
+                {"checkpoint-6", "checkpoint-8"},
+            )
 
 
 class ControlNetSDXL(ExamplesTestsAccelerate):
@@ -114,4 +119,8 @@ class ControlNetSDXL(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
+            self.assertTrue(
+                os.path.isfile(
+                    os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")
+                )
+            )

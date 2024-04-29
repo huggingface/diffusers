@@ -52,7 +52,9 @@ from diffusers.models.attention_processor import (
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from diffusers.pipelines.stable_diffusion_xl.pipeline_output import (
+    StableDiffusionXLPipelineOutput,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -68,7 +70,9 @@ from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_invisible_watermark_available():
-    from diffusers.pipelines.stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
+    from diffusers.pipelines.stable_diffusion_xl.watermark import (
+        StableDiffusionXLWatermarker,
+    )
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -151,7 +155,9 @@ def concat_first(feat: torch.Tensor, dim: int = 2, scale: float = 1.0) -> torch.
     return torch.cat((feat, feat_style), dim=dim)
 
 
-def calc_mean_std(feat: torch.Tensor, eps: float = 1e-5) -> tuple[torch.Tensor, torch.Tensor]:
+def calc_mean_std(
+    feat: torch.Tensor, eps: float = 1e-5
+) -> tuple[torch.Tensor, torch.Tensor]:
     feat_std = (feat.var(dim=-2, keepdims=True) + eps).sqrt()
     feat_mean = feat.mean(dim=-2, keepdims=True)
     return feat_mean, feat_std
@@ -205,7 +211,11 @@ class SharedAttentionProcessor(AttnProcessor2_0):
         self.shared_score_shift = shared_score_shift
 
     def shifted_scaled_dot_product_attention(
-        self, attn: Attention, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
+        self,
+        attn: Attention,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
     ) -> torch.Tensor:
         logits = torch.einsum("bhqd,bhkd->bhqk", query, key) * attn.scale
         logits[:, :, :, query.shape[2] :] += self.shared_score_shift
@@ -224,19 +234,29 @@ class SharedAttentionProcessor(AttnProcessor2_0):
         input_ndim = hidden_states.ndim
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+            hidden_states = hidden_states.view(
+                batch_size, channel, height * width
+            ).transpose(1, 2)
         batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+            hidden_states.shape
+            if encoder_hidden_states is None
+            else encoder_hidden_states.shape
         )
 
         if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            attention_mask = attn.prepare_attention_mask(
+                attention_mask, sequence_length, batch_size
+            )
             # scaled_dot_product_attention expects attention_mask shape to be
             # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+            attention_mask = attention_mask.view(
+                batch_size, attn.heads, -1, attention_mask.shape[-1]
+            )
 
         if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(
+                1, 2
+            )
 
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
@@ -258,17 +278,31 @@ class SharedAttentionProcessor(AttnProcessor2_0):
             key = concat_first(key, -2, scale=self.shared_score_scale)
             value = concat_first(value, -2)
             if self.shared_score_shift != 0:
-                hidden_states = self.shifted_scaled_dot_product_attention(attn, query, key, value)
+                hidden_states = self.shifted_scaled_dot_product_attention(
+                    attn, query, key, value
+                )
             else:
                 hidden_states = F.scaled_dot_product_attention(
-                    query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                    query,
+                    key,
+                    value,
+                    attn_mask=attention_mask,
+                    dropout_p=0.0,
+                    is_causal=False,
                 )
         else:
             hidden_states = F.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
             )
 
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.transpose(1, 2).reshape(
+            batch_size, -1, attn.heads * head_dim
+        )
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
@@ -277,7 +311,9 @@ class SharedAttentionProcessor(AttnProcessor2_0):
         hidden_states = attn.to_out[1](hidden_states)
 
         if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            hidden_states = hidden_states.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual
@@ -296,7 +332,12 @@ class SharedAttentionProcessor(AttnProcessor2_0):
         if self.full_attention_share:
             b, n, d = hidden_states.shape
             k = 2
-            hidden_states = hidden_states.view(k, b, n, d).permute(0, 1, 3, 2).contiguous().view(-1, n, d)
+            hidden_states = (
+                hidden_states.view(k, b, n, d)
+                .permute(0, 1, 3, 2)
+                .contiguous()
+                .view(-1, n, d)
+            )
             # hidden_states = einops.rearrange(hidden_states, "(k b) n d -> k (b n) d", k=2)
             hidden_states = super().__call__(
                 attn,
@@ -305,10 +346,17 @@ class SharedAttentionProcessor(AttnProcessor2_0):
                 attention_mask=attention_mask,
                 **kwargs,
             )
-            hidden_states = hidden_states.view(k, b, n, d).permute(0, 1, 3, 2).contiguous().view(-1, n, d)
+            hidden_states = (
+                hidden_states.view(k, b, n, d)
+                .permute(0, 1, 3, 2)
+                .contiguous()
+                .view(-1, n, d)
+            )
             # hidden_states = einops.rearrange(hidden_states, "k (b n) d -> (k b) n d", n=n)
         else:
-            hidden_states = self.shared_call(attn, hidden_states, hidden_states, attention_mask, **kwargs)
+            hidden_states = self.shared_call(
+                attn, hidden_states, hidden_states, attention_mask, **kwargs
+            )
 
         return hidden_states
 
@@ -319,12 +367,16 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
     Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
     """
-    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_text = noise_pred_text.std(
+        dim=list(range(1, noise_pred_text.ndim)), keepdim=True
+    )
     std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
     # rescale the results from guidance (fixes overexposure)
     noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    noise_cfg = (
+        guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    )
     return noise_cfg
 
 
@@ -358,7 +410,9 @@ def retrieve_timesteps(
         second element is the number of inference steps.
     """
     if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        accepts_timesteps = "timesteps" in set(
+            inspect.signature(scheduler.set_timesteps).parameters.keys()
+        )
         if not accepts_timesteps:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -375,7 +429,9 @@ def retrieve_timesteps(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor,
+    generator: Optional[torch.Generator] = None,
+    sample_mode: str = "sample",
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -489,16 +545,25 @@ class StyleAlignedSDXLPipeline(
             image_encoder=image_encoder,
             feature_extractor=feature_extractor,
         )
-        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
+        self.register_to_config(
+            force_zeros_for_empty_prompt=force_zeros_for_empty_prompt
+        )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.mask_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+            vae_scale_factor=self.vae_scale_factor,
+            do_normalize=False,
+            do_binarize=True,
+            do_convert_grayscale=True,
         )
 
         self.default_sample_size = self.unet.config.sample_size
 
-        add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
+        add_watermarker = (
+            add_watermarker
+            if add_watermarker is not None
+            else is_invisible_watermark_available()
+        )
 
         if add_watermarker:
             self.watermark = StableDiffusionXLWatermarker()
@@ -567,7 +632,9 @@ class StyleAlignedSDXLPipeline(
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, StableDiffusionXLLoraLoaderMixin):
+        if lora_scale is not None and isinstance(
+            self, StableDiffusionXLLoraLoaderMixin
+        ):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -591,9 +658,15 @@ class StyleAlignedSDXLPipeline(
             batch_size = prompt_embeds.shape[0]
 
         # Define tokenizers and text encoders
-        tokenizers = [self.tokenizer, self.tokenizer_2] if self.tokenizer is not None else [self.tokenizer_2]
+        tokenizers = (
+            [self.tokenizer, self.tokenizer_2]
+            if self.tokenizer is not None
+            else [self.tokenizer_2]
+        )
         text_encoders = (
-            [self.text_encoder, self.text_encoder_2] if self.text_encoder is not None else [self.text_encoder_2]
+            [self.text_encoder, self.text_encoder_2]
+            if self.text_encoder is not None
+            else [self.text_encoder_2]
         )
 
         if prompt_embeds is None:
@@ -603,7 +676,9 @@ class StyleAlignedSDXLPipeline(
             # textual inversion: process multi-vector tokens if necessary
             prompt_embeds_list = []
             prompts = [prompt, prompt_2]
-            for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
+            for prompt, tokenizer, text_encoder in zip(
+                prompts, tokenizers, text_encoders
+            ):
                 if isinstance(self, TextualInversionLoaderMixin):
                     prompt = self.maybe_convert_prompt(prompt, tokenizer)
 
@@ -616,18 +691,24 @@ class StyleAlignedSDXLPipeline(
                 )
 
                 text_input_ids = text_inputs.input_ids
-                untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+                untruncated_ids = tokenizer(
+                    prompt, padding="longest", return_tensors="pt"
+                ).input_ids
 
-                if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                    text_input_ids, untruncated_ids
-                ):
-                    removed_text = tokenizer.batch_decode(untruncated_ids[:, tokenizer.model_max_length - 1 : -1])
+                if untruncated_ids.shape[-1] >= text_input_ids.shape[
+                    -1
+                ] and not torch.equal(text_input_ids, untruncated_ids):
+                    removed_text = tokenizer.batch_decode(
+                        untruncated_ids[:, tokenizer.model_max_length - 1 : -1]
+                    )
                     logger.warning(
                         "The following part of your input was truncated because CLIP can only handle sequences up to"
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(device), output_hidden_states=True
+                )
 
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 pooled_prompt_embeds = prompt_embeds[0]
@@ -642,8 +723,14 @@ class StyleAlignedSDXLPipeline(
             prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
 
         # get unconditional embeddings for classifier free guidance
-        zero_out_negative_prompt = negative_prompt is None and self.config.force_zeros_for_empty_prompt
-        if do_classifier_free_guidance and negative_prompt_embeds is None and zero_out_negative_prompt:
+        zero_out_negative_prompt = (
+            negative_prompt is None and self.config.force_zeros_for_empty_prompt
+        )
+        if (
+            do_classifier_free_guidance
+            and negative_prompt_embeds is None
+            and zero_out_negative_prompt
+        ):
             negative_prompt_embeds = torch.zeros_like(prompt_embeds)
             negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
         elif do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -651,9 +738,15 @@ class StyleAlignedSDXLPipeline(
             negative_prompt_2 = negative_prompt_2 or negative_prompt
 
             # normalize str to list
-            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+            negative_prompt = (
+                batch_size * [negative_prompt]
+                if isinstance(negative_prompt, str)
+                else negative_prompt
+            )
             negative_prompt_2 = (
-                batch_size * [negative_prompt_2] if isinstance(negative_prompt_2, str) else negative_prompt_2
+                batch_size * [negative_prompt_2]
+                if isinstance(negative_prompt_2, str)
+                else negative_prompt_2
             )
 
             uncond_tokens: List[str]
@@ -672,9 +765,13 @@ class StyleAlignedSDXLPipeline(
                 uncond_tokens = [negative_prompt, negative_prompt_2]
 
             negative_prompt_embeds_list = []
-            for negative_prompt, tokenizer, text_encoder in zip(uncond_tokens, tokenizers, text_encoders):
+            for negative_prompt, tokenizer, text_encoder in zip(
+                uncond_tokens, tokenizers, text_encoders
+            ):
                 if isinstance(self, TextualInversionLoaderMixin):
-                    negative_prompt = self.maybe_convert_prompt(negative_prompt, tokenizer)
+                    negative_prompt = self.maybe_convert_prompt(
+                        negative_prompt, tokenizer
+                    )
 
                 max_length = prompt_embeds.shape[1]
                 uncond_input = tokenizer(
@@ -698,34 +795,46 @@ class StyleAlignedSDXLPipeline(
             negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
 
         if self.text_encoder_2 is not None:
-            prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+            prompt_embeds = prompt_embeds.to(
+                dtype=self.text_encoder_2.dtype, device=device
+            )
         else:
             prompt_embeds = prompt_embeds.to(dtype=self.unet.dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
             if self.text_encoder_2 is not None:
-                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+                negative_prompt_embeds = negative_prompt_embeds.to(
+                    dtype=self.text_encoder_2.dtype, device=device
+                )
             else:
-                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.unet.dtype, device=device)
+                negative_prompt_embeds = negative_prompt_embeds.to(
+                    dtype=self.unet.dtype, device=device
+                )
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-
-        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
-            bs_embed * num_images_per_prompt, -1
-        )
-        if do_classifier_free_guidance:
-            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
-                bs_embed * num_images_per_prompt, -1
+            negative_prompt_embeds = negative_prompt_embeds.repeat(
+                1, num_images_per_prompt, 1
             )
+            negative_prompt_embeds = negative_prompt_embeds.view(
+                batch_size * num_images_per_prompt, seq_len, -1
+            )
+
+        pooled_prompt_embeds = pooled_prompt_embeds.repeat(
+            1, num_images_per_prompt
+        ).view(bs_embed * num_images_per_prompt, -1)
+        if do_classifier_free_guidance:
+            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(
+                1, num_images_per_prompt
+            ).view(bs_embed * num_images_per_prompt, -1)
 
         if self.text_encoder is not None:
             if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
@@ -737,10 +846,17 @@ class StyleAlignedSDXLPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+        return (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+    def encode_image(
+        self, image, device, num_images_per_prompt, output_hidden_states=None
+    ):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
@@ -748,13 +864,19 @@ class StyleAlignedSDXLPipeline(
 
         image = image.to(device=device, dtype=dtype)
         if output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            image_enc_hidden_states = self.image_encoder(
+                image, output_hidden_states=True
+            ).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
             uncond_image_enc_hidden_states = self.image_encoder(
                 torch.zeros_like(image), output_hidden_states=True
             ).hidden_states[-2]
-            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
-                num_images_per_prompt, dim=0
+            uncond_image_enc_hidden_states = (
+                uncond_image_enc_hidden_states.repeat_interleave(
+                    num_images_per_prompt, dim=0
+                )
             )
             return image_enc_hidden_states, uncond_image_enc_hidden_states
         else:
@@ -771,13 +893,17 @@ class StyleAlignedSDXLPipeline(
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_eta = "eta" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_generator = "generator" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -798,16 +924,21 @@ class StyleAlignedSDXLPipeline(
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
+            )
 
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+        if callback_steps is not None and (
+            not isinstance(callback_steps, int) or callback_steps <= 0
+        ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs
+            for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -827,10 +958,18 @@ class StyleAlignedSDXLPipeline(
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        elif prompt_2 is not None and (not isinstance(prompt_2, str) and not isinstance(prompt_2, list)):
-            raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}")
+        elif prompt is not None and (
+            not isinstance(prompt, str) and not isinstance(prompt, list)
+        ):
+            raise ValueError(
+                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
+            )
+        elif prompt_2 is not None and (
+            not isinstance(prompt_2, str) and not isinstance(prompt_2, list)
+        ):
+            raise ValueError(
+                f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}"
+            )
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -861,10 +1000,14 @@ class StyleAlignedSDXLPipeline(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
-    def get_timesteps(self, num_inference_steps, strength, device, denoising_start=None):
+    def get_timesteps(
+        self, num_inference_steps, strength, device, denoising_start=None
+    ):
         # get the original timestep using init_timestep
         if denoising_start is None:
-            init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+            init_timestep = min(
+                int(num_inference_steps * strength), num_inference_steps
+            )
             t_start = max(num_inference_steps - init_timestep, 0)
         else:
             t_start = 0
@@ -919,7 +1062,12 @@ class StyleAlignedSDXLPipeline(
         batch_size *= num_images_per_prompt
 
         if image is None:
-            shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            shape = (
+                batch_size,
+                num_channels_latents,
+                height // self.vae_scale_factor,
+                width // self.vae_scale_factor,
+            )
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -927,7 +1075,9 @@ class StyleAlignedSDXLPipeline(
                 )
 
             if latents is None:
-                latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                latents = randn_tensor(
+                    shape, generator=generator, device=device, dtype=dtype
+                )
             else:
                 latents = latents.to(device)
 
@@ -942,7 +1092,10 @@ class StyleAlignedSDXLPipeline(
                 )
 
             # Offload text encoder if `enable_model_cpu_offload` was enabled
-            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            if (
+                hasattr(self, "final_offload_hook")
+                and self.final_offload_hook is not None
+            ):
                 self.text_encoder_2.to("cpu")
                 torch.cuda.empty_cache()
 
@@ -965,12 +1118,16 @@ class StyleAlignedSDXLPipeline(
 
                 elif isinstance(generator, list):
                     init_latents = [
-                        retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                        retrieve_latents(
+                            self.vae.encode(image[i : i + 1]), generator=generator[i]
+                        )
                         for i in range(batch_size)
                     ]
                     init_latents = torch.cat(init_latents, dim=0)
                 else:
-                    init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+                    init_latents = retrieve_latents(
+                        self.vae.encode(image), generator=generator
+                    )
 
                 if self.vae.config.force_upcast:
                     self.vae.to(dtype)
@@ -978,11 +1135,19 @@ class StyleAlignedSDXLPipeline(
                 init_latents = init_latents.to(dtype)
                 init_latents = self.vae.config.scaling_factor * init_latents
 
-            if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
+            if (
+                batch_size > init_latents.shape[0]
+                and batch_size % init_latents.shape[0] == 0
+            ):
                 # expand init_latents for batch_size
                 additional_image_per_prompt = batch_size // init_latents.shape[0]
-                init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
-            elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
+                init_latents = torch.cat(
+                    [init_latents] * additional_image_per_prompt, dim=0
+                )
+            elif (
+                batch_size > init_latents.shape[0]
+                and batch_size % init_latents.shape[0] != 0
+            ):
                 raise ValueError(
                     f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
                 )
@@ -991,7 +1156,9 @@ class StyleAlignedSDXLPipeline(
 
             if add_noise:
                 shape = init_latents.shape
-                noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                noise = randn_tensor(
+                    shape, generator=generator, device=device, dtype=dtype
+                )
                 # get latents
                 init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
 
@@ -999,7 +1166,12 @@ class StyleAlignedSDXLPipeline(
             return latents
 
         else:
-            shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            shape = (
+                batch_size,
+                num_channels_latents,
+                height // self.vae_scale_factor,
+                width // self.vae_scale_factor,
+            )
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -1014,23 +1186,39 @@ class StyleAlignedSDXLPipeline(
 
             if image.shape[1] == 4:
                 image_latents = image.to(device=device, dtype=dtype)
-                image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
+                image_latents = image_latents.repeat(
+                    batch_size // image_latents.shape[0], 1, 1, 1
+                )
             elif return_image_latents or (latents is None and not is_strength_max):
                 image = image.to(device=device, dtype=dtype)
                 image_latents = self._encode_vae_image(image=image, generator=generator)
-                image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
+                image_latents = image_latents.repeat(
+                    batch_size // image_latents.shape[0], 1, 1, 1
+                )
 
             if latents is None and add_noise:
-                noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                noise = randn_tensor(
+                    shape, generator=generator, device=device, dtype=dtype
+                )
                 # if strength is 1. then initialise the latents to noise, else initial to image + noise
-                latents = noise if is_strength_max else self.scheduler.add_noise(image_latents, noise, timestep)
+                latents = (
+                    noise
+                    if is_strength_max
+                    else self.scheduler.add_noise(image_latents, noise, timestep)
+                )
                 # if pure noise then scale the initial latents by the  Scheduler's init sigma
-                latents = latents * self.scheduler.init_noise_sigma if is_strength_max else latents
+                latents = (
+                    latents * self.scheduler.init_noise_sigma
+                    if is_strength_max
+                    else latents
+                )
             elif add_noise:
                 noise = latents.to(device)
                 latents = noise * self.scheduler.init_noise_sigma
             else:
-                noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                noise = randn_tensor(
+                    shape, generator=generator, device=device, dtype=dtype
+                )
                 latents = image_latents.to(device)
 
             outputs = (latents,)
@@ -1044,7 +1232,16 @@ class StyleAlignedSDXLPipeline(
             return outputs
 
     def prepare_mask_latents(
-        self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
+        self,
+        mask,
+        masked_image,
+        batch_size,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        do_classifier_free_guidance,
     ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
@@ -1074,7 +1271,9 @@ class StyleAlignedSDXLPipeline(
         if masked_image is not None:
             if masked_image_latents is None:
                 masked_image = masked_image.to(device=device, dtype=dtype)
-                masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
+                masked_image_latents = self._encode_vae_image(
+                    masked_image, generator=generator
+                )
 
             if masked_image_latents.shape[0] < batch_size:
                 if not batch_size % masked_image_latents.shape[0] == 0:
@@ -1088,7 +1287,9 @@ class StyleAlignedSDXLPipeline(
                 )
 
             masked_image_latents = (
-                torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
+                torch.cat([masked_image_latents] * 2)
+                if do_classifier_free_guidance
+                else masked_image_latents
             )
 
             # aligning device to prevent device errors when concating it with the latent model input
@@ -1104,12 +1305,16 @@ class StyleAlignedSDXLPipeline(
 
         if isinstance(generator, list):
             image_latents = [
-                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                retrieve_latents(
+                    self.vae.encode(image[i : i + 1]), generator=generator[i]
+                )
                 for i in range(image.shape[0])
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+            image_latents = retrieve_latents(
+                self.vae.encode(image), generator=generator
+            )
 
         if self.vae.config.force_upcast:
             self.vae.to(dtype)
@@ -1119,11 +1324,14 @@ class StyleAlignedSDXLPipeline(
 
         return image_latents
 
-    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, dtype):
+    def _get_add_time_ids(
+        self, original_size, crops_coords_top_left, target_size, dtype
+    ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
         passed_add_embed_dim = (
-            self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+            self.unet.config.addition_time_embed_dim * len(add_time_ids)
+            + self.text_encoder_2.config.projection_dim
         )
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
@@ -1168,7 +1376,9 @@ class StyleAlignedSDXLPipeline(
     ):
         r"""Helper method to enable usage of Shared Attention Processor."""
         attn_procs = {}
-        num_self_layers = len([name for name in self.unet.attn_processors.keys() if "attn1" in name])
+        num_self_layers = len(
+            [name for name in self.unet.attn_processors.keys() if "attn1" in name]
+        )
 
         only_self_vec = get_switch_vec(num_self_layers, only_self_level)
 
@@ -1204,10 +1414,14 @@ class StyleAlignedSDXLPipeline(
 
         self.unet.set_attn_processor(attn_procs)
 
-    def _register_shared_norm(self, share_group_norm: bool = True, share_layer_norm: bool = True):
+    def _register_shared_norm(
+        self, share_group_norm: bool = True, share_layer_norm: bool = True
+    ):
         r"""Helper method to register shared group/layer normalization layers."""
 
-        def register_norm_forward(norm_layer: Union[nn.GroupNorm, nn.LayerNorm]) -> Union[nn.GroupNorm, nn.LayerNorm]:
+        def register_norm_forward(
+            norm_layer: Union[nn.GroupNorm, nn.LayerNorm]
+        ) -> Union[nn.GroupNorm, nn.LayerNorm]:
             if not hasattr(norm_layer, "orig_forward"):
                 setattr(norm_layer, "orig_forward", norm_layer.forward)
             orig_forward = norm_layer.orig_forward
@@ -1221,7 +1435,9 @@ class StyleAlignedSDXLPipeline(
             norm_layer.forward = forward_
             return norm_layer
 
-        def get_norm_layers(pipeline_, norm_layers_: Dict[str, List[Union[nn.GroupNorm, nn.LayerNorm]]]):
+        def get_norm_layers(
+            pipeline_, norm_layers_: Dict[str, List[Union[nn.GroupNorm, nn.LayerNorm]]]
+        ):
             if isinstance(pipeline_, nn.LayerNorm) and share_layer_norm:
                 norm_layers_["layer"].append(pipeline_)
             if isinstance(pipeline_, nn.GroupNorm) and share_group_norm:
@@ -1243,7 +1459,10 @@ class StyleAlignedSDXLPipeline(
     @property
     def style_aligned_enabled(self):
         r"""Returns whether StyleAligned has been enabled in the pipeline or not."""
-        return hasattr(self, "_style_aligned_norm_layers") and self._style_aligned_norm_layers is not None
+        return (
+            hasattr(self, "_style_aligned_norm_layers")
+            and self._style_aligned_norm_layers is not None
+        )
 
     def enable_style_aligned(
         self,
@@ -1280,7 +1499,9 @@ class StyleAlignedSDXLPipeline(
             shared_score_scale (`float`, defaults to `1.0`):
                 Scale for shared attention.
         """
-        self._style_aligned_norm_layers = self._register_shared_norm(share_group_norm, share_layer_norm)
+        self._style_aligned_norm_layers = self._register_shared_norm(
+            share_group_norm, share_layer_norm
+        )
         self._enable_shared_attention_processors(
             share_attention=share_attention,
             adain_queries=adain_queries,
@@ -1605,7 +1826,9 @@ class StyleAlignedSDXLPipeline(
 
         # 3. Encode input prompt
         lora_scale = (
-            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
+            self.cross_attention_kwargs.get("scale", None)
+            if self.cross_attention_kwargs is not None
+            else None
         )
 
         (
@@ -1635,7 +1858,9 @@ class StyleAlignedSDXLPipeline(
             image = image.to(device=self.device, dtype=prompt_embeds.dtype)
 
         if mask_image is not None:
-            mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
+            mask = self.mask_processor.preprocess(
+                mask_image, height=height, width=width
+            )
             mask = mask.to(device=self.device, dtype=prompt_embeds.dtype)
 
             if masked_image_latents is not None:
@@ -1652,14 +1877,18 @@ class StyleAlignedSDXLPipeline(
         def denoising_value_valid(dnv):
             return isinstance(dnv, float) and 0 < dnv < 1
 
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, timesteps
+        )
 
         if image is not None:
             timesteps, num_inference_steps = self.get_timesteps(
                 num_inference_steps,
                 strength,
                 device,
-                denoising_start=self.denoising_start if denoising_value_valid(self.denoising_start) else None,
+                denoising_start=self.denoising_start
+                if denoising_value_valid(self.denoising_start)
+                else None,
             )
 
             # check that number of inference steps is not < 1 - as this doesn't make sense
@@ -1720,7 +1949,10 @@ class StyleAlignedSDXLPipeline(
                 # default case for runwayml/stable-diffusion-inpainting
                 num_channels_mask = mask.shape[1]
                 num_channels_masked_image = masked_image_latents.shape[1]
-                if num_channels_latents + num_channels_mask + num_channels_masked_image != num_channels_unet:
+                if (
+                    num_channels_latents + num_channels_mask + num_channels_masked_image
+                    != num_channels_unet
+                ):
                     raise ValueError(
                         f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
                         f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
@@ -1751,15 +1983,23 @@ class StyleAlignedSDXLPipeline(
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            add_text_embeds = torch.cat(
+                [negative_pooled_prompt_embeds, add_text_embeds], dim=0
+            )
             add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
-        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
+        add_time_ids = add_time_ids.to(device).repeat(
+            batch_size * num_images_per_prompt, 1
+        )
 
         if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
+            output_hidden_state = (
+                False
+                if isinstance(self.unet.encoder_hid_proj, ImageProjection)
+                else True
+            )
             image_embeds, negative_image_embeds = self.encode_image(
                 ip_adapter_image, device, num_images_per_prompt, output_hidden_state
             )
@@ -1768,7 +2008,9 @@ class StyleAlignedSDXLPipeline(
                 image_embeds = image_embeds.to(device)
 
         # 8. Denoising loop
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        num_warmup_steps = max(
+            len(timesteps) - num_inference_steps * self.scheduler.order, 0
+        )
 
         # 8.1 Apply denoising_end
         if (
@@ -1783,13 +2025,17 @@ class StyleAlignedSDXLPipeline(
                     - (self.denoising_end * self.scheduler.config.num_train_timesteps)
                 )
             )
-            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
+            num_inference_steps = len(
+                list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps))
+            )
             timesteps = timesteps[:num_inference_steps]
 
         # 9. Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
-            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(
+                batch_size * num_images_per_prompt
+            )
             timestep_cond = self.get_guidance_scale_embedding(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
@@ -1802,12 +2048,21 @@ class StyleAlignedSDXLPipeline(
                     continue
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = (
+                    torch.cat([latents] * 2)
+                    if self.do_classifier_free_guidance
+                    else latents
+                )
 
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = self.scheduler.scale_model_input(
+                    latent_model_input, t
+                )
 
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs = {
+                    "text_embeds": add_text_embeds,
+                    "time_ids": add_time_ids,
+                }
                 if ip_adapter_image is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
 
@@ -1824,14 +2079,22 @@ class StyleAlignedSDXLPipeline(
                 # perform guidance
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + self.guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
+                    noise_pred = rescale_noise_cfg(
+                        noise_pred,
+                        noise_pred_text,
+                        guidance_rescale=self.guidance_rescale,
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 if mask is not None and num_channels_unet == 4:
                     init_latents_proper = image_latents
@@ -1847,7 +2110,9 @@ class StyleAlignedSDXLPipeline(
                             init_latents_proper, noise, torch.tensor([noise_timestep])
                         )
 
-                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                    latents = (
+                        1 - init_mask
+                    ) * init_latents_proper + init_mask * latents
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -1857,15 +2122,21 @@ class StyleAlignedSDXLPipeline(
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-                    add_text_embeds = callback_outputs.pop("add_text_embeds", add_text_embeds)
+                    negative_prompt_embeds = callback_outputs.pop(
+                        "negative_prompt_embeds", negative_prompt_embeds
+                    )
+                    add_text_embeds = callback_outputs.pop(
+                        "add_text_embeds", add_text_embeds
+                    )
                     negative_pooled_prompt_embeds = callback_outputs.pop(
                         "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
                     )
                     add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if i == len(timesteps) - 1 or (
+                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                ):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
@@ -1876,13 +2147,19 @@ class StyleAlignedSDXLPipeline(
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
-            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+            needs_upcasting = (
+                self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+            )
 
             if needs_upcasting:
                 self.upcast_vae()
-                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+                latents = latents.to(
+                    next(iter(self.vae.post_quant_conv.parameters())).dtype
+                )
 
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.vae.decode(
+                latents / self.vae.config.scaling_factor, return_dict=False
+            )[0]
 
             # cast back to fp16 if needed
             if needs_upcasting:

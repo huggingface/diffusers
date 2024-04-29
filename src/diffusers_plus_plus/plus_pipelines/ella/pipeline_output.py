@@ -43,4 +43,3 @@ if is_flax_available():
 
         images: np.ndarray
         nsfw_content_detected: List[bool]
-

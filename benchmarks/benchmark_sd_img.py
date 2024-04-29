@@ -25,5 +25,9 @@ if __name__ == "__main__":
     parser.add_argument("--run_compile", action="store_true")
     args = parser.parse_args()
 
-    benchmark_pipe = ImageToImageBenchmark(args) if "turbo" not in args.ckpt else TurboImageToImageBenchmark(args)
+    benchmark_pipe = (
+        ImageToImageBenchmark(args)
+        if "turbo" not in args.ckpt
+        else TurboImageToImageBenchmark(args)
+    )
     benchmark_pipe.benchmark(args)

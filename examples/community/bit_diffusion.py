@@ -3,7 +3,13 @@ from typing import Optional, Tuple, Union
 import torch
 from einops import rearrange, reduce
 
-from diffusers import DDIMScheduler, DDPMScheduler, DiffusionPipeline, ImagePipelineOutput, UNet2DConditionModel
+from diffusers import (
+    DDIMScheduler,
+    DDPMScheduler,
+    DiffusionPipeline,
+    ImagePipelineOutput,
+    UNet2DConditionModel,
+)
 from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput
 from diffusers.schedulers.scheduling_ddpm import DDPMSchedulerOutput
 
@@ -86,17 +92,25 @@ def ddim_bit_scheduler_step(
     # - pred_prev_sample -> "x_t-1"
 
     # 1. get previous step value (=t-1)
-    prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+    prev_timestep = (
+        timestep - self.config.num_train_timesteps // self.num_inference_steps
+    )
 
     # 2. compute alphas, betas
     alpha_prod_t = self.alphas_cumprod[timestep]
-    alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+    alpha_prod_t_prev = (
+        self.alphas_cumprod[prev_timestep]
+        if prev_timestep >= 0
+        else self.final_alpha_cumprod
+    )
 
     beta_prod_t = 1 - alpha_prod_t
 
     # 3. compute predicted original sample from predicted noise also called
     # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-    pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+    pred_original_sample = (
+        sample - beta_prod_t ** (0.5) * model_output
+    ) / alpha_prod_t ** (0.5)
 
     # 4. Clip "predicted x_0"
     scale = self.bit_scale
@@ -110,18 +124,26 @@ def ddim_bit_scheduler_step(
 
     if use_clipped_model_output:
         # the model_output is always re-derived from the clipped x_0 in Glide
-        model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+        model_output = (
+            sample - alpha_prod_t ** (0.5) * pred_original_sample
+        ) / beta_prod_t ** (0.5)
 
     # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-    pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
+    pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (
+        0.5
+    ) * model_output
 
     # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-    prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+    prev_sample = (
+        alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+    )
 
     if eta > 0:
         # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
         device = model_output.device if torch.is_tensor(model_output) else "cpu"
-        noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(device)
+        noise = torch.randn(
+            model_output.shape, dtype=model_output.dtype, generator=generator
+        ).to(device)
         variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
 
         prev_sample = prev_sample + variance
@@ -129,7 +151,9 @@ def ddim_bit_scheduler_step(
     if not return_dict:
         return (prev_sample,)
 
-    return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+    return DDIMSchedulerOutput(
+        prev_sample=prev_sample, pred_original_sample=pred_original_sample
+    )
 
 
 def ddpm_bit_scheduler_step(
@@ -160,8 +184,13 @@ def ddpm_bit_scheduler_step(
     """
     t = timestep
 
-    if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
-        model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
+    if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in [
+        "learned",
+        "learned_range",
+    ]:
+        model_output, predicted_variance = torch.split(
+            model_output, sample.shape[1], dim=1
+        )
     else:
         predicted_variance = None
 
@@ -174,7 +203,9 @@ def ddpm_bit_scheduler_step(
     # 2. compute predicted original sample from predicted noise also called
     # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
     if prediction_type == "epsilon":
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        pred_original_sample = (
+            sample - beta_prod_t ** (0.5) * model_output
+        ) / alpha_prod_t ** (0.5)
     elif prediction_type == "sample":
         pred_original_sample = model_output
     else:
@@ -187,27 +218,39 @@ def ddpm_bit_scheduler_step(
 
     # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
     # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
-    pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * self.betas[t]) / beta_prod_t
+    pred_original_sample_coeff = (
+        alpha_prod_t_prev ** (0.5) * self.betas[t]
+    ) / beta_prod_t
     current_sample_coeff = self.alphas[t] ** (0.5) * beta_prod_t_prev / beta_prod_t
 
     # 5. Compute predicted previous sample µ_t
     # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
-    pred_prev_sample = pred_original_sample_coeff * pred_original_sample + current_sample_coeff * sample
+    pred_prev_sample = (
+        pred_original_sample_coeff * pred_original_sample
+        + current_sample_coeff * sample
+    )
 
     # 6. Add noise
     variance = 0
     if t > 0:
         noise = torch.randn(
-            model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
+            model_output.size(),
+            dtype=model_output.dtype,
+            layout=model_output.layout,
+            generator=generator,
         ).to(model_output.device)
-        variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
+        variance = (
+            self._get_variance(t, predicted_variance=predicted_variance) ** 0.5
+        ) * noise
 
     pred_prev_sample = pred_prev_sample + variance
 
     if not return_dict:
         return (pred_prev_sample,)
 
-    return DDPMSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
+    return DDPMSchedulerOutput(
+        prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample
+    )
 
 
 class BitDiffusion(DiffusionPipeline):
@@ -220,7 +263,9 @@ class BitDiffusion(DiffusionPipeline):
         super().__init__()
         self.bit_scale = bit_scale
         self.scheduler.step = (
-            ddim_bit_scheduler_step if isinstance(scheduler, DDIMScheduler) else ddpm_bit_scheduler_step
+            ddim_bit_scheduler_step
+            if isinstance(scheduler, DDIMScheduler)
+            else ddpm_bit_scheduler_step
         )
 
         self.register_modules(unet=unet, scheduler=scheduler)

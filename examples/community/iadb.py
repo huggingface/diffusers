@@ -116,7 +116,11 @@ class IADBPipeline(DiffusionPipeline):
                 self.unet.config.sample_size,
             )
         else:
-            image_shape = (batch_size, self.unet.config.in_channels, *self.unet.config.sample_size)
+            image_shape = (
+                batch_size,
+                self.unet.config.in_channels,
+                *self.unet.config.sample_size,
+            )
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -124,7 +128,9 @@ class IADBPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        image = torch.randn(image_shape, generator=generator, device=self.device, dtype=self.unet.dtype)
+        image = torch.randn(
+            image_shape, generator=generator, device=self.device, dtype=self.unet.dtype
+        )
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
@@ -133,7 +139,9 @@ class IADBPipeline(DiffusionPipeline):
             alpha = t / num_inference_steps
 
             # 1. predict noise model_output
-            model_output = self.unet(x_alpha, torch.tensor(alpha, device=x_alpha.device)).sample
+            model_output = self.unet(
+                x_alpha, torch.tensor(alpha, device=x_alpha.device)
+            ).sample
 
             # 2. step
             x_alpha = self.scheduler.step(model_output, t, x_alpha)

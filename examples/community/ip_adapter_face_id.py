@@ -20,16 +20,30 @@ import torch.nn as nn
 import torch.nn.functional as F
 from packaging import version
 from safetensors import safe_open
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    IPAdapterMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import LoRALinearLayer, adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.pipeline_output import (
+    StableDiffusionPipelineOutput,
+)
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -81,17 +95,27 @@ class LoRAIPAdapterAttnProcessor(nn.Module):
         self.lora_scale = lora_scale
 
         self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
-        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(
+            cross_attention_dim or hidden_size, hidden_size, rank, network_alpha
+        )
+        self.to_v_lora = LoRALinearLayer(
+            cross_attention_dim or hidden_size, hidden_size, rank, network_alpha
+        )
+        self.to_out_lora = LoRALinearLayer(
+            hidden_size, hidden_size, rank, network_alpha
+        )
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
         self.scale = scale
         self.num_tokens = num_tokens
 
-        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_k_ip = nn.Linear(
+            cross_attention_dim or hidden_size, hidden_size, bias=False
+        )
+        self.to_v_ip = nn.Linear(
+            cross_attention_dim or hidden_size, hidden_size, bias=False
+        )
 
     def __call__(
         self,
@@ -112,7 +136,12 @@ class LoRAIPAdapterAttnProcessor(nn.Module):
                     "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
                     " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
                 )
-                deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
+                deprecate(
+                    "encoder_hidden_states not a tuple",
+                    "1.0.0",
+                    deprecation_message,
+                    standard_warn=False,
+                )
                 end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
                 encoder_hidden_states, ip_hidden_states = (
                     encoder_hidden_states[:, :end_pos, :],
@@ -126,25 +155,41 @@ class LoRAIPAdapterAttnProcessor(nn.Module):
 
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+            hidden_states = hidden_states.view(
+                batch_size, channel, height * width
+            ).transpose(1, 2)
 
         batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+            hidden_states.shape
+            if encoder_hidden_states is None
+            else encoder_hidden_states.shape
         )
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(
+            attention_mask, sequence_length, batch_size
+        )
 
         if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(
+                1, 2
+            )
 
-        query = attn.to_q(hidden_states) + self.lora_scale * self.to_q_lora(hidden_states)
+        query = attn.to_q(hidden_states) + self.lora_scale * self.to_q_lora(
+            hidden_states
+        )
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+            encoder_hidden_states = attn.norm_encoder_hidden_states(
+                encoder_hidden_states
+            )
 
-        key = attn.to_k(encoder_hidden_states) + self.lora_scale * self.to_k_lora(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states) + self.lora_scale * self.to_v_lora(encoder_hidden_states)
+        key = attn.to_k(encoder_hidden_states) + self.lora_scale * self.to_k_lora(
+            encoder_hidden_states
+        )
+        value = attn.to_v(encoder_hidden_states) + self.lora_scale * self.to_v_lora(
+            encoder_hidden_states
+        )
 
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
@@ -168,12 +213,16 @@ class LoRAIPAdapterAttnProcessor(nn.Module):
         hidden_states = hidden_states + self.scale * ip_hidden_states
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states) + self.lora_scale * self.to_out_lora(hidden_states)
+        hidden_states = attn.to_out[0](
+            hidden_states
+        ) + self.lora_scale * self.to_out_lora(hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
         if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            hidden_states = hidden_states.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual
@@ -219,17 +268,27 @@ class LoRAIPAdapterAttnProcessor2_0(nn.Module):
         self.lora_scale = lora_scale
 
         self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
-        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(
+            cross_attention_dim or hidden_size, hidden_size, rank, network_alpha
+        )
+        self.to_v_lora = LoRALinearLayer(
+            cross_attention_dim or hidden_size, hidden_size, rank, network_alpha
+        )
+        self.to_out_lora = LoRALinearLayer(
+            hidden_size, hidden_size, rank, network_alpha
+        )
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
         self.scale = scale
         self.num_tokens = num_tokens
 
-        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_k_ip = nn.Linear(
+            cross_attention_dim or hidden_size, hidden_size, bias=False
+        )
+        self.to_v_ip = nn.Linear(
+            cross_attention_dim or hidden_size, hidden_size, bias=False
+        )
 
     def __call__(
         self,
@@ -250,7 +309,12 @@ class LoRAIPAdapterAttnProcessor2_0(nn.Module):
                     "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
                     " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
                 )
-                deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
+                deprecate(
+                    "encoder_hidden_states not a tuple",
+                    "1.0.0",
+                    deprecation_message,
+                    standard_warn=False,
+                )
                 end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
                 encoder_hidden_states, ip_hidden_states = (
                     encoder_hidden_states[:, :end_pos, :],
@@ -264,30 +328,48 @@ class LoRAIPAdapterAttnProcessor2_0(nn.Module):
 
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+            hidden_states = hidden_states.view(
+                batch_size, channel, height * width
+            ).transpose(1, 2)
 
         batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+            hidden_states.shape
+            if encoder_hidden_states is None
+            else encoder_hidden_states.shape
         )
 
         if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            attention_mask = attn.prepare_attention_mask(
+                attention_mask, sequence_length, batch_size
+            )
             # scaled_dot_product_attention expects attention_mask shape to be
             # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+            attention_mask = attention_mask.view(
+                batch_size, attn.heads, -1, attention_mask.shape[-1]
+            )
 
         if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(
+                1, 2
+            )
 
-        query = attn.to_q(hidden_states) + self.lora_scale * self.to_q_lora(hidden_states)
+        query = attn.to_q(hidden_states) + self.lora_scale * self.to_q_lora(
+            hidden_states
+        )
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+            encoder_hidden_states = attn.norm_encoder_hidden_states(
+                encoder_hidden_states
+            )
 
-        key = attn.to_k(encoder_hidden_states) + self.lora_scale * self.to_k_lora(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states) + self.lora_scale * self.to_v_lora(encoder_hidden_states)
+        key = attn.to_k(encoder_hidden_states) + self.lora_scale * self.to_k_lora(
+            encoder_hidden_states
+        )
+        value = attn.to_v(encoder_hidden_states) + self.lora_scale * self.to_v_lora(
+            encoder_hidden_states
+        )
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -302,7 +384,9 @@ class LoRAIPAdapterAttnProcessor2_0(nn.Module):
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.transpose(1, 2).reshape(
+            batch_size, -1, attn.heads * head_dim
+        )
         hidden_states = hidden_states.to(query.dtype)
 
         # for ip-adapter
@@ -318,18 +402,24 @@ class LoRAIPAdapterAttnProcessor2_0(nn.Module):
             query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
         )
 
-        ip_hidden_states = ip_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        ip_hidden_states = ip_hidden_states.transpose(1, 2).reshape(
+            batch_size, -1, attn.heads * head_dim
+        )
         ip_hidden_states = ip_hidden_states.to(query.dtype)
 
         hidden_states = hidden_states + self.scale * ip_hidden_states
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states) + self.lora_scale * self.to_out_lora(hidden_states)
+        hidden_states = attn.to_out[0](
+            hidden_states
+        ) + self.lora_scale * self.to_out_lora(hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
         if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            hidden_states = hidden_states.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual
@@ -340,13 +430,20 @@ class LoRAIPAdapterAttnProcessor2_0(nn.Module):
 
 
 class IPAdapterFullImageProjection(nn.Module):
-    def __init__(self, image_embed_dim=1024, cross_attention_dim=1024, mult=1, num_tokens=1):
+    def __init__(
+        self, image_embed_dim=1024, cross_attention_dim=1024, mult=1, num_tokens=1
+    ):
         super().__init__()
         from diffusers.models.attention import FeedForward
 
         self.num_tokens = num_tokens
         self.cross_attention_dim = cross_attention_dim
-        self.ff = FeedForward(image_embed_dim, cross_attention_dim * num_tokens, mult=mult, activation_fn="gelu")
+        self.ff = FeedForward(
+            image_embed_dim,
+            cross_attention_dim * num_tokens,
+            mult=mult,
+            activation_fn="gelu",
+        )
         self.norm = nn.LayerNorm(cross_attention_dim)
 
     def forward(self, image_embeds: torch.FloatTensor):
@@ -360,12 +457,16 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
     Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
     """
-    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_text = noise_pred_text.std(
+        dim=list(range(1, noise_pred_text.ndim)), keepdim=True
+    )
     std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
     # rescale the results from guidance (fixes overexposure)
     noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    noise_cfg = (
+        guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    )
     return noise_cfg
 
 
@@ -398,7 +499,9 @@ def retrieve_timesteps(
         second element is the number of inference steps.
     """
     if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        accepts_timesteps = "timesteps" in set(
+            inspect.signature(scheduler.set_timesteps).parameters.keys()
+        )
         if not accepts_timesteps:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -473,7 +576,10 @@ class IPAdapterFaceIDStableDiffusionPipeline(
     ):
         super().__init__()
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+        if (
+            hasattr(scheduler.config, "steps_offset")
+            and scheduler.config.steps_offset != 1
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -482,12 +588,17 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                 " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
                 " file"
             )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
+        if (
+            hasattr(scheduler.config, "clip_sample")
+            and scheduler.config.clip_sample is True
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
                 " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
@@ -495,7 +606,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                 " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
                 " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
             )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "clip_sample not set", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
@@ -516,10 +629,16 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+        is_unet_version_less_0_9_0 = hasattr(
+            unet.config, "_diffusers_version"
+        ) and version.parse(
             version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        ) < version.parse(
+            "0.9.0.dev0"
+        )
+        is_unet_sample_size_less_64 = (
+            hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        )
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -532,7 +651,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
                 " the `unet/config.json` file"
             )
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "sample_size<64", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
@@ -551,7 +672,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    def load_ip_adapter_face_id(self, pretrained_model_name_or_path_or_dict, weight_name, **kwargs):
+    def load_ip_adapter_face_id(
+        self, pretrained_model_name_or_path_or_dict, weight_name, **kwargs
+    ):
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
@@ -583,9 +706,13 @@ class IPAdapterFaceIDStableDiffusionPipeline(
             with safe_open(model_file, framework="pt", device="cpu") as f:
                 for key in f.keys():
                     if key.startswith("image_proj."):
-                        state_dict["image_proj"][key.replace("image_proj.", "")] = f.get_tensor(key)
+                        state_dict["image_proj"][
+                            key.replace("image_proj.", "")
+                        ] = f.get_tensor(key)
                     elif key.startswith("ip_adapter."):
-                        state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
+                        state_dict["ip_adapter"][
+                            key.replace("ip_adapter.", "")
+                        ] = f.get_tensor(key)
         else:
             state_dict = torch.load(model_file, map_location="cpu")
         self._load_ip_adapter_weights(state_dict)
@@ -628,21 +755,31 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         attn_procs = {}
         key_id = 0
         for name in self.unet.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else self.unet.config.cross_attention_dim
+            cross_attention_dim = (
+                None
+                if name.endswith("attn1.processor")
+                else self.unet.config.cross_attention_dim
+            )
             if name.startswith("mid_block"):
                 hidden_size = self.unet.config.block_out_channels[-1]
             elif name.startswith("up_blocks"):
                 block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(self.unet.config.block_out_channels))[block_id]
+                hidden_size = list(reversed(self.unet.config.block_out_channels))[
+                    block_id
+                ]
             elif name.startswith("down_blocks"):
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = self.unet.config.block_out_channels[block_id]
             if cross_attention_dim is None or "motion_modules" in name:
                 attn_processor_class = (
-                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                    AttnProcessor2_0
+                    if hasattr(F, "scaled_dot_product_attention")
+                    else AttnProcessor
                 )
                 attn_procs[name] = attn_processor_class()
-                rank = state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"].shape[0]
+                rank = state_dict["ip_adapter"][
+                    f"{key_id}.to_q_lora.down.weight"
+                ].shape[0]
                 attn_module = self.unet
                 for n in name.split(".")[:-1]:
                     attn_module = getattr(attn_module, n)
@@ -686,9 +823,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                     for lora_name, w in lora_layer.state_dict().items():
                         value_dict.update(
                             {
-                                f"{k}{index}lora_layer.{lora_name}": state_dict["ip_adapter"][
-                                    f"{key_id}.{k}_lora.{lora_name}"
-                                ]
+                                f"{k}{index}lora_layer.{lora_name}": state_dict[
+                                    "ip_adapter"
+                                ][f"{key_id}.{k}_lora.{lora_name}"]
                             }
                         )
 
@@ -696,7 +833,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                 attn_module.to(dtype=self.dtype, device=self.device)
                 key_id += 1
             else:
-                rank = state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"].shape[0]
+                rank = state_dict["ip_adapter"][
+                    f"{key_id}.to_q_lora.down.weight"
+                ].shape[0]
                 attn_processor_class = (
                     LoRAIPAdapterAttnProcessor2_0
                     if hasattr(F, "scaled_dot_product_attention")
@@ -712,7 +851,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
 
                 value_dict = {}
                 for k, w in attn_procs[name].state_dict().items():
-                    value_dict.update({f"{k}": state_dict["ip_adapter"][f"{key_id}.{k}"]})
+                    value_dict.update(
+                        {f"{k}": state_dict["ip_adapter"][f"{key_id}.{k}"]}
+                    )
 
                 attn_procs[name].load_state_dict(value_dict)
                 key_id += 1
@@ -720,15 +861,22 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         self.unet.set_attn_processor(attn_procs)
 
         # convert IP-Adapter Image Projection layers to diffusers
-        image_projection = self.convert_ip_adapter_image_proj_to_diffusers(state_dict["image_proj"])
+        image_projection = self.convert_ip_adapter_image_proj_to_diffusers(
+            state_dict["image_proj"]
+        )
 
-        self.unet.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
+        self.unet.encoder_hid_proj = image_projection.to(
+            device=self.device, dtype=self.dtype
+        )
         self.unet.config.encoder_hid_dim_type = "ip_image_proj"
 
     def set_ip_adapter_scale(self, scale):
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         for attn_processor in unet.attn_processors.values():
-            if isinstance(attn_processor, (LoRAIPAdapterAttnProcessor, LoRAIPAdapterAttnProcessor2_0)):
+            if isinstance(
+                attn_processor,
+                (LoRAIPAdapterAttnProcessor, LoRAIPAdapterAttnProcessor2_0),
+            ):
                 attn_processor.scale = scale
 
     def _encode_prompt(
@@ -835,11 +983,13 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+            untruncated_ids = self.tokenizer(
+                prompt, padding="longest", return_tensors="pt"
+            ).input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[
+                -1
+            ] and not torch.equal(text_input_ids, untruncated_ids):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -848,17 +998,24 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
 
             if clip_skip is None:
-                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+                prompt_embeds = self.text_encoder(
+                    text_input_ids.to(device), attention_mask=attention_mask
+                )
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                    text_input_ids.to(device),
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -868,7 +1025,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                 # representations. The `last_hidden_states` that we typically use for
                 # obtaining the final prompt representations passes through the LayerNorm
                 # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
+                prompt_embeds = self.text_encoder.text_model.final_layer_norm(
+                    prompt_embeds
+                )
 
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
@@ -882,7 +1041,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -918,7 +1079,10 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                 return_tensors="pt",
             )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -933,10 +1097,16 @@ class IPAdapterFaceIDStableDiffusionPipeline(
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(
+                dtype=prompt_embeds_dtype, device=device
+            )
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(
+                1, num_images_per_prompt, 1
+            )
+            negative_prompt_embeds = negative_prompt_embeds.view(
+                batch_size * num_images_per_prompt, seq_len, -1
+            )
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
@@ -949,10 +1119,14 @@ class IPAdapterFaceIDStableDiffusionPipeline(
             has_nsfw_concept = None
         else:
             if torch.is_tensor(image):
-                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+                feature_extractor_input = self.image_processor.postprocess(
+                    image, output_type="pil"
+                )
             else:
                 feature_extractor_input = self.image_processor.numpy_to_pil(image)
-            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            safety_checker_input = self.feature_extractor(
+                feature_extractor_input, return_tensors="pt"
+            ).to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -975,13 +1149,17 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_eta = "eta" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_generator = "generator" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -998,15 +1176,20 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
+            )
 
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+        if callback_steps is not None and (
+            not isinstance(callback_steps, int) or callback_steps <= 0
+        ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs
+            for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -1021,8 +1204,12 @@ class IPAdapterFaceIDStableDiffusionPipeline(
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        elif prompt is not None and (
+            not isinstance(prompt, str) and not isinstance(prompt, list)
+        ):
+            raise ValueError(
+                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
+            )
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -1038,8 +1225,23 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -1047,7 +1249,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(
+                shape, generator=generator, device=device, dtype=dtype
+            )
         else:
             latents = latents.to(device)
 
@@ -1270,7 +1474,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
 
         # 3. Encode input prompt
         lora_scale = (
-            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
+            self.cross_attention_kwargs.get("scale", None)
+            if self.cross_attention_kwargs is not None
+            else None
         )
 
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
@@ -1292,15 +1498,17 @@ class IPAdapterFaceIDStableDiffusionPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if image_embeds is not None:
-            image_embeds = torch.stack([image_embeds] * num_images_per_prompt, dim=0).to(
-                device=device, dtype=prompt_embeds.dtype
-            )
+            image_embeds = torch.stack(
+                [image_embeds] * num_images_per_prompt, dim=0
+            ).to(device=device, dtype=prompt_embeds.dtype)
             negative_image_embeds = torch.zeros_like(image_embeds)
             if self.do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, timesteps
+        )
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -1319,12 +1527,16 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 6.1 Add image embeds for IP-Adapter
-        added_cond_kwargs = {"image_embeds": image_embeds} if image_embeds is not None else None
+        added_cond_kwargs = (
+            {"image_embeds": image_embeds} if image_embeds is not None else None
+        )
 
         # 6.2 Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
-            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(
+                batch_size * num_images_per_prompt
+            )
             timestep_cond = self.get_guidance_scale_embedding(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
@@ -1338,8 +1550,14 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                     continue
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = (
+                    torch.cat([latents] * 2)
+                    if self.do_classifier_free_guidance
+                    else latents
+                )
+                latent_model_input = self.scheduler.scale_model_input(
+                    latent_model_input, t
+                )
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -1355,14 +1573,22 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                 # perform guidance
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + self.guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
+                    noise_pred = rescale_noise_cfg(
+                        noise_pred,
+                        noise_pred_text,
+                        guidance_rescale=self.guidance_rescale,
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -1372,20 +1598,28 @@ class IPAdapterFaceIDStableDiffusionPipeline(
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop(
+                        "negative_prompt_embeds", negative_prompt_embeds
+                    )
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if i == len(timesteps) - 1 or (
+                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                ):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
-                0
-            ]
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            image = self.vae.decode(
+                latents / self.vae.config.scaling_factor,
+                return_dict=False,
+                generator=generator,
+            )[0]
+            image, has_nsfw_concept = self.run_safety_checker(
+                image, device, prompt_embeds.dtype
+            )
         else:
             image = latents
             has_nsfw_concept = None
@@ -1395,7 +1629,9 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        image = self.image_processor.postprocess(
+            image, output_type=output_type, do_denormalize=do_denormalize
+        )
 
         # Offload all models
         self.maybe_free_model_hooks()
@@ -1403,4 +1639,6 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(
+            images=image, nsfw_content_detected=has_nsfw_concept
+        )

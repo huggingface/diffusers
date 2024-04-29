@@ -12,7 +12,10 @@ if __name__ == "__main__":
         "--ckpt",
         type=str,
         default="TencentARC/t2iadapter_canny_sd14v1",
-        choices=["TencentARC/t2iadapter_canny_sd14v1", "TencentARC/t2i-adapter-canny-sdxl-1.0"],
+        choices=[
+            "TencentARC/t2iadapter_canny_sd14v1",
+            "TencentARC/t2i-adapter-canny-sdxl-1.0",
+        ],
     )
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--num_inference_steps", type=int, default=50)

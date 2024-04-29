@@ -23,11 +23,20 @@ import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKL, ConfigMixin, DiffusionPipeline, SchedulerMixin, UNet2DConditionModel, logging
+from diffusers import (
+    AutoencoderKL,
+    ConfigMixin,
+    DiffusionPipeline,
+    SchedulerMixin,
+    UNet2DConditionModel,
+    logging,
+)
 from diffusers.configuration_utils import register_to_config
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.utils import BaseOutput
 
 
@@ -54,7 +63,10 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
             scheduler
             if scheduler is not None
             else LCMScheduler(
-                beta_start=0.00085, beta_end=0.0120, beta_schedule="scaled_linear", prediction_type="epsilon"
+                beta_start=0.00085,
+                beta_end=0.0120,
+                beta_schedule="scaled_linear",
+                prediction_type="epsilon",
             )
         )
 
@@ -107,11 +119,13 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+            untruncated_ids = self.tokenizer(
+                prompt, padding="longest", return_tensors="pt"
+            ).input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[
+                -1
+            ] and not torch.equal(text_input_ids, untruncated_ids):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -120,7 +134,10 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -143,7 +160,9 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
 
         # Don't need to get uncond prompt embedding because of LCM Guided Distillation
         return prompt_embeds
@@ -153,17 +172,35 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
             has_nsfw_concept = None
         else:
             if torch.is_tensor(image):
-                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+                feature_extractor_input = self.image_processor.postprocess(
+                    image, output_type="pil"
+                )
             else:
                 feature_extractor_input = self.image_processor.numpy_to_pil(image)
-            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            safety_checker_input = self.feature_extractor(
+                feature_extractor_input, return_tensors="pt"
+            ).to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
         return image, has_nsfw_concept
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if latents is None:
             latents = torch.randn(shape, dtype=dtype).to(device)
         else:
@@ -253,7 +290,9 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
 
         # 6. Get Guidance Scale Embedding
         w = torch.tensor(guidance_scale).repeat(bs)
-        w_embedding = self.get_w_embedding(w, embedding_dim=256).to(device=device, dtype=latents.dtype)
+        w_embedding = self.get_w_embedding(w, embedding_dim=256).to(
+            device=device, dtype=latents.dtype
+        )
 
         # 7. LCM MultiStep Sampling Loop:
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -272,7 +311,9 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
                 )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents, denoised = self.scheduler.step(model_pred, i, t, latents, return_dict=False)
+                latents, denoised = self.scheduler.step(
+                    model_pred, i, t, latents, return_dict=False
+                )
 
                 # # call the callback, if provided
                 # if i == len(timesteps) - 1:
@@ -280,8 +321,12 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
 
         denoised = denoised.to(prompt_embeds.dtype)
         if not output_type == "latent":
-            image = self.vae.decode(denoised / self.vae.config.scaling_factor, return_dict=False)[0]
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            image = self.vae.decode(
+                denoised / self.vae.config.scaling_factor, return_dict=False
+            )[0]
+            image, has_nsfw_concept = self.run_safety_checker(
+                image, device, prompt_embeds.dtype
+            )
         else:
             image = denoised
             has_nsfw_concept = None
@@ -291,12 +336,16 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        image = self.image_processor.postprocess(
+            image, output_type=output_type, do_denormalize=do_denormalize
+        )
 
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(
+            images=image, nsfw_content_detected=has_nsfw_concept
+        )
 
 
 @dataclass
@@ -464,15 +513,27 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
-            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
+            self.betas = torch.linspace(
+                beta_start, beta_end, num_train_timesteps, dtype=torch.float32
+            )
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            self.betas = (
+                torch.linspace(
+                    beta_start**0.5,
+                    beta_end**0.5,
+                    num_train_timesteps,
+                    dtype=torch.float32,
+                )
+                ** 2
+            )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(
+                f"{beta_schedule} does is not implemented for {self.__class__}"
+            )
 
         # Rescale for zero SNR
         if rescale_betas_zero_snr:
@@ -485,16 +546,22 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         # For the final step, there is no previous alphas_cumprod because we are already at 0
         # `set_alpha_to_one` decides whether we set this parameter simply to one or
         # whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+        self.final_alpha_cumprod = (
+            torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+        )
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
+        self.timesteps = torch.from_numpy(
+            np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64)
+        )
 
-    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+    def scale_model_input(
+        self, sample: torch.FloatTensor, timestep: Optional[int] = None
+    ) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -511,11 +578,17 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        alpha_prod_t_prev = (
+            self.alphas_cumprod[prev_timestep]
+            if prev_timestep >= 0
+            else self.final_alpha_cumprod
+        )
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
-        variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
+        variance = (beta_prod_t_prev / beta_prod_t) * (
+            1 - alpha_prod_t / alpha_prod_t_prev
+        )
 
         return variance
 
@@ -533,7 +606,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         batch_size, channels, height, width = sample.shape
 
         if dtype not in (torch.float32, torch.float64):
-            sample = sample.float()  # upcast for quantile calculation, and clamp not implemented for cpu half
+            sample = (
+                sample.float()
+            )  # upcast for quantile calculation, and clamp not implemented for cpu half
 
         # Flatten sample for doing quantile calculation along each image
         sample = sample.reshape(batch_size, channels * height * width)
@@ -546,14 +621,21 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
 
         s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
-        sample = torch.clamp(sample, -s, s) / s  # "we threshold xt0 to the range [-s, s] and then divide by s"
+        sample = (
+            torch.clamp(sample, -s, s) / s
+        )  # "we threshold xt0 to the range [-s, s] and then divide by s"
 
         sample = sample.reshape(batch_size, channels, height, width)
         sample = sample.to(dtype)
 
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, lcm_origin_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        lcm_origin_steps: int,
+        device: Union[str, torch.device] = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
         Args:
@@ -572,9 +654,13 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         # LCM Timesteps Setting:  # Linear Spacing
         c = self.config.num_train_timesteps // lcm_origin_steps
-        lcm_origin_timesteps = np.asarray(list(range(1, lcm_origin_steps + 1))) * c - 1  # LCM Training  Steps Schedule
+        lcm_origin_timesteps = (
+            np.asarray(list(range(1, lcm_origin_steps + 1))) * c - 1
+        )  # LCM Training  Steps Schedule
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
-        timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]  # LCM Inference Steps Schedule
+        timesteps = lcm_origin_timesteps[::-skipping_step][
+            :num_inference_steps
+        ]  # LCM Inference Steps Schedule
 
         self.timesteps = torch.from_numpy(timesteps.copy()).to(device)
 
@@ -641,7 +727,11 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        alpha_prod_t_prev = (
+            self.alphas_cumprod[prev_timestep]
+            if prev_timestep >= 0
+            else self.final_alpha_cumprod
+        )
 
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
@@ -668,7 +758,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         # Noise is not used for one-step sampling.
         if len(self.timesteps) > 1:
             noise = torch.randn(model_output.shape).to(model_output.device)
-            prev_sample = alpha_prod_t_prev.sqrt() * denoised + beta_prod_t_prev.sqrt() * noise
+            prev_sample = (
+                alpha_prod_t_prev.sqrt() * denoised + beta_prod_t_prev.sqrt() * noise
+            )
         else:
             prev_sample = denoised
 
@@ -685,7 +777,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        alphas_cumprod = self.alphas_cumprod.to(
+            device=original_samples.device, dtype=original_samples.dtype
+        )
         timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
@@ -698,15 +792,22 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
 
-        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        noisy_samples = (
+            sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        )
         return noisy_samples
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
     def get_velocity(
-        self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
+        self,
+        sample: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
-        alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
+        alphas_cumprod = self.alphas_cumprod.to(
+            device=sample.device, dtype=sample.dtype
+        )
         timesteps = timesteps.to(sample.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5

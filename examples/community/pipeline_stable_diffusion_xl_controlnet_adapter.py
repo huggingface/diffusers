@@ -23,8 +23,18 @@ import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models import AutoencoderKL, ControlNetModel, MultiAdapter, T2IAdapter, UNet2DConditionModel
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    StableDiffusionXLLoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
+from diffusers.models import (
+    AutoencoderKL,
+    ControlNetModel,
+    MultiAdapter,
+    T2IAdapter,
+    UNet2DConditionModel,
+)
 from diffusers.models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
@@ -34,7 +44,9 @@ from diffusers.models.attention_processor import (
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from diffusers.pipelines.stable_diffusion_xl.pipeline_output import (
+    StableDiffusionXLPipelineOutput,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     PIL_INTERPOLATION,
@@ -122,7 +134,10 @@ def _preprocess_adapter_image(image, height, width):
         image = [image]
 
     if isinstance(image[0], PIL.Image.Image):
-        image = [np.array(i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"])) for i in image]
+        image = [
+            np.array(i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"]))
+            for i in image
+        ]
         image = [
             i[None, ..., None] if i.ndim == 2 else i[None, ...] for i in image
         ]  # expand [h, w] or [h, w, c] to [b, h, w, c]
@@ -148,12 +163,16 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
     Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
     """
-    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_text = noise_pred_text.std(
+        dim=list(range(1, noise_pred_text.ndim)), keepdim=True
+    )
     std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
     # rescale the results from guidance (fixes overexposure)
     noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    noise_cfg = (
+        guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    )
     return noise_cfg
 
 
@@ -199,7 +218,12 @@ class StableDiffusionXLControlNetAdapterPipeline(
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
-    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
+    _optional_components = [
+        "tokenizer",
+        "tokenizer_2",
+        "text_encoder",
+        "text_encoder_2",
+    ]
 
     def __init__(
         self,
@@ -230,11 +254,15 @@ class StableDiffusionXLControlNetAdapterPipeline(
             controlnet=controlnet,
             scheduler=scheduler,
         )
-        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
+        self.register_to_config(
+            force_zeros_for_empty_prompt=force_zeros_for_empty_prompt
+        )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.control_image_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
+            vae_scale_factor=self.vae_scale_factor,
+            do_convert_rgb=True,
+            do_normalize=False,
         )
         self.default_sample_size = self.unet.config.sample_size
 
@@ -301,7 +329,9 @@ class StableDiffusionXLControlNetAdapterPipeline(
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, StableDiffusionXLLoraLoaderMixin):
+        if lora_scale is not None and isinstance(
+            self, StableDiffusionXLLoraLoaderMixin
+        ):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -325,9 +355,15 @@ class StableDiffusionXLControlNetAdapterPipeline(
             batch_size = prompt_embeds.shape[0]
 
         # Define tokenizers and text encoders
-        tokenizers = [self.tokenizer, self.tokenizer_2] if self.tokenizer is not None else [self.tokenizer_2]
+        tokenizers = (
+            [self.tokenizer, self.tokenizer_2]
+            if self.tokenizer is not None
+            else [self.tokenizer_2]
+        )
         text_encoders = (
-            [self.text_encoder, self.text_encoder_2] if self.text_encoder is not None else [self.text_encoder_2]
+            [self.text_encoder, self.text_encoder_2]
+            if self.text_encoder is not None
+            else [self.text_encoder_2]
         )
 
         if prompt_embeds is None:
@@ -337,7 +373,9 @@ class StableDiffusionXLControlNetAdapterPipeline(
             # textual inversion: process multi-vector tokens if necessary
             prompt_embeds_list = []
             prompts = [prompt, prompt_2]
-            for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
+            for prompt, tokenizer, text_encoder in zip(
+                prompts, tokenizers, text_encoders
+            ):
                 if isinstance(self, TextualInversionLoaderMixin):
                     prompt = self.maybe_convert_prompt(prompt, tokenizer)
 
@@ -350,18 +388,24 @@ class StableDiffusionXLControlNetAdapterPipeline(
                 )
 
                 text_input_ids = text_inputs.input_ids
-                untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+                untruncated_ids = tokenizer(
+                    prompt, padding="longest", return_tensors="pt"
+                ).input_ids
 
-                if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                    text_input_ids, untruncated_ids
-                ):
-                    removed_text = tokenizer.batch_decode(untruncated_ids[:, tokenizer.model_max_length - 1 : -1])
+                if untruncated_ids.shape[-1] >= text_input_ids.shape[
+                    -1
+                ] and not torch.equal(text_input_ids, untruncated_ids):
+                    removed_text = tokenizer.batch_decode(
+                        untruncated_ids[:, tokenizer.model_max_length - 1 : -1]
+                    )
                     logger.warning(
                         "The following part of your input was truncated because CLIP can only handle sequences up to"
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(device), output_hidden_states=True
+                )
 
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 pooled_prompt_embeds = prompt_embeds[0]
@@ -376,8 +420,14 @@ class StableDiffusionXLControlNetAdapterPipeline(
             prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
 
         # get unconditional embeddings for classifier free guidance
-        zero_out_negative_prompt = negative_prompt is None and self.config.force_zeros_for_empty_prompt
-        if do_classifier_free_guidance and negative_prompt_embeds is None and zero_out_negative_prompt:
+        zero_out_negative_prompt = (
+            negative_prompt is None and self.config.force_zeros_for_empty_prompt
+        )
+        if (
+            do_classifier_free_guidance
+            and negative_prompt_embeds is None
+            and zero_out_negative_prompt
+        ):
             negative_prompt_embeds = torch.zeros_like(prompt_embeds)
             negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
         elif do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -385,9 +435,15 @@ class StableDiffusionXLControlNetAdapterPipeline(
             negative_prompt_2 = negative_prompt_2 or negative_prompt
 
             # normalize str to list
-            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+            negative_prompt = (
+                batch_size * [negative_prompt]
+                if isinstance(negative_prompt, str)
+                else negative_prompt
+            )
             negative_prompt_2 = (
-                batch_size * [negative_prompt_2] if isinstance(negative_prompt_2, str) else negative_prompt_2
+                batch_size * [negative_prompt_2]
+                if isinstance(negative_prompt_2, str)
+                else negative_prompt_2
             )
 
             uncond_tokens: List[str]
@@ -406,9 +462,13 @@ class StableDiffusionXLControlNetAdapterPipeline(
                 uncond_tokens = [negative_prompt, negative_prompt_2]
 
             negative_prompt_embeds_list = []
-            for negative_prompt, tokenizer, text_encoder in zip(uncond_tokens, tokenizers, text_encoders):
+            for negative_prompt, tokenizer, text_encoder in zip(
+                uncond_tokens, tokenizers, text_encoders
+            ):
                 if isinstance(self, TextualInversionLoaderMixin):
-                    negative_prompt = self.maybe_convert_prompt(negative_prompt, tokenizer)
+                    negative_prompt = self.maybe_convert_prompt(
+                        negative_prompt, tokenizer
+                    )
 
                 max_length = prompt_embeds.shape[1]
                 uncond_input = tokenizer(
@@ -432,34 +492,46 @@ class StableDiffusionXLControlNetAdapterPipeline(
             negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
 
         if self.text_encoder_2 is not None:
-            prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+            prompt_embeds = prompt_embeds.to(
+                dtype=self.text_encoder_2.dtype, device=device
+            )
         else:
             prompt_embeds = prompt_embeds.to(dtype=self.unet.dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
             if self.text_encoder_2 is not None:
-                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+                negative_prompt_embeds = negative_prompt_embeds.to(
+                    dtype=self.text_encoder_2.dtype, device=device
+                )
             else:
-                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.unet.dtype, device=device)
+                negative_prompt_embeds = negative_prompt_embeds.to(
+                    dtype=self.unet.dtype, device=device
+                )
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-
-        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
-            bs_embed * num_images_per_prompt, -1
-        )
-        if do_classifier_free_guidance:
-            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
-                bs_embed * num_images_per_prompt, -1
+            negative_prompt_embeds = negative_prompt_embeds.repeat(
+                1, num_images_per_prompt, 1
             )
+            negative_prompt_embeds = negative_prompt_embeds.view(
+                batch_size * num_images_per_prompt, seq_len, -1
+            )
+
+        pooled_prompt_embeds = pooled_prompt_embeds.repeat(
+            1, num_images_per_prompt
+        ).view(bs_embed * num_images_per_prompt, -1)
+        if do_classifier_free_guidance:
+            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(
+                1, num_images_per_prompt
+            ).view(bs_embed * num_images_per_prompt, -1)
 
         if self.text_encoder is not None:
             if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
@@ -471,7 +543,12 @@ class StableDiffusionXLControlNetAdapterPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+        return (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -480,13 +557,17 @@ class StableDiffusionXLControlNetAdapterPipeline(
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_eta = "eta" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_generator = "generator" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -496,8 +577,12 @@ class StableDiffusionXLControlNetAdapterPipeline(
         image_is_pil = isinstance(image, PIL.Image.Image)
         image_is_tensor = isinstance(image, torch.Tensor)
         image_is_np = isinstance(image, np.ndarray)
-        image_is_pil_list = isinstance(image, list) and isinstance(image[0], PIL.Image.Image)
-        image_is_tensor_list = isinstance(image, list) and isinstance(image[0], torch.Tensor)
+        image_is_pil_list = isinstance(image, list) and isinstance(
+            image[0], PIL.Image.Image
+        )
+        image_is_tensor_list = isinstance(image, list) and isinstance(
+            image[0], torch.Tensor
+        )
         image_is_np_list = isinstance(image, list) and isinstance(image[0], np.ndarray)
 
         if (
@@ -546,16 +631,21 @@ class StableDiffusionXLControlNetAdapterPipeline(
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
+            )
 
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+        if callback_steps is not None and (
+            not isinstance(callback_steps, int) or callback_steps <= 0
+        ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs
+            for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -575,10 +665,18 @@ class StableDiffusionXLControlNetAdapterPipeline(
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        elif prompt_2 is not None and (not isinstance(prompt_2, str) and not isinstance(prompt_2, list)):
-            raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}")
+        elif prompt is not None and (
+            not isinstance(prompt, str) and not isinstance(prompt, list)
+        ):
+            raise ValueError(
+                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
+            )
+        elif prompt_2 is not None and (
+            not isinstance(prompt_2, str) and not isinstance(prompt_2, list)
+        ):
+            raise ValueError(
+                f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}"
+            )
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -644,9 +742,13 @@ class StableDiffusionXLControlNetAdapterPipeline(
                     f"control guidance start: {start} cannot be larger or equal to control guidance end: {end}."
                 )
             if start < 0.0:
-                raise ValueError(f"control guidance start: {start} can't be smaller than 0.")
+                raise ValueError(
+                    f"control guidance start: {start} can't be smaller than 0."
+                )
             if end > 1.0:
-                raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
+                raise ValueError(
+                    f"control guidance end: {end} can't be larger than 1.0."
+                )
 
         # Check controlnet `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
@@ -664,12 +766,16 @@ class StableDiffusionXLControlNetAdapterPipeline(
             and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
         ):
             if not isinstance(control_image, list):
-                raise TypeError("For multiple controlnets: `control_image` must be type `list`")
+                raise TypeError(
+                    "For multiple controlnets: `control_image` must be type `list`"
+                )
 
             # When `image` is a nested list:
             # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
             elif any(isinstance(i, list) for i in control_image):
-                raise ValueError("A single batch of multiple conditionings are supported at the moment.")
+                raise ValueError(
+                    "A single batch of multiple conditionings are supported at the moment."
+                )
             elif len(control_image) != len(self.controlnet.nets):
                 raise ValueError(
                     f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(control_image)} images and {len(self.controlnet.nets)} ControlNets."
@@ -687,7 +793,9 @@ class StableDiffusionXLControlNetAdapterPipeline(
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
             if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
+                raise TypeError(
+                    "For single controlnet: `controlnet_conditioning_scale` must be type `float`."
+                )
         elif (
             isinstance(self.controlnet, MultiControlNetModel)
             or is_compiled
@@ -695,10 +803,12 @@ class StableDiffusionXLControlNetAdapterPipeline(
         ):
             if isinstance(controlnet_conditioning_scale, list):
                 if any(isinstance(i, list) for i in controlnet_conditioning_scale):
-                    raise ValueError("A single batch of multiple conditionings are supported at the moment.")
-            elif isinstance(controlnet_conditioning_scale, list) and len(controlnet_conditioning_scale) != len(
-                self.controlnet.nets
-            ):
+                    raise ValueError(
+                        "A single batch of multiple conditionings are supported at the moment."
+                    )
+            elif isinstance(controlnet_conditioning_scale, list) and len(
+                controlnet_conditioning_scale
+            ) != len(self.controlnet.nets):
                 raise ValueError(
                     "For multiple controlnets: When `controlnet_conditioning_scale` is specified as `list`, it must have"
                     " the same length as the number of controlnets"
@@ -707,18 +817,28 @@ class StableDiffusionXLControlNetAdapterPipeline(
             assert False
 
         # adapter checks
-        if isinstance(self.adapter, T2IAdapter) or is_compiled and isinstance(self.adapter._orig_mod, T2IAdapter):
+        if (
+            isinstance(self.adapter, T2IAdapter)
+            or is_compiled
+            and isinstance(self.adapter._orig_mod, T2IAdapter)
+        ):
             self.check_image(adapter_image, prompt, prompt_embeds)
         elif (
-            isinstance(self.adapter, MultiAdapter) or is_compiled and isinstance(self.adapter._orig_mod, MultiAdapter)
+            isinstance(self.adapter, MultiAdapter)
+            or is_compiled
+            and isinstance(self.adapter._orig_mod, MultiAdapter)
         ):
             if not isinstance(adapter_image, list):
-                raise TypeError("For multiple adapters: `adapter_image` must be type `list`")
+                raise TypeError(
+                    "For multiple adapters: `adapter_image` must be type `list`"
+                )
 
             # When `image` is a nested list:
             # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
             elif any(isinstance(i, list) for i in adapter_image):
-                raise ValueError("A single batch of multiple conditionings are supported at the moment.")
+                raise ValueError(
+                    "A single batch of multiple conditionings are supported at the moment."
+                )
             elif len(adapter_image) != len(self.adapter.adapters):
                 raise ValueError(
                     f"For multiple adapters: `image` must have the same length as the number of adapters, but got {len(adapter_image)} images and {len(self.adapters.nets)} Adapters."
@@ -730,18 +850,28 @@ class StableDiffusionXLControlNetAdapterPipeline(
             assert False
 
         # Check `adapter_conditioning_scale`
-        if isinstance(self.adapter, T2IAdapter) or is_compiled and isinstance(self.adapter._orig_mod, T2IAdapter):
+        if (
+            isinstance(self.adapter, T2IAdapter)
+            or is_compiled
+            and isinstance(self.adapter._orig_mod, T2IAdapter)
+        ):
             if not isinstance(adapter_conditioning_scale, float):
-                raise TypeError("For single adapter: `adapter_conditioning_scale` must be type `float`.")
+                raise TypeError(
+                    "For single adapter: `adapter_conditioning_scale` must be type `float`."
+                )
         elif (
-            isinstance(self.adapter, MultiAdapter) or is_compiled and isinstance(self.adapter._orig_mod, MultiAdapter)
+            isinstance(self.adapter, MultiAdapter)
+            or is_compiled
+            and isinstance(self.adapter._orig_mod, MultiAdapter)
         ):
             if isinstance(adapter_conditioning_scale, list):
                 if any(isinstance(i, list) for i in adapter_conditioning_scale):
-                    raise ValueError("A single batch of multiple conditionings are supported at the moment.")
-            elif isinstance(adapter_conditioning_scale, list) and len(adapter_conditioning_scale) != len(
-                self.adapter.adapters
-            ):
+                    raise ValueError(
+                        "A single batch of multiple conditionings are supported at the moment."
+                    )
+            elif isinstance(adapter_conditioning_scale, list) and len(
+                adapter_conditioning_scale
+            ) != len(self.adapter.adapters):
                 raise ValueError(
                     "For multiple adapters: When `adapter_conditioning_scale` is specified as `list`, it must have"
                     " the same length as the number of adapters"
@@ -750,8 +880,23 @@ class StableDiffusionXLControlNetAdapterPipeline(
             assert False
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -759,7 +904,9 @@ class StableDiffusionXLControlNetAdapterPipeline(
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(
+                shape, generator=generator, device=device, dtype=dtype
+            )
         else:
             latents = latents.to(device)
 
@@ -769,12 +916,18 @@ class StableDiffusionXLControlNetAdapterPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
     def _get_add_time_ids(
-        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
+        self,
+        original_size,
+        crops_coords_top_left,
+        target_size,
+        dtype,
+        text_encoder_projection_dim=None,
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
         passed_add_embed_dim = (
-            self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
+            self.unet.config.addition_time_embed_dim * len(add_time_ids)
+            + text_encoder_projection_dim
         )
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
@@ -821,7 +974,9 @@ class StableDiffusionXLControlNetAdapterPipeline(
                 height = image.shape[-2]
 
             # round down to nearest multiple of `self.adapter.downscale_factor`
-            height = (height // self.adapter.downscale_factor) * self.adapter.downscale_factor
+            height = (
+                height // self.adapter.downscale_factor
+            ) * self.adapter.downscale_factor
 
         if width is None:
             if isinstance(image, PIL.Image.Image):
@@ -830,7 +985,9 @@ class StableDiffusionXLControlNetAdapterPipeline(
                 width = image.shape[-1]
 
             # round down to nearest multiple of `self.adapter.downscale_factor`
-            width = (width // self.adapter.downscale_factor) * self.adapter.downscale_factor
+            width = (
+                width // self.adapter.downscale_factor
+            ) * self.adapter.downscale_factor
 
         return height, width
 
@@ -846,7 +1003,9 @@ class StableDiffusionXLControlNetAdapterPipeline(
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        image = self.control_image_processor.preprocess(
+            image, height=height, width=width
+        ).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
@@ -1060,8 +1219,14 @@ class StableDiffusionXLControlNetAdapterPipeline(
             [`~pipelines.stable_diffusion.StableDiffusionAdapterPipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
-        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
-        adapter = self.adapter._orig_mod if is_compiled_module(self.adapter) else self.adapter
+        controlnet = (
+            self.controlnet._orig_mod
+            if is_compiled_module(self.controlnet)
+            else self.controlnet
+        )
+        adapter = (
+            self.adapter._orig_mod if is_compiled_module(self.adapter) else self.adapter
+        )
 
         # 0. Default height and width to unet
 
@@ -1082,21 +1247,41 @@ class StableDiffusionXLControlNetAdapterPipeline(
         target_size = target_size or (height, width)
 
         # 0.1 align format for control guidance
-        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
-            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
-        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
+        if not isinstance(control_guidance_start, list) and isinstance(
+            control_guidance_end, list
+        ):
+            control_guidance_start = len(control_guidance_end) * [
+                control_guidance_start
+            ]
+        elif not isinstance(control_guidance_end, list) and isinstance(
+            control_guidance_start, list
+        ):
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
-        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
-            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
+        elif not isinstance(control_guidance_start, list) and not isinstance(
+            control_guidance_end, list
+        ):
+            mult = (
+                len(controlnet.nets)
+                if isinstance(controlnet, MultiControlNetModel)
+                else 1
+            )
             control_guidance_start, control_guidance_end = (
                 mult * [control_guidance_start],
                 mult * [control_guidance_end],
             )
 
-        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
-            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
-        if isinstance(adapter, MultiAdapter) and isinstance(adapter_conditioning_scale, float):
-            adapter_conditioning_scale = [adapter_conditioning_scale] * len(adapter.adapters)
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(
+            controlnet_conditioning_scale, float
+        ):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(
+                controlnet.nets
+            )
+        if isinstance(adapter, MultiAdapter) and isinstance(
+            adapter_conditioning_scale, float
+        ):
+            adapter_conditioning_scale = [adapter_conditioning_scale] * len(
+                adapter.adapters
+            )
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -1270,55 +1455,83 @@ class StableDiffusionXLControlNetAdapterPipeline(
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            add_text_embeds = torch.cat(
+                [negative_pooled_prompt_embeds, add_text_embeds], dim=0
+            )
             add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
-        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
+        add_time_ids = add_time_ids.to(device).repeat(
+            batch_size * num_images_per_prompt, 1
+        )
 
         # 8. Denoising loop
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        num_warmup_steps = max(
+            len(timesteps) - num_inference_steps * self.scheduler.order, 0
+        )
 
         # 7.1 Apply denoising_end
-        if denoising_end is not None and isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1:
+        if (
+            denoising_end is not None
+            and isinstance(denoising_end, float)
+            and denoising_end > 0
+            and denoising_end < 1
+        ):
             discrete_timestep_cutoff = int(
                 round(
                     self.scheduler.config.num_train_timesteps
                     - (denoising_end * self.scheduler.config.num_train_timesteps)
                 )
             )
-            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
+            num_inference_steps = len(
+                list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps))
+            )
             timesteps = timesteps[:num_inference_steps]
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = (
+                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                )
 
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = self.scheduler.scale_model_input(
+                    latent_model_input, t
+                )
 
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs = {
+                    "text_embeds": add_text_embeds,
+                    "time_ids": add_time_ids,
+                }
 
                 if i < int(num_inference_steps * adapter_conditioning_factor):
-                    down_intrablock_additional_residuals = [state.clone() for state in adapter_state]
+                    down_intrablock_additional_residuals = [
+                        state.clone() for state in adapter_state
+                    ]
                 else:
                     down_intrablock_additional_residuals = None
 
                 # ----------- ControlNet
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input_controlnet = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input_controlnet = (
+                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                )
 
                 # concat latents, mask, masked_image_latents in the channel dimension
-                latent_model_input_controlnet = self.scheduler.scale_model_input(latent_model_input_controlnet, t)
+                latent_model_input_controlnet = self.scheduler.scale_model_input(
+                    latent_model_input_controlnet, t
+                )
 
                 # controlnet(s) inference
                 if guess_mode and do_classifier_free_guidance:
                     # Infer ControlNet only for the conditional batch.
                     control_model_input = latents
-                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
+                    control_model_input = self.scheduler.scale_model_input(
+                        control_model_input, t
+                    )
                     controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
                     controlnet_added_cond_kwargs = {
                         "text_embeds": add_text_embeds.chunk(2)[1],
@@ -1330,7 +1543,12 @@ class StableDiffusionXLControlNetAdapterPipeline(
                     controlnet_added_cond_kwargs = added_cond_kwargs
 
                 if isinstance(controlnet_keep[i], list):
-                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+                    cond_scale = [
+                        c * s
+                        for c, s in zip(
+                            controlnet_conditioning_scale, controlnet_keep[i]
+                        )
+                    ]
                 else:
                     controlnet_cond_scale = controlnet_conditioning_scale
                     if isinstance(controlnet_cond_scale, list):
@@ -1362,17 +1580,25 @@ class StableDiffusionXLControlNetAdapterPipeline(
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+                    noise_pred = rescale_noise_cfg(
+                        noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if i == len(timesteps) - 1 or (
+                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                ):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
@@ -1380,13 +1606,19 @@ class StableDiffusionXLControlNetAdapterPipeline(
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
-            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+            needs_upcasting = (
+                self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+            )
 
             if needs_upcasting:
                 self.upcast_vae()
-                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+                latents = latents.to(
+                    next(iter(self.vae.post_quant_conv.parameters())).dtype
+                )
 
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.vae.decode(
+                latents / self.vae.config.scaling_factor, return_dict=False
+            )[0]
 
             # cast back to fp16 if needed
             if needs_upcasting:

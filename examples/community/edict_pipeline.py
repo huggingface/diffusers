@@ -5,7 +5,12 @@ from PIL import Image
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    DiffusionPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import (
     deprecate,
@@ -39,7 +44,10 @@ class EDICTPipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def _encode_prompt(
-        self, prompt: str, negative_prompt: Optional[str] = None, do_classifier_free_guidance: bool = False
+        self,
+        prompt: str,
+        negative_prompt: Optional[str] = None,
+        do_classifier_free_guidance: bool = False,
     ):
         text_inputs = self.tokenizer(
             prompt,
@@ -49,9 +57,13 @@ class EDICTPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
 
-        prompt_embeds = self.text_encoder(text_inputs.input_ids.to(self.device)).last_hidden_state
+        prompt_embeds = self.text_encoder(
+            text_inputs.input_ids.to(self.device)
+        ).last_hidden_state
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=self.device)
+        prompt_embeds = prompt_embeds.to(
+            dtype=self.text_encoder.dtype, device=self.device
+        )
 
         if do_classifier_free_guidance:
             uncond_tokens = "" if negative_prompt is None else negative_prompt
@@ -64,7 +76,9 @@ class EDICTPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
 
-            negative_prompt_embeds = self.text_encoder(uncond_input.input_ids.to(self.device)).last_hidden_state
+            negative_prompt_embeds = self.text_encoder(
+                uncond_input.input_ids.to(self.device)
+            ).last_hidden_state
 
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
@@ -86,7 +100,11 @@ class EDICTPipeline(DiffusionPipeline):
         # as self.alphas_cumprod is always in cpu
         t = int(t)
 
-        alpha_prod = self.scheduler.alphas_cumprod[t] if t >= 0 else self.scheduler.final_alpha_cumprod
+        alpha_prod = (
+            self.scheduler.alphas_cumprod[t]
+            if t >= 0
+            else self.scheduler.final_alpha_cumprod
+        )
 
         return alpha_prod, 1 - alpha_prod
 
@@ -97,7 +115,11 @@ class EDICTPipeline(DiffusionPipeline):
         model_output: torch.Tensor,
         timestep: torch.Tensor,
     ):
-        prev_timestep = timestep - self.scheduler.config.num_train_timesteps / self.scheduler.num_inference_steps
+        prev_timestep = (
+            timestep
+            - self.scheduler.config.num_train_timesteps
+            / self.scheduler.num_inference_steps
+        )
 
         alpha_prod_t, beta_prod_t = self._get_alpha_and_beta(timestep)
         alpha_prod_t_prev, beta_prod_t_prev = self._get_alpha_and_beta(prev_timestep)
@@ -116,7 +138,11 @@ class EDICTPipeline(DiffusionPipeline):
         model_output: torch.Tensor,
         timestep: torch.Tensor,
     ):
-        prev_timestep = timestep - self.scheduler.config.num_train_timesteps / self.scheduler.num_inference_steps
+        prev_timestep = (
+            timestep
+            - self.scheduler.config.num_train_timesteps
+            / self.scheduler.num_inference_steps
+        )
 
         alpha_prod_t, beta_prod_t = self._get_alpha_and_beta(timestep)
         alpha_prod_t_prev, beta_prod_t_prev = self._get_alpha_and_beta(prev_timestep)
@@ -153,7 +179,9 @@ class EDICTPipeline(DiffusionPipeline):
         coupled_latents = [latent.clone(), latent.clone()]
 
         for i, t in tqdm(enumerate(timesteps), total=len(timesteps)):
-            coupled_latents = self.noise_mixing_layer(x=coupled_latents[0], y=coupled_latents[1])
+            coupled_latents = self.noise_mixing_layer(
+                x=coupled_latents[0], y=coupled_latents[1]
+            )
 
             # j - model_input index, k - base index
             for j in range(2):
@@ -166,13 +194,21 @@ class EDICTPipeline(DiffusionPipeline):
                 model_input = coupled_latents[j]
                 base = coupled_latents[k]
 
-                latent_model_input = torch.cat([model_input] * 2) if do_classifier_free_guidance else model_input
+                latent_model_input = (
+                    torch.cat([model_input] * 2)
+                    if do_classifier_free_guidance
+                    else model_input
+                )
 
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeds).sample
+                noise_pred = self.unet(
+                    latent_model_input, t, encoder_hidden_states=text_embeds
+                ).sample
 
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 base, model_input = self.noise_step(
                     base=base,
@@ -202,8 +238,12 @@ class EDICTPipeline(DiffusionPipeline):
 
         image = self.image_processor.preprocess(image)
 
-        base_embeds = self._encode_prompt(base_prompt, negative_prompt, do_classifier_free_guidance)
-        target_embeds = self._encode_prompt(target_prompt, negative_prompt, do_classifier_free_guidance)
+        base_embeds = self._encode_prompt(
+            base_prompt, negative_prompt, do_classifier_free_guidance
+        )
+        target_embeds = self._encode_prompt(
+            target_prompt, negative_prompt, do_classifier_free_guidance
+        )
 
         self.scheduler.set_timesteps(num_inference_steps, self.device)
 
@@ -211,7 +251,9 @@ class EDICTPipeline(DiffusionPipeline):
         fwd_timesteps = self.scheduler.timesteps[t_limit:]
         bwd_timesteps = fwd_timesteps.flip(0)
 
-        coupled_latents = self.prepare_latents(image, base_embeds, bwd_timesteps, guidance_scale, generator)
+        coupled_latents = self.prepare_latents(
+            image, base_embeds, bwd_timesteps, guidance_scale, generator
+        )
 
         for i, t in tqdm(enumerate(fwd_timesteps), total=len(fwd_timesteps)):
             # j - model_input index, k - base index
@@ -225,13 +267,21 @@ class EDICTPipeline(DiffusionPipeline):
                 model_input = coupled_latents[j]
                 base = coupled_latents[k]
 
-                latent_model_input = torch.cat([model_input] * 2) if do_classifier_free_guidance else model_input
+                latent_model_input = (
+                    torch.cat([model_input] * 2)
+                    if do_classifier_free_guidance
+                    else model_input
+                )
 
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=target_embeds).sample
+                noise_pred = self.unet(
+                    latent_model_input, t, encoder_hidden_states=target_embeds
+                ).sample
 
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 base, model_input = self.denoise_step(
                     base=base,
@@ -242,7 +292,9 @@ class EDICTPipeline(DiffusionPipeline):
 
                 coupled_latents[k] = model_input
 
-            coupled_latents = self.denoise_mixing_layer(x=coupled_latents[0], y=coupled_latents[1])
+            coupled_latents = self.denoise_mixing_layer(
+                x=coupled_latents[0], y=coupled_latents[1]
+            )
 
         # either one is fine
         final_latent = coupled_latents[0]
@@ -252,7 +304,12 @@ class EDICTPipeline(DiffusionPipeline):
                 f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
                 "`pil`, `np`, `pt`, `latent`"
             )
-            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "Unsupported output_type",
+                "1.0.0",
+                deprecation_message,
+                standard_warn=False,
+            )
             output_type = "np"
 
         if output_type == "latent":

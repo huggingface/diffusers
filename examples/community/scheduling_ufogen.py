@@ -206,10 +206,20 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
-            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
+            self.betas = torch.linspace(
+                beta_start, beta_end, num_train_timesteps, dtype=torch.float32
+            )
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            self.betas = (
+                torch.linspace(
+                    beta_start**0.5,
+                    beta_end**0.5,
+                    num_train_timesteps,
+                    dtype=torch.float32,
+                )
+                ** 2
+            )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -218,7 +228,9 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
             betas = torch.linspace(-6, 6, num_train_timesteps)
             self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(
+                f"{beta_schedule} does is not implemented for {self.__class__}"
+            )
 
         # Rescale for zero SNR
         if rescale_betas_zero_snr:
@@ -230,7 +242,9 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         # For the final step, there is no previous alphas_cumprod because we are already at 0
         # `set_alpha_to_one` decides whether we set this parameter simply to one or
         # whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+        self.final_alpha_cumprod = (
+            torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+        )
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -238,9 +252,13 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.custom_timesteps = False
         self.num_inference_steps = None
-        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
+        self.timesteps = torch.from_numpy(
+            np.arange(0, num_train_timesteps)[::-1].copy()
+        )
 
-    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+    def scale_model_input(
+        self, sample: torch.FloatTensor, timestep: Optional[int] = None
+    ) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -279,7 +297,9 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
 
         """
         if num_inference_steps is not None and timesteps is not None:
-            raise ValueError("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
+            raise ValueError(
+                "Can only pass one of `num_inference_steps` or `custom_timesteps`."
+            )
 
         if timesteps is not None:
             for i in range(1, len(timesteps)):
@@ -309,28 +329,43 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
             if num_inference_steps == 1:
                 # Set the timestep schedule to num_train_timesteps - 1 rather than 0
                 # (that is, the one-step timestep schedule is always trailing rather than leading or linspace)
-                timesteps = np.array([self.config.num_train_timesteps - 1], dtype=np.int64)
+                timesteps = np.array(
+                    [self.config.num_train_timesteps - 1], dtype=np.int64
+                )
             else:
                 # TODO: For now, retain the DDPM timestep spacing logic
                 # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
                 if self.config.timestep_spacing == "linspace":
                     timesteps = (
-                        np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps)
+                        np.linspace(
+                            0, self.config.num_train_timesteps - 1, num_inference_steps
+                        )
                         .round()[::-1]
                         .copy()
                         .astype(np.int64)
                     )
                 elif self.config.timestep_spacing == "leading":
-                    step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+                    step_ratio = (
+                        self.config.num_train_timesteps // self.num_inference_steps
+                    )
                     # creates integer timesteps by multiplying by ratio
                     # casting to int to avoid issues when num_inference_step is power of 3
-                    timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+                    timesteps = (
+                        (np.arange(0, num_inference_steps) * step_ratio)
+                        .round()[::-1]
+                        .copy()
+                        .astype(np.int64)
+                    )
                     timesteps += self.config.steps_offset
                 elif self.config.timestep_spacing == "trailing":
-                    step_ratio = self.config.num_train_timesteps / self.num_inference_steps
+                    step_ratio = (
+                        self.config.num_train_timesteps / self.num_inference_steps
+                    )
                     # creates integer timesteps by multiplying by ratio
                     # casting to int to avoid issues when num_inference_step is power of 3
-                    timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -step_ratio)).astype(np.int64)
+                    timesteps = np.round(
+                        np.arange(self.config.num_train_timesteps, 0, -step_ratio)
+                    ).astype(np.int64)
                     timesteps -= 1
                 else:
                     raise ValueError(
@@ -354,7 +389,9 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         batch_size, channels, *remaining_dims = sample.shape
 
         if dtype not in (torch.float32, torch.float64):
-            sample = sample.float()  # upcast for quantile calculation, and clamp not implemented for cpu half
+            sample = (
+                sample.float()
+            )  # upcast for quantile calculation, and clamp not implemented for cpu half
 
         # Flatten sample for doing quantile calculation along each image
         sample = sample.reshape(batch_size, channels * np.prod(remaining_dims))
@@ -366,7 +403,9 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
             s, min=1, max=self.config.sample_max_value
         )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
         s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
-        sample = torch.clamp(sample, -s, s) / s  # "we threshold xt0 to the range [-s, s] and then divide by s"
+        sample = (
+            torch.clamp(sample, -s, s) / s
+        )  # "we threshold xt0 to the range [-s, s] and then divide by s"
 
         sample = sample.reshape(batch_size, channels, *remaining_dims)
         sample = sample.to(dtype)
@@ -409,7 +448,9 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
 
         # 1. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.final_alpha_cumprod
+        alpha_prod_t_prev = (
+            self.alphas_cumprod[prev_t] if prev_t >= 0 else self.final_alpha_cumprod
+        )
         beta_prod_t = 1 - alpha_prod_t
         # beta_prod_t_prev = 1 - alpha_prod_t_prev
         # current_alpha_t = alpha_prod_t / alpha_prod_t_prev
@@ -418,11 +459,15 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
         if self.config.prediction_type == "epsilon":
-            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+            pred_original_sample = (
+                sample - beta_prod_t ** (0.5) * model_output
+            ) / alpha_prod_t ** (0.5)
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
         elif self.config.prediction_type == "v_prediction":
-            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
+            pred_original_sample = (alpha_prod_t**0.5) * sample - (
+                beta_prod_t**0.5
+            ) * model_output
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` or"
@@ -444,10 +489,18 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
             # TODO: is this correct?
             # Sample prev sample x_{t - 1} ~ q(x_{t - 1} | x_0 =  G(x_t, t))
             device = model_output.device
-            noise = randn_tensor(model_output.shape, generator=generator, device=device, dtype=model_output.dtype)
+            noise = randn_tensor(
+                model_output.shape,
+                generator=generator,
+                device=device,
+                dtype=model_output.dtype,
+            )
             sqrt_alpha_prod_t_prev = alpha_prod_t_prev**0.5
             sqrt_one_minus_alpha_prod_t_prev = (1 - alpha_prod_t_prev) ** 0.5
-            pred_prev_sample = sqrt_alpha_prod_t_prev * pred_original_sample + sqrt_one_minus_alpha_prod_t_prev * noise
+            pred_prev_sample = (
+                sqrt_alpha_prod_t_prev * pred_original_sample
+                + sqrt_one_minus_alpha_prod_t_prev * noise
+            )
         else:
             # Simply return the pred_original_sample. If `prediction_type == "sample"`, this is equivalent to returning
             # the output of the GAN generator U-Net on the initial noisy latents x_T ~ N(0, I).
@@ -456,7 +509,9 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (pred_prev_sample,)
 
-        return UFOGenSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
+        return UFOGenSchedulerOutput(
+            prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample
+        )
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
@@ -466,7 +521,9 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        alphas_cumprod = self.alphas_cumprod.to(
+            device=original_samples.device, dtype=original_samples.dtype
+        )
         timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
@@ -479,15 +536,22 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
 
-        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        noisy_samples = (
+            sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        )
         return noisy_samples
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
     def get_velocity(
-        self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
+        self,
+        sample: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
-        alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
+        alphas_cumprod = self.alphas_cumprod.to(
+            device=sample.device, dtype=sample.dtype
+        )
         timesteps = timesteps.to(sample.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
@@ -516,7 +580,9 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
                 prev_t = self.timesteps[index + 1]
         else:
             num_inference_steps = (
-                self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps
+                self.num_inference_steps
+                if self.num_inference_steps
+                else self.config.num_train_timesteps
             )
             prev_t = timestep - self.config.num_train_timesteps // num_inference_steps
 

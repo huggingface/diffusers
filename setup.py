@@ -176,7 +176,7 @@ class DepsTableUpdateCommand(Command):
         (
             "dep-table-update",
             None,
-            "updates src/diffusers/dependency_versions_table.py",
+            "updates src/diffusers_plus_plus/dependency_versions_table.py",
         ),
     ]
 
@@ -197,7 +197,7 @@ class DepsTableUpdateCommand(Command):
             "}",
             "",
         ]
-        target = "src/diffusers/dependency_versions_table.py"
+        target = "src/diffusers_plus_plus/dependency_versions_table.py"
         print(f"updating {target}")
         with open(target, "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(content))
@@ -251,16 +251,16 @@ install_requires = [
 version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
-    name="diffusers",
-    version="0.28.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
-    description="State-of-the-art diffusion in PyTorch and JAX.",
+    name="diffusers_plus_plus",
+    version="0.0.1.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    description="State-of-the-art diffusion in PyTorch (FORK).",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     keywords="deep learning diffusion jax pytorch stable diffusion audioldm",
     license="Apache 2.0 License",
     author="The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/diffusers/graphs/contributors)",
-    author_email="patrick@huggingface.co",
-    url="https://github.com/huggingface/diffusers",
+    author_email="",
+    url="https://github.com/modelslab/diffusers_plus_plus",
     package_dir={"": "src"},
     packages=find_packages("src"),
     package_data={"diffusers": ["py.typed"]},

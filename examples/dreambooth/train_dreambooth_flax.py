@@ -103,7 +103,12 @@ def parse_args():
         action="store_true",
         help="Flag to add prior preservation loss.",
     )
-    parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="The weight of prior preservation loss.")
+    parser.add_argument(
+        "--prior_loss_weight",
+        type=float,
+        default=1.0,
+        help="The weight of prior preservation loss.",
+    )
     parser.add_argument(
         "--num_class_images",
         type=int,
@@ -119,8 +124,12 @@ def parse_args():
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
-    parser.add_argument("--save_steps", type=int, default=None, help="Save a checkpoint every X steps.")
-    parser.add_argument("--seed", type=int, default=0, help="A seed for reproducible training.")
+    parser.add_argument(
+        "--save_steps", type=int, default=None, help="Save a checkpoint every X steps."
+    )
+    parser.add_argument(
+        "--seed", type=int, default=0, help="A seed for reproducible training."
+    )
     parser.add_argument(
         "--resolution",
         type=int,
@@ -139,12 +148,22 @@ def parse_args():
             " cropped. The images will be resized to the resolution first before cropping."
         ),
     )
-    parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
     parser.add_argument(
-        "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
+        "--train_text_encoder",
+        action="store_true",
+        help="Whether to train the text encoder",
     )
     parser.add_argument(
-        "--sample_batch_size", type=int, default=4, help="Batch size (per device) for sampling images."
+        "--train_batch_size",
+        type=int,
+        default=4,
+        help="Batch size (per device) for the training dataloader.",
+    )
+    parser.add_argument(
+        "--sample_batch_size",
+        type=int,
+        default=4,
+        help="Batch size (per device) for sampling images.",
     )
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument(
@@ -165,13 +184,41 @@ def parse_args():
         default=False,
         help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
-    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use."
+    )
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
+    parser.add_argument(
+        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
+    )
+    parser.add_argument(
+        "--push_to_hub",
+        action="store_true",
+        help="Whether or not to push the model to the Hub.",
+    )
+    parser.add_argument(
+        "--hub_token",
+        type=str,
+        default=None,
+        help="The token to use to push to the Model Hub.",
+    )
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -198,7 +245,12 @@ def parse_args():
             "and an Nvidia Ampere GPU."
         ),
     )
-    parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="For distributed training: local_rank",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -262,8 +314,12 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.Resize(
+                    size, interpolation=transforms.InterpolationMode.BILINEAR
+                ),
+                transforms.CenterCrop(size)
+                if center_crop
+                else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -274,7 +330,9 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        instance_image = Image.open(
+            self.instance_images_path[index % self.num_instance_images]
+        )
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
@@ -286,7 +344,9 @@ class DreamBoothDataset(Dataset):
         ).input_ids
 
         if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
+            class_image = Image.open(
+                self.class_images_path[index % self.num_class_images]
+            )
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
@@ -349,7 +409,9 @@ def main():
 
         if cur_class_images < args.num_class_images:
             pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path, safety_checker=None, revision=args.revision
+                args.pretrained_model_name_or_path,
+                safety_checker=None,
+                revision=args.revision,
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -358,10 +420,14 @@ def main():
 
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
             total_sample_batch_size = args.sample_batch_size * jax.local_device_count()
-            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=total_sample_batch_size)
+            sample_dataloader = torch.utils.data.DataLoader(
+                sample_dataset, batch_size=total_sample_batch_size
+            )
 
             for example in tqdm(
-                sample_dataloader, desc="Generating class images", disable=not jax.process_index() == 0
+                sample_dataloader,
+                desc="Generating class images",
+                disable=not jax.process_index() == 0,
             ):
                 prompt_ids = pipeline.prepare_inputs(example["prompt"])
                 prompt_ids = shard(prompt_ids)
@@ -369,12 +435,17 @@ def main():
                 rng = jax.random.split(rng)[0]
                 sample_rng = jax.random.split(rng, jax.device_count())
                 images = pipeline(prompt_ids, p_params, sample_rng, jit=True).images
-                images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
+                images = images.reshape(
+                    (images.shape[0] * images.shape[1],) + images.shape[-3:]
+                )
                 images = pipeline.numpy_to_pil(np.array(images))
 
                 for i, image in enumerate(images):
                     hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
-                    image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                    image_filename = (
+                        class_images_dir
+                        / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                    )
                     image.save(image_filename)
 
             del pipeline
@@ -386,7 +457,9 @@ def main():
 
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+                repo_id=args.hub_model_id or Path(args.output_dir).name,
+                exist_ok=True,
+                token=args.hub_token,
             ).repo_id
 
     # Load the tokenizer and add the placeholder token as a additional special token
@@ -394,7 +467,9 @@ def main():
         tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+            args.pretrained_model_name_or_path,
+            subfolder="tokenizer",
+            revision=args.revision,
         )
     else:
         raise NotImplementedError("No tokenizer specified!")
@@ -424,7 +499,10 @@ def main():
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
         input_ids = tokenizer.pad(
-            {"input_ids": input_ids}, padding="max_length", max_length=tokenizer.model_max_length, return_tensors="pt"
+            {"input_ids": input_ids},
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            return_tensors="pt",
         ).input_ids
 
         batch = {
@@ -443,7 +521,11 @@ def main():
         )
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=total_train_batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True
+        train_dataset,
+        batch_size=total_train_batch_size,
+        shuffle=True,
+        collate_fn=collate_fn,
+        drop_last=True,
     )
 
     weight_dtype = jnp.float32
@@ -456,7 +538,10 @@ def main():
         # TODO(patil-suraj): Upload flax weights for the VAE
         vae_arg, vae_kwargs = (args.pretrained_vae_name_or_path, {"from_pt": True})
     else:
-        vae_arg, vae_kwargs = (args.pretrained_model_name_or_path, {"subfolder": "vae", "revision": args.revision})
+        vae_arg, vae_kwargs = (
+            args.pretrained_model_name_or_path,
+            {"subfolder": "vae", "revision": args.revision},
+        )
 
     # Load models and create wrapper for stable diffusion
     text_encoder = FlaxCLIPTextModel.from_pretrained(
@@ -496,13 +581,18 @@ def main():
         adamw,
     )
 
-    unet_state = train_state.TrainState.create(apply_fn=unet.__call__, params=unet_params, tx=optimizer)
+    unet_state = train_state.TrainState.create(
+        apply_fn=unet.__call__, params=unet_params, tx=optimizer
+    )
     text_encoder_state = train_state.TrainState.create(
         apply_fn=text_encoder.__call__, params=text_encoder.params, tx=optimizer
     )
 
     noise_scheduler = FlaxDDPMScheduler(
-        beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
+        beta_start=0.00085,
+        beta_end=0.012,
+        beta_schedule="scaled_linear",
+        num_train_timesteps=1000,
     )
     noise_scheduler_state = noise_scheduler.create_state()
 
@@ -513,14 +603,20 @@ def main():
         dropout_rng, sample_rng, new_train_rng = jax.random.split(train_rng, 3)
 
         if args.train_text_encoder:
-            params = {"text_encoder": text_encoder_state.params, "unet": unet_state.params}
+            params = {
+                "text_encoder": text_encoder_state.params,
+                "unet": unet_state.params,
+            }
         else:
             params = {"unet": unet_state.params}
 
         def compute_loss(params):
             # Convert images to latent space
             vae_outputs = vae.apply(
-                {"params": vae_params}, batch["pixel_values"], deterministic=True, method=vae.encode
+                {"params": vae_params},
+                batch["pixel_values"],
+                deterministic=True,
+                method=vae.encode,
             )
             latents = vae_outputs.latent_dist.sample(sample_rng)
             # (NHWC) -> (NCHW)
@@ -541,12 +637,17 @@ def main():
 
             # Add noise to the latents according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
-            noisy_latents = noise_scheduler.add_noise(noise_scheduler_state, latents, noise, timesteps)
+            noisy_latents = noise_scheduler.add_noise(
+                noise_scheduler_state, latents, noise, timesteps
+            )
 
             # Get the text embedding for conditioning
             if args.train_text_encoder:
                 encoder_hidden_states = text_encoder_state.apply_fn(
-                    batch["input_ids"], params=params["text_encoder"], dropout_rng=dropout_rng, train=True
+                    batch["input_ids"],
+                    params=params["text_encoder"],
+                    dropout_rng=dropout_rng,
+                    train=True,
                 )[0]
             else:
                 encoder_hidden_states = text_encoder(
@@ -555,16 +656,24 @@ def main():
 
             # Predict the noise residual
             model_pred = unet.apply(
-                {"params": params["unet"]}, noisy_latents, timesteps, encoder_hidden_states, train=True
+                {"params": params["unet"]},
+                noisy_latents,
+                timesteps,
+                encoder_hidden_states,
+                train=True,
             ).sample
 
             # Get the target for loss depending on the prediction type
             if noise_scheduler.config.prediction_type == "epsilon":
                 target = noise
             elif noise_scheduler.config.prediction_type == "v_prediction":
-                target = noise_scheduler.get_velocity(noise_scheduler_state, latents, noise, timesteps)
+                target = noise_scheduler.get_velocity(
+                    noise_scheduler_state, latents, noise, timesteps
+                )
             else:
-                raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                raise ValueError(
+                    f"Unknown prediction type {noise_scheduler.config.prediction_type}"
+                )
 
             if args.with_prior_preservation:
                 # Chunk the noise and noise_pred into two parts and compute the loss on each part separately.
@@ -593,7 +702,9 @@ def main():
 
         new_unet_state = unet_state.apply_gradients(grads=grad["unet"])
         if args.train_text_encoder:
-            new_text_encoder_state = text_encoder_state.apply_gradients(grads=grad["text_encoder"])
+            new_text_encoder_state = text_encoder_state.apply_gradients(
+                grads=grad["text_encoder"]
+            )
         else:
             new_text_encoder_state = text_encoder_state
 
@@ -623,12 +734,16 @@ def main():
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
+    logger.info(
+        f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}"
+    )
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
 
     def checkpoint(step=None):
         # Create the pipeline using the trained modules and save it.
-        scheduler, _ = FlaxPNDMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+        scheduler, _ = FlaxPNDMScheduler.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", subfolder="scheduler"
+        )
         safety_checker = FlaxStableDiffusionSafetyChecker.from_pretrained(
             "CompVis/stable-diffusion-safety-checker", from_pt=True
         )
@@ -639,7 +754,9 @@ def main():
             tokenizer=tokenizer,
             scheduler=scheduler,
             safety_checker=safety_checker,
-            feature_extractor=CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32"),
+            feature_extractor=CLIPImageProcessor.from_pretrained(
+                "openai/clip-vit-base-patch32"
+            ),
         )
 
         outdir = os.path.join(args.output_dir, str(step)) if step else args.output_dir
@@ -671,7 +788,9 @@ def main():
         train_metrics = []
 
         steps_per_epoch = len(train_dataset) // total_train_batch_size
-        train_step_progress_bar = tqdm(total=steps_per_epoch, desc="Training...", position=1, leave=False)
+        train_step_progress_bar = tqdm(
+            total=steps_per_epoch, desc="Training...", position=1, leave=False
+        )
         # train
         for batch in train_dataloader:
             batch = shard(batch)
@@ -683,7 +802,11 @@ def main():
             train_step_progress_bar.update(jax.local_device_count())
 
             global_step += 1
-            if jax.process_index() == 0 and args.save_steps and global_step % args.save_steps == 0:
+            if (
+                jax.process_index() == 0
+                and args.save_steps
+                and global_step % args.save_steps == 0
+            ):
                 checkpoint(global_step)
             if global_step >= args.max_train_steps:
                 break
@@ -691,7 +814,9 @@ def main():
         train_metric = jax_utils.unreplicate(train_metric)
 
         train_step_progress_bar.close()
-        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
+        epochs.write(
+            f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})"
+        )
 
     if jax.process_index() == 0:
         checkpoint()

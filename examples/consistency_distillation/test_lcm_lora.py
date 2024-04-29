@@ -53,10 +53,14 @@ class TextToImageLCM(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            self.assertTrue(
+                os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+            )
 
             # make sure the state_dict has the correct naming in the parameters.
-            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+            lora_state_dict = safetensors.torch.load_file(
+                os.path.join(tmpdir, "pytorch_lora_weights.safetensors")
+            )
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 

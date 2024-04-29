@@ -25,19 +25,33 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 import torch.nn.functional as F
 from packaging import version
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    IPAdapterMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.attention import Attention, GatedSelfAttentionDense
 from diffusers.models.attention_processor import AttnProcessor2_0
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines import DiffusionPipeline
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.pipeline_output import (
+    StableDiffusionPipelineOutput,
+)
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -130,13 +144,17 @@ def convert_attn_keys(key):
     return f"{key[0]}_blocks.{key[1]}.attentions.{key[2]}.transformer_blocks.{key[3]}.attn2.processor"
 
 
-DEFAULT_GUIDANCE_ATTN_KEYS = [convert_attn_keys(key) for key in DEFAULT_GUIDANCE_ATTN_KEYS]
+DEFAULT_GUIDANCE_ATTN_KEYS = [
+    convert_attn_keys(key) for key in DEFAULT_GUIDANCE_ATTN_KEYS
+]
 
 
 def scale_proportion(obj_box, H, W):
     # Separately rounding box_w and box_h to allow shift invariant box sizes. Otherwise box sizes may change when both coordinates being rounded end with ".5".
     x_min, y_min = round(obj_box[0] * W), round(obj_box[1] * H)
-    box_w, box_h = round((obj_box[2] - obj_box[0]) * W), round((obj_box[3] - obj_box[1]) * H)
+    box_w, box_h = round((obj_box[2] - obj_box[0]) * W), round(
+        (obj_box[3] - obj_box[1]) * H
+    )
     x_max, y_max = x_min + box_w, y_min + box_h
 
     x_min, y_min = max(x_min, 0), max(y_min, 0)
@@ -182,17 +200,25 @@ class AttnProcessorWithHook(AttnProcessor2_0):
 
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+            hidden_states = hidden_states.view(
+                batch_size, channel, height * width
+            ).transpose(1, 2)
 
         batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+            hidden_states.shape
+            if encoder_hidden_states is None
+            else encoder_hidden_states.shape
         )
 
         if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            attention_mask = attn.prepare_attention_mask(
+                attention_mask, sequence_length, batch_size
+            )
 
         if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(
+                1, 2
+            )
 
         args = () if USE_PEFT_BACKEND else (scale,)
         query = attn.to_q(hidden_states, *args)
@@ -200,7 +226,9 @@ class AttnProcessorWithHook(AttnProcessor2_0):
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+            encoder_hidden_states = attn.norm_encoder_hidden_states(
+                encoder_hidden_states
+            )
 
         key = attn.to_k(encoder_hidden_states, *args)
         value = attn.to_v(encoder_hidden_states, *args)
@@ -212,7 +240,9 @@ class AttnProcessorWithHook(AttnProcessor2_0):
             query_batch_dim = attn.head_to_batch_dim(query)
             key_batch_dim = attn.head_to_batch_dim(key)
             value_batch_dim = attn.head_to_batch_dim(value)
-            attention_probs = attn.get_attention_scores(query_batch_dim, key_batch_dim, attention_mask)
+            attention_probs = attn.get_attention_scores(
+                query_batch_dim, key_batch_dim, attention_mask
+            )
 
         if self.hook is not None and self.enabled:
             # Call the hook with query, key, value, and attention maps
@@ -233,7 +263,9 @@ class AttnProcessorWithHook(AttnProcessor2_0):
             if attention_mask is not None:
                 # scaled_dot_product_attention expects attention_mask shape to be
                 # (batch, heads, source_length, target_length)
-                attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+                attention_mask = attention_mask.view(
+                    batch_size, attn.heads, -1, attention_mask.shape[-1]
+                )
 
             # the output of sdp = (batch, num_heads, seq_len, head_dim)
             # TODO: add support for attn.scale when we move to Torch 2.1
@@ -245,7 +277,9 @@ class AttnProcessorWithHook(AttnProcessor2_0):
                 dropout_p=0.0,
                 is_causal=False,
             )
-            hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+            hidden_states = hidden_states.transpose(1, 2).reshape(
+                batch_size, -1, attn.heads * head_dim
+            )
             hidden_states = hidden_states.to(query.dtype)
         else:
             hidden_states = torch.bmm(attention_probs, value)
@@ -257,7 +291,9 @@ class AttnProcessorWithHook(AttnProcessor2_0):
         hidden_states = attn.to_out[1](hidden_states)
 
         if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            hidden_states = hidden_states.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual
@@ -331,7 +367,10 @@ class LLMGroundedDiffusionPipeline(
         # This is copied from StableDiffusionPipeline, with hook initizations for LMD+.
         super().__init__()
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+        if (
+            hasattr(scheduler.config, "steps_offset")
+            and scheduler.config.steps_offset != 1
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -340,12 +379,17 @@ class LLMGroundedDiffusionPipeline(
                 " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
                 " file"
             )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
+        if (
+            hasattr(scheduler.config, "clip_sample")
+            and scheduler.config.clip_sample is True
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
                 " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
@@ -353,7 +397,9 @@ class LLMGroundedDiffusionPipeline(
                 " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
                 " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
             )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "clip_sample not set", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
@@ -374,10 +420,16 @@ class LLMGroundedDiffusionPipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+        is_unet_version_less_0_9_0 = hasattr(
+            unet.config, "_diffusers_version"
+        ) and version.parse(
             version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        ) < version.parse(
+            "0.9.0.dev0"
+        )
+        is_unet_sample_size_less_64 = (
+            hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        )
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -390,7 +442,9 @@ class LLMGroundedDiffusionPipeline(
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
                 " the `unet/config.json` file"
             )
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "sample_size<64", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
@@ -468,12 +522,17 @@ class LLMGroundedDiffusionPipeline(
     @classmethod
     def parse_llm_response(cls, response, canvas_height=512, canvas_width=512):
         # Infer from spec
-        gen_boxes, bg_prompt, neg_prompt = cls._parse_response_with_negative(text=response)
+        gen_boxes, bg_prompt, neg_prompt = cls._parse_response_with_negative(
+            text=response
+        )
 
         gen_boxes = sorted(gen_boxes, key=lambda gen_box: gen_box[0])
 
         phrases = [name for name, _ in gen_boxes]
-        boxes = [cls.convert_box(box, height=canvas_height, width=canvas_width) for _, box in gen_boxes]
+        boxes = [
+            cls.convert_box(box, height=canvas_height, width=canvas_width)
+            for _, box in gen_boxes
+        ]
 
         return phrases, boxes, bg_prompt, neg_prompt
 
@@ -491,10 +550,13 @@ class LLMGroundedDiffusionPipeline(
         phrase_indices=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
+            )
 
         if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+            callback_steps is not None
+            and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
@@ -510,8 +572,12 @@ class LLMGroundedDiffusionPipeline(
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        elif prompt is not None and (
+            not isinstance(prompt, str) and not isinstance(prompt, list)
+        ):
+            raise ValueError(
+                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
+            )
         elif prompt is None and phrase_indices is None:
             raise ValueError("If the prompt is None, the phrase_indices cannot be None")
 
@@ -542,12 +608,18 @@ class LLMGroundedDiffusionPipeline(
 
         for name in unet.attn_processors.keys():
             # Only obtain the queries and keys from cross-attention
-            if name.endswith("attn1.processor") or name.endswith("fuser.attn.processor"):
+            if name.endswith("attn1.processor") or name.endswith(
+                "fuser.attn.processor"
+            ):
                 # Keep the same attn_processors for self-attention (no hooks for self-attention)
                 attn_procs[name] = unet.attn_processors[name]
                 continue
 
-            cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+            cross_attention_dim = (
+                None
+                if name.endswith("attn1.processor")
+                else unet.config.cross_attention_dim
+            )
 
             if name.startswith("mid_block"):
                 hidden_size = unet.config.block_out_channels[-1]
@@ -582,7 +654,9 @@ class LLMGroundedDiffusionPipeline(
 
     def get_token_map(self, prompt, padding="do_not_pad", verbose=False):
         """Get a list of mapping: prompt index to str (prompt in a list of token str)"""
-        fg_prompt_tokens = self.tokenizer([prompt], padding=padding, max_length=77, return_tensors="np")
+        fg_prompt_tokens = self.tokenizer(
+            [prompt], padding=padding, max_length=77, return_tensors="np"
+        )
         input_ids = fg_prompt_tokens["input_ids"][0]
 
         token_map = []
@@ -611,13 +685,17 @@ class LLMGroundedDiffusionPipeline(
 
         if token_map is None:
             # We allow using a pre-computed token map.
-            token_map = self.get_token_map(prompt=prompt, padding="do_not_pad", verbose=verbose)
+            token_map = self.get_token_map(
+                prompt=prompt, padding="do_not_pad", verbose=verbose
+            )
         token_map_str = " ".join(token_map)
 
         phrase_indices = []
 
         for obj in phrases:
-            phrase_token_map = self.get_token_map(prompt=obj, padding="do_not_pad", verbose=verbose)
+            phrase_token_map = self.get_token_map(
+                prompt=obj, padding="do_not_pad", verbose=verbose
+            )
             # Remove <bos> and <eos> in substr
             phrase_token_map = phrase_token_map[1:-1]
             phrase_token_map_len = len(phrase_token_map)
@@ -635,9 +713,15 @@ class LLMGroundedDiffusionPipeline(
 
             # Count the number of token before substr
             # The substring comes with a trailing space that needs to be removed by minus one in the index.
-            obj_first_index = len(token_map_str[: token_map_str.index(phrase_token_map_str) - 1].split(" "))
+            obj_first_index = len(
+                token_map_str[: token_map_str.index(phrase_token_map_str) - 1].split(
+                    " "
+                )
+            )
 
-            obj_position = list(range(obj_first_index, obj_first_index + phrase_token_map_len))
+            obj_position = list(
+                range(obj_first_index, obj_first_index + phrase_token_map_len)
+            )
             phrase_indices.append(obj_position)
 
         if add_suffix_if_not_found:
@@ -691,8 +775,12 @@ class LLMGroundedDiffusionPipeline(
 
                 # Take the topk over spatial dimension, and then take the sum over heads dim
                 # The mean is over k_fg and k_bg dimension, so we don't need to sum and divide on our own.
-                obj_loss += (1 - (ca_map_obj * mask_1d).topk(k=k_fg).values.mean(dim=1)).sum(dim=0) * fg_weight
-                obj_loss += ((ca_map_obj * (1 - mask_1d)).topk(k=k_bg).values.mean(dim=1)).sum(dim=0) * bg_weight
+                obj_loss += (
+                    1 - (ca_map_obj * mask_1d).topk(k=k_fg).values.mean(dim=1)
+                ).sum(dim=0) * fg_weight
+                obj_loss += (
+                    (ca_map_obj * (1 - mask_1d)).topk(k=k_bg).values.mean(dim=1)
+                ).sum(dim=0) * bg_weight
 
             loss += obj_loss / len(phrase_indices[obj_idx])
 
@@ -873,7 +961,9 @@ class LLMGroundedDiffusionPipeline(
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
             if phrase_indices is None:
-                phrase_indices, prompt = self.get_phrase_indices(prompt, phrases, add_suffix_if_not_found=True)
+                phrase_indices, prompt = self.get_phrase_indices(
+                    prompt, phrases, add_suffix_if_not_found=True
+                )
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
             if phrase_indices is None:
@@ -883,7 +973,9 @@ class LLMGroundedDiffusionPipeline(
                     (
                         phrase_indices_parsed_item,
                         prompt_parsed_item,
-                    ) = self.get_phrase_indices(prompt_item, add_suffix_if_not_found=True)
+                    ) = self.get_phrase_indices(
+                        prompt_item, add_suffix_if_not_found=True
+                    )
                     phrase_indices.append(phrase_indices_parsed_item)
                     prompt_parsed.append(prompt_parsed_item)
                 prompt = prompt_parsed
@@ -917,7 +1009,9 @@ class LLMGroundedDiffusionPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None:
-            image_embeds, negative_image_embeds = self.encode_image(ip_adapter_image, device, num_images_per_prompt)
+            image_embeds, negative_image_embeds = self.encode_image(
+                ip_adapter_image, device, num_images_per_prompt
+            )
             if self.do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
@@ -952,14 +1046,18 @@ class LLMGroundedDiffusionPipeline(
         if n_objs:
             # prepare batched input to the PositionNet (boxes, phrases, mask)
             # Get tokens for phrases from pre-trained CLIPTokenizer
-            tokenizer_inputs = self.tokenizer(phrases, padding=True, return_tensors="pt").to(device)
+            tokenizer_inputs = self.tokenizer(
+                phrases, padding=True, return_tensors="pt"
+            ).to(device)
             # For the token, we use the same pre-trained text encoder
             # to obtain its text feature
             _text_embeddings = self.text_encoder(**tokenizer_inputs).pooler_output
 
         # For each entity, described in phrases, is denoted with a bounding box,
         # we represent the location information as (xmin,ymin,xmax,ymax)
-        cond_boxes = torch.zeros(max_objs, 4, device=device, dtype=self.text_encoder.dtype)
+        cond_boxes = torch.zeros(
+            max_objs, 4, device=device, dtype=self.text_encoder.dtype
+        )
         if n_objs:
             cond_boxes[:n_objs] = torch.tensor(boxes)
         text_embeddings = torch.zeros(
@@ -976,7 +1074,9 @@ class LLMGroundedDiffusionPipeline(
 
         repeat_batch = batch_size * num_images_per_prompt
         cond_boxes = cond_boxes.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
-        text_embeddings = text_embeddings.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
+        text_embeddings = (
+            text_embeddings.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
+        )
         masks = masks.unsqueeze(0).expand(repeat_batch, -1).clone()
         if do_classifier_free_guidance:
             repeat_batch = repeat_batch * 2
@@ -999,7 +1099,9 @@ class LLMGroundedDiffusionPipeline(
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 6.1 Add image embeds for IP-Adapter
-        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+        added_cond_kwargs = (
+            {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+        )
 
         loss_attn = torch.tensor(10000.0)
 
@@ -1028,8 +1130,12 @@ class LLMGroundedDiffusionPipeline(
                     )
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = (
+                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                )
+                latent_model_input = self.scheduler.scale_model_input(
+                    latent_model_input, t
+                )
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -1043,21 +1149,31 @@ class LLMGroundedDiffusionPipeline(
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, **extra_step_kwargs
+                ).prev_sample
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if i == len(timesteps) - 1 or (
+                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                ):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            image = self.vae.decode(
+                latents / self.vae.config.scaling_factor, return_dict=False
+            )[0]
+            image, has_nsfw_concept = self.run_safety_checker(
+                image, device, prompt_embeds.dtype
+            )
         else:
             image = latents
             has_nsfw_concept = None
@@ -1067,7 +1183,9 @@ class LLMGroundedDiffusionPipeline(
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        image = self.image_processor.postprocess(
+            image, output_type=output_type, do_denormalize=do_denormalize
+        )
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
@@ -1076,7 +1194,9 @@ class LLMGroundedDiffusionPipeline(
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(
+            images=image, nsfw_content_detected=has_nsfw_concept
+        )
 
     @torch.set_grad_enabled(True)
     def latent_lmd_guidance(
@@ -1118,13 +1238,17 @@ class LLMGroundedDiffusionPipeline(
                 self.enable_attn_hook(enabled=True)
 
                 while (
-                    loss.item() / loss_scale > loss_threshold and iteration < max_iter and index < guidance_timesteps
+                    loss.item() / loss_scale > loss_threshold
+                    and iteration < max_iter
+                    and index < guidance_timesteps
                 ):
                     self._saved_attn = {}
 
                     latents.requires_grad_(True)
                     latent_model_input = latents
-                    latent_model_input = scheduler.scale_model_input(latent_model_input, t)
+                    latent_model_input = scheduler.scale_model_input(
+                        latent_model_input, t
+                    )
 
                     unet(
                         latent_model_input,
@@ -1156,7 +1280,9 @@ class LLMGroundedDiffusionPipeline(
 
                     self._saved_attn = None
 
-                    grad_cond = torch.autograd.grad(loss.requires_grad_(True), [latents])[0]
+                    grad_cond = torch.autograd.grad(
+                        loss.requires_grad_(True), [latents]
+                    )[0]
 
                     latents.requires_grad_(False)
 
@@ -1292,11 +1418,13 @@ class LLMGroundedDiffusionPipeline(
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+            untruncated_ids = self.tokenizer(
+                prompt, padding="longest", return_tensors="pt"
+            ).input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[
+                -1
+            ] and not torch.equal(text_input_ids, untruncated_ids):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -1305,13 +1433,18 @@ class LLMGroundedDiffusionPipeline(
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
 
             if clip_skip is None:
-                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+                prompt_embeds = self.text_encoder(
+                    text_input_ids.to(device), attention_mask=attention_mask
+                )
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
@@ -1327,7 +1460,9 @@ class LLMGroundedDiffusionPipeline(
                 # representations. The `last_hidden_states` that we typically use for
                 # obtaining the final prompt representations passes through the LayerNorm
                 # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
+                prompt_embeds = self.text_encoder.text_model.final_layer_norm(
+                    prompt_embeds
+                )
 
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
@@ -1341,7 +1476,9 @@ class LLMGroundedDiffusionPipeline(
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -1377,7 +1514,10 @@ class LLMGroundedDiffusionPipeline(
                 return_tensors="pt",
             )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            if (
+                hasattr(self.text_encoder.config, "use_attention_mask")
+                and self.text_encoder.config.use_attention_mask
+            ):
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -1392,10 +1532,16 @@ class LLMGroundedDiffusionPipeline(
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(
+                dtype=prompt_embeds_dtype, device=device
+            )
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(
+                1, num_images_per_prompt, 1
+            )
+            negative_prompt_embeds = negative_prompt_embeds.view(
+                batch_size * num_images_per_prompt, seq_len, -1
+            )
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
@@ -1423,10 +1569,14 @@ class LLMGroundedDiffusionPipeline(
             has_nsfw_concept = None
         else:
             if torch.is_tensor(image):
-                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+                feature_extractor_input = self.image_processor.postprocess(
+                    image, output_type="pil"
+                )
             else:
                 feature_extractor_input = self.image_processor.numpy_to_pil(image)
-            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            safety_checker_input = self.feature_extractor(
+                feature_extractor_input, return_tensors="pt"
+            ).to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -1451,13 +1601,17 @@ class LLMGroundedDiffusionPipeline(
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_eta = "eta" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_generator = "generator" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -1487,7 +1641,9 @@ class LLMGroundedDiffusionPipeline(
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(
+                shape, generator=generator, device=device, dtype=dtype
+            )
         else:
             latents = latents.to(device)
 

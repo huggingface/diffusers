@@ -88,10 +88,16 @@ def parse_args():
         help="A folder containing the training data of instance images.",
     )
     parser.add_argument(
-        "--instance_data_image", type=str, default=None, required=False, help="A single training image"
+        "--instance_data_image",
+        type=str,
+        default=None,
+        required=False,
+        help="A single training image",
     )
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes.",
     )
     parser.add_argument(
         "--dataloader_num_workers",
@@ -109,20 +115,41 @@ def parse_args():
             " https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices"
         ),
     )
-    parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
+    parser.add_argument(
+        "--use_ema", action="store_true", help="Whether to use EMA model."
+    )
     parser.add_argument("--ema_decay", type=float, default=0.9999)
     parser.add_argument("--ema_update_after_step", type=int, default=0)
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use."
+    )
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
     parser.add_argument(
         "--output_dir",
         type=str,
         default="muse_training",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument(
+        "--seed", type=int, default=None, help="A seed for reproducible training."
+    )
     parser.add_argument(
         "--logging_dir",
         type=str,
@@ -175,7 +202,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size",
+        type=int,
+        default=16,
+        help="Batch size (per device) for the training dataloader.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -205,7 +235,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps",
+        type=int,
+        default=500,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
     parser.add_argument(
         "--validation_steps",
@@ -250,15 +283,34 @@ def parse_args():
     parser.add_argument("--split_vae_encode", type=int, required=False, default=None)
     parser.add_argument("--min_masking_rate", type=float, default=0.0)
     parser.add_argument("--cond_dropout_prob", type=float, default=0.0)
-    parser.add_argument("--max_grad_norm", default=None, type=float, help="Max gradient norm.", required=False)
-    parser.add_argument("--use_lora", action="store_true", help="Fine tune the model using LoRa")
-    parser.add_argument("--text_encoder_use_lora", action="store_true", help="Fine tune the model using LoRa")
+    parser.add_argument(
+        "--max_grad_norm",
+        default=None,
+        type=float,
+        help="Max gradient norm.",
+        required=False,
+    )
+    parser.add_argument(
+        "--use_lora", action="store_true", help="Fine tune the model using LoRa"
+    )
+    parser.add_argument(
+        "--text_encoder_use_lora",
+        action="store_true",
+        help="Fine tune the model using LoRa",
+    )
     parser.add_argument("--lora_r", default=16, type=int)
     parser.add_argument("--lora_alpha", default=32, type=int)
-    parser.add_argument("--lora_target_modules", default=["to_q", "to_k", "to_v"], type=str, nargs="+")
+    parser.add_argument(
+        "--lora_target_modules", default=["to_q", "to_k", "to_v"], type=str, nargs="+"
+    )
     parser.add_argument("--text_encoder_lora_r", default=16, type=int)
     parser.add_argument("--text_encoder_lora_alpha", default=32, type=int)
-    parser.add_argument("--text_encoder_lora_target_modules", default=["to_q", "to_k", "to_v"], type=str, nargs="+")
+    parser.add_argument(
+        "--text_encoder_lora_target_modules",
+        default=["to_q", "to_k", "to_v"],
+        type=str,
+        nargs="+",
+    )
     parser.add_argument("--train_text_encoder", action="store_true")
     parser.add_argument("--image_key", type=str, required=False)
     parser.add_argument("--prompt_key", type=str, required=False)
@@ -273,10 +325,19 @@ def parse_args():
 
     if args.report_to == "wandb":
         if not is_wandb_available():
-            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+            raise ImportError(
+                "Make sure to install wandb if you want to use it for logging during training."
+            )
 
     num_datasources = sum(
-        [x is not None for x in [args.instance_data_dir, args.instance_data_image, args.instance_data_dataset]]
+        [
+            x is not None
+            for x in [
+                args.instance_data_dir,
+                args.instance_data_image,
+                args.instance_data_dataset,
+            ]
+        ]
     )
 
     if num_datasources != 1:
@@ -286,14 +347,22 @@ def parse_args():
 
     if args.instance_data_dir is not None:
         if not os.path.exists(args.instance_data_dir):
-            raise ValueError(f"Does not exist: `--args.instance_data_dir` {args.instance_data_dir}")
+            raise ValueError(
+                f"Does not exist: `--args.instance_data_dir` {args.instance_data_dir}"
+            )
 
     if args.instance_data_image is not None:
         if not os.path.exists(args.instance_data_image):
-            raise ValueError(f"Does not exist: `--args.instance_data_image` {args.instance_data_image}")
+            raise ValueError(
+                f"Does not exist: `--args.instance_data_image` {args.instance_data_image}"
+            )
 
-    if args.instance_data_dataset is not None and (args.image_key is None or args.prompt_key is None):
-        raise ValueError("`--instance_data_dataset` requires setting `--image_key` and `--prompt_key`")
+    if args.instance_data_dataset is not None and (
+        args.image_key is None or args.prompt_key is None
+    ):
+        raise ValueError(
+            "`--instance_data_dataset` requires setting `--image_key` and `--prompt_key`"
+        )
 
     return args
 
@@ -385,9 +454,13 @@ def process_image(image, size):
     orig_height = image.height
     orig_width = image.width
 
-    image = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)(image)
+    image = transforms.Resize(
+        size, interpolation=transforms.InterpolationMode.BILINEAR
+    )(image)
 
-    c_top, c_left, _, _ = transforms.RandomCrop.get_params(image, output_size=(size, size))
+    c_top, c_left, _, _ = transforms.RandomCrop.get_params(
+        image, output_size=(size, size)
+    )
     image = transforms.functional.crop(image, c_top, c_left, size, size)
 
     image = transforms.ToTensor()(image)
@@ -422,7 +495,9 @@ def main(args):
 
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+    accelerator_project_config = ProjectConfiguration(
+        project_dir=args.output_dir, logging_dir=logging_dir
+    )
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -450,13 +525,22 @@ def main(args):
 
     # TODO - will have to fix loading if training text encoder
     text_encoder = CLIPTextModelWithProjection.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+        variant=args.variant,
     )
     tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
+        variant=args.variant,
     )
     vq_model = VQModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vqvae", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="vqvae",
+        revision=args.revision,
+        variant=args.variant,
     )
 
     if args.train_text_encoder:
@@ -514,12 +598,16 @@ def main(args):
             for model_ in models:
                 if isinstance(model_, type(accelerator.unwrap_model(model))):
                     if args.use_lora:
-                        transformer_lora_layers_to_save = get_peft_model_state_dict(model_)
+                        transformer_lora_layers_to_save = get_peft_model_state_dict(
+                            model_
+                        )
                     else:
                         model_.save_pretrained(os.path.join(output_dir, "transformer"))
                 elif isinstance(model_, type(accelerator.unwrap_model(text_encoder))):
                     if args.text_encoder_use_lora:
-                        text_encoder_lora_layers_to_save = get_peft_model_state_dict(model_)
+                        text_encoder_lora_layers_to_save = get_peft_model_state_dict(
+                            model_
+                        )
                     else:
                         model_.save_pretrained(os.path.join(output_dir, "text_encoder"))
                 else:
@@ -528,7 +616,10 @@ def main(args):
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
 
-            if transformer_lora_layers_to_save is not None or text_encoder_lora_layers_to_save is not None:
+            if (
+                transformer_lora_layers_to_save is not None
+                or text_encoder_lora_layers_to_save is not None
+            ):
                 LoraLoaderMixin.save_lora_weights(
                     output_dir,
                     transformer_lora_layers=transformer_lora_layers_to_save,
@@ -549,14 +640,18 @@ def main(args):
                 if args.use_lora:
                     transformer = model_
                 else:
-                    load_model = UVit2DModel.from_pretrained(os.path.join(input_dir, "transformer"))
+                    load_model = UVit2DModel.from_pretrained(
+                        os.path.join(input_dir, "transformer")
+                    )
                     model_.load_state_dict(load_model.state_dict())
                     del load_model
             elif isinstance(model, type(accelerator.unwrap_model(text_encoder))):
                 if args.text_encoder_use_lora:
                     text_encoder_ = model_
                 else:
-                    load_model = CLIPTextModelWithProjection.from_pretrained(os.path.join(input_dir, "text_encoder"))
+                    load_model = CLIPTextModelWithProjection.from_pretrained(
+                        os.path.join(input_dir, "text_encoder")
+                    )
                     model_.load_state_dict(load_model.state_dict())
                     del load_model
             else:
@@ -565,14 +660,18 @@ def main(args):
         if transformer is not None or text_encoder_ is not None:
             lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
             LoraLoaderMixin.load_lora_into_text_encoder(
-                lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_
+                lora_state_dict,
+                network_alphas=network_alphas,
+                text_encoder=text_encoder_,
             )
             LoraLoaderMixin.load_lora_into_transformer(
                 lora_state_dict, network_alphas=network_alphas, transformer=transformer
             )
 
         if args.use_ema:
-            load_from = EMAModel.from_pretrained(os.path.join(input_dir, "ema_model"), model_cls=UVit2DModel)
+            load_from = EMAModel.from_pretrained(
+                os.path.join(input_dir, "ema_model"), model_cls=UVit2DModel
+            )
             ema.load_state_dict(load_from.state_dict())
             del load_from
 
@@ -581,7 +680,10 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+            args.learning_rate
+            * args.train_batch_size
+            * accelerator.num_processes
+            * args.gradient_accumulation_steps
         )
 
     if args.use_8bit_adam:
@@ -600,18 +702,29 @@ def main(args):
     no_decay = ["bias", "layer_norm.weight", "mlm_ln.weight", "embeddings.weight"]
     optimizer_grouped_parameters = [
         {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if not any(nd in n for nd in no_decay)
+            ],
             "weight_decay": args.adam_weight_decay,
         },
         {
-            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if any(nd in n for nd in no_decay)
+            ],
             "weight_decay": 0.0,
         },
     ]
 
     if args.train_text_encoder:
         optimizer_grouped_parameters.append(
-            {"params": text_encoder.parameters(), "weight_decay": args.adam_weight_decay}
+            {
+                "params": text_encoder.parameters(),
+                "weight_decay": args.adam_weight_decay,
+            }
         )
 
     optimizer = optimizer_cls(
@@ -624,7 +737,11 @@ def main(args):
 
     logger.info("Creating dataloaders and lr_scheduler")
 
-    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = (
+        args.train_batch_size
+        * accelerator.num_processes
+        * args.gradient_accumulation_steps
+    )
 
     if args.instance_data_dir is not None:
         dataset = InstanceDataRootDataset(
@@ -669,7 +786,13 @@ def main(args):
     logger.info("Preparing model, optimizer and dataloaders")
 
     if args.train_text_encoder:
-        model, optimizer, lr_scheduler, train_dataloader, text_encoder = accelerator.prepare(
+        (
+            model,
+            optimizer,
+            lr_scheduler,
+            train_dataloader,
+            text_encoder,
+        ) = accelerator.prepare(
             model, optimizer, lr_scheduler, train_dataloader, text_encoder
         )
     else:
@@ -695,20 +818,28 @@ def main(args):
 
     with nullcontext() if args.train_text_encoder else torch.no_grad():
         empty_embeds, empty_clip_embeds = encode_prompt(
-            text_encoder, tokenize_prompt(tokenizer, "").to(text_encoder.device, non_blocking=True)
+            text_encoder,
+            tokenize_prompt(tokenizer, "").to(text_encoder.device, non_blocking=True),
         )
 
         # There is a single image, we can just pre-encode the single prompt
         if args.instance_data_image is not None:
             prompt = os.path.splitext(os.path.basename(args.instance_data_image))[0]
             encoder_hidden_states, cond_embeds = encode_prompt(
-                text_encoder, tokenize_prompt(tokenizer, prompt).to(text_encoder.device, non_blocking=True)
+                text_encoder,
+                tokenize_prompt(tokenizer, prompt).to(
+                    text_encoder.device, non_blocking=True
+                ),
             )
-            encoder_hidden_states = encoder_hidden_states.repeat(args.train_batch_size, 1, 1)
+            encoder_hidden_states = encoder_hidden_states.repeat(
+                args.train_batch_size, 1, 1
+            )
             cond_embeds = cond_embeds.repeat(args.train_batch_size, 1)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(train_dataloader.num_batches / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(
+        train_dataloader.num_batches / args.gradient_accumulation_steps
+    )
     # Afterwards we recalculate our number of training epochs.
     # Note: We are not doing epoch based training here, but just using this for book keeping and being able to
     # reuse the same training loop with other datasets/loaders.
@@ -718,7 +849,9 @@ def main(args):
     logger.info("***** Running training *****")
     logger.info(f"  Num training steps = {args.max_train_steps}")
     logger.info(f"  Instantaneous batch size per device = { args.train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    logger.info(
+        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
+    )
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
 
     resume_from_checkpoint = args.resume_from_checkpoint
@@ -753,12 +886,18 @@ def main(args):
     for epoch in range(first_epoch, num_train_epochs):
         for batch in train_dataloader:
             with torch.no_grad():
-                micro_conds = batch["micro_conds"].to(accelerator.device, non_blocking=True)
+                micro_conds = batch["micro_conds"].to(
+                    accelerator.device, non_blocking=True
+                )
                 pixel_values = batch["image"].to(accelerator.device, non_blocking=True)
 
                 batch_size = pixel_values.shape[0]
 
-                split_batch_size = args.split_vae_encode if args.split_vae_encode is not None else batch_size
+                split_batch_size = (
+                    args.split_vae_encode
+                    if args.split_vae_encode is not None
+                    else batch_size
+                )
                 num_splits = math.ceil(batch_size / split_batch_size)
                 image_tokens = []
                 for i in range(num_splits):
@@ -766,9 +905,9 @@ def main(args):
                     end_idx = min((i + 1) * split_batch_size, batch_size)
                     bs = pixel_values.shape[0]
                     image_tokens.append(
-                        vq_model.quantize(vq_model.encode(pixel_values[start_idx:end_idx]).latents)[2][2].reshape(
-                            bs, -1
-                        )
+                        vq_model.quantize(
+                            vq_model.encode(pixel_values[start_idx:end_idx]).latents
+                        )[2][2].reshape(bs, -1)
                     )
                 image_tokens = torch.cat(image_tokens, dim=0)
 
@@ -779,7 +918,9 @@ def main(args):
                 mask_prob = mask_prob.clip(args.min_masking_rate)
 
                 num_token_masked = (seq_len * mask_prob).round().clamp(min=1)
-                batch_randperm = torch.rand(batch_size, seq_len, device=image_tokens.device).argsort(dim=-1)
+                batch_randperm = torch.rand(
+                    batch_size, seq_len, device=image_tokens.device
+                ).argsort(dim=-1)
                 mask = batch_randperm < num_token_masked.unsqueeze(-1)
 
                 mask_id = accelerator.unwrap_model(model).config.vocab_size - 1
@@ -792,17 +933,27 @@ def main(args):
                     batch_size = encoder_hidden_states.shape[0]
 
                     mask = (
-                        torch.zeros((batch_size, 1, 1), device=encoder_hidden_states.device).float().uniform_(0, 1)
+                        torch.zeros(
+                            (batch_size, 1, 1), device=encoder_hidden_states.device
+                        )
+                        .float()
+                        .uniform_(0, 1)
                         < args.cond_dropout_prob
                     )
 
                     empty_embeds_ = empty_embeds.expand(batch_size, -1, -1)
                     encoder_hidden_states = torch.where(
-                        (encoder_hidden_states * mask).bool(), encoder_hidden_states, empty_embeds_
+                        (encoder_hidden_states * mask).bool(),
+                        encoder_hidden_states,
+                        empty_embeds_,
                     )
 
                     empty_clip_embeds_ = empty_clip_embeds.expand(batch_size, -1)
-                    cond_embeds = torch.where((cond_embeds * mask.squeeze(-1)).bool(), cond_embeds, empty_clip_embeds_)
+                    cond_embeds = torch.where(
+                        (cond_embeds * mask.squeeze(-1)).bool(),
+                        cond_embeds,
+                        empty_clip_embeds_,
+                    )
 
                 bs = input_ids.shape[0]
                 vae_scale_factor = 2 ** (len(vq_model.config.block_out_channels) - 1)
@@ -812,7 +963,10 @@ def main(args):
             if "prompt_input_ids" in batch:
                 with nullcontext() if args.train_text_encoder else torch.no_grad():
                     encoder_hidden_states, cond_embeds = encode_prompt(
-                        text_encoder, batch["prompt_input_ids"].to(accelerator.device, non_blocking=True)
+                        text_encoder,
+                        batch["prompt_input_ids"].to(
+                            accelerator.device, non_blocking=True
+                        ),
                     )
 
             # Train Step
@@ -840,7 +994,9 @@ def main(args):
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
-                avg_masking_rate = accelerator.gather(mask_prob.repeat(args.train_batch_size)).mean()
+                avg_masking_rate = accelerator.gather(
+                    mask_prob.repeat(args.train_batch_size)
+                ).mean()
 
                 accelerator.backward(loss)
 
@@ -874,7 +1030,9 @@ def main(args):
                 if (global_step + 1) % args.checkpointing_steps == 0:
                     save_checkpoint(args, accelerator, global_step + 1)
 
-                if (global_step + 1) % args.validation_steps == 0 and accelerator.is_main_process:
+                if (
+                    global_step + 1
+                ) % args.validation_steps == 0 and accelerator.is_main_process:
                     if args.use_ema:
                         ema.store(model.parameters())
                         ema.copy_to(model.parameters())
@@ -908,7 +1066,9 @@ def main(args):
                             for i, image in enumerate(pil_images)
                         ]
 
-                        wandb.log({"generated_images": wandb_images}, step=global_step + 1)
+                        wandb.log(
+                            {"generated_images": wandb_images}, step=global_step + 1
+                        )
 
                         model.train()
 

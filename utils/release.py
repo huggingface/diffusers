@@ -22,10 +22,22 @@ import packaging.version
 
 PATH_TO_EXAMPLES = "examples/"
 REPLACE_PATTERNS = {
-    "examples": (re.compile(r'^check_min_version\("[^"]+"\)\s*$', re.MULTILINE), 'check_min_version("VERSION")\n'),
-    "init": (re.compile(r'^__version__\s+=\s+"([^"]+)"\s*$', re.MULTILINE), '__version__ = "VERSION"\n'),
-    "setup": (re.compile(r'^(\s*)version\s*=\s*"[^"]+",', re.MULTILINE), r'\1version="VERSION",'),
-    "doc": (re.compile(r'^(\s*)release\s*=\s*"[^"]+"$', re.MULTILINE), 'release = "VERSION"\n'),
+    "examples": (
+        re.compile(r'^check_min_version\("[^"]+"\)\s*$', re.MULTILINE),
+        'check_min_version("VERSION")\n',
+    ),
+    "init": (
+        re.compile(r'^__version__\s+=\s+"([^"]+)"\s*$', re.MULTILINE),
+        '__version__ = "VERSION"\n',
+    ),
+    "setup": (
+        re.compile(r'^(\s*)version\s*=\s*"[^"]+",', re.MULTILINE),
+        r'\1version="VERSION",',
+    ),
+    "doc": (
+        re.compile(r'^(\s*)release\s*=\s*"[^"]+"$', re.MULTILINE),
+        'release = "VERSION"\n',
+    ),
 }
 REPLACE_FILES = {
     "init": "src/diffusers/__init__.py",
@@ -55,7 +67,9 @@ def update_version_in_examples(version):
             directories.remove("legacy")
         for fname in fnames:
             if fname.endswith(".py"):
-                update_version_in_file(os.path.join(folder, fname), version, pattern="examples")
+                update_version_in_file(
+                    os.path.join(folder, fname), version, pattern="examples"
+                )
 
 
 def global_version_update(version, patch=False):
@@ -107,7 +121,9 @@ def pre_release_work(patch=False):
     # First let's get the default version: base version if we are in dev, bump minor otherwise.
     default_version = get_version()
     if patch and default_version.is_devrelease:
-        raise ValueError("Can't create a patch version from the dev branch, checkout a released version!")
+        raise ValueError(
+            "Can't create a patch version from the dev branch, checkout a released version!"
+        )
     if default_version.is_devrelease:
         default_version = default_version.base_version
     elif patch:
@@ -151,8 +167,14 @@ def post_release_work():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--post_release", action="store_true", help="Whether this is pre or post release.")
-    parser.add_argument("--patch", action="store_true", help="Whether or not this is a patch release.")
+    parser.add_argument(
+        "--post_release",
+        action="store_true",
+        help="Whether this is pre or post release.",
+    )
+    parser.add_argument(
+        "--patch", action="store_true", help="Whether or not this is a patch release."
+    )
     args = parser.parse_args()
     if not args.post_release:
         pre_release_work(patch=args.patch)

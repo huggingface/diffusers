@@ -79,7 +79,9 @@ class DDIMSolver:
         # DDIM sampling parameters
         step_ratio = timesteps // ddim_timesteps
 
-        self.ddim_timesteps = (np.arange(1, ddim_timesteps + 1) * step_ratio).round().astype(np.int64) - 1
+        self.ddim_timesteps = (
+            np.arange(1, ddim_timesteps + 1) * step_ratio
+        ).round().astype(np.int64) - 1
         self.ddim_alpha_cumprods = alpha_cumprods[self.ddim_timesteps]
         self.ddim_alpha_cumprods_prev = np.asarray(
             [alpha_cumprods[0]] + alpha_cumprods[self.ddim_timesteps[:-1]].tolist()
@@ -96,19 +98,25 @@ class DDIMSolver:
         return self
 
     def ddim_step(self, pred_x0, pred_noise, timestep_index):
-        alpha_cumprod_prev = extract_into_tensor(self.ddim_alpha_cumprods_prev, timestep_index, pred_x0.shape)
+        alpha_cumprod_prev = extract_into_tensor(
+            self.ddim_alpha_cumprods_prev, timestep_index, pred_x0.shape
+        )
         dir_xt = (1.0 - alpha_cumprod_prev).sqrt() * pred_noise
         x_prev = alpha_cumprod_prev.sqrt() * pred_x0 + dir_xt
         return x_prev
 
 
-def log_validation(vae, args, accelerator, weight_dtype, step, unet=None, is_final_validation=False):
+def log_validation(
+    vae, args, accelerator, weight_dtype, step, unet=None, is_final_validation=False
+):
     logger.info("Running validation... ")
 
     pipeline = StableDiffusionXLPipeline.from_pretrained(
         args.pretrained_teacher_model,
         vae=vae,
-        scheduler=LCMScheduler.from_pretrained(args.pretrained_teacher_model, subfolder="scheduler"),
+        scheduler=LCMScheduler.from_pretrained(
+            args.pretrained_teacher_model, subfolder="scheduler"
+        ),
         revision=args.revision,
         torch_dtype=weight_dtype,
     ).to(accelerator.device)
@@ -117,7 +125,9 @@ def log_validation(vae, args, accelerator, weight_dtype, step, unet=None, is_fin
     to_load = None
     if not is_final_validation:
         if unet is None:
-            raise ValueError("Must provide a `unet` when doing intermediate validation.")
+            raise ValueError(
+                "Must provide a `unet` when doing intermediate validation."
+            )
         unet = accelerator.unwrap_model(unet)
         state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
         to_load = state_dict
@@ -167,7 +177,9 @@ def log_validation(vae, args, accelerator, weight_dtype, step, unet=None, is_fin
 
                 formatted_images = np.stack(formatted_images)
 
-                tracker.writer.add_images(validation_prompt, formatted_images, step, dataformats="NHWC")
+                tracker.writer.add_images(
+                    validation_prompt, formatted_images, step, dataformats="NHWC"
+                )
         elif tracker.name == "wandb":
             formatted_images = []
 
@@ -193,7 +205,9 @@ def append_dims(x, target_dims):
     """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
     dims_to_append = target_dims - x.ndim
     if dims_to_append < 0:
-        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
+        raise ValueError(
+            f"input has {x.ndim} dims but target_dims is {target_dims}, which is less"
+        )
     return x[(...,) + (None,) * dims_to_append]
 
 
@@ -206,7 +220,9 @@ def scalings_for_boundary_conditions(timestep, sigma_data=0.5, timestep_scaling=
 
 
 # Compare LCMScheduler.step, Step 4
-def get_predicted_original_sample(model_output, timesteps, sample, prediction_type, alphas, sigmas):
+def get_predicted_original_sample(
+    model_output, timesteps, sample, prediction_type, alphas, sigmas
+):
     alphas = extract_into_tensor(alphas, timesteps, sample.shape)
     sigmas = extract_into_tensor(sigmas, timesteps, sample.shape)
     if prediction_type == "epsilon":
@@ -225,7 +241,9 @@ def get_predicted_original_sample(model_output, timesteps, sample, prediction_ty
 
 
 # Based on step 4 in DDIMScheduler.step
-def get_predicted_noise(model_output, timesteps, sample, prediction_type, alphas, sigmas):
+def get_predicted_noise(
+    model_output, timesteps, sample, prediction_type, alphas, sigmas
+):
     alphas = extract_into_tensor(alphas, timesteps, sample.shape)
     sigmas = extract_into_tensor(sigmas, timesteps, sample.shape)
     if prediction_type == "epsilon":
@@ -313,7 +331,9 @@ def parse_args():
         default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument(
+        "--seed", type=int, default=None, help="A seed for reproducible training."
+    )
     # ----Logging----
     parser.add_argument(
         "--logging_dir",
@@ -386,7 +406,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--image_column", type=str, default="image", help="The column of the dataset containing an image."
+        "--image_column",
+        type=str,
+        default="image",
+        help="The column of the dataset containing an image.",
     )
     parser.add_argument(
         "--caption_column",
@@ -443,7 +466,10 @@ def parse_args():
     )
     # ----Batch Size and Training Steps----
     parser.add_argument(
-        "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size",
+        type=int,
+        default=16,
+        help="Batch size (per device) for the training dataloader.",
     )
     parser.add_argument("--num_train_epochs", type=int, default=100)
     parser.add_argument(
@@ -484,7 +510,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps",
+        type=int,
+        default=500,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -494,13 +523,34 @@ def parse_args():
     )
     # ----Optimizer (Adam)----
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes.",
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
-    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use."
+    )
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
+    parser.add_argument(
+        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
+    )
     # ----Diffusion Training Arguments----
     # ----Latent Consistency Distillation (LCD) Specific Arguments----
     parser.add_argument(
@@ -616,7 +666,9 @@ def parse_args():
     )
     # ----Training Optimizations----
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+        "--enable_xformers_memory_efficient_attention",
+        action="store_true",
+        help="Whether or not to use xformers.",
     )
     parser.add_argument(
         "--gradient_checkpointing",
@@ -624,7 +676,12 @@ def parse_args():
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     # ----Distributed Training----
-    parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="For distributed training: local_rank",
+    )
     # ----------Validation Arguments----------
     parser.add_argument(
         "--validation_steps",
@@ -633,8 +690,17 @@ def parse_args():
         help="Run validation every X steps.",
     )
     # ----------Huggingface Hub Arguments-----------
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--push_to_hub",
+        action="store_true",
+        help="Whether or not to push the model to the Hub.",
+    )
+    parser.add_argument(
+        "--hub_token",
+        type=str,
+        default=None,
+        help="The token to use to push to the Model Hub.",
+    )
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -708,7 +774,9 @@ def main(args):
 
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+    accelerator_project_config = ProjectConfiguration(
+        project_dir=args.output_dir, logging_dir=logging_dir
+    )
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -751,7 +819,9 @@ def main(args):
 
     # 1. Create the noise scheduler and the desired noise schedule.
     noise_scheduler = DDPMScheduler.from_pretrained(
-        args.pretrained_teacher_model, subfolder="scheduler", revision=args.teacher_revision
+        args.pretrained_teacher_model,
+        subfolder="scheduler",
+        revision=args.teacher_revision,
     )
 
     # DDPMScheduler calculates the alpha and sigma noise schedules (based on the alpha bars) for us
@@ -766,10 +836,16 @@ def main(args):
 
     # 2. Load tokenizers from SDXL checkpoint.
     tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_teacher_model, subfolder="tokenizer", revision=args.teacher_revision, use_fast=False
+        args.pretrained_teacher_model,
+        subfolder="tokenizer",
+        revision=args.teacher_revision,
+        use_fast=False,
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_teacher_model, subfolder="tokenizer_2", revision=args.teacher_revision, use_fast=False
+        args.pretrained_teacher_model,
+        subfolder="tokenizer_2",
+        revision=args.teacher_revision,
+        use_fast=False,
     )
 
     # 3. Load text encoders from SDXL checkpoint.
@@ -782,10 +858,14 @@ def main(args):
     )
 
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_teacher_model, subfolder="text_encoder", revision=args.teacher_revision
+        args.pretrained_teacher_model,
+        subfolder="text_encoder",
+        revision=args.teacher_revision,
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_teacher_model, subfolder="text_encoder_2", revision=args.teacher_revision
+        args.pretrained_teacher_model,
+        subfolder="text_encoder_2",
+        revision=args.teacher_revision,
     )
 
     # 4. Load VAE from SDXL checkpoint (or more stable VAE)
@@ -843,7 +923,9 @@ def main(args):
 
     # 9. Add LoRA to the student U-Net, only the LoRA projection matrix will be updated by the optimizer.
     if args.lora_target_modules is not None:
-        lora_target_modules = [module_key.strip() for module_key in args.lora_target_modules.split(",")]
+        lora_target_modules = [
+            module_key.strip() for module_key in args.lora_target_modules.split(",")
+        ]
     else:
         lora_target_modules = [
             "to_q",
@@ -883,8 +965,12 @@ def main(args):
                 unet_ = accelerator.unwrap_model(unet)
                 # also save the checkpoints in native `diffusers` format so that it can be easily
                 # be independently loaded via `load_lora_weights()`.
-                state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet_))
-                StableDiffusionXLPipeline.save_lora_weights(output_dir, unet_lora_layers=state_dict)
+                state_dict = convert_state_dict_to_diffusers(
+                    get_peft_model_state_dict(unet_)
+                )
+                StableDiffusionXLPipeline.save_lora_weights(
+                    output_dir, unet_lora_layers=state_dict
+                )
 
                 for _, model in enumerate(models):
                     # make sure to pop weight so that corresponding model is not saved again
@@ -895,10 +981,14 @@ def main(args):
             unet_ = accelerator.unwrap_model(unet)
             lora_state_dict, _ = StableDiffusionXLPipeline.lora_state_dict(input_dir)
             unet_state_dict = {
-                f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")
+                f'{k.replace("unet.", "")}': v
+                for k, v in lora_state_dict.items()
+                if k.startswith("unet.")
             }
             unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
-            incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
+            incompatible_keys = set_peft_model_state_dict(
+                unet_, unet_state_dict, adapter_name="default"
+            )
             if incompatible_keys is not None:
                 # check only for unexpected keys
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
@@ -933,7 +1023,9 @@ def main(args):
                 )
             unet.enable_xformers_memory_efficient_attention()
         else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
+            raise ValueError(
+                "xformers is not available. Make sure it is installed correctly"
+            )
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -994,7 +1086,9 @@ def main(args):
     # Get the column names for input/target.
     dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
     if args.image_column is None:
-        image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+        image_column = (
+            dataset_columns[0] if dataset_columns is not None else column_names[0]
+        )
     else:
         image_column = args.image_column
         if image_column not in column_names:
@@ -1002,7 +1096,9 @@ def main(args):
                 f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
             )
     if args.caption_column is None:
-        caption_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
+        caption_column = (
+            dataset_columns[1] if dataset_columns is not None else column_names[1]
+        )
     else:
         caption_column = args.caption_column
         if caption_column not in column_names:
@@ -1013,9 +1109,15 @@ def main(args):
     # Preprocessing the datasets.
     interpolation_mode = resolve_interpolation_mode(args.interpolation_type)
     train_resize = transforms.Resize(args.resolution, interpolation=interpolation_mode)
-    train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
+    train_crop = (
+        transforms.CenterCrop(args.resolution)
+        if args.center_crop
+        else transforms.RandomCrop(args.resolution)
+    )
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
-    train_transforms = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
+    train_transforms = transforms.Compose(
+        [transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
+    )
 
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
@@ -1031,7 +1133,9 @@ def main(args):
                 x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
                 image = train_crop(image)
             else:
-                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+                y1, x1, h, w = train_crop.get_params(
+                    image, (args.resolution, args.resolution)
+                )
                 image = crop(image, y1, x1, h, w)
             if args.random_flip and random.random() < 0.5:
                 # flip
@@ -1050,7 +1154,11 @@ def main(args):
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+            dataset["train"] = (
+                dataset["train"]
+                .shuffle(seed=args.seed)
+                .select(range(args.max_train_samples))
+            )
         # Set the training transforms
         train_dataset = dataset["train"].with_transform(preprocess_train)
 
@@ -1079,7 +1187,14 @@ def main(args):
 
     # 14. Embeddings for the UNet.
     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-    def compute_embeddings(prompt_batch, original_sizes, crop_coords, text_encoders, tokenizers, is_train=True):
+    def compute_embeddings(
+        prompt_batch,
+        original_sizes,
+        crop_coords,
+        text_encoders,
+        tokenizers,
+        is_train=True,
+    ):
         def compute_time_ids(original_size, crops_coords_top_left):
             target_size = (args.resolution, args.resolution)
             add_time_ids = list(original_size + crops_coords_top_left + target_size)
@@ -1087,33 +1202,47 @@ def main(args):
             add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
             return add_time_ids
 
-        prompt_embeds, pooled_prompt_embeds = encode_prompt(prompt_batch, text_encoders, tokenizers, is_train)
+        prompt_embeds, pooled_prompt_embeds = encode_prompt(
+            prompt_batch, text_encoders, tokenizers, is_train
+        )
         add_text_embeds = pooled_prompt_embeds
 
-        add_time_ids = torch.cat([compute_time_ids(s, c) for s, c in zip(original_sizes, crop_coords)])
+        add_time_ids = torch.cat(
+            [compute_time_ids(s, c) for s, c in zip(original_sizes, crop_coords)]
+        )
 
         prompt_embeds = prompt_embeds.to(accelerator.device)
         add_text_embeds = add_text_embeds.to(accelerator.device)
-        unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+        unet_added_cond_kwargs = {
+            "text_embeds": add_text_embeds,
+            "time_ids": add_time_ids,
+        }
 
         return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
 
     text_encoders = [text_encoder_one, text_encoder_two]
     tokenizers = [tokenizer_one, tokenizer_two]
 
-    compute_embeddings_fn = functools.partial(compute_embeddings, text_encoders=text_encoders, tokenizers=tokenizers)
+    compute_embeddings_fn = functools.partial(
+        compute_embeddings, text_encoders=text_encoders, tokenizers=tokenizers
+    )
 
     # 15. LR Scheduler creation
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps
+    )
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate
+            * args.gradient_accumulation_steps
+            * args.train_batch_size
+            * accelerator.num_processes
         )
 
     # Make sure the trainable params are in float32.
@@ -1135,7 +1264,9 @@ def main(args):
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps
+    )
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -1148,13 +1279,19 @@ def main(args):
         accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
     # 17. Train!
-    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = (
+        args.train_batch_size
+        * accelerator.num_processes
+        * args.gradient_accumulation_steps
+    )
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    logger.info(
+        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
+    )
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
@@ -1213,7 +1350,11 @@ def main(args):
                 pixel_values = pixel_values.to(dtype=vae.dtype)
                 latents = []
                 for i in range(0, pixel_values.shape[0], args.vae_encode_batch_size):
-                    latents.append(vae.encode(pixel_values[i : i + args.vae_encode_batch_size]).latent_dist.sample())
+                    latents.append(
+                        vae.encode(
+                            pixel_values[i : i + args.vae_encode_batch_size]
+                        ).latent_dist.sample()
+                    )
                 latents = torch.cat(latents, dim=0)
 
                 latents = latents * vae.config.scaling_factor
@@ -1223,17 +1364,26 @@ def main(args):
                 # 2. Sample a random timestep for each image t_n from the ODE solver timesteps without bias.
                 # For the DDIM solver, the timestep schedule is [T - 1, T - k - 1, T - 2 * k - 1, ...]
                 bsz = latents.shape[0]
-                topk = noise_scheduler.config.num_train_timesteps // args.num_ddim_timesteps
-                index = torch.randint(0, args.num_ddim_timesteps, (bsz,), device=latents.device).long()
+                topk = (
+                    noise_scheduler.config.num_train_timesteps
+                    // args.num_ddim_timesteps
+                )
+                index = torch.randint(
+                    0, args.num_ddim_timesteps, (bsz,), device=latents.device
+                ).long()
                 start_timesteps = solver.ddim_timesteps[index]
                 timesteps = start_timesteps - topk
-                timesteps = torch.where(timesteps < 0, torch.zeros_like(timesteps), timesteps)
+                timesteps = torch.where(
+                    timesteps < 0, torch.zeros_like(timesteps), timesteps
+                )
 
                 # 3. Get boundary scalings for start_timesteps and (end) timesteps.
                 c_skip_start, c_out_start = scalings_for_boundary_conditions(
                     start_timesteps, timestep_scaling=args.timestep_scaling_factor
                 )
-                c_skip_start, c_out_start = [append_dims(x, latents.ndim) for x in [c_skip_start, c_out_start]]
+                c_skip_start, c_out_start = [
+                    append_dims(x, latents.ndim) for x in [c_skip_start, c_out_start]
+                ]
                 c_skip, c_out = scalings_for_boundary_conditions(
                     timesteps, timestep_scaling=args.timestep_scaling_factor
                 )
@@ -1242,7 +1392,9 @@ def main(args):
                 # 4. Sample noise from the prior and add it to the latents according to the noise magnitude at each
                 # timestep (this is the forward diffusion process) [z_{t_{n + k}} in Algorithm 1]
                 noise = torch.randn_like(latents)
-                noisy_model_input = noise_scheduler.add_noise(latents, noise, start_timesteps)
+                noisy_model_input = noise_scheduler.add_noise(
+                    latents, noise, start_timesteps
+                )
 
                 # 5. Sample a random guidance scale w from U[w_min, w_max]
                 # Note that for LCM-LoRA distillation it is not necessary to use a guidance scale embedding
@@ -1283,7 +1435,9 @@ def main(args):
                         noisy_model_input,
                         start_timesteps,
                         encoder_hidden_states=prompt_embeds,
-                        added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
+                        added_cond_kwargs={
+                            k: v.to(weight_dtype) for k, v in encoded_text.items()
+                        },
                     ).sample
                     cond_pred_x0 = get_predicted_original_sample(
                         cond_teacher_output,
@@ -1304,14 +1458,19 @@ def main(args):
 
                     # 2. Get teacher model prediction on noisy_model_input z_{t_{n + k}} and unconditional embedding 0
                     uncond_prompt_embeds = torch.zeros_like(prompt_embeds)
-                    uncond_pooled_prompt_embeds = torch.zeros_like(encoded_text["text_embeds"])
+                    uncond_pooled_prompt_embeds = torch.zeros_like(
+                        encoded_text["text_embeds"]
+                    )
                     uncond_added_conditions = copy.deepcopy(encoded_text)
                     uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
                     uncond_teacher_output = unet(
                         noisy_model_input,
                         start_timesteps,
                         encoder_hidden_states=uncond_prompt_embeds.to(weight_dtype),
-                        added_cond_kwargs={k: v.to(weight_dtype) for k, v in uncond_added_conditions.items()},
+                        added_cond_kwargs={
+                            k: v.to(weight_dtype)
+                            for k, v in uncond_added_conditions.items()
+                        },
                     ).sample
                     uncond_pred_x0 = get_predicted_original_sample(
                         uncond_teacher_output,
@@ -1333,7 +1492,9 @@ def main(args):
                     # 3. Calculate the CFG estimate of x_0 (pred_x0) and eps_0 (pred_noise)
                     # Note that this uses the LCM paper's CFG formulation rather than the Imagen CFG formulation
                     pred_x0 = cond_pred_x0 + w * (cond_pred_x0 - uncond_pred_x0)
-                    pred_noise = cond_pred_noise + w * (cond_pred_noise - uncond_pred_noise)
+                    pred_noise = cond_pred_noise + w * (
+                        cond_pred_noise - uncond_pred_noise
+                    )
                     # 4. Run one step of the ODE solver to estimate the next point x_prev on the
                     # augmented PF-ODE trajectory (solving backward in time)
                     # Note that the DDIM step depends on both the predicted x_0 and source noise eps_0.
@@ -1349,7 +1510,9 @@ def main(args):
                         x_prev,
                         timesteps,
                         encoder_hidden_states=prompt_embeds,
-                        added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
+                        added_cond_kwargs={
+                            k: v.to(weight_dtype) for k, v in encoded_text.items()
+                        },
                     ).sample
                     pred_x_0 = get_predicted_original_sample(
                         target_noise_pred,
@@ -1363,10 +1526,16 @@ def main(args):
 
                 # 10. Calculate loss
                 if args.loss_type == "l2":
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    loss = F.mse_loss(
+                        model_pred.float(), target.float(), reduction="mean"
+                    )
                 elif args.loss_type == "huber":
                     loss = torch.mean(
-                        torch.sqrt((model_pred.float() - target.float()) ** 2 + args.huber_c**2) - args.huber_c
+                        torch.sqrt(
+                            (model_pred.float() - target.float()) ** 2
+                            + args.huber_c**2
+                        )
+                        - args.huber_c
                     )
 
                 # 11. Backpropagate on the online student model (`unet`) (only LoRA)
@@ -1387,30 +1556,48 @@ def main(args):
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+                            checkpoints = [
+                                d for d in checkpoints if d.startswith("checkpoint")
+                            ]
+                            checkpoints = sorted(
+                                checkpoints, key=lambda x: int(x.split("-")[1])
+                            )
 
                             # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
                             if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                num_to_remove = (
+                                    len(checkpoints) - args.checkpoints_total_limit + 1
+                                )
                                 removing_checkpoints = checkpoints[0:num_to_remove]
 
                                 logger.info(
                                     f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
                                 )
-                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                                logger.info(
+                                    f"removing checkpoints: {', '.join(removing_checkpoints)}"
+                                )
 
                                 for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    removing_checkpoint = os.path.join(
+                                        args.output_dir, removing_checkpoint
+                                    )
                                     shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        save_path = os.path.join(
+                            args.output_dir, f"checkpoint-{global_step}"
+                        )
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
                     if global_step % args.validation_steps == 0:
                         log_validation(
-                            vae, args, accelerator, weight_dtype, global_step, unet=unet, is_final_validation=False
+                            vae,
+                            args,
+                            accelerator,
+                            weight_dtype,
+                            global_step,
+                            unet=unet,
+                            is_final_validation=False,
                         )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1424,8 +1611,12 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
-        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
-        StableDiffusionXLPipeline.save_lora_weights(args.output_dir, unet_lora_layers=unet_lora_state_dict)
+        unet_lora_state_dict = convert_state_dict_to_diffusers(
+            get_peft_model_state_dict(unet)
+        )
+        StableDiffusionXLPipeline.save_lora_weights(
+            args.output_dir, unet_lora_layers=unet_lora_state_dict
+        )
 
         if args.push_to_hub:
             upload_folder(
@@ -1440,7 +1631,15 @@ def main(args):
 
         # Final inference.
         if args.validation_steps is not None:
-            log_validation(vae, args, accelerator, weight_dtype, step=global_step, unet=None, is_final_validation=True)
+            log_validation(
+                vae,
+                args,
+                accelerator,
+                weight_dtype,
+                step=global_step,
+                unet=None,
+                is_final_validation=True,
+            )
 
     accelerator.end_training()
 
