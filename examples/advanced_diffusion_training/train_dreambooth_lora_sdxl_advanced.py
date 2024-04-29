@@ -697,6 +697,16 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--lora_unet_blocks",
+        type=str,
+        default=None,
+        help=(
+            "the U-net blocks to tune during training. please specify them in a comma separated string, e.g. `unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1` etc."
+            "NOTE: By default (if not specified) - regular LoRA training is performed. "
+            "if --use_blora is enabled, this arg will be ignored, since in B-LoRA training, targeted U-net blocks are `unet.up_blocks.0.attentions.0` and `unet.up_blocks.0.attentions.1`"
+        ),
+    )
+    parser.add_argument(
         "--use_blora",
         action="store_true",
         help=(
@@ -726,6 +736,11 @@ def parse_args(input_args=None):
             "Specify only one of `--train_text_encoder` or `--train_text_encoder_ti. "
             "For full LoRA text encoder training check --train_text_encoder, for textual "
             "inversion training check `--train_text_encoder_ti`"
+        )
+    if args.use_blora and args.lora_unet_blocks:
+        warnings.warn(
+            "You specified both `--use_blora` and `--lora_unet_blocks`, for B-LoRA training, target unet blocks are: `unet.up_blocks.0.attentions.0` and `unet.up_blocks.0.attentions.1`. "
+            "If you wish to target different U-net blocks, don't enable `--use_blora`"
         )
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -758,11 +773,13 @@ def is_belong_to_blocks(key, blocks):
         raise type(e)(f"failed to is_belong_to_block, due to: {e}")
 
 
-def get_blora_target_modules(unet):
-    content_b_lora_blocks = ["unet.up_blocks.0.attentions.0"]
-    style_b_lora_blocks = ["unet.up_blocks.0.attentions.1"]
+def get_unet_lora_target_modules(unet, use_blora, target_blocks=None):
+    if use_blora:
+        content_b_lora_blocks = "unet.up_blocks.0.attentions.0"
+        style_b_lora_blocks = "unet.up_blocks.0.attentions.1"
+        target_blocks = [content_b_lora_blocks, style_b_lora_blocks]
     try:
-        blocks = [(".").join(blk.split(".")[1:]) for blk in content_b_lora_blocks + style_b_lora_blocks]
+        blocks = [(".").join(blk.split(".")[1:]) for blk in target_blocks]
 
         attns = [
             attn_processor_name.rsplit(".", 1)[0]
@@ -773,7 +790,8 @@ def get_blora_target_modules(unet):
         target_modules = [f"{attn}.{mat}" for mat in ["to_k", "to_q", "to_v", "to_out.0"] for attn in attns]
         return target_modules
     except Exception as e:
-        raise type(e)(f"failed to get_target_modules, due to: {e}")
+        raise type(e)(f"failed to get_target_modules, due to: {e}. "
+                      f"Please check the modules specified in --lora_unet_blocks are correct")
 
 
 # Taken from https://github.com/replicate/cog-sdxl/blob/main/dataset_and_utils.py
@@ -1416,8 +1434,13 @@ def main(args):
     # now we will add new LoRA weights to the attention layers
 
     if args.use_blora:
-        # if using B-LoRA adding weight only to two blocks
-        target_modules = get_blora_target_modules(unet)
+        # if using B-LoRA, the targeted blocks to train are automatically set
+        target_modules = get_unet_lora_target_modules(unet, use_blora=True)
+    elif args.lora_unet_blocks:
+        # if training specific unet blocks not in the B-LoRA scheme
+        target_blocks_list = "".join(args.lora_unet_blocks.split()).split(",")
+        logger.info(f"list of unet blocks to train: {target_blocks_list}")
+        target_modules = get_unet_lora_target_modules(unet, use_blora=False, target_blocks=target_blocks_list)
     else:
         target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
 
