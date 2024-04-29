@@ -28,7 +28,16 @@ The `from_single_file` method also supports loading models in their originally d
 - [`StableDiffusionXLPipeline`]
 - [`StableDiffusionXLImg2ImgPipeline`]
 - [`StableDiffusionXLInpaintPipeline`]
+- [`StableDiffusionXLInstructPix2PixPipeline`]
 - [`StableDiffusionXLControlNetPipeline`]
+- [`StableDiffusionXLKDiffusionPipeline`]
+- [`LatentConsistencyModelPipeline`]
+- [`LatentConsistencyModelImg2ImgPipeline`]
+- [`StableDiffusionControlNetXSPipeline`]
+- [`StableDiffusionXLControlNetXSPipeline`]
+- [`LEditsPPPipelineStableDiffusion`]
+- [`LEditsPPPipelineStableDiffusionXL`]
+- [`PIAPipeline`]
 
 ## Models that currently support `from_single_file` loading
 

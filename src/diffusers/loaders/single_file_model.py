@@ -133,6 +133,11 @@ class FromOriginalModelMixin:
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
                 method. See example below for more information.
 
+        ```py
+        >>> from diffusers import StableCascadeUNet
+
+        >>> ckpt_path = "https://huggingface.co/stabilityai/stable-cascade/blob/main/stage_b_lite.safetensors"
+        >>> model = StableCascadeUNet.from_single_file(ckpt_path)
         ```
         """
 
