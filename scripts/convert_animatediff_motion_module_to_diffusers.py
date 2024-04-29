@@ -32,7 +32,6 @@ def get_args():
     parser.add_argument("--use_motion_mid_block", action="store_true")
     parser.add_argument("--motion_max_seq_length", type=int, default=32)
     parser.add_argument("--save_fp16", action="store_true")
-    parser.add_argument("--use_safetensors", action="store_true")
 
     return parser.parse_args()
 
@@ -40,7 +39,7 @@ def get_args():
 if __name__ == "__main__":
     args = get_args()
 
-    if args.use_safetensors:
+    if args.ckpt_path.endswith(".safetensors"):
         state_dict = load_file(args.ckpt_path)
     else:
         state_dict = torch.load(args.ckpt_path, map_location="cpu")
