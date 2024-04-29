@@ -14,12 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib.util
 import json
 import logging
 import os
 import shutil
 import sys
 import tempfile
+import unittest
 
 import torch
 
@@ -35,6 +37,31 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
 stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
+
+# The package importlib_metadata is in a different place, depending on the python version.
+if sys.version_info < (3, 8):
+    import importlib_metadata
+else:
+    import importlib.metadata as importlib_metadata
+
+_timm_available = importlib.util.find_spec("timm") is not None
+if _timm_available:
+    try:
+        _timm_version = importlib_metadata.version("timm")
+        logger.info(f"Timm version {_timm_version} available.")
+    except importlib_metadata.PackageNotFoundError:
+        _timm_available = False
+
+
+def is_timm_available():
+    return _timm_available
+
+
+def require_timm(test_case):
+    """
+    Decorator marking a test that requires timm. These tests are skipped when timm isn't installed.
+    """
+    return unittest.skipUnless(is_timm_available(), "test requires timm")(test_case)
 
 
 class TextToImage(ExamplesTestsAccelerate):
@@ -85,6 +112,7 @@ class TextToImage(ExamplesTestsAccelerate):
             json.dump(self.test_discriminator_config, fp)
         return vqmodel_config_path, discriminator_config_path
 
+    @require_timm
     def test_vqmodel(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
@@ -112,6 +140,7 @@ class TextToImage(ExamplesTestsAccelerate):
             )
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "vqmodel", "diffusion_pytorch_model.safetensors")))
 
+    @require_timm
     def test_vqmodel_checkpointing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
@@ -196,6 +225,7 @@ class TextToImage(ExamplesTestsAccelerate):
                 {"checkpoint-4", "checkpoint-6"},
             )
 
+    @require_timm
     def test_vqmodel_checkpointing_use_ema(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
@@ -280,6 +310,7 @@ class TextToImage(ExamplesTestsAccelerate):
                 {"checkpoint-4", "checkpoint-6"},
             )
 
+    @require_timm
     def test_vqmodel_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
@@ -318,6 +349,7 @@ class TextToImage(ExamplesTestsAccelerate):
             # checkpoint-2 should have been deleted
             self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
 
+    @require_timm
     def test_vqmodel_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
