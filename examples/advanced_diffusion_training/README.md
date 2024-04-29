@@ -342,8 +342,7 @@ The inference is a bit different:
 2. the trained layers we load, changes based on our objective (e.g. style/content)
 
 ```bash
-git clone https://github.com/yardenfren1996/B-LoRA.git
-%cd B-LoRA
+git clone https://github.com/yardenfren1996/B-LoRA.git && cd B-LoRA && git reset --hard 1a20064
 ```
 ```python
 from blora_utils import BLOCKS, filter_lora, scale_lora
