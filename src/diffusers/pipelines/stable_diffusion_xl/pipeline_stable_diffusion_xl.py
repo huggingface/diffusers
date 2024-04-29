@@ -51,6 +51,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
+from ...utils.callbacks import Callback
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
@@ -1207,8 +1208,14 @@ class StableDiffusionXLPipeline(
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
+
+                    if isinstance(callback_on_step_end, Callback):
+                        for k in callback_on_step_end.get_inputs_from_callback():
+                            callback_kwargs[k] = locals()[k]
+                    else:
+                        for k in callback_on_step_end_tensor_inputs:
+                            callback_kwargs[k] = locals()[k]
+
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
