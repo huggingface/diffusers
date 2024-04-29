@@ -383,6 +383,26 @@ pipeline.load_lora_into_unet(combined_lora, None, pipeline.unet)
 prompt = "a [v18] in [v30] style"
 pipeline(prompt="a [v18] in [v30] style", num_images_per_prompt=4).images
 ```
+### LoRA training of Targeted U-net Blocks
+The advanced script now supports custom choice of U-net blocks to train during Dreambooth LoRA tuning. 
+> [!NOTE]
+> This feature is still experimental
+
+> Recently, works like B-LoRA showed the potential advantages of learning the LoRA weights of specific U-net blocks, not only in speed & memory, 
+> but also in reducing the amount of needed data, improving style manipulation and overcoming overfitting issues. 
+> In light of this, we're introducing a new feature to the advanced script to allow for configurable U-net learned blocks. 
+
+**Usage**
+Configure LoRA learned U-net blocks adding a `lora_unet_blocks` flag, with a comma seperated string specifying the targeted blocks. 
+e.g:
+```bash
+--lora_unet_blocks="unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1"
+```
+
+> [!NOTE]
+> if you specify both `--use_blora` and `--lora_unet_blocks`, values given in --lora_unet_blocks will be ignored. 
+> When enabling --use_blora, targeted U-net blocks are automatically set to be "unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1" as discussed in the paper. 
+> If you wish to experiment with different blocks, specify `--lora_unet_blocks` only.
 
 ### Tips and Tricks
 Check out [these recommended practices](https://huggingface.co/blog/sdxl_lora_advanced_script#additional-good-practices)
