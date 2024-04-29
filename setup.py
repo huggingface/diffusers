@@ -133,6 +133,7 @@ _deps = [
     "torchvision",
     "transformers>=4.25.1",
     "urllib3<=2.0.0",
+    "diffusers",
 ]
 
 # this is a lookup table with items like:
@@ -176,7 +177,7 @@ class DepsTableUpdateCommand(Command):
         (
             "dep-table-update",
             None,
-            "updates src/diffusers_plus_plus/dependency_versions_table.py",
+            "updates src/diffusers/dependency_versions_table.py",
         ),
     ]
 
@@ -197,7 +198,7 @@ class DepsTableUpdateCommand(Command):
             "}",
             "",
         ]
-        target = "src/diffusers_plus_plus/dependency_versions_table.py"
+        target = "src/diffusers/dependency_versions_table.py"
         print(f"updating {target}")
         with open(target, "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(content))
