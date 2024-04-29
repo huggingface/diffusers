@@ -358,10 +358,10 @@ def load_blora(lora_path, type, alpha):
 
 vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
 pipeline = StableDiffusionXLPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0",
-        vae=vae,
-        torch_dtype=torch.float16,
-    ).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    vae=vae,
+    torch_dtype=torch.float16,
+).to("cuda")
 
 # pick a blora for content/style (you can also set one to None) 
 content_B_lora_path  = "lora-library/B-LoRA-teddybear"
