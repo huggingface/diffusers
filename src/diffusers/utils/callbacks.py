@@ -43,7 +43,7 @@ def callback_ip_scale_cutout(pipeline, step_index, timestep, callback_kwargs, in
     return callback_kwargs
 
 
-class Callback:
+class PipelineCallback:
     def __init__(self, func, **kwargs):
         self.func = func
         self.kwargs = kwargs
