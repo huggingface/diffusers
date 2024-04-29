@@ -22,9 +22,10 @@ from torch import nn
 
 from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, logging
-from ..utils.import_utils import is_xformers_available, is_torch_npu_available
+from ..utils.import_utils import is_torch_npu_available, is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
 from .lora import LoRALinearLayer
+
 
 if is_torch_npu_available():
     import torch_npu

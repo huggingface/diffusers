@@ -20,6 +20,7 @@ from torch import nn
 from ..utils import deprecate
 from ..utils.import_utils import is_torch_npu_available
 
+
 if is_torch_npu_available():
     import torch_npu
 
