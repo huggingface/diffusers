@@ -34,9 +34,10 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ...pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionPipelineOutput
-from ...models import ELLAProxyUNet
+from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from ...plus_models import ELLAProxyUNet, ELLA
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -113,7 +114,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-class T5TextEmbedder(nn.Module):
+class T5TextEmbedder(torch.nn.Module):
     def __init__(self, pretrained_path="google/flan-t5-xl", max_length=None):
         super().__init__()
         self.model = T5EncoderModel.from_pretrained(pretrained_path)
@@ -150,7 +151,7 @@ class T5TextEmbedder(nn.Module):
         return embeddings
 
 
-class StableDiffusionPipeline(
+class EllaDiffusionPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
@@ -201,16 +202,17 @@ class StableDiffusionPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        tokenizer2: T5TextEmbedder,
+        #tokenizer2: T5TextEmbedder,
         unet: ELLAProxyUNet,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
+        ELLA: ELLA,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-
+        
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
@@ -279,8 +281,8 @@ class StableDiffusionPipeline(
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            tokenizer2=tokenizer2,
-            unet=unet,
+            ELLA=ELLA,
+            unet=ELLAProxyUNet(ELLA,unet),
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
@@ -388,22 +390,18 @@ class StableDiffusionPipeline(
             # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
-
-            text_inputs = self.tokenizer2(
+            
+            t5_encoder = T5TextEmbedder().to(device, dtype=self.unet.dtype)
+            prompt_embeds = t5_encoder(
                 prompt,
-                padding="max_length",
-                return_tensors="pt",
-                add_special_tokens=True,
-                max_length=max_length,
-                padding="max_length",
-                truncation=True,
-            )
-            text_input_ids = text_inputs.input_ids
-            attention_mask = text_inputs.attention_mask
+                max_length=128,
+            ).to(device, dtype=self.unet.dtype)
+            neg_prompt = '' if negative_prompt is None else negative_prompt
+            negative_prompt_embeds = t5_encoder(
+                neg_prompt,
+                max_length=128,
+            ).to(device, dtype=self.unet.dtype)
 
-            prompt_embeds = self.text_embedder(
-                text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
-            )
             # Access the `hidden_states` first, that contains a tuple of
             # all the hidden states from the encoder layers. Then index into
             # the tuple to access the hidden states from the desired layer.
@@ -412,8 +410,7 @@ class StableDiffusionPipeline(
             # representations. The `last_hidden_states` that we typically use for
             # obtaining the final prompt representations passes through the LayerNorm
             # layer.
-            prompt_embeds = prompt_embeds.last_hidden_state
-
+        
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
         elif self.unet is not None:
@@ -467,12 +464,13 @@ class StableDiffusionPipeline(
             else:
                 attention_mask = None
 
+            '''
             negative_prompt_embeds = self.text_encoder(
                 uncond_input.input_ids.to(device),
                 attention_mask=attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
-
+            '''
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
@@ -878,7 +876,8 @@ class StableDiffusionPipeline(
                 "1.0.0",
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
             )
-
+        # -1. pipe unet to ELLA
+        
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -1055,3 +1054,4 @@ class StableDiffusionPipeline(
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+

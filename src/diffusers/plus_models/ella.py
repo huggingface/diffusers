@@ -1,11 +1,41 @@
 from collections import OrderedDict
-from typing import Optional
+from typing import Optional, Union, Any
 
 import torch
 import torch.nn as nn
-from ..diffusers.models.embeddings import TimestepEmbedding, Timesteps
+from ..models.modeling_utils import ModelMixin
+from ..configuration_utils import ConfigMixin, register_to_config
+from ..models.embeddings import TimestepEmbedding, Timesteps
 
-class ELLA(nn.Module):
+class AdaLayerNorm(nn.Module):
+    def __init__(self, embedding_dim: int, time_embedding_dim: Optional[int] = None):
+        super().__init__()
+
+        if time_embedding_dim is None:
+            time_embedding_dim = embedding_dim
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(time_embedding_dim, 2 * embedding_dim, bias=True)
+        nn.init.zeros_(self.linear.weight)
+        nn.init.zeros_(self.linear.bias)
+
+        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+
+    def forward(
+        self, x: torch.Tensor, timestep_embedding: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        emb = self.linear(self.silu(timestep_embedding))
+        shift, scale = emb.view(len(x), 1, -1).chunk(2, dim=-1)
+        x = self.norm(x) * (1 + scale) + shift
+        return x
+
+
+class SquaredReLU(nn.Module):
+    def forward(self, x: torch.Tensor):
+        return torch.square(torch.relu(x))
+
+class ELLA(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(
         self,
         time_channel=320,
@@ -150,11 +180,11 @@ class PerceiverResampler(nn.Module):
         return latents
 
 class ELLAProxyUNet(torch.nn.Module):
-    def __init__(self, unet):
+    def __init__(self, ella, unet):
         super().__init__()
         # In order to still use the diffusers pipeline, including various workaround
 
-        self.ella = ELLA()
+        self.ella = ella
         self.unet = unet
         self.config = unet.config
         self.dtype = unet.dtype
@@ -208,4 +238,5 @@ class ELLAProxyUNet(torch.nn.Module):
             encoder_attention_mask=encoder_attention_mask,
             return_dict=return_dict,
         )
+
 

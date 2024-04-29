@@ -24,15 +24,16 @@ from ..utils import (
 _import_structure = {}
 
 if is_torch_available():
-    _import_structure["ella"] = ["ELLAProxyUNet"]
+    _import_structure["ella"] = ["ELLAProxyUNet","ELLA"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
-        from .ella import ELLAProxyUNet
+        from .ella import ELLAProxyUNet, ELLA
 
 else:
     import sys
 
     sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)
+
 

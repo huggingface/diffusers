@@ -106,10 +106,9 @@ else:
     _import_structure["plus_models"].extend(
         [
             "EllaELLAProxyUNet",
+            "ELLA",
         ]
-    V)
-
-
+    )
     _import_structure["optimization"] = [
         "get_constant_schedule",
         "get_constant_schedule_with_warmup",
@@ -508,6 +507,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from plus_models import (
             ELLAProxyUNet,
+            ELLA,
         )
         from .optimization import (
             get_constant_schedule,
@@ -805,3 +805,4 @@ else:
         module_spec=__spec__,
         extra_objects={"__version__": __version__},
     )
+

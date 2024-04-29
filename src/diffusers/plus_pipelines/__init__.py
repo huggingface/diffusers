@@ -42,6 +42,7 @@ else:
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
     ]
+    
 try:
     if not (is_torch_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
@@ -50,39 +51,17 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-
-    _import_structure["ella"].extend(
-        [
-            "StableDiffusionPipeline",
-        ]
-    )
-
-
+    _import_structure["ella"] = ["EllaDiffusionPipeline"]
+   
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
-    try:
-        if not is_torch_available():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from ...diffusers.utils.dummy_pt_objects import *  # noqa F403
-
-    else:
-        from .auto_pipeline import (
-            AutoPipelineForImage2Image,
-            AutoPipelineForInpainting,
-            AutoPipelineForText2Image,
-        )
-
     try:
         if not (is_torch_available() and is_transformers_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
-       
-        from .ella import (
-            StableDiffusionPipeline,
-        )
-
+        from .ella import EllaDiffusionPipeline
+        
 else:
     import sys
 

@@ -792,6 +792,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # import it here to avoid circular import
         from diffusers import pipelines
+        from diffusers import plus_pipelines
 
         # 6. Load each module in the pipeline
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
@@ -1235,6 +1236,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             diffusers_module = importlib.import_module(__name__.split(".")[0])
             pipelines = getattr(diffusers_module, "pipelines")
+            plus_pipelines = getattr(diffusers_module, "plus_pipelines")
 
             # optionally create a custom component <> custom file mapping
             custom_components = {}
@@ -1772,3 +1774,4 @@ class StableDiffusionMixin:
             else:
                 self.vae.unfuse_qkv_projections()
                 self.fusing_vae = False
+
