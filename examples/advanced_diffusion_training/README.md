@@ -381,7 +381,7 @@ pipeline.load_lora_into_unet(combined_lora, None, pipeline.unet)
 
 #generate
 prompt = "a [v18] in [v30] style"
-pipeline(prompt="a [v18] in [v30] style", num_images_per_prompt=4).images
+pipeline(prompt, num_images_per_prompt=4).images
 ```
 ### LoRA training of Targeted U-net Blocks
 The advanced script now supports custom choice of U-net blocks to train during Dreambooth LoRA tuning. 
@@ -403,6 +403,47 @@ e.g:
 > if you specify both `--use_blora` and `--lora_unet_blocks`, values given in --lora_unet_blocks will be ignored. 
 > When enabling --use_blora, targeted U-net blocks are automatically set to be "unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1" as discussed in the paper. 
 > If you wish to experiment with different blocks, specify `--lora_unet_blocks` only.
+
+**Inference** 
+Inference is the same as for B-LoRAs, except the input targeted blocks should be modified based on your training configuration. 
+```python
+import torch
+from diffusers import StableDiffusionXLPipeline, AutoencoderKL
+
+# taken & modified from B-LoRA repo - https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
+def is_belong_to_blocks(key, blocks):
+    try:
+        for g in blocks:
+            if g in key:
+                return True
+        return False
+    except Exception as e:
+        raise type(e)(f'failed to is_belong_to_block, due to: {e}')
+    
+def lora_lora_unet_blocks(lora_path, alpha, target_blocks):  
+  state_dict, _ = pipeline.lora_state_dict(lora_path)
+  filtered_state_dict = {k: v * alpha for k, v in state_dict.items() if is_belong_to_blocks(k, target_blocks)}
+  return filtered_state_dict
+
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    vae=vae,
+    torch_dtype=torch.float16,
+).to("cuda")
+
+lora_path  = "lora-library/B-LoRA-pen_sketch"
+
+state_dict = lora_lora_unet_blocks(content_B_lora_path,alpha=1,target_blocks=["unet.up_blocks.0.attentions.0"])
+
+# Load traine dlora layers into the unet
+pipeline.load_lora_into_unet(state_dict, None, pipeline.unet)
+
+#generate
+prompt = "a dog in [v30] style"
+pipeline(prompt, num_images_per_prompt=4).images
+```
+
 
 ### Tips and Tricks
 Check out [these recommended practices](https://huggingface.co/blog/sdxl_lora_advanced_script#additional-good-practices)
