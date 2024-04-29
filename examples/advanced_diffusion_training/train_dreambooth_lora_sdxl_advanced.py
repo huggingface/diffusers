@@ -697,6 +697,13 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--use_blora",
+        action="store_true",
+        help=(
+            "Whether to train a B-LoRA as proposed in- Implicit Style-Content Separation using B-LoRA https://arxiv.org/abs/2403.14572. "
+        ),
+    )
+    parser.add_argument(
         "--cache_latents",
         action="store_true",
         default=False,
