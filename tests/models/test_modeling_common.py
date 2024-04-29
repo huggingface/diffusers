@@ -196,6 +196,37 @@ class UNetTesterMixin:
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
 
+class TransformerTesterMixin:
+    def test_forward_signature(self):
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        signature = inspect.signature(model.forward)
+        # signature.parameters is an OrderedDict => so arg_names order is deterministic
+        arg_names = [*signature.parameters.keys()]
+
+        expected_arg_names = ["hidden_states", "encoder_hidden_states"]
+        self.assertListEqual(arg_names[:2], expected_arg_names)
+
+    def test_forward_with_norm_groups(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["norm_num_groups"] = 16
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.to_tuple()[0]
+
+        self.assertIsNotNone(output)
+        self.assertEqual(output.shape, self.output_shape, "Input and output shapes do not match")
+
+
 class ModelTesterMixin:
     main_input_name = None  # overwrite in model specific tester class
     base_precision = 1e-3
@@ -490,7 +521,7 @@ class ModelTesterMixin:
         max_diff = np.amax(np.abs(out_1 - out_2))
         self.assertLessEqual(max_diff, expected_max_diff)
 
-    def test_output(self):
+    def test_output(self, expected_output_shape=None):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -506,8 +537,12 @@ class ModelTesterMixin:
 
         # input & output have to have the same shape
         input_tensor = inputs_dict[self.main_input_name]
-        expected_shape = input_tensor.shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+        if expected_output_shape is None:
+            expected_shape = input_tensor.shape
+            self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        else:
+            self.assertEqual(output.shape, expected_output_shape, "Input and output shapes do not match")
 
     def test_model_from_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()

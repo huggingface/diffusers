@@ -132,7 +132,6 @@ class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
             output = model(**input)[0]
 
         output_slice = output[0, :5].flatten().cpu()
-        print(output_slice)
 
         # Since the VAE Gaussian prior's generator is seeded on the appropriate device,
         # the expected output slices are not the same for CPU and GPU.
