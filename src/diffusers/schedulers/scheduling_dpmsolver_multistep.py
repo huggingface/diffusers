@@ -303,7 +303,12 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(self, num_inference_steps: int = None, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int = None,
+        device: Union[str, torch.device] = None,
+        timesteps: Optional[List[int]] = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -313,32 +318,44 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
-        # Clipping the minimum of all lambda(t) for numerical stability.
-        # This is critical for cosine (squaredcos_cap_v2) noise schedule.
-        clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
-        last_timestep = ((self.config.num_train_timesteps - clipped_idx).numpy()).item()
-
-        # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
-        if self.config.timestep_spacing == "linspace":
-            timesteps = (
-                np.linspace(0, last_timestep - 1, num_inference_steps + 1).round()[::-1][:-1].copy().astype(np.int64)
-            )
-        elif self.config.timestep_spacing == "leading":
-            step_ratio = last_timestep // (num_inference_steps + 1)
-            # creates integer timesteps by multiplying by ratio
-            # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(np.int64)
-            timesteps += self.config.steps_offset
-        elif self.config.timestep_spacing == "trailing":
-            step_ratio = self.config.num_train_timesteps / num_inference_steps
-            # creates integer timesteps by multiplying by ratio
-            # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = np.arange(last_timestep, 0, -step_ratio).round().copy().astype(np.int64)
-            timesteps -= 1
+        if timesteps is not None:
+            if len(timesteps) != num_inference_steps:
+                raise ValueError(
+                    f"Length of timesteps must be equal to num_inference_steps, but got {len(timesteps)} and {num_inference_steps}."
+                )
+            timesteps = np.array(timesteps).astype(np.int64)
         else:
-            raise ValueError(
-                f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
-            )
+            # Clipping the minimum of all lambda(t) for numerical stability.
+            # This is critical for cosine (squaredcos_cap_v2) noise schedule.
+            clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
+            last_timestep = ((self.config.num_train_timesteps - clipped_idx).numpy()).item()
+
+            # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+            if self.config.timestep_spacing == "linspace":
+                timesteps = (
+                    np.linspace(0, last_timestep - 1, num_inference_steps + 1)
+                    .round()[::-1][:-1]
+                    .copy()
+                    .astype(np.int64)
+                )
+            elif self.config.timestep_spacing == "leading":
+                step_ratio = last_timestep // (num_inference_steps + 1)
+                # creates integer timesteps by multiplying by ratio
+                # casting to int to avoid issues when num_inference_step is power of 3
+                timesteps = (
+                    (np.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(np.int64)
+                )
+                timesteps += self.config.steps_offset
+            elif self.config.timestep_spacing == "trailing":
+                step_ratio = self.config.num_train_timesteps / num_inference_steps
+                # creates integer timesteps by multiplying by ratio
+                # casting to int to avoid issues when num_inference_step is power of 3
+                timesteps = np.arange(last_timestep, 0, -step_ratio).round().copy().astype(np.int64)
+                timesteps -= 1
+            else:
+                raise ValueError(
+                    f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
+                )
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         log_sigmas = np.log(sigmas)

@@ -167,6 +167,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
             dark samples instead of limiting it to samples with medium brightness. Loosely related to
             [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
+        final_sigmas_type (`str`, defaults to `"zero"`):
+            The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final
+            sigma is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -189,6 +192,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep_type: str = "discrete",  # can be "discrete" or "continuous"
         steps_offset: int = 0,
         rescale_betas_zero_snr: bool = False,
+        final_sigmas_type: str = "zero",  # can be "zero" or "sigma_min"
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -296,7 +300,13 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        device: Union[str, torch.device] = None,
+        timesteps: Optional[List[int]] = None,
+        sigmas: Optional[List[float]] = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -308,46 +318,75 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
 
-        # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
-        if self.config.timestep_spacing == "linspace":
-            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[
-                ::-1
-            ].copy()
-        elif self.config.timestep_spacing == "leading":
-            step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-            # creates integer timesteps by multiplying by ratio
-            # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
-            timesteps += self.config.steps_offset
-        elif self.config.timestep_spacing == "trailing":
-            step_ratio = self.config.num_train_timesteps / self.num_inference_steps
-            # creates integer timesteps by multiplying by ratio
-            # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(self.config.num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
-            timesteps -= 1
+        if timesteps is not None and sigmas is not None:
+            raise ValueError("Only one of timesteps or sigmas should be set.")
+
+        if timesteps is not None:
+            if len(timesteps) != num_inference_steps:
+                raise ValueError(
+                    f"Length of timesteps must be equal to num_inference_steps, but got {len(timesteps)} and {num_inference_steps}."
+                )
+            timesteps = np.array(timesteps).astype(np.int64)
         else:
-            raise ValueError(
-                f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
-            )
+            # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+            if self.config.timestep_spacing == "linspace":
+                timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[
+                    ::-1
+                ].copy()
+            elif self.config.timestep_spacing == "leading":
+                step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+                # creates integer timesteps by multiplying by ratio
+                # casting to int to avoid issues when num_inference_step is power of 3
+                timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
+                timesteps += self.config.steps_offset
+            elif self.config.timestep_spacing == "trailing":
+                step_ratio = self.config.num_train_timesteps / self.num_inference_steps
+                # creates integer timesteps by multiplying by ratio
+                # casting to int to avoid issues when num_inference_step is power of 3
+                timesteps = (
+                    (np.arange(self.config.num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
+                )
+                timesteps -= 1
+            else:
+                raise ValueError(
+                    f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
+                )
 
-        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        log_sigmas = np.log(sigmas)
-
-        if self.config.interpolation_type == "linear":
-            sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-        elif self.config.interpolation_type == "log_linear":
-            sigmas = torch.linspace(np.log(sigmas[-1]), np.log(sigmas[0]), num_inference_steps + 1).exp().numpy()
+        if sigmas is not None:
+            if len(sigmas) != num_inference_steps + 1:
+                raise ValueError(
+                    f"Length of sigmas must be equal to num_inference_steps + 1, but got {len(sigmas)} and {num_inference_steps + 1}."
+                )
+            log_sigmas = np.log(np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5))
+            sigmas = np.array(sigmas).astype(np.float32)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas[:-1]])
         else:
-            raise ValueError(
-                f"{self.config.interpolation_type} is not implemented. Please specify interpolation_type to either"
-                " 'linear' or 'log_linear'"
-            )
+            sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+            log_sigmas = np.log(sigmas)
+            if self.config.interpolation_type == "linear":
+                sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
+            elif self.config.interpolation_type == "log_linear":
+                sigmas = torch.linspace(np.log(sigmas[-1]), np.log(sigmas[0]), num_inference_steps + 1).exp().numpy()
+            else:
+                raise ValueError(
+                    f"{self.config.interpolation_type} is not implemented. Please specify interpolation_type to either"
+                    " 'linear' or 'log_linear'"
+                )
 
-        if self.config.use_karras_sigmas:
-            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            if self.config.use_karras_sigmas:
+                sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
+                timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
-        sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
+            if self.config.final_sigmas_type == "sigma_min":
+                sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
+            elif self.config.final_sigmas_type == "zero":
+                sigma_last = 0
+            else:
+                raise ValueError(
+                    f"`final_sigmas_type` must be one of 'zero', or 'sigma_min', but got {self.config.final_sigmas_type}"
+                )
+
+            sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         # TODO: Support the full EDM scalings for all prediction types and timestep types
         if self.config.timestep_type == "continuous" and self.config.prediction_type == "v_prediction":
@@ -355,7 +394,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             self.timesteps = torch.from_numpy(timesteps.astype(np.float32)).to(device=device)
 
-        self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
+        self.sigmas = torch.from_numpy(sigmas)
         self._step_index = None
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
