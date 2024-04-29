@@ -208,10 +208,10 @@ class TransformerTesterMixin:
         expected_arg_names = ["hidden_states", "encoder_hidden_states"]
         self.assertListEqual(arg_names[:2], expected_arg_names)
 
-    def test_forward_with_norm_groups(self):
+    def test_forward_with_norm_groups(self, norm_num_groups=16):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["norm_num_groups"] = 16
+        init_dict["norm_num_groups"] = norm_num_groups
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
