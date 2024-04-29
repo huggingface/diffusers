@@ -790,8 +790,10 @@ def get_unet_lora_target_modules(unet, use_blora, target_blocks=None):
         target_modules = [f"{attn}.{mat}" for mat in ["to_k", "to_q", "to_v", "to_out.0"] for attn in attns]
         return target_modules
     except Exception as e:
-        raise type(e)(f"failed to get_target_modules, due to: {e}. "
-                      f"Please check the modules specified in --lora_unet_blocks are correct")
+        raise type(e)(
+            f"failed to get_target_modules, due to: {e}. "
+            f"Please check the modules specified in --lora_unet_blocks are correct"
+        )
 
 
 # Taken from https://github.com/replicate/cog-sdxl/blob/main/dataset_and_utils.py
