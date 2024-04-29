@@ -83,8 +83,8 @@ class FromOriginalModelMixin:
     @validate_hf_hub_args
     def from_single_file(cls, pretrained_model_link_or_path: Optional[str] = None, **kwargs):
         r"""
-        Instantiate a [`AutoencoderKL`] from pretrained ControlNet weights saved in the original `.ckpt` or
-        `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
+        Instantiate a model from pretrained weights saved in the original `.ckpt` or `.safetensors` format. The model
+        is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
             pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
@@ -145,7 +145,7 @@ class FromOriginalModelMixin:
         checkpoint = kwargs.pop("checkpoint", None)
         if pretrained_model_link_or_path is None and checkpoint is None:
             raise ValueError(
-                "Please provide either a `pretrained_model_link_or_path` or a `checkpoint` to load the model from."
+                "Please provide either a `pretrained_model_link_or_path` or a `checkpoint` to load the model."
             )
 
         config = kwargs.pop("config", None)
@@ -178,8 +178,6 @@ class FromOriginalModelMixin:
                 cache_dir=cache_dir,
                 local_files_only=local_files_only,
                 revision=revision,
-                local_dir=local_dir,
-                local_dir_use_symlinks=local_dir_use_symlinks,
             )
 
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[class_name]

@@ -90,14 +90,15 @@ Override the default model or pipeline configuration options when using `from_si
 from diffusers import StableDiffusionXLInstructPix2PixPipeline
 
 ckpt_path = "https://huggingface.co/stabilityai/cosxl/blob/main/cosxl_edit.safetensors"
-pipe = StableDiffusionXLInstructPix2PixPipeline.from_single_file(ckpt_path, is_cosxl_edit=True)
+pipe = StableDiffusionXLInstructPix2PixPipeline.from_single_file(ckpt_path, config="diffusers/sdxl-instructpix2pix-768", is_cosxl_edit=True)
+
 ```
 
 ```python
 from diffusers import UNet2DConditionModel
 
 ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
-model = UNet2DConditionModel.from_single_file(ckpt_path, device="cuda", upcast_attention=True)
+model = UNet2DConditionModel.from_single_file(ckpt_path, upcast_attention=True)
 
 ```
 
@@ -201,13 +202,13 @@ pipe = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, conf
 ```
 
 <Tip>
-Disabling symlinking means that the `huggingface_hub` caching mechanism has no way to determine whether a file has already been downloaded to the local directory. This means that the `hf_hub_download` and `snapshot_download` functions will download the file to the local directory every time they are called. If you are disabling symlinking, it recommended that you separate the download and loading steps to avoid downloading the same file multiple times.
+Disabling symlinking means that the `huggingface_hub` caching mechanism has no way to determine whether a file has already been downloaded to the local directory. This means that the `hf_hub_download` and `snapshot_download` functions will download files to the local directory each time they are executed. If you are disabling symlinking, it is recommended that you separate the model download and loading steps to avoid downloading the same file multiple times.
 
 </Tip>
 
 ## Using the original configuration file of a model
 
-If you would like to use the original configuration file of a model when loading a model from a single file, you can do so with the `original_config` argument.
+If you would like to configure the parameters of the model components in the pipeline using the orignal YAML configuration file, you can pass a local path or url to the original configuration file to the `original_config` argument of the `from_single_file` method.
 
 ```python
 from diffusers import StableDiffusionXLPipeline
@@ -219,9 +220,13 @@ original_config = "https://raw.githubusercontent.com/Stability-AI/generative-mod
 pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, original_config=original_config)
 ```
 
-<Tip>
-When using `original_config` with local_files_only=True`, `diffusers` will attempt to infer the components based on the type signatures of pipeline class. This is not as reliable as providing a config path and might lead to errors when configuring the pipeline.
+In the example above, the `original_config` file is only used to configure the parameters of the individual model components of the pipeline. For example it will be used to configure parameters such as the `in_channels` of the `vae` model and `unet` model. It is not used to determine the type of component objects in the pipeline.
 
+
+<Tip>
+When using `original_config` with local_files_only=True`, Diffusers will attempt to infer the components based on the type signatures of pipeline class, rather than attempting to fetch the pipeline config from the Hugging Face Hub. This is to prevent backwards breaking changes in existing code that might not be able to connect to the internet to fetch the necessary pipeline config files.
+
+This is not as reliable as providing a path to a local config repo and might lead to errors when configuring the pipeline. To avoid this, please run the pipeline with `local_files_only=False` once to download the appropriate pipeline config files to the local cache.
 </Tip>
 
 

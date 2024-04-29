@@ -36,8 +36,7 @@ from .single_file_utils import (
 
 logger = logging.get_logger(__name__)
 
-# Legacy behaviour. `from_single_file` does not load the safety checker
-# unless explicitly provided
+# Legacy behaviour. `from_single_file` does not load the safety checker unless explicitly provided
 SINGLE_FILE_OPTIONAL_COMPONENTS = ["safety_checker"]
 
 
@@ -341,6 +340,7 @@ class FromSingleFileMixin:
         ... )
         >>> pipeline.to("cuda")
         ```
+
         """
         original_config_file = kwargs.pop("original_config_file", None)
         config = kwargs.pop("config", None)
