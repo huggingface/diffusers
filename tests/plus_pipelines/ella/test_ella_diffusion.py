@@ -38,12 +38,14 @@ from diffusers_plus_plus import (
     LCMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    StableDiffusionPipeline,
+    EllaFixedDiffusionPipeline,
+    EllaFlexDiffusionPipeline,
+    ELLA,
     UNet2DConditionModel,
     logging,
 )
-from diffusers.models.attention_processor import AttnProcessor
-from diffusers.utils.testing_utils import (
+from diffusers_plus_plus.models.attention_processor import AttnProcessor
+from diffusers_plus_plus.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
     load_image,
@@ -76,7 +78,7 @@ enable_full_determinism()
 
 
 # Will be run via run_test_in_subprocess
-def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
+def _test_ella_diffusion_compile(in_queue, out_queue, timeout):
     error = None
     try:
         inputs = in_queue.get(timeout=timeout)
@@ -84,7 +86,8 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
         seed = inputs.pop("seed")
         inputs["generator"] = torch.Generator(device=torch_device).manual_seed(seed)
 
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        ella =  ELLA.from_pretrained('shauray/ELLA_SD15')
+        sd_pipe = EllaFixedDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4",ELLA=ELLA,safety_checker=None)
         sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
 
@@ -108,14 +111,14 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     out_queue.join()
 
 
-class StableDiffusionPipelineFastTests(
+class EllaDiffusionPipelineFastTests(
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineTesterMixin,
     unittest.TestCase,
 ):
-    pipeline_class = StableDiffusionPipeline
+    pipeline_class = EllaFixedDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
