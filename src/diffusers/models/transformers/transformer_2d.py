@@ -101,6 +101,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         attention_type: str = "default",
         caption_channels: int = None,
         interpolation_scale: float = None,
+        use_additional_conditions: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -125,6 +126,12 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.in_channels = in_channels
         self.out_channels = in_channels if out_channels is None else out_channels
         self.gradient_checkpointing = False
+        if use_additional_conditions is None:
+            if norm_type == "ada_norm_single" and sample_size == 128:
+                use_additional_conditions = True
+            else:
+                use_additional_conditions = False
+        self.use_additional_conditions = use_additional_conditions
 
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
@@ -306,9 +313,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # PixArt-Alpha blocks.
         self.adaln_single = None
-        self.use_additional_conditions = False
         if self.config.norm_type == "ada_norm_single":
-            self.use_additional_conditions = self.config.sample_size == 128
             # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
             # additional conditions until we find better name
             self.adaln_single = AdaLayerNormSingle(
