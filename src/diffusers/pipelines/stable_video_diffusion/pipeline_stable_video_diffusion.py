@@ -178,6 +178,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         image = image.to(device=device)
         image_latents = self.vae.encode(image).latent_dist.mode()
 
+        # duplicate image_latents for each generation per prompt, using mps friendly method
+        image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1)
+
         if do_classifier_free_guidance:
             negative_image_latents = torch.zeros_like(image_latents)
 
@@ -185,9 +188,6 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             image_latents = torch.cat([negative_image_latents, image_latents])
-
-        # duplicate image_latents for each generation per prompt, using mps friendly method
-        image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1)
 
         return image_latents
 
