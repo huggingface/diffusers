@@ -41,7 +41,7 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             hidden_size=8,
             use_bias=False,
             hidden_dropout=0.0,
-            cond_embed_dim=32,
+            cond_embed_dim=8,
             micro_cond_encode_dim=2,
             micro_cond_embed_dim=10,
             encoder_hidden_size=8,
@@ -92,7 +92,7 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_hidden_layers=1,
             pad_token_id=1,
             vocab_size=1000,
-            projection_dim=32,
+            projection_dim=8,
         )
         text_encoder = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
