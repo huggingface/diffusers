@@ -661,16 +661,16 @@ image
 
 ### Style & layout control
 
-[InstantStyle](https://arxiv.org/abs/2404.02733) is a plug-and-play method on top of IP-Adapter, which disentangles style and layout from image prompt to control image generation. This is achieved by only inserting IP-Adapters to some specific part of the model. 
+[InstantStyle](https://arxiv.org/abs/2404.02733) is a plug-and-play method on top of IP-Adapter, which disentangles style and layout from image prompt to control image generation. This way, you can generate images following only the style or layout from image prompt, with significantly improved diversity. This is achieved by only activating IP-Adapters to specific parts of the model. 
 
 By default IP-Adapters are inserted to all layers of the model. Use the [`~loaders.IPAdapterMixin.set_ip_adapter_scale`] method with a dictionary to assign scales to IP-Adapter at different layers.
 
 ```py
-from diffusers import AutoPipelineForImage2Image
+from diffusers import AutoPipelineForText2Image
 from diffusers.utils import load_image
 import torch
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
 scale = {
@@ -680,15 +680,15 @@ scale = {
 pipeline.set_ip_adapter_scale(scale)
 ```
 
-This will activate IP-Adapter at the second layer in the model's down-part block 2 and up-part block 0. The former is the layer where IP-Adapter injects layout information and the latter injects style. Inserting IP-Adapter to these two layers you can generate images following the style and layout of image prompt, but with contents more aligned to text prompt.
+This will activate IP-Adapter at the second layer in the model's down-part block 2 and up-part block 0. The former is the layer where IP-Adapter injects layout information and the latter injects style. Inserting IP-Adapter to these two layers you can generate images following both the style and layout from image prompt, but with contents more aligned to text prompt.
 
 ```py
 style_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/0052a70beed5bf71b92610a43a52df6d286cd5f3/diffusers/rabbit.jpg")
 
-generator = torch.Generator(device="cpu").manual_seed(42)
+generator = torch.Generator(device="cpu").manual_seed(26)
 image = pipeline(
     prompt="a cat, masterpiece, best quality, high quality",
-    image=style_image,
+    ip_adapter_image=style_image,
     negative_prompt="text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
     guidance_scale=5,
     num_inference_steps=30,
@@ -703,7 +703,7 @@ image
     <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter image</figcaption>
   </div>
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/0052a70beed5bf71b92610a43a52df6d286cd5f3/diffusers/rabbit_style_layout_cat.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/datasets/cat_style_layout.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
   </div>
 </div>
@@ -718,10 +718,10 @@ scale = {
 }
 pipeline.set_ip_adapter_scale(scale)
 
-generator = torch.Generator(device="cpu").manual_seed(42)
+generator = torch.Generator(device="cpu").manual_seed(26)
 image = pipeline(
     prompt="a cat, masterpiece, best quality, high quality",
-    image=style_image,
+    ip_adapter_image=style_image,
     negative_prompt="text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
     guidance_scale=5,
     num_inference_steps=30,
@@ -732,11 +732,11 @@ image
 
 <div class="flex flex-row gap-4">
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/0052a70beed5bf71b92610a43a52df6d286cd5f3/diffusers/rabbit_style_cat.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/datasets/cat_style_only.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter only in style layer</figcaption>
   </div>
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/30518dfe089e6bf50008875077b44cb98fb2065c/diffusers/default_out.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/datasets/cat_ip_adapter.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter in all layers</figcaption>
   </div>
 </div>
