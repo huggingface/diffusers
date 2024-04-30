@@ -173,8 +173,9 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def get_crop_region(mask_image: PIL.Image.Image, width: int, height: int, pad=0):
         """
-        Finds a rectangular region that contains all masked ares in an image, and expands region to match the aspect ratio of the original image;
-        for example, if user drew mask in a 128x32 region, and the dimensions for processing are 512x512, the region will be expanded to 128x128.
+        Finds a rectangular region that contains all masked ares in an image, and expands region to match the aspect
+        ratio of the original image; for example, if user drew mask in a 128x32 region, and the dimensions for
+        processing are 512x512, the region will be expanded to 128x128.
 
         Args:
             mask_image (PIL.Image.Image): Mask image.
@@ -183,7 +184,8 @@ class VaeImageProcessor(ConfigMixin):
             pad (int, optional): Padding to be added to the crop region. Defaults to 0.
 
         Returns:
-            tuple: (x1, y1, x2, y2) represent a rectangular region that contains all masked ares in an image and matches the original aspect ratio.
+            tuple: (x1, y1, x2, y2) represent a rectangular region that contains all masked ares in an image and
+            matches the original aspect ratio.
         """
 
         mask_image = mask_image.convert("L")
@@ -265,7 +267,8 @@ class VaeImageProcessor(ConfigMixin):
         height: int,
     ) -> PIL.Image.Image:
         """
-        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image within the dimensions, filling empty with data from image.
+        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center
+        the image within the dimensions, filling empty with data from image.
 
         Args:
             image: The image to resize.
@@ -309,7 +312,8 @@ class VaeImageProcessor(ConfigMixin):
         height: int,
     ) -> PIL.Image.Image:
         """
-        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image within the dimensions, cropping the excess.
+        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center
+        the image within the dimensions, cropping the excess.
 
         Args:
             image: The image to resize.
@@ -346,12 +350,12 @@ class VaeImageProcessor(ConfigMixin):
                 The width to resize to.
             resize_mode (`str`, *optional*, defaults to `default`):
                 The resize mode to use, can be one of `default` or `fill`. If `default`, will resize the image to fit
-                within the specified width and height, and it may not maintaining the original aspect ratio.
-                If `fill`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
-                within the dimensions, filling empty with data from image.
-                If `crop`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
-                within the dimensions, cropping the excess.
-                Note that resize_mode `fill` and `crop` are only supported for PIL image input.
+                within the specified width and height, and it may not maintaining the original aspect ratio. If `fill`,
+                will resize the image to fit within the specified width and height, maintaining the aspect ratio, and
+                then center the image within the dimensions, filling empty with data from image. If `crop`, will resize
+                the image to fit within the specified width and height, maintaining the aspect ratio, and then center
+                the image within the dimensions, cropping the excess. Note that resize_mode `fill` and `crop` are only
+                supported for PIL image input.
 
         Returns:
             `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
@@ -456,19 +460,21 @@ class VaeImageProcessor(ConfigMixin):
 
         Args:
             image (`pipeline_image_input`):
-                The image input, accepted formats are PIL images, NumPy arrays, PyTorch tensors; Also accept list of supported formats.
+                The image input, accepted formats are PIL images, NumPy arrays, PyTorch tensors; Also accept list of
+                supported formats.
             height (`int`, *optional*, defaults to `None`):
-                The height in preprocessed image. If `None`, will use the `get_default_height_width()` to get default height.
+                The height in preprocessed image. If `None`, will use the `get_default_height_width()` to get default
+                height.
             width (`int`, *optional*`, defaults to `None`):
-                The width in preprocessed. If `None`, will use  get_default_height_width()` to get the default width.
+                The width in preprocessed. If `None`, will use get_default_height_width()` to get the default width.
             resize_mode (`str`, *optional*, defaults to `default`):
-                The resize mode, can be one of `default` or `fill`. If `default`, will resize the image to fit
-                within the specified width and height, and it may not maintaining the original aspect ratio.
-                If `fill`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
-                within the dimensions, filling empty with data from image.
-                If `crop`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
-                within the dimensions, cropping the excess.
-                Note that resize_mode `fill` and `crop` are only supported for PIL image input.
+                The resize mode, can be one of `default` or `fill`. If `default`, will resize the image to fit within
+                the specified width and height, and it may not maintaining the original aspect ratio. If `fill`, will
+                resize the image to fit within the specified width and height, maintaining the aspect ratio, and then
+                center the image within the dimensions, filling empty with data from image. If `crop`, will resize the
+                image to fit within the specified width and height, maintaining the aspect ratio, and then center the
+                image within the dimensions, cropping the excess. Note that resize_mode `fill` and `crop` are only
+                supported for PIL image input.
             crops_coords (`List[Tuple[int, int, int, int]]`, *optional*, defaults to `None`):
                 The crop coordinates for each image in the batch. If `None`, will not crop the image.
         """
@@ -930,8 +936,8 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
     @staticmethod
     def downsample(mask: torch.FloatTensor, batch_size: int, num_queries: int, value_embed_dim: int):
         """
-        Downsamples the provided mask tensor to match the expected dimensions for scaled dot-product attention.
-        If the aspect ratio of the mask does not match the aspect ratio of the output image, a warning is issued.
+        Downsamples the provided mask tensor to match the expected dimensions for scaled dot-product attention. If the
+        aspect ratio of the mask does not match the aspect ratio of the output image, a warning is issued.
 
         Args:
             mask (`torch.FloatTensor`):
@@ -988,3 +994,77 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
         )
 
         return mask_downsample
+
+
+class PixArtImageProcessor(VaeImageProcessor):
+    """
+    Image processor for PixArt image resize and crop.
+
+    Args:
+        do_resize (`bool`, *optional*, defaults to `True`):
+            Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
+            `height` and `width` arguments from [`image_processor.VaeImageProcessor.preprocess`] method.
+        vae_scale_factor (`int`, *optional*, defaults to `8`):
+            VAE scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of this factor.
+        resample (`str`, *optional*, defaults to `lanczos`):
+            Resampling filter to use when resizing the image.
+        do_normalize (`bool`, *optional*, defaults to `True`):
+            Whether to normalize the image to [-1,1].
+        do_binarize (`bool`, *optional*, defaults to `False`):
+            Whether to binarize the image to 0/1.
+        do_convert_rgb (`bool`, *optional*, defaults to be `False`):
+            Whether to convert the images to RGB format.
+        do_convert_grayscale (`bool`, *optional*, defaults to be `False`):
+            Whether to convert the images to grayscale format.
+    """
+
+    @register_to_config
+    def __init__(
+        self,
+        do_resize: bool = True,
+        vae_scale_factor: int = 8,
+        resample: str = "lanczos",
+        do_normalize: bool = True,
+        do_binarize: bool = False,
+        do_convert_grayscale: bool = False,
+    ):
+        super().__init__(
+            do_resize=do_resize,
+            vae_scale_factor=vae_scale_factor,
+            resample=resample,
+            do_normalize=do_normalize,
+            do_binarize=do_binarize,
+            do_convert_grayscale=do_convert_grayscale,
+        )
+
+    @staticmethod
+    def classify_height_width_bin(height: int, width: int, ratios: dict) -> Tuple[int, int]:
+        """Returns binned height and width."""
+        ar = float(height / width)
+        closest_ratio = min(ratios.keys(), key=lambda ratio: abs(float(ratio) - ar))
+        default_hw = ratios[closest_ratio]
+        return int(default_hw[0]), int(default_hw[1])
+
+    @staticmethod
+    def resize_and_crop_tensor(samples: torch.Tensor, new_width: int, new_height: int) -> torch.Tensor:
+        orig_height, orig_width = samples.shape[2], samples.shape[3]
+
+        # Check if resizing is needed
+        if orig_height != new_height or orig_width != new_width:
+            ratio = max(new_height / orig_height, new_width / orig_width)
+            resized_width = int(orig_width * ratio)
+            resized_height = int(orig_height * ratio)
+
+            # Resize
+            samples = F.interpolate(
+                samples, size=(resized_height, resized_width), mode="bilinear", align_corners=False
+            )
+
+            # Center Crop
+            start_x = (resized_width - new_width) // 2
+            end_x = start_x + new_width
+            start_y = (resized_height - new_height) // 2
+            end_y = start_y + new_height
+            samples = samples[:, :, start_y:end_y, start_x:end_x]
+
+        return samples

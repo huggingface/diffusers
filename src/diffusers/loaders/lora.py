@@ -1269,6 +1269,11 @@ class LoraLoaderMixin:
                 for adapter_name in adapter_names:
                     unet_module.lora_A[adapter_name].to(device)
                     unet_module.lora_B[adapter_name].to(device)
+                    # this is a param, not a module, so device placement is not in-place -> re-assign
+                    if hasattr(unet_module, "lora_magnitude_vector") and unet_module.lora_magnitude_vector is not None:
+                        unet_module.lora_magnitude_vector[adapter_name] = unet_module.lora_magnitude_vector[
+                            adapter_name
+                        ].to(device)
 
         # Handle the text encoder
         modules_to_process = []
@@ -1285,6 +1290,14 @@ class LoraLoaderMixin:
                     for adapter_name in adapter_names:
                         text_encoder_module.lora_A[adapter_name].to(device)
                         text_encoder_module.lora_B[adapter_name].to(device)
+                        # this is a param, not a module, so device placement is not in-place -> re-assign
+                        if (
+                            hasattr(text_encoder, "lora_magnitude_vector")
+                            and text_encoder_module.lora_magnitude_vector is not None
+                        ):
+                            text_encoder_module.lora_magnitude_vector[
+                                adapter_name
+                            ] = text_encoder_module.lora_magnitude_vector[adapter_name].to(device)
 
 
 class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):

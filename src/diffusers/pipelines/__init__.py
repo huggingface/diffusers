@@ -134,6 +134,12 @@ else:
             "StableDiffusionXLControlNetPipeline",
         ]
     )
+    _import_structure["controlnet_xs"].extend(
+        [
+            "StableDiffusionControlNetXSPipeline",
+            "StableDiffusionXLControlNetXSPipeline",
+        ]
+    )
     _import_structure["deepfloyd_if"] = [
         "IFImg2ImgPipeline",
         "IFImg2ImgSuperResolutionPipeline",
@@ -181,7 +187,7 @@ else:
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
-    _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline"]
+    _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_cascade"] = [
@@ -378,6 +384,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
         )
+        from .controlnet_xs import (
+            StableDiffusionControlNetXSPipeline,
+            StableDiffusionXLControlNetXSPipeline,
+        )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
@@ -440,7 +450,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
-        from .pixart_alpha import PixArtAlphaPipeline
+        from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_cascade import (

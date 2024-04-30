@@ -95,7 +95,7 @@ from setuptools import Command, find_packages, setup
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
-    "accelerate>=0.11.0",
+    "accelerate>=0.29.3",
     "compel==0.1.8",
     "datasets",
     "filelock",
@@ -134,6 +134,7 @@ _deps = [
     "torchvision",
     "transformers>=4.25.1",
     "urllib3<=2.0.0",
+    "black",
 ]
 
 # this is a lookup table with items like:
