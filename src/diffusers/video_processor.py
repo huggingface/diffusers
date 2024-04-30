@@ -54,6 +54,19 @@ class VideoProcessor(VaeImageProcessor):
                 f"Input is in incorrect format: {[type(i) for i in video]}. Currently, we only support {', '.join(supported_formats)}"
             )
 
+        # In case the video a list of list of PIL images.
+        if isinstance(video, list) and isinstance(video[0], list) and isinstance(video[0][0], PIL.Image.Image):
+            video_ = []
+            first_video_length = 0
+            for i, vid in enumerate(video):
+                current_video = [np.array(frame) for frame in vid]
+                if i == 0:
+                    first_video_length = len(current_video)
+                if len(current_video) != first_video_length:
+                    raise ValueError("Cannot batch together videos of different lengths.")
+                video_.append(current_video)
+            video = np.stack(video_, axis=0)
+
         # In case the video is a list of PIL images, convert to a list of ndarrays.
         if isinstance(video[0], PIL.Image.Image):
             video = [np.array(frame) for frame in video]
