@@ -57,7 +57,8 @@ else:
 
 if is_accelerate_available():
     import accelerate
-    from accelerate.utils import set_module_tensor_to_device
+    from accelerate import infer_auto_device_map
+    from accelerate.utils import get_balanced_memory, get_max_memory, set_module_tensor_to_device
     from accelerate.utils.versions import is_torch_version
 
 
@@ -97,6 +98,29 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
         gen = parameter._named_members(get_members_fn=find_tensor_attributes)
         first_tuple = next(gen)
         return first_tuple[1].dtype
+
+
+# Adapted from `transformers` (see modeling_utils.py)
+def _determine_device_map(model: "ModelMixin", device_map, max_memory, torch_dtype):
+    if isinstance(device_map, str):
+        no_split_modules = model._get_no_split_modules(device_map)
+        device_map_kwargs = {"no_split_module_classes": no_split_modules}
+
+        if device_map != "sequential":
+            max_memory = get_balanced_memory(
+                model,
+                dtype=torch_dtype,
+                low_zero=(device_map == "balanced_low_0"),
+                max_memory=max_memory,
+                **device_map_kwargs,
+            )
+        else:
+            max_memory = get_max_memory(max_memory)
+
+        device_map_kwargs["max_memory"] = max_memory
+        device_map = infer_auto_device_map(model, dtype=torch_dtype, **device_map_kwargs)
+
+    return device_map
 
 
 def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None):
@@ -201,6 +225,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
     _supports_gradient_checkpointing = False
     _keys_to_ignore_on_load_unexpected = None
+    _no_split_modules = None
 
     def __init__(self):
         super().__init__()
@@ -560,6 +585,36 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
+        # change device_map into a map if we passed an int, a str or a torch.device
+        if isinstance(device_map, torch.device):
+            device_map = {"": device_map}
+        elif isinstance(device_map, str) and device_map not in ["auto", "balanced", "balanced_low_0", "sequential"]:
+            try:
+                device_map = {"": torch.device(device_map)}
+            except RuntimeError:
+                raise ValueError(
+                    "When passing device_map as a string, the value needs to be a device name (e.g. cpu, cuda:0) or "
+                    f"'auto', 'balanced', 'balanced_low_0', 'sequential' but found {device_map}."
+                )
+        elif isinstance(device_map, int):
+            if device_map < 0:
+                raise ValueError(
+                    "You can't pass device_map as a negative int. If you want to put the model on the cpu, pass device_map = 'cpu' "
+                )
+            else:
+                device_map = {"": device_map}
+
+        if device_map is not None:
+            if low_cpu_mem_usage is None:
+                low_cpu_mem_usage = True
+            elif not low_cpu_mem_usage:
+                raise ValueError("Passing along a `device_map` requires `low_cpu_mem_usage=True`")
+
+        if low_cpu_mem_usage:
+            if device_map is not None and not is_torch_version(">=", "1.10"):
+                # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
+                raise ValueError("`low_cpu_mem_usage` and `device_map` require PyTorch >= 1.10.")
+
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
 
@@ -582,10 +637,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             token=token,
             revision=revision,
             subfolder=subfolder,
-            device_map=device_map,
-            max_memory=max_memory,
-            offload_folder=offload_folder,
-            offload_state_dict=offload_state_dict,
             user_agent=user_agent,
             **kwargs,
         )
@@ -690,6 +741,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
+                    device_map = _determine_device_map(model, device_map, max_memory, torch_dtype)
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
@@ -889,6 +941,36 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         expected_modules = set(required_parameters.keys()) - {"self"}
 
         return expected_modules, optional_parameters
+
+    # Adapted from `transformers` modeling_utils.py
+    def _get_no_split_modules(self, device_map: str):
+        """
+        Get the modules of the model that should not be spit when using device_map. We iterate through the modules to
+        get the underlying `_no_split_modules`.
+
+        Args:
+            device_map (`str`):
+                The device map value. Options are ["auto", "balanced", "balanced_low_0", "sequential"]
+
+        Returns:
+            `List[str]`: List of modules that should not be split
+        """
+        _no_split_modules = set()
+        modules_to_check = [self]
+        while len(modules_to_check) > 0:
+            module = modules_to_check.pop(-1)
+            # if the module does not appear in _no_split_modules, we also check the children
+            if module.__class__.__name__ not in _no_split_modules:
+                if isinstance(module, ModelMixin):
+                    if module._no_split_modules is None:
+                        raise ValueError(
+                            f"{module.__class__.__name__} does not support `device_map='{device_map}'`. To implement support, the model "
+                            "class needs to implement the `_no_split_modules` attribute."
+                        )
+                    else:
+                        _no_split_modules = _no_split_modules | set(module._no_split_modules)
+                modules_to_check += list(module.children())
+        return list(_no_split_modules)
 
     @property
     def device(self) -> torch.device:
