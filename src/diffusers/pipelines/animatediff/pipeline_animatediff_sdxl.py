@@ -72,7 +72,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AnimateDiffSDXLPipeline, DDIMScheduler
         >>> from diffusers.utils import export_to_gif
 
-        >>> adapter = MotionAdapter.from_pretrained("a-r-r-o-w/animatediff-motion-adapter-sdxl-beta", torch_dtype=torch.float16)
+        >>> adapter = MotionAdapter.from_pretrained(
+        ...     "a-r-r-o-w/animatediff-motion-adapter-sdxl-beta", torch_dtype=torch.float16
+        ... )
 
         >>> model_id = "stabilityai/stable-diffusion-xl-base-1.0"
         >>> scheduler = DDIMScheduler.from_pretrained(
@@ -82,14 +84,14 @@ EXAMPLE_DOC_STRING = """
         ...     timestep_spacing="linspace",
         ...     beta_schedule="linear",
         ...     steps_offset=1,
-        >>> )
+        ... )
         >>> pipe = AnimateDiffSDXLPipeline.from_pretrained(
         ...     model_id,
         ...     motion_adapter=adapter,
         ...     scheduler=scheduler,
         ...     torch_dtype=torch.float16,
         ...     variant="fp16",
-        >>> ).to("cuda")
+        ... ).to("cuda")
 
         >>> # enable memory savings
         >>> pipe.enable_vae_slicing()
@@ -103,7 +105,7 @@ EXAMPLE_DOC_STRING = """
         ...     width=1024,
         ...     height=1024,
         ...     num_frames=16,
-        >>> )
+        ... )
 
         >>> frames = output.frames[0]
         >>> export_to_gif(frames, "animation.gif")
@@ -164,8 +166,8 @@ def retrieve_timesteps(
         scheduler (`SchedulerMixin`):
             The scheduler to get timesteps from.
         num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used,
-            `timesteps` must be `None`.
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         timesteps (`List[int]`, *optional*):
@@ -970,14 +972,14 @@ class AnimateDiffSDXLPipeline(
             ip_adapter_image: (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. If not
-                provided, embeddings are computed from the `ip_adapter_image` input argument.
+                Pre-generated image embeddings for IP-Adapter. If not provided, embeddings are computed from the
+                `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion_xl.AnimateDiffPipelineOutput`] instead
-                of a plain tuple.
+                Whether or not to return a [`~pipelines.stable_diffusion_xl.AnimateDiffPipelineOutput`] instead of a
+                plain tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
