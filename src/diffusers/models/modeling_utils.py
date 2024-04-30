@@ -247,6 +247,36 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if self._supports_gradient_checkpointing:
             self.apply(partial(self._set_gradient_checkpointing, value=False))
 
+    def set_use_npu_flash_attention(self, valid: bool) -> None:
+        r"""
+        Set the switch for the npu flash attention.
+        """
+
+        def fn_recursive_set_npu_flash_attention(module: torch.nn.Module):
+            if hasattr(module, "set_use_npu_flash_attention"):
+                module.set_use_npu_flash_attention(valid)
+
+            for child in module.children():
+                fn_recursive_set_npu_flash_attention(child)
+
+        for module in self.children():
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_npu_flash_attention(module)
+
+    def enable_npu_flash_attention(self) -> None:
+        r"""
+        Enable npu flash attention from torch_npu
+
+        """
+        self.set_use_npu_flash_attention(True)
+
+    def disable_npu_flash_attention(self) -> None:
+        r"""
+        disable npu flash attention from torch_npu
+
+        """
+        self.set_use_npu_flash_attention(False)
+
     def set_use_memory_efficient_attention_xformers(
         self, valid: bool, attention_op: Optional[Callable] = None
     ) -> None:
