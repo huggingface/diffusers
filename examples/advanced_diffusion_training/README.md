@@ -306,7 +306,7 @@ accelerate launch train_dreambooth_lora_sdxl_advanced.py \
 
 ### B-LoRA training 
 The advanced script now supports B-LoRA training too!
-> Proposed in [Implicit Style-Content Separation using B-LoRA](https://b-lora.github.io/B-LoRA/static/source/B-LoRA.pdf), 
+> Proposed in [Implicit Style-Content Separation using B-LoRA](https://arxiv.org/abs/2403.14572), 
 B-LoRA is a method that leverages LoRA to implicitly separate the style and content components of a **single** image.
 It was shown that learning the LoRA weights of two specific blocks (referred to as B-LoRAs) 
 achieves style-content separation that cannot be achieved by training each B-LoRA independently. 
