@@ -75,12 +75,11 @@ def fetch_pipeline_modules_to_test():
 
     test_modules = []
     for pipeline_name in pipeline_objects:
+        print(pipeline_objects)
         module = getattr(diffusers, pipeline_name)
 
         test_module = module.__module__.split(".")[-2].strip()
-        if test_module == "utils":
-            print(pipeline_name)
-
+        print(test_module)
         test_modules.append(test_module)
 
     return test_modules
