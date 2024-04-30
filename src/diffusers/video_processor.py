@@ -24,8 +24,16 @@ from .image_processor import VaeImageProcessor
 class VideoProcessor(VaeImageProcessor):
     r"""Simple video processor."""
 
-    def tensor2vid(self, video: torch.FloatTensor, output_type: str = "np"):
-        """Converts a video tensor to a list of frames for export."""
+    def tensor2vid(
+        self, video: torch.FloatTensor, output_type: str = "np"
+    ) -> Union[np.ndarray, torch.FloatTensor, List[PIL.Image.Image]]:
+        r"""
+        Converts a video tensor to a list of frames for export.
+
+        Args:
+            video (`torch.FloatTensor`): The video as a tensor.
+            output_type (`str`, defaults to `"np"`): Output type of the postprocessed `video` tensor.
+        """
         batch_size = video.shape[0]
         outputs = []
         for batch_idx in range(batch_size):
@@ -42,8 +50,21 @@ class VideoProcessor(VaeImageProcessor):
 
         return outputs
 
-    def preprocess_video(self, video: List[Union[PIL.Image.Image, np.ndarray, torch.Tensor]]) -> torch.FloatTensor:
-        """Preprocesses input video(s)."""
+    def preprocess_video(self, video) -> torch.FloatTensor:
+        r"""
+        Preprocesses input video(s).
+
+        Args:
+            video: The input video. It can be one of the following:
+                * List of the PIL images.
+                * List of list of PIL images.
+                * List of 4D Torch tensors (expected shape for each tensor: (num_frames, num_channels, height, width)).
+                * List of list of 4D Torch tensors (expected shape for tensor: (num_frames, num_channels, height,
+                  width)).
+                * List of 4D NumPy arrays (expected shape for each array: (num_frames, height, width, num_channels)).
+                * List of list of 4D NumPy arrays (expected shape for each array: (num_frames, height, width,
+                  num_channels)).
+        """
         supported_formats = (np.ndarray, torch.Tensor, PIL.Image.Image)
 
         # Single-frame video.
