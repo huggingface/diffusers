@@ -295,6 +295,18 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
+_timm_available = importlib.util.find_spec("timm") is not None
+if _timm_available:
+    try:
+        _timm_version = importlib_metadata.version("timm")
+        logger.info(f"Timm version {_timm_version} available.")
+    except importlib_metadata.PackageNotFoundError:
+        _timm_available = False
+
+
+def is_timm_available():
+    return _timm_available
+
 
 def is_torch_available():
     return _torch_available
