@@ -7,6 +7,7 @@ from pathlib import Path
 from huggingface_hub import HfApi, ModelFilter
 
 import diffusers
+from diffusers.utils import DummyObject
 
 
 PATH_TO_REPO = Path(__file__).parent.parent.resolve()
@@ -38,6 +39,9 @@ def filter_pipelines(usage_dict, usage_cutoff=10000):
 
         is_diffusers_pipeline = hasattr(diffusers.pipelines, diffusers_object)
         if not is_diffusers_pipeline:
+            continue
+
+        if issubclass(diffusers_object, DummyObject):
             continue
 
         output.append(diffusers_object)
