@@ -90,7 +90,6 @@ class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
         image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         image = image.to(torch_device)
-        print(help(VQModel.forward))
         with torch.no_grad():
             output = model(image).sample
 
