@@ -21,7 +21,7 @@ env:
 jobs:
   setup_torch_cuda_pipeline_matrix:
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
-    runs-on: diffusers/diffusers-pytorch-gpu
+    runs-on: diffusers/diffusers-pytorch-cpu
     outputs:
       pipeline_test_matrix: ${{ steps.fetch_pipeline_matrix.outputs.pipeline_test_matrix }}
     steps:
