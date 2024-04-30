@@ -110,7 +110,7 @@ class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         image = image.to(torch_device)
         with torch.no_grad():
-            output = model(image, return_loss=True).commit_loss.cpu()
+            output = model(image).commit_loss.cpu()
         # fmt: off
         expected_output = torch.tensor([0.1936])
         # fmt: on
