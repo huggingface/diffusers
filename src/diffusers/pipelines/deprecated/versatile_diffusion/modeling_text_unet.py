@@ -363,6 +363,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["BasicTransformerBlock", "ResnetBlockFlat", "CrossAttnUpBlockFlat"]
 
     @register_to_config
     def __init__(
