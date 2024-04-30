@@ -111,9 +111,7 @@ from diffusers.models import MotionAdapter
 from diffusers import AnimateDiffSDXLPipeline, DDIMScheduler
 from diffusers.utils import export_to_gif
 
-# TODO(aryan): ask team to move checkpoint to authors account
-adapter = MotionAdapter.from_pretrained("
-guoyww/animatediff-motion-adapter-sdxl-beta", torch_dtype=torch.float16)
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-sdxl-beta", torch_dtype=torch.float16)
 
 model_id = "stabilityai/stable-diffusion-xl-base-1.0"
 scheduler = DDIMScheduler.from_pretrained(
