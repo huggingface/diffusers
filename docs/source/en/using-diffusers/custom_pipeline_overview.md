@@ -176,7 +176,7 @@ Community pipelines are a really fun and creative way to extend the capabilities
 This section showcases a couple of the community pipelines and hopefully it'll inspire you to create your own (feel free to open a PR for your community pipeline and ping us for a review)!
 
 > [!TIP]
-> Community pipelines are maintained by the community member who created them. If you encounter an issue with a community pipeline, open a GitHub issue and mention the author.
+> The [`~DiffusionPipeline.from_pipe`] method is particularly useful for loading community pipelines because many of them don't have pretrained weights and add a feature on top of an existing pipeline like Stable Diffusion or Stable Diffusion XL. You can learn more about the [`~DiffusionPipeline.from_pipe`] method in the [Load with from_pipe](custom_pipeline_overview#load-with-from_pipe) section.
 
 <hfoptions id="community">
 <hfoption id="Marigold">
