@@ -766,31 +766,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
                 raise ValueError("`low_cpu_mem_usage` and `device_map` require PyTorch >= 1.10.")
 
-        is_sharded = False
-        is_local = os.path.isdir(pretrained_model_name_or_path)
-        if is_local:
-            if use_safetensors and os.path.isfile(
-                Path(
-                    pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
-                ).as_posix()
-            ):
-                # Load from a sharded safetensors checkpoint
-                archive_file = Path(
-                    pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
-                ).as_posix()
-                is_sharded = True
-            elif os.path.isfile(
-                Path(pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant)).as_posix()
-            ):
-                # Load from a sharded PyTorch checkpoint
-                archive_file = Path(
-                    pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant)
-                ).as_posix()
-                is_sharded = True
-
-        if is_sharded and from_flax:
-            raise ValueError("Loading of sharded checkpoints is not supported when `from_flax=True`.")
-
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
 
@@ -816,6 +791,40 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             user_agent=user_agent,
             **kwargs,
         )
+
+        # Determine if we're loading from a directory of sharded checkpoints.
+        is_sharded = False
+        is_local = os.path.isdir(pretrained_model_name_or_path)
+        if is_local:
+            index_file = Path(
+                pretrained_model_name_or_path,
+                subfolder,
+                _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
+            ).as_posix()
+            if os.path.isfile(index_file):
+                is_sharded = True
+        else:
+            index_file = Path(
+                subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant)
+            ).as_posix()
+            model_file = _get_model_file(
+                pretrained_model_name_or_path,
+                weights_name=index_file,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+                commit_hash=commit_hash,
+            )
+            is_sharded = True
+
+        if is_sharded and from_flax:
+            raise ValueError("Loading of sharded checkpoints is not supported when `from_flax=True`.")
 
         # load model
         model_file = None
@@ -843,10 +852,32 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             if use_safetensors:
                 try:
-                    filename = archive_file if is_sharded else _add_variant(SAFETENSORS_WEIGHTS_NAME, variant)
+                    if not is_sharded:
+                        model_file = _get_model_file(
+                            pretrained_model_name_or_path,
+                            weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
+                            cache_dir=cache_dir,
+                            force_download=force_download,
+                            resume_download=resume_download,
+                            proxies=proxies,
+                            local_files_only=local_files_only,
+                            token=token,
+                            revision=revision,
+                            subfolder=subfolder,
+                            user_agent=user_agent,
+                            commit_hash=commit_hash,
+                        )
+                    else:
+                        model_file = index_file
+                except IOError as e:
+                    if not allow_pickle:
+                        raise e
+                    pass
+            if model_file is None:
+                if not is_sharded:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path,
-                        weights_name=filename,
+                        weights_name=_add_variant(WEIGHTS_NAME, variant),
                         cache_dir=cache_dir,
                         force_download=force_download,
                         resume_download=resume_download,
@@ -858,26 +889,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         user_agent=user_agent,
                         commit_hash=commit_hash,
                     )
-                except IOError as e:
-                    if not allow_pickle:
-                        raise e
-                    pass
-            if model_file is None:
-                filename = archive_file if is_sharded else _add_variant(WEIGHTS_NAME, variant)
-                model_file = _get_model_file(
-                    pretrained_model_name_or_path,
-                    weights_name=filename,
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    resume_download=resume_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    user_agent=user_agent,
-                    commit_hash=commit_hash,
-                )
+                else:
+                    model_file = index_file
 
             if low_cpu_mem_usage:
                 # Instantiate model with empty weights
