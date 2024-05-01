@@ -40,6 +40,7 @@ from ..utils import (
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
     _add_variant,
+    _get_checkpoint_shard_files,
     _get_model_file,
     deprecate,
     is_accelerate_available,
@@ -807,7 +808,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             index_file = Path(
                 subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant)
             ).as_posix()
-            model_file = _get_model_file(
+            index_file = _get_model_file(
                 pretrained_model_name_or_path,
                 weights_name=index_file,
                 cache_dir=cache_dir,
@@ -868,7 +869,21 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             commit_hash=commit_hash,
                         )
                     else:
-                        model_file = index_file
+                        _, _ = _get_checkpoint_shard_files(
+                            pretrained_model_name_or_path,
+                            index_file,
+                            cache_dir=cache_dir,
+                            force_download=force_download,
+                            proxies=proxies,
+                            resume_download=resume_download,
+                            local_files_only=local_files_only,
+                            token=token,
+                            user_agent=user_agent,
+                            revision=revision,
+                            subfolder=subfolder,
+                            commit_hash=commit_hash,
+                        )
+
                 except IOError as e:
                     if not allow_pickle:
                         raise e
@@ -890,7 +905,20 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         commit_hash=commit_hash,
                     )
                 else:
-                    model_file = index_file
+                    _, _ = _get_checkpoint_shard_files(
+                        pretrained_model_name_or_path,
+                        index_file,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        proxies=proxies,
+                        resume_download=resume_download,
+                        local_files_only=local_files_only,
+                        token=token,
+                        user_agent=user_agent,
+                        revision=revision,
+                        subfolder=subfolder,
+                        commit_hash=commit_hash,
+                    )
 
             if low_cpu_mem_usage:
                 # Instantiate model with empty weights
@@ -936,7 +964,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
-                            model_file,
+                            model_file if not is_sharded else pretrained_model_name_or_path,
                             device_map,
                             max_memory=max_memory,
                             offload_folder=offload_folder,

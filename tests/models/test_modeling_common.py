@@ -803,18 +803,20 @@ class ModelTesterMixin:
     def test_sharded_checkpoints(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
+        if model._no_split_modules is None:
+            return
         model = model.to(torch_device)
 
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
-        model_size = compute_module_sizes(model)[""] / 1e9  # Convert to GB from Bytes.
-        max_shard_size = int(model_size / 2)
+        model_size = compute_module_sizes(model)[""]
+        max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KiB as these test models are small.
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}GB")
+            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KIB")
             self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
 
-            new_model = self.model_class.from_pretrained(tmp_dir)
+            new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto")
 
             torch.manual_seed(0)
             new_output = new_model(**inputs_dict)

@@ -42,6 +42,7 @@ from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to
 from .hub_utils import (
     PushToHubMixin,
     _add_variant,
+    _get_checkpoint_shard_files,
     _get_model_file,
     extract_commit_hash,
     http_user_agent,

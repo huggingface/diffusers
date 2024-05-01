@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+import json
 import os
 import re
 import sys
@@ -29,6 +30,7 @@ from huggingface_hub import (
     ModelCardData,
     create_repo,
     hf_hub_download,
+    try_to_load_from_cache,
     upload_folder,
 )
 from huggingface_hub.constants import HF_HUB_CACHE, HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
@@ -60,7 +62,7 @@ from .import_utils import (
     is_onnx_available,
     is_torch_available,
 )
-from .logging import get_logger
+from .logging import get_logger, tqdm
 
 
 logger = get_logger(__name__)
@@ -391,6 +393,90 @@ def _get_model_file(
                 f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
                 f"containing a file named {weights_name}"
             )
+
+
+# Taken from https://github.com/huggingface/transformers/blob/main/src/transformers/utils/hub.py
+def _get_checkpoint_shard_files(
+    pretrained_model_name_or_path,
+    index_filename,
+    cache_dir=None,
+    force_download=False,
+    proxies=None,
+    resume_download=False,
+    local_files_only=False,
+    token=None,
+    user_agent=None,
+    revision=None,
+    subfolder="",
+    commit_hash=None,
+):
+    """
+    For a given model:
+
+    - download and cache all the shards of a sharded checkpoint if `pretrained_model_name_or_path` is a model ID on the
+      Hub
+    - returns the list of paths to all the shards, as well as some metadata.
+
+    For the description of each arg, see [`PreTrainedModel.from_pretrained`]. `index_filename` is the full path to the
+    index (downloaded and cached if `pretrained_model_name_or_path` is a model ID on the Hub).
+    """
+    if not os.path.isfile(index_filename):
+        raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
+
+    with open(index_filename, "r") as f:
+        index = json.loads(f.read())
+
+    shard_filenames = sorted(set(index["weight_map"].values()))
+    sharded_metadata = index["metadata"]
+    sharded_metadata["all_checkpoint_keys"] = list(index["weight_map"].keys())
+    sharded_metadata["weight_map"] = index["weight_map"].copy()
+
+    # First, let's deal with local folder.
+    if os.path.isdir(pretrained_model_name_or_path):
+        shard_filenames = [os.path.join(pretrained_model_name_or_path, subfolder, f) for f in shard_filenames]
+        return shard_filenames, sharded_metadata
+
+    # At this stage pretrained_model_name_or_path is a model identifier on the Hub
+    cached_filenames = []
+    # Check if the model is already cached or not. We only try the last checkpoint, this should cover most cases of
+    # downloaded (if interrupted).
+    last_shard = try_to_load_from_cache(
+        pretrained_model_name_or_path, shard_filenames[-1], cache_dir=cache_dir, revision=commit_hash
+    )
+    show_progress_bar = last_shard is None or force_download
+    for shard_filename in tqdm(shard_filenames, desc="Downloading shards", disable=not show_progress_bar):
+        try:
+            # Load from URL
+            cached_filename = _get_model_file(
+                pretrained_model_name_or_path,
+                weights_name=shard_filename,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                resume_download=resume_download,
+                local_files_only=local_files_only,
+                token=token,
+                user_agent=user_agent,
+                revision=revision,
+                subfolder=subfolder,
+                commit_hash=commit_hash,
+            )
+        # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
+        # we don't have to catch them here.
+        except EntryNotFoundError:
+            raise EnvironmentError(
+                f"{pretrained_model_name_or_path} does not appear to have a file named {shard_filename} which is "
+                "required according to the checkpoint index."
+            )
+        except HTTPError:
+            raise EnvironmentError(
+                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {shard_filename}. You should try"
+                " again after checking your internet connection."
+            )
+
+        cached_filenames.append(cached_filename)
+
+    return cached_filenames, sharded_metadata
 
 
 # Taken from https://github.com/huggingface/transformers/blob/main/src/transformers/utils/hub.py
