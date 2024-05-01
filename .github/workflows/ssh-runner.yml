@@ -28,19 +28,10 @@ jobs:
       options: --gpus all --privileged --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
 
     steps:
-      - name: Update clone
-        working-directory: /diffusers
-        run: |
-          git fetch && git checkout ${{ github.sha }}
-      - name: Cleanup
-        working-directory: /diffusers
-        run: |
-          rm -rf tests/__pycache__
-          rm -rf tests/models/__pycache__
-          rm -rf reports
-      - name: Show installed libraries and their versions
-        working-directory: /diffusers
-        run: pip freeze
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
 
       - name: NVIDIA-SMI
         run: |
