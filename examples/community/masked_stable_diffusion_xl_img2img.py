@@ -64,7 +64,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Tuple[int, int] = None,
         negative_original_size: Optional[Tuple[int, int]] = None,
-		negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
+        negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
         negative_target_size: Optional[Tuple[int, int]] = None,
         aesthetic_score: float = 6.0,
         negative_aesthetic_score: float = 2.5,
@@ -143,8 +143,8 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
                 blur to apply for composition of original a
             mask (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`, *optional*):
                 A mask with non-zero elements for the area to be inpainted. If not specified, no mask is applied.
-			sample_mode (`str`, *optional*):
-				control latents initialisation for the inpaint area, can be one of sample, argmax, random
+            sample_mode (`str`, *optional*):
+                control latents initialisation for the inpaint area, can be one of sample, argmax, random
         Examples:
 
         Returns:
@@ -211,7 +211,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
         mask_blur = self.blur_mask(pil_mask, blur)
         mask_compose = self.blur_mask(pil_mask, blur_compose)
         if original_image is None:
-            original_image = image_painted
+            original_image = image
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -279,7 +279,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
             device,
             generator,
             add_noise,
-			sample_mode=sample_mode
+            sample_mode=sample_mode
         )
 
         # mean of the latent distribution
@@ -549,9 +549,9 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
 
     def prepare_latents(
         self, image, timestep, batch_size, num_images_per_prompt, dtype, device,
-		generator=None, 
-		add_noise=True, 
-		sample_mode: str = "sample"
+        generator=None,
+        add_noise=True,
+        sample_mode: str = "sample"
     ):
 
         if not isinstance(image, (torch.Tensor, Image.Image, list)):
