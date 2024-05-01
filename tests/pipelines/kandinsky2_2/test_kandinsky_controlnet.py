@@ -33,10 +33,11 @@ from diffusers.utils.testing_utils import (
     load_image,
     load_numpy,
     nightly,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
@@ -260,12 +261,12 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
         pipeline = KandinskyV22ControlnetPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16
         )
-        pipeline = pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
         prompt = "A robot, 4k photo"
 
-        generator = torch.Generator(device="cuda").manual_seed(0)
+        generator = torch.Generator(device="cpu").manual_seed(0)
         image_emb, zero_image_emb = pipe_prior(
             prompt,
             generator=generator,
@@ -273,7 +274,7 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
             negative_prompt="",
         ).to_tuple()
 
-        generator = torch.Generator(device="cuda").manual_seed(0)
+        generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             image_embeds=image_emb,
             negative_image_embeds=zero_image_emb,
@@ -287,4 +288,5 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 512, 3)
 
-        assert_mean_pixel_difference(image, expected_image)
+        max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
+        assert max_diff < 1e-4

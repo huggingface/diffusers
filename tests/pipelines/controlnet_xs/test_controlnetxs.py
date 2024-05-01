@@ -69,6 +69,13 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
+def to_np(tensor):
+    if isinstance(tensor, torch.Tensor):
+        tensor = tensor.detach().cpu().numpy()
+
+    return tensor
+
+
 # Will be run via run_test_in_subprocess
 def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     error = None
@@ -298,6 +305,31 @@ class ControlNetXSPipelineFastTests(
             out_vae_np = vae_pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
 
             assert out_vae_np.shape == out_np.shape
+
+    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    def test_to_device(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.to("cpu")
+        # pipeline creates a new UNetControlNetXSModel under the hood. So we need to check the device from pipe.components
+        model_devices = [
+            component.device.type for component in pipe.components.values() if hasattr(component, "device")
+        ]
+        self.assertTrue(all(device == "cpu" for device in model_devices))
+
+        output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
+        self.assertTrue(np.isnan(output_cpu).sum() == 0)
+
+        pipe.to("cuda")
+        model_devices = [
+            component.device.type for component in pipe.components.values() if hasattr(component, "device")
+        ]
+        self.assertTrue(all(device == "cuda" for device in model_devices))
+
+        output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
+        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
 
 
 @slow
