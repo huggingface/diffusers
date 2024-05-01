@@ -141,8 +141,8 @@ class ModelUtilsTest(unittest.TestCase):
             cache_requests = [r.method for r in m.request_history]
             print(f"{cache_requests=}")
             assert (
-                "HEAD" == cache_requests[0] and len(cache_requests) == 1
-            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+                "HEAD" == cache_requests[0] and len(cache_requests) == 2
+            ), "We should call only `model_info` to check for commit hash and  knowing if shard index is present."
 
     def test_weight_overwrite(self):
         with tempfile.TemporaryDirectory() as tmpdirname, self.assertRaises(ValueError) as error_context:
