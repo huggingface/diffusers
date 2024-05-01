@@ -24,6 +24,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import requests_mock
 import torch
+from accelerate.utils import compute_module_sizes
 from huggingface_hub import ModelCard, delete_repo
 from huggingface_hub.utils import is_jinja_available
 from requests.exceptions import HTTPError
@@ -39,6 +40,7 @@ from diffusers.utils.testing_utils import (
     require_torch_2,
     require_torch_accelerator_with_training,
     require_torch_gpu,
+    require_torch_multi_gpu,
     run_test_in_subprocess,
     torch_device,
 )
@@ -231,6 +233,21 @@ class ModelTesterMixin:
     main_input_name = None  # overwrite in model specific tester class
     base_precision = 1e-3
     forward_requires_fresh_args = False
+    model_split_percents = [0.5, 0.7, 0.9]
+
+    def check_device_map_is_respected(self, model, device_map):
+        for param_name, param in model.named_parameters():
+            # Find device in device_map
+            while len(param_name) > 0 and param_name not in device_map:
+                param_name = ".".join(param_name.split(".")[:-1])
+            if param_name not in device_map:
+                raise ValueError("device map is incomplete, it does not contain any device for `param_name`.")
+
+            param_device = device_map[param_name]
+            if param_device in ["cpu", "disk"]:
+                self.assertEqual(param.device, torch.device("meta"))
+            else:
+                self.assertEqual(param.device, torch.device(param_device))
 
     def test_from_save_pretrained(self, expected_max_diff=5e-5):
         if self.forward_requires_fresh_args:
@@ -704,6 +721,117 @@ class ModelTesterMixin:
                 f" {self.model_class}.__init__ if there are deprecated arguments or remove the deprecated argument"
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
+
+    @require_torch_gpu
+    def test_cpu_offload(self):
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+
+        torch.manual_seed(0)
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        # We test several splits of sizes to make sure it works.
+        max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir)
+
+            for max_size in max_gpu_sizes:
+                max_memory = {0: max_size, "cpu": model_size * 2}
+                new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
+                # Making sure part of the model will actually end up offloaded
+                self.assertSetEqual(set(new_model.hf_device_map.values()), {0, "cpu"})
+
+                self.check_device_map_is_respected(new_model, new_model.hf_device_map)
+                torch.manual_seed(0)
+                new_output = new_model(**inputs_dict)
+
+                self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_gpu
+    def test_disk_offload_without_safetensors(self):
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+
+        torch.manual_seed(0)
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
+
+            with self.assertRaises(ValueError):
+                max_size = int(self.model_split_percents[1] * model_size)
+                max_memory = {0: max_size, "cpu": max_size}
+                # This errors out because it's missing an offload folder
+                new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
+
+            max_size = int(self.model_split_percents[1] * model_size)
+            max_memory = {0: max_size, "cpu": max_size}
+            new_model = self.model_class.from_pretrained(
+                tmp_dir, device_map="auto", max_memory=max_memory, offload_folder=tmp_dir
+            )
+
+            self.check_device_map_is_respected(new_model, new_model.hf_device_map)
+            torch.manual_seed(0)
+            new_output = new_model(**inputs_dict)
+
+            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_gpu
+    def test_disk_offload_with_safetensors(self):
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+
+        torch.manual_seed(0)
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir)
+
+            max_size = int(self.model_split_percents[1] * model_size)
+            max_memory = {0: max_size, "cpu": max_size}
+            new_model = self.model_class.from_pretrained(
+                tmp_dir, device_map="auto", offload_folder=tmp_dir, max_memory=max_memory
+            )
+
+            self.check_device_map_is_respected(new_model, new_model.hf_device_map)
+            torch.manual_seed(0)
+            new_output = new_model(**inputs_dict)
+
+            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_multi_gpu
+    def test_model_parallelism(self):
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+
+        torch.manual_seed(0)
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        # We test several splits of sizes to make sure it works.
+        max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir)
+
+            for max_size in max_gpu_sizes:
+                max_memory = {0: max_size, 1: model_size * 2, "cpu": model_size * 2}
+                new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
+                # Making sure part of the model will actually end up offloaded
+                self.assertSetEqual(set(new_model.hf_device_map.values()), {0, 1})
+
+                self.check_device_map_is_respected(new_model, new_model.hf_device_map)
+
+                torch.manual_seed(0)
+                new_output = new_model(**inputs_dict)
+
+                self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
 
 @is_staging_test
