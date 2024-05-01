@@ -376,7 +376,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
 
-            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
+            return hasattr(module, "_hf_hook") and (
+                isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
+                or hasattr(module._hf_hook, "hooks")
+                and isinstance(module._hf_hook.hooks[0], accelerate.hooks.AlignDevicesHook)
+            )
 
         def module_is_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
@@ -1005,8 +1009,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
         for _, model in self.components.items():
             if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
-                is_sequential_cpu_offload = isinstance(getattr(model, "_hf_hook"), accelerate.hooks.AlignDevicesHook)
-                accelerate.hooks.remove_hook_from_module(model, recurse=is_sequential_cpu_offload)
+                accelerate.hooks.remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
 
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
