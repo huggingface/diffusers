@@ -141,8 +141,6 @@
 - sections:
   - local: optimization/fp16
     title: Speed up inference
-  - local: using-diffusers/distilled_sd
-    title: Distilled Stable Diffusion inference
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/torch2.0
