@@ -688,7 +688,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        subfolder = kwargs.pop("subfolder", None)
+        subfolder = kwargs.pop("subfolder", "")
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
@@ -766,6 +766,29 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
                 raise ValueError("`low_cpu_mem_usage` and `device_map` require PyTorch >= 1.10.")
 
+        is_sharded = False
+        is_local = os.path.isdir(pretrained_model_name_or_path)
+        if is_local:
+            if use_safetensors and os.path.isfile(
+                os.path.join(pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant))
+            ):
+                # Load from a sharded safetensors checkpoint
+                archive_file = os.path.join(
+                    pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
+                )
+                is_sharded = True
+            elif os.path.isfile(
+                os.path.join(pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant))
+            ):
+                # Load from a sharded PyTorch checkpoint
+                archive_file = os.path.join(
+                    pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant)
+                )
+                is_sharded = True
+
+        if is_sharded and from_flax:
+            raise ValueError("Loading of sharded checkpoints is not supported when `from_flax=True`.")
+
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
 
@@ -818,9 +841,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             if use_safetensors:
                 try:
+                    filename = archive_file if is_sharded else _add_variant(SAFETENSORS_WEIGHTS_NAME, variant)
                     model_file = _get_model_file(
                         pretrained_model_name_or_path,
-                        weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
+                        weights_name=filename,
                         cache_dir=cache_dir,
                         force_download=force_download,
                         resume_download=resume_download,
@@ -837,9 +861,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         raise e
                     pass
             if model_file is None:
+                filename = archive_file if is_sharded else _add_variant(WEIGHTS_NAME, variant)
                 model_file = _get_model_file(
                     pretrained_model_name_or_path,
-                    weights_name=_add_variant(WEIGHTS_NAME, variant),
+                    weights_name=filename,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     resume_download=resume_download,
@@ -858,7 +883,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     model = cls.from_config(config, **unused_kwargs)
 
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
-                if device_map is None:
+                if device_map is None and not is_sharded:
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)
