@@ -50,6 +50,9 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_ldm_unet_checkpoint,
         "config_mapping_fn": create_unet_diffusers_config_from_ldm,
         "default_subfolder": "unet",
+        "legacy_kwargs": {
+            "num_in_channels": "in_channels",  # Legacy kwargs supported by `from_single_file` mapped to new args
+        },
     },
     "AutoencoderKL": {
         "checkpoint_mapping_fn": convert_ldm_vae_checkpoint,
@@ -236,10 +239,16 @@ class FromOriginalModelMixin:
                 local_dir=local_dir,
                 local_dir_use_symlinks=local_dir_use_symlinks,
             )
-
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
-            model_kwargs = {k: kwargs.get(k) for k in kwargs if k in expected_kwargs or k in optional_kwargs}
 
+            # Map legacy kwargs to new kwargs
+            if "legacy_kwargs" in mapping_functions:
+                legacy_kwargs = mapping_functions["legacy_kwargs"]
+                for legacy_key, new_key in legacy_kwargs.items():
+                    if legacy_key in kwargs:
+                        kwargs[new_key] = kwargs.pop(legacy_key)
+
+            model_kwargs = {k: kwargs.get(k) for k in kwargs if k in expected_kwargs or k in optional_kwargs}
             diffusers_model_config.update(model_kwargs)
 
         checkpoint_mapping_kwargs = _get_mapping_function_kwargs(checkpoint_mapping_fn, **kwargs)
