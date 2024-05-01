@@ -543,7 +543,12 @@ class StableUnCLIPImg2ImgPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -781,16 +786,17 @@ class StableUnCLIPImg2ImgPipeline(
 
         # 6. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
-        latents = self.prepare_latents(
-            batch_size=batch_size,
-            num_channels_latents=num_channels_latents,
-            height=height,
-            width=width,
-            dtype=prompt_embeds.dtype,
-            device=device,
-            generator=generator,
-            latents=latents,
-        )
+        if latents is None:
+            latents = self.prepare_latents(
+                batch_size=batch_size,
+                num_channels_latents=num_channels_latents,
+                height=height,
+                width=width,
+                dtype=prompt_embeds.dtype,
+                device=device,
+                generator=generator,
+                latents=latents,
+            )
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
