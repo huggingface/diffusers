@@ -292,7 +292,7 @@ image
 </div>
 
 </hfoption>
-<hfoption id="LCM-LoRA>
+<hfoption id="LCM-LoRA">
 
 Replace the scheduler with the [`LCMScheduler`]. Then you can use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights and the style LoRA you want to use. Combine both LoRA adapters with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method and then generate a styled image in a few steps.
 
