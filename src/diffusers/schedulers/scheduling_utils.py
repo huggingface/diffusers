@@ -48,6 +48,13 @@ class KarrasDiffusionSchedulers(Enum):
     EDMEulerScheduler = 15
 
 
+AysSchedules = {
+    "StableDiffusionTimesteps": [999, 850, 736, 645, 545, 455, 343, 233, 124, 24],
+    "StableDiffusionXLTimesteps": [999, 845, 730, 587, 443, 310, 193, 116, 53, 13],
+    "StableDiffusionVideoSigmas": [700.00, 54.5, 15.886, 7.977, 4.248, 1.789, 0.981, 0.403, 0.173, 0.034, 0.002],
+}
+
+
 @dataclass
 class SchedulerOutput(BaseOutput):
     """
