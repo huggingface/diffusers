@@ -101,18 +101,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.is_input_vectorized = num_vector_embeds is not None
         self.is_input_patches = in_channels is not None and patch_size is not None
 
-        if self.is_input_continuous:
-            deprecation_message = "Using `Transformer2DModel` for continuous inputs is deprecated. This class will be removed in the 1.0.0 version. Please use the `ContinuousTransformer2DModel` class for this (`from diffusers import ContinuousTransformer2DModel`)."
-            deprecate("Transformer2DModelForContinuousInputs", "1.0.0", deprecation_message)
-
-        if self.is_input_patches:
-            deprecation_message = "Using `Transformer2DModel` for patched inputs is deprecated. This class will be removed in the 1.0.0 version. Please use the `PatchedTransformer2DModel` class for this (`from diffusers import PatchedTransformer2DModel`)."
-            deprecate("Transformer2DModelForPatchedInputs", "1.0.0", deprecation_message)
-
-        if self.is_input_vectorized:
-            deprecation_message = "Using `Transformer2DModel` for discrete inputs is deprecated. This class will be removed in the 1.0.0 version. Please use the `VectorizedTransformer2DModel` class for this (`from diffusers import VectorizedTransformer2DModel`)."
-            deprecate("Transformer2DModelForVectorizedInputs", "1.0.0", deprecation_message)
-
         # Validate inputs.
         if patch_size is not None:
             if norm_type not in ["ada_norm", "ada_norm_zero", "ada_norm_single"]:

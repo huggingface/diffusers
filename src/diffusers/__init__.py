@@ -79,7 +79,6 @@ else:
             "AutoencoderKLTemporalDecoder",
             "AutoencoderTiny",
             "ConsistencyDecoderVAE",
-            "ContinuousTransformer2DModel",
             "ControlNetModel",
             "ControlNetXSAdapter",
             "I2VGenXLUNet",
@@ -101,7 +100,6 @@ else:
             "UNetMotionModel",
             "UNetSpatioTemporalConditionModel",
             "UVit2DModel",
-            "VectorizedTransformer2DModel",
             "VQModel",
         ]
     )
@@ -481,7 +479,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLTemporalDecoder,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
-            ContinuousTransformer2DModel,
             ControlNetModel,
             ControlNetXSAdapter,
             I2VGenXLUNet,
@@ -502,7 +499,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetMotionModel,
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
-            VectorizedTransformer2DModel,
             VQModel,
         )
         from .optimization import (
