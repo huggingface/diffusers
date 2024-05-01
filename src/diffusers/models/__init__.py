@@ -39,9 +39,6 @@ if is_torch_available():
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
-    _import_structure["transformers.transformer_2d_continuous"] = ["ContinuousTransformer2DModel"]
-    _import_structure["transformers.transformer_2d_patches"] = ["PatchedTransformer2DModel"]
-    _import_structure["transformers.transformer_2d_vectorized"] = ["VectorizedTransformer2DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
@@ -76,14 +73,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
-            ContinuousTransformer2DModel,
             DualTransformer2DModel,
-            PatchedTransformer2DModel,
             PriorTransformer,
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
-            VectorizedTransformer2DModel,
         )
         from .unets import (
             I2VGenXLUNet,

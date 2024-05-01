@@ -27,6 +27,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
 from .. import __version__
+from ..models.transformers.dit_transformer2d import DiTTransformer2DModel
 from ..utils import (
     FLAX_WEIGHTS_NAME,
     ONNX_EXTERNAL_WEIGHTS_NAME,
@@ -608,6 +609,7 @@ def load_sub_model(
     cached_folder: Union[str, os.PathLike],
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
+
     # retrieve class candidates
     class_obj, class_candidates = get_class_obj_and_candidates(
         library_name,
@@ -639,7 +641,14 @@ def load_sub_model(
             f"The component {class_obj} of {pipeline_class} cannot be loaded as it does not seem to have"
             f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
         )
-
+    if pipeline_class.__name__ == "DiTPipeline":
+        if class_obj.__name__ == "Transformer2DModel":
+            logger.info(
+                "Changing `transformer` object of `DiTPipeline` to be of `DiTTransformer2DModel` type from `Transformer2DModel` type."
+                " It would be great to reserialize the pipeline with the updated components and submit a PR to underlying repository on the"
+                " Hugging Face Hub."
+            )
+            class_obj = DiTTransformer2DModel
     load_method = getattr(class_obj, load_method_name)
 
     # add kwargs to loading method
