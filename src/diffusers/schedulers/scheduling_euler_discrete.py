@@ -388,16 +388,17 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
+        sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
+
         # TODO: Support the full EDM scalings for all prediction types and timestep types
         if self.config.timestep_type == "continuous" and self.config.prediction_type == "v_prediction":
-            self.timesteps = torch.Tensor([0.25 * sigma.log() for sigma in sigmas]).to(device=device)
+            self.timesteps = torch.Tensor([0.25 * sigma.log() for sigma in sigmas[:-1]]).to(device=device)
         else:
             self.timesteps = torch.from_numpy(timesteps.astype(np.float32)).to(device=device)
 
-        self.sigmas = torch.from_numpy(sigmas)
         self._step_index = None
         self._begin_index = None
-        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.sigmas = sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
