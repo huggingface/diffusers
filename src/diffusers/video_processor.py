@@ -98,9 +98,9 @@ class VideoProcessor(VaeImageProcessor):
             video = np.concatenate(video, axis=0) if video[0].ndim == 5 else np.stack(video, axis=0)
 
             if video.dtype == np.uint8:
-                if video.min() >= 0 and video.max() <= 255:
+                if video.min() < 0:
                     raise ValueError(
-                        f"The inputs don't have the correct value range for the determined data-type ({video.dtype}): {video.min()=}, {video.max()=}"
+                        f"The inputs don't have the correct value range for the determined data-type ({video.dtype}): {video.min()=}."
                     )
                 # We perform the scaling step here so that `preprocess()` can handle things correctly for us.
                 video = np.array(video).astype(np.float32) / 255.0
