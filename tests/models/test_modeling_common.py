@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import inspect
+import os
 import tempfile
 import traceback
 import unittest
@@ -32,7 +33,7 @@ from requests.exceptions import HTTPError
 from diffusers.models import UNet2DConditionModel
 from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0, XFormersAttnProcessor
 from diffusers.training_utils import EMAModel
-from diffusers.utils import is_xformers_available, logging
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, is_xformers_available, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     get_python_version,
@@ -797,6 +798,27 @@ class ModelTesterMixin:
                 new_output = new_model(**inputs_dict)
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_gpu
+    def test_sharded_checkpoints(self):
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+
+        torch.manual_seed(0)
+        base_output = model(**inputs_dict)
+        model_size = compute_module_sizes(model)[""] / 1e9  # Convert to GB from Bytes.
+        max_shard_size = int(model_size / 2)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}GB")
+            self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
+
+            new_model = self.model_class.from_pretrained(tmp_dir)
+
+            torch.manual_seed(0)
+            new_output = new_model(**inputs_dict)
+            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
 
 @is_staging_test

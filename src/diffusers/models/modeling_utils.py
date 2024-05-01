@@ -770,20 +770,22 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         is_local = os.path.isdir(pretrained_model_name_or_path)
         if is_local:
             if use_safetensors and os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant))
+                Path(
+                    pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
+                ).as_posix()
             ):
                 # Load from a sharded safetensors checkpoint
-                archive_file = os.path.join(
+                archive_file = Path(
                     pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
-                )
+                ).as_posix()
                 is_sharded = True
             elif os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant))
+                Path(pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant)).as_posix()
             ):
                 # Load from a sharded PyTorch checkpoint
-                archive_file = os.path.join(
+                archive_file = Path(
                     pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant)
-                )
+                ).as_posix()
                 is_sharded = True
 
         if is_sharded and from_flax:
