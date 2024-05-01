@@ -125,8 +125,7 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             download_requests = [r.method for r in m.request_history]
-            print(f"{download_requests=}")
-            assert download_requests.count("HEAD") == 2, "2 HEAD requests one for config, one for model"
+            assert download_requests.count("HEAD") == 3, "3 HEAD requests one for config, one for model, and one for shard index file."
             assert download_requests.count("GET") == 2, "2 GET requests one for config, one for model"
 
             with requests_mock.mock(real_http=True) as m:
