@@ -17,8 +17,10 @@ PyTorch utilities: Utilities related to PyTorch
 
 from typing import List, Optional, Tuple, Union
 
+from safetensors.torch import storage_ptr, storage_size
+
 from . import logging
-from .import_utils import is_torch_available, is_torch_version
+from .import_utils import is_torch_available, is_torch_version, is_torch_xla_available
 
 
 if is_torch_available():
@@ -146,3 +148,25 @@ def apply_freeu(
         res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=freeu_kwargs["s2"])
 
     return hidden_states, res_hidden_states
+
+
+# Taken from https://github.com/huggingface/transformers/blob/main/src/transformers/pytorch_utils.py
+def id_tensor_storage(tensor: torch.Tensor) -> Tuple[torch.device, int, int]:
+    """
+    Unique identifier to a tensor storage. Multiple different tensors can share the same underlying storage. For
+    example, "meta" tensors all share the same storage, and thus their identifier will all be equal. This identifier is
+    guaranteed to be unique and constant for this tensor's storage during its lifetime. Two tensor storages with
+    non-overlapping lifetimes may have the same id.
+    """
+    if tensor.device.type == "xla" and is_torch_xla_available():
+        # NOTE: xla tensors dont have storage
+        # use some other unique id to distinguish.
+        # this is a XLA tensor, it must be created using torch_xla's
+        # device. So the following import is safe:
+        import torch_xla
+
+        unique_id = torch_xla._XLAC._xla_get_tensor_id(tensor)
+    else:
+        unique_id = storage_ptr(tensor)
+
+    return tensor.device, unique_id, storage_size(tensor)
