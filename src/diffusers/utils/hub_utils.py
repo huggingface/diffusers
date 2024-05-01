@@ -30,7 +30,8 @@ from huggingface_hub import (
     ModelCardData,
     create_repo,
     hf_hub_download,
-    try_to_load_from_cache,
+    model_info,
+    snapshot_download,
     upload_folder,
 )
 from huggingface_hub.constants import HF_HUB_CACHE, HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
@@ -62,7 +63,7 @@ from .import_utils import (
     is_onnx_available,
     is_torch_available,
 )
-from .logging import get_logger, tqdm
+from .logging import get_logger
 
 
 logger = get_logger(__name__)
@@ -434,49 +435,44 @@ def _get_checkpoint_shard_files(
     # First, let's deal with local folder.
     if os.path.isdir(pretrained_model_name_or_path):
         shard_filenames = [os.path.join(pretrained_model_name_or_path, subfolder, f) for f in shard_filenames]
-        return shard_filenames, sharded_metadata
+        return pretrained_model_name_or_path, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
-    cached_filenames = []
-    # Check if the model is already cached or not. We only try the last checkpoint, this should cover most cases of
-    # downloaded (if interrupted).
-    last_shard = try_to_load_from_cache(
-        pretrained_model_name_or_path, shard_filenames[-1], cache_dir=cache_dir, revision=commit_hash
-    )
-    show_progress_bar = last_shard is None or force_download
-    for shard_filename in tqdm(shard_filenames, desc="Downloading shards", disable=not show_progress_bar):
-        try:
-            # Load from URL
-            cached_filename = _get_model_file(
-                pretrained_model_name_or_path,
-                weights_name=shard_filename,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                resume_download=resume_download,
-                local_files_only=local_files_only,
-                token=token,
-                user_agent=user_agent,
-                revision=revision,
-                subfolder=subfolder,
-                commit_hash=commit_hash,
-            )
-        # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
-        # we don't have to catch them here.
-        except EntryNotFoundError:
+    allow_patterns = shard_filenames
+    ignore_patterns = ["*.json", "*.md"]
+    model_files_info = model_info(pretrained_model_name_or_path)
+    for shard_file in shard_filenames:
+        shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
+        if not shard_file_present:
             raise EnvironmentError(
-                f"{pretrained_model_name_or_path} does not appear to have a file named {shard_filename} which is "
+                f"{pretrained_model_name_or_path} does not appear to have a file named {shard_file} which is "
                 "required according to the checkpoint index."
             )
-        except HTTPError:
-            raise EnvironmentError(
-                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {shard_filename}. You should try"
-                " again after checking your internet connection."
-            )
 
-        cached_filenames.append(cached_filename)
+    try:
+        # Load from URL
+        cached_folder = snapshot_download(
+            pretrained_model_name_or_path,
+            cache_dir=cache_dir,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            allow_patterns=allow_patterns,
+            ignore_patterns=ignore_patterns,
+            user_agent=user_agent,
+        )
 
-    return cached_filenames, sharded_metadata
+    # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
+    # we don't have to catch them here. We have also dealt with EntryNotFoundError.
+    except HTTPError:
+        raise EnvironmentError(
+            f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
+            " again after checking your internet connection."
+        )
+
+    return cached_folder, sharded_metadata
 
 
 # Taken from https://github.com/huggingface/transformers/blob/main/src/transformers/utils/hub.py

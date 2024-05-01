@@ -869,7 +869,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             commit_hash=commit_hash,
                         )
                     else:
-                        _, _ = _get_checkpoint_shard_files(
+                        sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
                             pretrained_model_name_or_path,
                             index_file,
                             cache_dir=cache_dir,
@@ -905,7 +905,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         commit_hash=commit_hash,
                     )
                 else:
-                    _, _ = _get_checkpoint_shard_files(
+                    sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
                         pretrained_model_name_or_path,
                         index_file,
                         cache_dir=cache_dir,
@@ -964,7 +964,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
-                            model_file if not is_sharded else pretrained_model_name_or_path,
+                            model_file if not is_sharded else sharded_ckpt_cached_folder,
                             device_map,
                             max_memory=max_memory,
                             offload_folder=offload_folder,
