@@ -822,7 +822,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 user_agent=user_agent,
                 commit_hash=commit_hash,
             )
-            is_sharded = True
+            if index_file:
+                is_sharded = True
 
         if is_sharded and from_flax:
             raise ValueError("Loading of sharded checkpoints is not supported when `from_flax=True`.")

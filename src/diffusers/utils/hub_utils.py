@@ -372,9 +372,12 @@ def _get_model_file(
                 f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
             )
         except EntryNotFoundError:
-            raise EnvironmentError(
-                f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
-            )
+            if weights_name.endswith(".index.json"):
+                return None
+            else:
+                raise EnvironmentError(
+                    f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
+                )
         except HTTPError as err:
             raise EnvironmentError(
                 f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
