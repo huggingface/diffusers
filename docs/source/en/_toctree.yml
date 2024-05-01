@@ -89,10 +89,6 @@
     title: Shap-E
   - local: using-diffusers/diffedit
     title: DiffEdit
-  - local: using-diffusers/custom_pipeline_examples
-    title: Community pipelines
-  - local: using-diffusers/contribute_pipeline
-    title: Contribute a community pipeline
   - local: using-diffusers/inference_with_tcd_lora
     title: Trajectory Consistency Distillation-LoRA
   - local: using-diffusers/svd
