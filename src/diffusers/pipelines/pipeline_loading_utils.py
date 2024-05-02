@@ -27,8 +27,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
 from .. import __version__
-from ..models.transformers.dit_transformer2d import DiTTransformer2DModel
-from ..models.transformers.pixart_transformer2d import PixArtTransformer2DModel
+from ..models import DiTTransformer2DModel, PixArtTransformer2DModel
 from ..utils import (
     FLAX_WEIGHTS_NAME,
     ONNX_EXTERNAL_WEIGHTS_NAME,
