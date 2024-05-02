@@ -112,7 +112,7 @@ jobs:
 
   run_nightly_tests_for_other_torch_modules:
     name: Torch Non-Pipelines CUDA Nightly Tests
-    runs-on: docker-gpu
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
@@ -185,7 +185,7 @@ jobs:
 
   run_lora_nightly_tests:
     name: Nightly LoRA Tests with PEFT and TORCH
-    runs-on: docker-gpu
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
@@ -298,7 +298,7 @@ jobs:
 
   run_nightly_onnx_tests:
     name: Nightly ONNXRuntime CUDA tests on Ubuntu
-    runs-on: docker-gpu
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-onnxruntime-cuda
       options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
