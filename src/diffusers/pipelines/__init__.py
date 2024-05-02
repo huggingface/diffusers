@@ -24,6 +24,7 @@ _import_structure = {
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
+    "marigold": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -182,6 +183,12 @@ else:
         [
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
+        ]
+    )
+    _import_structure["marigold"].extend(
+        [
+            "MarigoldDepthPipeline",
+            "MarigoldNormalsPipeline",
         ]
     )
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
@@ -446,6 +453,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPInversionPipelineOutput,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
+        )
+        from .marigold import (
+            MarigoldDepthOutput,
+            MarigoldDepthPipeline,
+            MarigoldNormalsOutput,
+            MarigoldNormalsPipeline,
         )
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
