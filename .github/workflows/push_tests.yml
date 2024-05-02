@@ -37,8 +37,8 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          pip install -e .
-          pip install huggingface_hub
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
         run: |
