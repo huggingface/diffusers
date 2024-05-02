@@ -70,6 +70,8 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         interpolation_scale (int, optional): Scale factor to use during interpolating the position embeddings.
         use_additional_conditions (bool, optional): If we're using additional conditions as inputs.
         attention_type (str, optional, defaults to "default"): Kind of attention mechanism to be used.
+        caption_channels (int, optional, defaults to None):
+            Number of channels to use for projecting the caption embeddings.
         use_linear_projection (bool, optional, defaults to False):
             Deprecated argument. Will be removed in a future version.
         num_vector_embeds (bool, optional, defaults to False):
@@ -101,6 +103,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-6,
         interpolation_scale: Optional[int] = None,
         use_additional_conditions: Optional[bool] = None,
+        caption_channels: Optional[int] = None,
         attention_type: Optional[str] = "default",
         use_linear_projection: str = False,
         num_vector_embeds: bool = False,
@@ -195,7 +198,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         self.caption_projection = None
         if self.config.caption_channels is not None:
             self.caption_projection = PixArtAlphaTextProjection(
-                in_features=self.caption_channels, hidden_size=self.inner_dim
+                in_features=self.config.caption_channels, hidden_size=self.inner_dim
             )
 
     def _set_gradient_checkpointing(self, module, value=False):
