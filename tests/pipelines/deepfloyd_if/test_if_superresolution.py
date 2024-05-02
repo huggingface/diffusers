@@ -57,6 +57,13 @@ class IFSuperResolutionPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMi
 
         return inputs
 
+    def test_incorrect_input_size(self):
+        # Put an image non-divisible by 8 into the pipeline and check that it throws an Exception.
+        image = floats_tensor((1, 3, 31, 31), rng=random.Random(0)).to(torch_device)
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        with self.assertRaises(ValueError):
+            self.pipeline(prompt="elegant destruction", image=image, generator=generator, num_inference_steps=2, output_type="np")
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
