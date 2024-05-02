@@ -62,7 +62,7 @@ jobs:
     runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0 --privileged
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --gpus 0 --privileged
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
@@ -119,7 +119,7 @@ jobs:
     runs-on: docker-gpu
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --gpus 0
     defaults:
       run:
         shell: bash
@@ -171,7 +171,7 @@ jobs:
     runs-on: docker-gpu
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --gpus 0
     defaults:
       run:
         shell: bash
@@ -221,7 +221,7 @@ jobs:
     runs-on: docker-tpu
     container:
       image: diffusers/diffusers-flax-tpu
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --privileged
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --privileged
     defaults:
       run:
         shell: bash
@@ -268,7 +268,7 @@ jobs:
     runs-on: docker-gpu
     container:
       image: diffusers/diffusers-onnxruntime-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --gpus 0
     defaults:
       run:
         shell: bash
@@ -317,7 +317,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-compile-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
 
     steps:
     - name: Checkout diffusers
@@ -358,7 +358,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-xformers-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
 
     steps:
     - name: Checkout diffusers
@@ -399,7 +399,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
 
     steps:
     - name: Checkout diffusers
