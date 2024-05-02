@@ -885,9 +885,10 @@ class LatentConsistencyModelImg2ImgPipeline(
             else self.scheduler.config.original_inference_steps
         )
         latent_timestep = timesteps[:1]
-        latents = self.prepare_latents(
-            image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
-        )
+        if latents is None:
+            latents = self.prepare_latents(
+                image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
+            )
         bs = batch_size * num_images_per_prompt
 
         # 6. Get Guidance Scale Embedding
