@@ -1333,7 +1333,7 @@ class StableDiffusionPAGPipeline(
                     raise ValueError(
                         f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
                     )
-        
+
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1446,7 +1446,7 @@ class StableDiffusionPAGPipeline(
 
         # Offload all models
         self.maybe_free_model_hooks()
-        
+
         # change attention layer in UNet if use PAG
         if self.do_perturbed_attention_guidance:
             drop_layers = self.pag_applied_layers_index
