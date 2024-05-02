@@ -14,9 +14,9 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-[Latent Consistency Models (LCMs)](https://hf.co/papers/2310.04378) enable fast high-quality image generation by directly predicting the reverse diffusion process in the latent rather than pixel space. In other words, the LCM tries to predict the noiseless image from the noisy image in contrast to typical diffusion models that iteratively remove noise from the noisy image. By avoiding the iterative sampling process, LCMs are able to generate high-quality images in 2-4 steps instead of 20-30 steps.
+[Latent Consistency Models (LCMs)](https://hf.co/papers/2310.04378) enable fast high-quality image generation by directly predicting the reverse diffusion process in the latent rather than pixel space. In other words, LCMs try to predict the noiseless image from the noisy image in contrast to typical diffusion models that iteratively remove noise from the noisy image. By avoiding the iterative sampling process, LCMs are able to generate high-quality images in 2-4 steps instead of 20-30 steps.
 
-LCMs are distilled from pretrained models which requires ~32 hours of A100 compute. To speed this up, [LCM-LoRAs](https://hf.co/papers/2311.05556) train a [LoRA adapter](https://huggingface.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) which have much fewer parameters compared to training the full model. The LCM-LoRA can be plugged into any diffusion model once it has been trained.
+LCMs are distilled from pretrained models which requires ~32 hours of A100 compute. To speed this up, [LCM-LoRAs](https://hf.co/papers/2311.05556) train a [LoRA adapter](https://huggingface.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) which have much fewer parameters to train compared to the full model. The LCM-LoRA can be plugged into a diffusion model once it has been trained.
 
 This guide will show you how to use LCMs and LCM-LoRAs for fast inference on tasks and how to use them with other adapters like ControlNet or T2I-Adapter.
 
@@ -28,12 +28,12 @@ This guide will show you how to use LCMs and LCM-LoRAs for fast inference on tas
 <hfoptions id="lcm-text2img">
 <hfoption id="LCM">
 
-To use LCMs, you need to load the LCM checkpoint for your supported model into [`UNet2DConditionModel`] and then you need to replace the scheduler with the [`LCMScheduler`]. Then you can use the pipeline as usual and pass a text prompt to generate an image in just 4 steps.
+To use LCMs, you need to load the LCM checkpoint for your supported model into [`UNet2DConditionModel`] and replace the scheduler with the [`LCMScheduler`]. Then you can use the pipeline as usual, and pass a text prompt to generate an image in just 4 steps.
 
 A couple of notes to keep in mind when using LCMs are:
 
-* Typically, batch size is doubled inside the pipeline for classifier-free guidance. But LCM applies guidance with guidance embeddings and doesn't need to double the batch size which leads to faster inference. The downside is that negative prompts don't work with LCM because they don't have any effect on the denoising process.
-* The UNet was trained using the [3., 13.] guidance scale range, so that is the ideal range for `guidance_scale`. However, disabling `guidance_scale` with a value of 1.0 is also effective in most cases.
+* Typically, batch size is doubled inside the pipeline for classifier-free guidance. But LCM applies guidance with guidance embeddings and doesn't need to double the batch size, which leads to faster inference. The downside is that negative prompts don't work with LCM because they don't have any effect on the denoising process.
+* The ideal range for `guidance_scale` is [3., 13.] because that is what the UNet was trained with. However, disabling `guidance_scale` with a value of 1.0 is also effective in most cases.
 
 ```python
 from diffusers import StableDiffusionXLPipeline, UNet2DConditionModel, LCMScheduler
@@ -64,13 +64,13 @@ image
 </hfoption>
 <hfoption id="LCM-LoRA">
 
-To use LCM-LoRAs, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual and pass a text prompt to generate an image in just 4 steps.
+To use LCM-LoRAs, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual, and pass a text prompt to generate an image in just 4 steps.
 
 A couple of notes to keep in mind when using LCM-LoRAs are:
 
-* Typically, batch size is doubled inside the pipeline for classifier-free guidance. But LCM applies guidance with guidance embeddings and doesn't need to double the batch size which leads to faster inference. The downside is that negative prompts don't work with LCM because they don't have any effect on the denoising process.
-* You could use guidance with LCM-LoRAs, but it is very sensitive to high `guidance_scale` values and can lead to artifcats in the generated image. The best values we've found are between [1.0, 2.0].
-* Replace [stabilityai/stable-diffusion-xl-base-1.0](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0) with any finetuned model you want. For example, try using the [animagine-xl](https://huggingface.co/Linaqruf/animagine-xl) checkpoint to generate anime images with SDXL.
+* Typically, batch size is doubled inside the pipeline for classifier-free guidance. But LCM applies guidance with guidance embeddings and doesn't need to double the batch size, which leads to faster inference. The downside is that negative prompts don't work with LCM because they don't have any effect on the denoising process.
+* You could use guidance with LCM-LoRAs, but it is very sensitive to high `guidance_scale` values and can lead to artifacts in the generated image. The best values we've found are between [1.0, 2.0].
+* Replace [stabilityai/stable-diffusion-xl-base-1.0](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0) with any finetuned model. For example, try using the [animagine-xl](https://huggingface.co/Linaqruf/animagine-xl) checkpoint to generate anime images with SDXL.
 
 ```py
 import torch
@@ -104,7 +104,7 @@ image
 <hfoptions id="lcm-img2img">
 <hfoption id="LCM">
 
-To use LCMs for image-to-image, you need to load the LCM checkpoint for your supported model into [`UNet2DConditionModel`] and then you need to replace the scheduler with the [`LCMScheduler`]. Then you can use the pipeline as usual and pass a text prompt and initial image to generate an image in just 4 steps.
+To use LCMs for image-to-image, you need to load the LCM checkpoint for your supported model into [`UNet2DConditionModel`] and replace the scheduler with the [`LCMScheduler`]. Then you can use the pipeline as usual, and pass a text prompt and initial image to generate an image in just 4 steps.
 
 > [!TIP]
 > Experiment with different values for `num_inference_steps`, `strength`, and `guidance_scale` to get the best results.
@@ -156,7 +156,7 @@ image
 </hfoption>
 <hfoption id="LCM-LoRA">
 
-To use LCM-LoRAs for image-to-image, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual and pass a text prompt and initial image to generate an image in just 4 steps.
+To use LCM-LoRAs for image-to-image, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual, and pass a text prompt and initial image to generate an image in just 4 steps.
 
 > [!TIP]
 > Experiment with different values for `num_inference_steps`, `strength`, and `guidance_scale` to get the best results.
@@ -207,7 +207,7 @@ image
 
 ## Inpainting
 
-To use LCM-LoRAs for inpainting, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual and pass a text prompt, initial image, and mask image to generate an image in just 4 steps.
+To use LCM-LoRAs for inpainting, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual, and pass a text prompt, initial image, and mask image to generate an image in just 4 steps.
 
 ```py
 import torch
@@ -253,16 +253,16 @@ image
 
 ## Adapters
 
-LCMs are also compatible with adapters like LoRA, ControlNet, and T2I-Adapter. You can bring the speed of LCMs to these adapters to generate images in a certain style or condition the model on another input like a canny image.
+LCMs are compatible with adapters like LoRA, ControlNet, T2I-Adapter, and AnimateDiff. You can bring the speed of LCMs to these adapters to generate images in a certain style or condition the model on another input like a canny image.
 
 ### LoRA
 
-[LoRA](../using-diffusers/loading_adapters#lora) adapters can be rapidly finetuned to learn a new style from just a few images and then plugged into a pretrained model to generate images in that style.
+[LoRA](../using-diffusers/loading_adapters#lora) adapters can be rapidly finetuned to learn a new style from just a few images and plugged into a pretrained model to generate images in that style.
 
 <hfoptions id="lcm-lora">
 <hfoption id="LCM">
 
-Load the LCM checkpoint for your supported model into [`UNet2DConditionModel`] and then replace the scheduler with the [`LCMScheduler`]. Then you can use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LoRA weights into the LCM and generate a styled image in a few steps.
+Load the LCM checkpoint for your supported model into [`UNet2DConditionModel`] and replace the scheduler with the [`LCMScheduler`]. Then you can use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LoRA weights into the LCM and generate a styled image in a few steps.
 
 ```python
 from diffusers import StableDiffusionXLPipeline, UNet2DConditionModel, LCMScheduler
@@ -294,7 +294,7 @@ image
 </hfoption>
 <hfoption id="LCM-LoRA">
 
-Replace the scheduler with the [`LCMScheduler`]. Then you can use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights and the style LoRA you want to use. Combine both LoRA adapters with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method and then generate a styled image in a few steps.
+Replace the scheduler with the [`LCMScheduler`]. Then you can use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights and the style LoRA you want to use. Combine both LoRA adapters with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method and generate a styled image in a few steps.
 
 ```py
 import torch
@@ -329,6 +329,8 @@ image
 ### ControlNet
 
 [ControlNet](./controlnet) are adapters that can be trained on a variety of inputs like canny edge, pose estimation, or depth. The ControlNet can be inserted into the pipeline to provide additional conditioning and control to the model for more accurate generation.
+
+You can find additional ControlNet models trained on other inputs in [lllyasviel's](https://hf.co/lllyasviel) repository.
 
 <hfoptions id="lcm-controlnet">
 <hfoption id="LCM">
@@ -450,12 +452,14 @@ image
 
 ### T2I-Adapter
 
-[T2I-Adapter](./t2i_adapter) is an even more lightweight adapter than ControlNet that provides an additional input to condition a pretrained model with. It is faster than ControlNet but the results may be slightly worse.
+[T2I-Adapter](./t2i_adapter) is an even more lightweight adapter than ControlNet, that provides an additional input to condition a pretrained model with. It is faster than ControlNet but the results may be slightly worse.
+
+You can find additional T2I-Adapter checkpoints trained on other inputs in [TencentArc's](https://hf.co/TencentARC) repository.
 
 <hfoptions id="lcm-t2i">
 <hfoption id="LCM">
 
-Load a [`T2IAdapter`] trained on canny images and pass it to the [`StableDiffusionXLAdapterPipeline`]. Then you can load a LCM checkpoint into [`UNet2DConditionModel`] and replace the scheduler with the [`LCMScheduler`]. Now pass the canny image to the pipeline and generate an image.
+Load a T2IAdapter trained on canny images and pass it to the [`StableDiffusionXLAdapterPipeline`]. Then load a LCM checkpoint into [`UNet2DConditionModel`] and replace the scheduler with the [`LCMScheduler`]. Now pass the canny image to the pipeline and generate an image.
 
 ```python
 import torch
@@ -521,7 +525,7 @@ image = pipe(
 </hfoption>
 <hfoption id="LCM-LoRA">
 
-Load a [`T2IAdapter`] trained on canny images and pass it to the [`StableDiffusionXLAdapterPipeline`]. Replace the scheduler with the [`LCMScheduler`], and use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights. Pass the canny image to the pipeline and generate an image.
+Load a T2IAdapter trained on canny images and pass it to the [`StableDiffusionXLAdapterPipeline`]. Replace the scheduler with the [`LCMScheduler`], and use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights. Pass the canny image to the pipeline and generate an image.
 
 ```py
 import torch
@@ -585,7 +589,7 @@ image = pipe(
 
 ### AnimateDiff
 
-[AnimateDiff](../api/pipelines/animatediff) is an adapter that adds motion to an image. It can be used with most Stable Diffusion models, effectively turning them into "video generation" models. Generating good results with a video model usually requires generating multiple frames (16-24) which can be very slow with a regular Stable Diffusion model. LCM-LoRA can speed up this process by only taking 4-8 steps for each frame.
+[AnimateDiff](../api/pipelines/animatediff) is an adapter that adds motion to an image. It can be used with most Stable Diffusion models, effectively turning them into "video generation" models. Generating good results with a video model usually requires generating multiple frames (16-24), which can be very slow with a regular Stable Diffusion model. LCM-LoRA can speed up this process by only taking 4-8 steps for each frame.
 
 Load a [`AnimateDiffPipeline`] and pass a [`MotionAdapter`] to it. Then replace the scheduler with the [`LCMScheduler`], and combine both LoRA adapters with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method. Now you can pass a prompt to the pipeline and generate an animated image.
 
