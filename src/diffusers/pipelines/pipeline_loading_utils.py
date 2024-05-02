@@ -90,6 +90,13 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
+# Define a remapping dictionary to use the updated Transformer2D variant instead of the
+# monolithic `Transformer2DModel` class.
+REMAPPING = {
+    "DiTPipeline": {"Transformer2DModel": DiTTransformer2DModel},
+}
+
+
 def is_safetensors_compatible(filenames, variant=None, passed_components=None) -> bool:
     """
     Checking for safetensors compatibility:
@@ -641,14 +648,15 @@ def load_sub_model(
             f"The component {class_obj} of {pipeline_class} cannot be loaded as it does not seem to have"
             f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
         )
-    if pipeline_class.__name__ == "DiTPipeline":
-        if class_obj.__name__ == "Transformer2DModel":
+
+    if pipeline_class.__name__ in REMAPPING:
+        if class_obj.__name__ in REMAPPING[pipeline_class.__name__]:
             logger.info(
-                "Changing `transformer` object of `DiTPipeline` to be of `DiTTransformer2DModel` type from `Transformer2DModel` type."
+                f"Changing `{name}` object of `{pipeline_class.__name__}` to be of `{REMAPPING[pipeline_class.__name__][class_obj.__name__]}` type from `{class_obj.__name__}` type."
                 " It would be great to reserialize the pipeline with the updated components and submit a PR to underlying repository on the"
                 " Hugging Face Hub."
             )
-            class_obj = DiTTransformer2DModel
+            class_obj = REMAPPING[pipeline_class.__name__][class_obj.__name__]
     load_method = getattr(class_obj, load_method_name)
 
     # add kwargs to loading method
