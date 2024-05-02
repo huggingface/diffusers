@@ -28,6 +28,7 @@ from packaging import version
 
 from .. import __version__
 from ..models.transformers.dit_transformer2d import DiTTransformer2DModel
+from ..models.transformers.pixart_transformer2d import PixArtTransformer2DModel
 from ..utils import (
     FLAX_WEIGHTS_NAME,
     ONNX_EXTERNAL_WEIGHTS_NAME,
@@ -94,6 +95,8 @@ for library in LOADABLE_CLASSES:
 # monolithic `Transformer2DModel` class.
 REMAPPING = {
     "DiTPipeline": {"Transformer2DModel": DiTTransformer2DModel},
+    "PixArtAlphaPipeline": {"Transformer2DModel": PixArtTransformer2DModel},
+    "PixArtSigmaPipeline": {"Transformer2DModel": PixArtTransformer2DModel},
 }
 
 
