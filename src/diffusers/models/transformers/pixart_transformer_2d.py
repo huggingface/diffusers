@@ -138,7 +138,6 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         self.attention_head_dim = attention_head_dim
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
         self.out_channels = in_channels if out_channels is None else out_channels
-        print(f"{use_additional_conditions=}, {sample_size=}")
         if use_additional_conditions is None:
             if sample_size == 128:
                 use_additional_conditions = True
