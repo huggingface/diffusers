@@ -138,6 +138,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         self.attention_head_dim = attention_head_dim
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
         self.out_channels = in_channels if out_channels is None else out_channels
+        print(f"{use_additional_conditions=}, {sample_size=}")
         if use_additional_conditions is None:
             if sample_size == 128:
                 use_additional_conditions = True
@@ -160,7 +161,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
             height=self.config.sample_size,
             width=self.config.sample_size,
             patch_size=self.config.patch_size,
-            in_channels=self.in_channels,
+            in_channels=self.config.in_channels,
             embed_dim=self.inner_dim,
             interpolation_scale=interpolation_scale,
         )
@@ -193,7 +194,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         self.proj_out = nn.Linear(self.inner_dim, self.config.patch_size * self.config.patch_size * self.out_channels)
 
         self.adaln_single = AdaLayerNormSingle(
-            self.inner_dim, use_additional_conditions=self.config.use_additional_conditions
+            self.inner_dim, use_additional_conditions=self.use_additional_conditions
         )
         self.caption_projection = None
         if self.config.caption_channels is not None:
