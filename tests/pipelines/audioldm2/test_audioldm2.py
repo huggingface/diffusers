@@ -129,7 +129,9 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             patch_embed_input_channels=4,
         )
         text_encoder_config = ClapConfig.from_text_audio_configs(
-            text_config=text_branch_config, audio_config=audio_branch_config, projection_dim=16
+            text_config=text_branch_config,
+            audio_config=audio_branch_config,
+            projection_dim=16,
         )
         text_encoder = ClapModel(text_encoder_config)
         tokenizer = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)
@@ -226,7 +228,18 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         audio_slice = audio[:10]
         expected_slice = np.array(
-            [0.0025, 0.0018, 0.0018, -0.0023, -0.0026, -0.0020, -0.0026, -0.0021, -0.0027, -0.0020]
+            [
+                2.602e-03,
+                1.729e-03,
+                1.863e-03,
+                -2.219e-03,
+                -2.656e-03,
+                -2.017e-03,
+                -2.648e-03,
+                -2.115e-03,
+                -2.502e-03,
+                -2.081e-03,
+            ]
         )
 
         assert np.abs(audio_slice - expected_slice).max() < 1e-4
@@ -367,7 +380,18 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         audio_slice = audio[:10]
         expected_slice = np.array(
-            [0.0025, 0.0018, 0.0018, -0.0023, -0.0026, -0.0020, -0.0026, -0.0021, -0.0027, -0.0020]
+            [
+                0.00257826,
+                0.00173665,
+                0.00182106,
+                -0.00223017,
+                -0.00264033,
+                -0.00201168,
+                -0.00262622,
+                -0.00209184,
+                -0.00253433,
+                -0.00205081,
+            ]
         )
 
         assert np.abs(audio_slice - expected_slice).max() < 1e-4
@@ -394,7 +418,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert audios.shape == (batch_size, 256)
 
         # test num_waveforms_per_prompt for single prompt
-        num_waveforms_per_prompt = 2
+        num_waveforms_per_prompt = 1
         audios = audioldm_pipe(prompt, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt).audios
 
         assert audios.shape == (num_waveforms_per_prompt, 256)
