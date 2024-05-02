@@ -651,10 +651,11 @@ def load_sub_model(
 
     if pipeline_class.__name__ in REMAPPING:
         if class_obj.__name__ in REMAPPING[pipeline_class.__name__]:
+            obj = REMAPPING[pipeline_class.__name__][class_obj.__name__]
             logger.info(
-                f"Changing `{name}` object of `{pipeline_class.__name__}` to be of `{REMAPPING[pipeline_class.__name__][class_obj.__name__]}` type from `{class_obj.__name__}` type."
-                " It would be great to reserialize the pipeline with the updated components and submit a PR to underlying repository on the"
-                " Hugging Face Hub."
+                f"Changing `{name}` object of `{pipeline_class.__name__}` to be of `{obj.__name__}` type from `{class_obj.__name__}` type."
+                " Note that this doesn't affect the final results. It would be great to reserialize the pipeline with the updated components"
+                " and submit a PR to underlying repository on the Hugging Face Hub."
             )
             class_obj = REMAPPING[pipeline_class.__name__][class_obj.__name__]
     load_method = getattr(class_obj, load_method_name)
