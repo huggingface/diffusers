@@ -359,7 +359,11 @@ class UNet2DConditionLoadersMixin:
                 for _, component in _pipeline.components.items():
                     if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
                         is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                        is_sequential_cpu_offload = (
+                            isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                            or hasattr(component._hf_hook, "hooks")
+                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+                        )
 
                         logger.info(
                             "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
