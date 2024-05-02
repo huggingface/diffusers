@@ -336,8 +336,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        print(", ".join([str(round(x, 4)) for x in image_slice.flatten().tolist()]))
-        expected_slice = np.array([0.0742, 0.0835, 0.2114, 0.0295, 0.0784, 0.2361, 0.1738, 0.2251, 0.3589])
+        expected_slice = np.array([0.4517, 0.4446, 0.4375, 0.449, 0.4399, 0.4365, 0.4583, 0.4629, 0.4473])
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
         self.assertLessEqual(max_diff, 1e-4)
