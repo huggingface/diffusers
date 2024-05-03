@@ -234,7 +234,7 @@ class AutoPipelineForText2Image(ConfigMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download (defaults to `None`):
+            resume_download:
                 Deprecated and ignored. All downloads are now resumed by default when possible.
                 Will be removed in v1 of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
@@ -507,7 +507,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download (defaults to `None`):
+            resume_download:
                 Deprecated and ignored. All downloads are now resumed by default when possible.
                 Will be removed in v1 of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
@@ -783,7 +783,7 @@ class AutoPipelineForInpainting(ConfigMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download (defaults to `None`):
+            resume_download:
                 Deprecated and ignored. All downloads are now resumed by default when possible.
                 Will be removed in v1 of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
