@@ -64,64 +64,80 @@ class VideoProcessor(VaeImageProcessor):
                 * List of 4D NumPy arrays (expected shape for each array: (num_frames, height, width, num_channels)).
                 * List of list of 4D NumPy arrays (expected shape for each array: (num_frames, height, width,
                   num_channels)).
+                * List of 5D NumPy arrays (expected shape for each array: (batch_size, num_frames, height, width,
+                  num_channels).
+                * List of 5D Torch tensors (expected shape for each array: (batch_size, num_frames, num_channels,
+                  height, width).
+                * 5D NumPy arrays: expected shape for each array: (batch_size, num_frames, height, width,
+                  num_channels).
+                * 5D Torch tensors: expected shape for each array: (batch_size, num_frames, num_channels, height,
+                  width).
         """
-        supported_formats = (np.ndarray, torch.Tensor, PIL.Image.Image)
+        supported_formats = (np.ndarray, torch.Tensor, PIL.Image.Image, list)
 
         # Single-frame video.
-        if isinstance(video, supported_formats):
+        if isinstance(video, supported_formats[:-1]):
             video = [video]
+
+        # List of PIL images.
+        elif isinstance(video, list) and isinstance(video[0], PIL.Image.Image):
+            video = [video]
+
         elif not (isinstance(video, list) and all(isinstance(i, supported_formats) for i in video)):
             raise ValueError(
-                f"Input is in incorrect format: {[type(i) for i in video]}. Currently, we only support {', '.join(supported_formats)}"
+                f"Input is in incorrect format: {[type(i) for i in video]}. Currently, we only support {', '.join(list(map(str, supported_formats)))}"
             )
-
-        # In case the video a list of list of PIL images.
-        if isinstance(video, list) and isinstance(video[0], list) and isinstance(video[0][0], PIL.Image.Image):
-            video_ = []
-            first_video_length = 0
-            for i, vid in enumerate(video):
-                current_video = [np.array(frame) for frame in vid]
-                if i == 0:
-                    first_video_length = len(current_video)
-                if len(current_video) != first_video_length:
-                    raise ValueError("Cannot batch together videos of different lengths.")
-                video_.append(current_video)
-            video = np.stack(video_, axis=0)
-
-        # In case the video is a list of PIL images, convert to a list of ndarrays.
-        if isinstance(video[0], PIL.Image.Image):
-            video = [np.array(frame) for frame in video]
 
         if isinstance(video[0], np.ndarray):
             # When the number of dimension of the first element in `video` is 5, it means
             # each element in the `video` list is a video.
             video = np.concatenate(video, axis=0) if video[0].ndim == 5 else np.stack(video, axis=0)
 
-            if video.dtype == np.uint8:
-                if video.min() < 0:
-                    raise ValueError(
-                        f"The inputs don't have the correct value range for the determined data-type ({video.dtype}): {video.min()=}."
-                    )
-                # We perform the scaling step here so that `preprocess()` can handle things correctly for us.
-                video = np.array(video).astype(np.float32) / 255.0
-
             if video.ndim == 4:
                 video = video[None, ...]
 
-            video = video.permute(0, 4, 1, 2, 3)
-
         elif isinstance(video[0], torch.Tensor):
-            video = torch.cat(video, axis=0) if video[0].ndim == 5 else torch.stack(video, axis=0)
+            video = torch.cat(video, dim=0) if video[0].ndim == 5 else torch.stack(video, dim=0)
 
             # don't need any preprocess if the video is latents
             channel = video.shape[1]
             if channel == 4:
                 return video
 
-            # move channels before num_frames
-            video = video.permute(0, 2, 1, 3, 4)
+        # List of 5d tensors/ndarrays.
+        elif isinstance(video[0], list):
+            if isinstance(video[0][0], (np.ndarray, torch.Tensor)):
+                all_frames = []
+                for list_of_videos in video:
+                    temp_frames = []
+                    for vid in list_of_videos:
+                        if vid.ndim == 4:
+                            current_vid_frames = np.stack(vid, axis=0) if isinstance(vid, np.ndarray) else vid
+                        elif vid.ndim == 5:
+                            current_vid_frames = (
+                                np.concatenate(vid, axis=0) if isinstance(vid, np.ndarray) else torch.cat(vid, dim=0)
+                            )
+                        temp_frames.append(current_vid_frames)
+
+                    # Process inner list.
+                    temp_frames = (
+                        np.stack(temp_frames, axis=0)
+                        if isinstance(temp_frames[0], np.ndarray)
+                        else torch.stack(temp_frames, axis=0)
+                    )
+                    all_frames.append(temp_frames)
+
+                # Process outer list.
+                video = (
+                    np.concatenate(all_frames, axis=0)
+                    if isinstance(all_frames[0], np.ndarray)
+                    else torch.cat(all_frames, dim=0)
+                )
 
         # `preprocess()` here would return a PT tensor.
         video = torch.stack([self.preprocess(f) for f in video], dim=0)
+
+        # move channels before num_frames
+        video = video.permute(0, 2, 1, 3, 4)
 
         return video
