@@ -31,14 +31,13 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 2
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.8"
       - name: Install dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
+      - name: Environment
+        run: |
+          python utils/print_env.py
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
         run: |
