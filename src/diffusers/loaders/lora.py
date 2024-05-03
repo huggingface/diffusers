@@ -369,7 +369,11 @@ class LoraLoaderMixin:
                     if not is_model_cpu_offload:
                         is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
                     if not is_sequential_cpu_offload:
-                        is_sequential_cpu_offload = isinstance(component._hf_hook, AlignDevicesHook)
+                        is_sequential_cpu_offload = (
+                            isinstance(component._hf_hook, AlignDevicesHook)
+                            or hasattr(component._hf_hook, "hooks")
+                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+                        )
 
                     logger.info(
                         "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
