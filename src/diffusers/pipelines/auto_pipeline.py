@@ -234,9 +234,9 @@ class AutoPipelineForText2Image(ConfigMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -311,7 +311,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         """
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -507,9 +507,9 @@ class AutoPipelineForImage2Image(ConfigMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -584,7 +584,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         """
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -783,9 +783,9 @@ class AutoPipelineForInpainting(ConfigMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -860,7 +860,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         """
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)

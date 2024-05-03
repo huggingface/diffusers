@@ -254,9 +254,9 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -316,7 +316,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```
         """
         cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
         token = kwargs.pop("token", None)
