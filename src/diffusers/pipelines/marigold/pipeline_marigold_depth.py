@@ -50,17 +50,6 @@ from ..pipeline_utils import DiffusionPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-BIBTEX = """
-```bibtex
-@InProceedings{ke2023repurposing,
-  title={Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation},
-  author={Bingxin Ke and Anton Obukhov and Shengyu Huang and Nando Metzger and Rodrigo Caye Daudt and Konrad Schindler},
-  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year={2024}
-}
-```
-"""
-
 EXAMPLE_DOC_STRING = f"""
 Examples:
 ```py
@@ -76,8 +65,6 @@ Examples:
 
 >>> depth.visualization.save("einstein_depth.png")
 ```
-
-Citation: {BIBTEX}
 """
 
 
