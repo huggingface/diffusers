@@ -108,7 +108,7 @@ from .state_dict_utils import (
     convert_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
 )
-from torch_utils import (
+from .torch_utils import (
     randn_tensor,
 )
 
