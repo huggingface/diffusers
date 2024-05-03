@@ -380,18 +380,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         audio_slice = audio[:10]
         expected_slice = np.array(
-            [
-                0.00257826,
-                0.00173665,
-                0.00182106,
-                -0.00223017,
-                -0.00264033,
-                -0.00201168,
-                -0.00262622,
-                -0.00209184,
-                -0.00253433,
-                -0.00205081,
-            ]
+            [0.0026, 0.0017, 0.0018, -0.0022, -0.0026, -0.002, -0.0026, -0.0021, -0.0025, -0.0021]
         )
 
         assert np.abs(audio_slice - expected_slice).max() < 1e-4
