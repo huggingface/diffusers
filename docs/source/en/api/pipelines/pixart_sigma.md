@@ -10,24 +10,28 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# PixArt-α
+# PixArt-Σ
 
-![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/pixart/header_collage.png)
+![](https://raw.githubusercontent.com/PixArt-alpha/PixArt-sigma-project/master/static/images/samples/others_webp/4K_image.webp)
 
-[PixArt-α: Fast Training of Diffusion Transformer for Photorealistic Text-to-Image Synthesis](https://huggingface.co/papers/2310.00426) is Junsong Chen, Jincheng Yu, Chongjian Ge, Lewei Yao, Enze Xie, Yue Wu, Zhongdao Wang, James Kwok, Ping Luo, Huchuan Lu, and Zhenguo Li.
+[//]: # (![]&#40;https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/pixart/header_collage.png&#41;)
+
+[PixArt-Σ: Weak-to-Strong Training of Diffusion Transformer for 4K Text-to-Image Generation](https://huggingface.co/papers/2403.04692) is Junsong Chen, Jincheng Yu, Chongjian Ge, Lewei Yao, Enze Xie, Yue Wu, Zhongdao Wang, James Kwok, Ping Luo, Huchuan Lu, and Zhenguo Li.
 
 The abstract from the paper is:
 
-*The most advanced text-to-image (T2I) models require significant training costs (e.g., millions of GPU hours), seriously hindering the fundamental innovation for the AIGC community while increasing CO2 emissions. This paper introduces PIXART-α, a Transformer-based T2I diffusion model whose image generation quality is competitive with state-of-the-art image generators (e.g., Imagen, SDXL, and even Midjourney), reaching near-commercial application standards. Additionally, it supports high-resolution image synthesis up to 1024px resolution with low training cost, as shown in Figure 1 and 2. To achieve this goal, three core designs are proposed: (1) Training strategy decomposition: We devise three distinct training steps that separately optimize pixel dependency, text-image alignment, and image aesthetic quality; (2) Efficient T2I Transformer: We incorporate cross-attention modules into Diffusion Transformer (DiT) to inject text conditions and streamline the computation-intensive class-condition branch; (3) High-informative data: We emphasize the significance of concept density in text-image pairs and leverage a large Vision-Language model to auto-label dense pseudo-captions to assist text-image alignment learning. As a result, PIXART-α's training speed markedly surpasses existing large-scale T2I models, e.g., PIXART-α only takes 10.8% of Stable Diffusion v1.5's training time (675 vs. 6,250 A100 GPU days), saving nearly $300,000 ($26,000 vs. $320,000) and reducing 90% CO2 emissions. Moreover, compared with a larger SOTA model, RAPHAEL, our training cost is merely 1%. Extensive experiments demonstrate that PIXART-α excels in image quality, artistry, and semantic control. We hope PIXART-α will provide new insights to the AIGC community and startups to accelerate building their own high-quality yet low-cost generative models from scratch.*
+*In this paper, we introduce PixArt-Σ, a Diffusion Transformer model (DiT) capable of directly generating images at 4K resolution. PixArt-Σ represents a significant advancement over its predecessor, PixArt-α, offering images of markedly higher fidelity and improved alignment with text prompts. A key feature of PixArt-Σ is its training efficiency. Leveraging the foundational pre-training of PixArt-α, it evolves from the ‘weaker’ baseline to a ‘stronger’ model via incorporating higher quality data, a process we term “weak-to-strong training”. The advancements in PixArt-Σ are twofold: (1) High-Quality Training Data: PixArt-Σ incorporates superior-quality image data, paired with more precise and detailed image captions. (2) Efficient Token Compression: we propose a novel attention module within the DiT framework that compresses both keys and values, significantly improving efficiency and facilitating ultra-high-resolution image generation. Thanks to these improvements, PixArt-Σ achieves superior image quality and user prompt adherence capabilities with significantly smaller model size (0.6B parameters) than existing text-to-image diffusion models, such as SDXL (2.6B parameters) and SD Cascade (5.1B parameters). Moreover, PixArt-Σ’s capability to generate 4K images supports the creation of high-resolution posters and wallpapers, efficiently bolstering the production of highquality visual content in industries such as film and gaming.**
 
-You can find the original codebase at [PixArt-alpha/PixArt-alpha](https://github.com/PixArt-alpha/PixArt-alpha) and all the available checkpoints at [PixArt-alpha](https://huggingface.co/PixArt-alpha).
+You can find the original codebase at [PixArt-alpha/PixArt-sigma](https://github.com/PixArt-alpha/PixArt-sigma) and all the available checkpoints at [PixArt-alpha](https://huggingface.co/PixArt-alpha).
 
 Some notes about this pipeline:
 
 * It uses a Transformer backbone (instead of a UNet) for denoising. As such it has a similar architecture as [DiT](./dit).
 * It was trained using text conditions computed from T5. This aspect makes the pipeline better at following complex text prompts with intricate details.
-* It is good at producing high-resolution images at different aspect ratios. To get the best results, the authors recommend some size brackets which can be found [here](https://github.com/PixArt-alpha/PixArt-alpha/blob/08fbbd281ec96866109bdd2cdb75f2f58fb17610/diffusion/data/datasets/utils.py).
-* It rivals the quality of state-of-the-art text-to-image generation systems (as of this writing) such as Stable Diffusion XL, Imagen, and DALL-E 2, while being more efficient than them.
+* It is good at producing high-resolution images at different aspect ratios. To get the best results, the authors recommend some size brackets which can be found [here](https://github.com/PixArt-alpha/PixArt-sigma/blob/master/diffusion/data/datasets/utils.py).
+* It rivals the quality of state-of-the-art text-to-image generation systems (as of this writing) such as PixArt-α, Stable Diffusion XL, Playground V2.0 and DALL-E 3, while being more efficient than them.
+* It shows the ability of generating super high resolution images, such as 2048px or even 4K.
+* It rivals that the Text-to-Image models can grow from a weak model to a stronger one through several improvements(VAEs, Datasets and so on.)
 
 <Tip>
 
@@ -37,7 +41,7 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 ## Inference with under 8GB GPU VRAM
 
-Run the [`PixArtAlphaPipeline`] with under 8GB GPU VRAM by loading the text encoder in 8-bit precision. Let's walk through a full-fledged example. 
+Run the [`PixArtSigmaPipeline`] with under 8GB GPU VRAM by loading the text encoder in 8-bit precision. Let's walk through a full-fledged example. 
 
 First, install the [bitsandbytes](https://github.com/TimDettmers/bitsandbytes) library:
 
@@ -49,18 +53,18 @@ Then load the text encoder in 8-bit:
 
 ```python
 from transformers import T5EncoderModel
-from diffusers import PixArtAlphaPipeline
+from diffusers import PixArtSigmaPipeline
 import torch
 
 text_encoder = T5EncoderModel.from_pretrained(
-    "PixArt-alpha/PixArt-XL-2-1024-MS",
+    "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
     subfolder="text_encoder",
     load_in_8bit=True,
     device_map="auto",
 
 )
-pipe = PixArtAlphaPipeline.from_pretrained(
-    "PixArt-alpha/PixArt-XL-2-1024-MS",
+pipe = PixArtSigmaPipeline.from_pretrained(
+    "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
     text_encoder=text_encoder,
     transformer=None,
     device_map="auto"
@@ -92,8 +96,8 @@ flush()
 Then compute the latents with the prompt embeddings as inputs:
 
 ```python
-pipe = PixArtAlphaPipeline.from_pretrained(
-    "PixArt-alpha/PixArt-XL-2-1024-MS",
+pipe = PixArtSigmaPipeline.from_pretrained(
+    "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
     text_encoder=None,
     torch_dtype=torch.float16,
 ).to("cuda")
@@ -127,7 +131,7 @@ image = pipe.image_processor.postprocess(image, output_type="pil")[0]
 image.save("cat.png")
 ```
 
-By deleting components you aren't using and flushing the GPU VRAM, you should be able to run [`PixArtAlphaPipeline`] with under 8GB GPU VRAM.
+By deleting components you aren't using and flushing the GPU VRAM, you should be able to run [`PixArtSigmaPipeline`] with under 8GB GPU VRAM.
 
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/pixart/8bits_cat.png)
 
@@ -141,9 +145,9 @@ Text embeddings computed in 8-bit can impact the quality of the generated images
 
 While loading the `text_encoder`, you set `load_in_8bit` to `True`. You could also specify `load_in_4bit` to bring your memory requirements down even further to under 7GB.
 
-## PixArtAlphaPipeline
+## PixArtSigmaPipeline
 
-[[autodoc]] PixArtAlphaPipeline
+[[autodoc]] PixArtSigmaPipeline
 	- all
 	- __call__
 	
