@@ -161,14 +161,9 @@ class VideoProcessorTest(unittest.TestCase):
         input = self.get_dummy_sample(input_type=input_type)
 
         for output_type in ["pt", "np", "pil"]:
-            if input_type == "list_list_4d_pt":
-                print(input[0][0].ndim)
             out = video_processor.tensor2vid(video_processor.preprocess_video(input), output_type=output_type)
             out_np = self.to_np(out)
             input_np = (
                 (self.to_np(input) * 255.0).round().astype("uint8") if output_type == "pil" else self.to_np(input)
             )
-            print(f"{input_np.max()=}, {input_np.min()=}, {out_np.max()=}, {out_np.min()=}")
-            print(input_np[0, :3, :3, -1].flatten())
-            print(out_np[0, :3, :3, -1].flatten())
             assert np.abs(input_np - out_np).max() < 1e-6, f"Decoded output does not match input for {output_type=}"
