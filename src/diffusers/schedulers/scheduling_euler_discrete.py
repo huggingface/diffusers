@@ -302,7 +302,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: int,
+        num_inference_steps: int = None,
         device: Union[str, torch.device] = None,
         timesteps: Optional[List[int]] = None,
         sigmas: Optional[List[float]] = None,
