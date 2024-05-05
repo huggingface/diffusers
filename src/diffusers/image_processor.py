@@ -514,13 +514,15 @@ class VaeImageProcessor(ConfigMixin):
                 else:
                     image = np.expand_dims(image, axis=-1)
 
-        # image processor only accept image or a list of images or a batch of images (4d array/tenssors) as inputs,
+        # image processor only accept image or a list of images or a batch of images (4d array/tensors) as inputs,
         # while we do accept a list of 4d array/tensors, we concatenate them to a single image batch
         if isinstance(image, list) and isinstance(image[0], np.ndarray) and image[0].ndim == 4:
             image = np.concatenate(image, axis=0)
         if isinstance(image, list) and isinstance(image[0], torch.Tensor) and image[0].ndim == 4:
             image = torch.cat(image, axis=0)
 
+        # ensure the input is a list of images. if it is a batch of images, it is converted to a list of images
+        # if it is a single image, it is converted to a list of one image
         if isinstance(image, (np.ndarray, torch.Tensor)) and image.ndim == 4:
             image = list(image)
         if is_valid_image(image):
