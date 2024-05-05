@@ -514,7 +514,7 @@ class VaeImageProcessor(ConfigMixin):
                 else:
                     image = np.expand_dims(image, axis=-1)
 
-        # image processor only accept image or a list of images or a batch of images (4d array/tensors) as inputs,
+        # image processor only accepts image or a list of images or a batch of images (4d array/tensors) as inputs,
         # while we do accept a list of 4d array/tensors, we concatenate them to a single image batch
         if isinstance(image, list) and isinstance(image[0], np.ndarray) and image[0].ndim == 4:
             image = np.concatenate(image, axis=0)

@@ -67,7 +67,7 @@ class VideoProcessor(VaeImageProcessor):
                 * 5D Torch tensors: expected shape for each array: (batch_size, num_frames, num_channels, height,
                   width).
         """
-        # video processor only accept video or a list of videos or a batch of videos (5d array/tenssors) as inputs,
+        # video processor only accepts video or a list of videos or a batch of videos (5d array/tensors) as inputs,
         # while we do accept a list of 5d array/tensors, we concatenate them to a single video batch
         if isinstance(video, list) and isinstance(video[0], np.ndarray) and video[0].ndim == 5:
             video = np.concatenate(video, axis=0)
