@@ -42,9 +42,9 @@ def is_valid_image(image):
     return isinstance(image, PIL.Image.Image) or isinstance(image, (np.ndarray, torch.Tensor)) and image.ndim in (2, 3)
 
 
-def is_valid_image_input(images):
-    # check if the image input is one of the supported formats:
-    # it can be either a 4d pytorch tensor or numpy array, a valid image or a list of valid image
+def is_valid_image_imagelist(images):
+    # check if the image input is one of the supported formats for image and image list:
+    # it can be either (1) a 4d pytorch tensor or numpy array, (2) a valid image or (3) list of valid image
     if isinstance(images, (np.ndarray, torch.Tensor)) and images.ndim == 4:
         return True
     elif is_valid_image(images):
@@ -514,17 +514,11 @@ class VaeImageProcessor(ConfigMixin):
                 else:
                     image = np.expand_dims(image, axis=-1)
 
+        # image processor only accept image or a list of images or a batch of images (4d array/tenssors) as inputs,
+        # while we do accept a list of 4d array/tensors, we concatenate them to a single image batch
         if isinstance(image, list) and isinstance(image[0], np.ndarray) and image[0].ndim == 4:
-            warnings.warn(
-                "Passing `image` as list of 4-dimensional numpy array is deprecated."
-                "The expected numpy array input format for multiple images are either a single 4-d array or a list of 3-d arrays."
-            )
             image = np.concatenate(image, axis=0)
         if isinstance(image, list) and isinstance(image[0], torch.Tensor) and image[0].ndim == 4:
-            warnings.warn(
-                "Passing `image` as list of 4-dimensional pytorch tensor is deprecated."
-                "The expected pytorch tensor input format for multiple images are either a single 4-d tensor or a list of 3-d tensors."
-            )
             image = torch.cat(image, axis=0)
 
         if isinstance(image, (np.ndarray, torch.Tensor)) and image.ndim == 4:
