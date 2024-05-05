@@ -318,11 +318,16 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
+        if num_inference_steps is None and timesteps is None:
+            raise ValueError("Must pass exactly one of `num_inference_steps` or `custom_timesteps`.")
+        if num_inference_steps is not None and timesteps is not None:
+            raise ValueError("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
+        if timesteps is not None and self.config.use_karras_sigmas:
+            raise ValueError("Cannot use `timesteps` with `config.use_karras_sigmas = True`")
+        if timesteps is not None and self.config.use_lu_lambdas:
+            raise ValueError("Cannot use `timesteps` with `config.use_lu_lambdas = True`")
+
         if timesteps is not None:
-            if len(timesteps) != num_inference_steps:
-                raise ValueError(
-                    f"Length of timesteps must be equal to num_inference_steps, but got {len(timesteps)} and {num_inference_steps}."
-                )
             timesteps = np.array(timesteps).astype(np.int64)
         else:
             # Clipping the minimum of all lambda(t) for numerical stability.

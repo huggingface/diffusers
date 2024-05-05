@@ -319,48 +319,49 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
 
         if timesteps is not None and sigmas is not None:
-            raise ValueError("Only one of timesteps or sigmas should be set.")
-
-        if timesteps is not None:
-            if len(timesteps) != num_inference_steps:
-                raise ValueError(
-                    f"Length of timesteps must be equal to num_inference_steps, but got {len(timesteps)} and {num_inference_steps}."
-                )
-            timesteps = np.array(timesteps).astype(np.int64)
-        else:
-            # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
-            if self.config.timestep_spacing == "linspace":
-                timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[
-                    ::-1
-                ].copy()
-            elif self.config.timestep_spacing == "leading":
-                step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-                # creates integer timesteps by multiplying by ratio
-                # casting to int to avoid issues when num_inference_step is power of 3
-                timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
-                timesteps += self.config.steps_offset
-            elif self.config.timestep_spacing == "trailing":
-                step_ratio = self.config.num_train_timesteps / self.num_inference_steps
-                # creates integer timesteps by multiplying by ratio
-                # casting to int to avoid issues when num_inference_step is power of 3
-                timesteps = (
-                    (np.arange(self.config.num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
-                )
-                timesteps -= 1
-            else:
-                raise ValueError(
-                    f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
-                )
+            raise ValueError("Only one of `timesteps` or `sigmas` should be set.")
+        if num_inference_steps is None and timesteps is None and sigmas is None:
+            raise ValueError("Must pass exactly one of `num_inference_steps` or `timesteps` or `sigmas.")
+        if num_inference_steps is not None and (timesteps is not None or sigmas is not None):
+            raise ValueError("Can only pass one of `num_inference_steps` or `timesteps` or `sigmas`.")
+        if timesteps is not None and self.config.use_karras_sigmas:
+            raise ValueError("Cannot set `timesteps` with `config.use_karras_sigmas = True`.")
 
         if sigmas is not None:
-            if len(sigmas) != num_inference_steps + 1:
-                raise ValueError(
-                    f"Length of sigmas must be equal to num_inference_steps + 1, but got {len(sigmas)} and {num_inference_steps + 1}."
-                )
             log_sigmas = np.log(np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5))
             sigmas = np.array(sigmas).astype(np.float32)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas[:-1]])
+
         else:
+            if timesteps is not None:
+                timesteps = np.array(timesteps).astype(np.int64)
+            else:
+                # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+                if self.config.timestep_spacing == "linspace":
+                    timesteps = np.linspace(
+                        0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=np.float32
+                    )[::-1].copy()
+                elif self.config.timestep_spacing == "leading":
+                    step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+                    # creates integer timesteps by multiplying by ratio
+                    # casting to int to avoid issues when num_inference_step is power of 3
+                    timesteps = (
+                        (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
+                    )
+                    timesteps += self.config.steps_offset
+                elif self.config.timestep_spacing == "trailing":
+                    step_ratio = self.config.num_train_timesteps / self.num_inference_steps
+                    # creates integer timesteps by multiplying by ratio
+                    # casting to int to avoid issues when num_inference_step is power of 3
+                    timesteps = (
+                        (np.arange(self.config.num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
+                    )
+                    timesteps -= 1
+                else:
+                    raise ValueError(
+                        f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
+                    )
+
             sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
             log_sigmas = np.log(sigmas)
             if self.config.interpolation_type == "linear":
