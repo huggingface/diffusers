@@ -44,7 +44,10 @@ def is_valid_image(image):
 
 def is_valid_image_imagelist(images):
     # check if the image input is one of the supported formats for image and image list:
-    # it can be either (1) a 4d pytorch tensor or numpy array, (2) a valid image or (3) list of valid image
+    # it can be either one of below 3
+    # (1) a 4d pytorch tensor or numpy array,
+    # (2) a valid image: PIL.Image.Image, 2-d np.ndarray or torch.Tensor (grayscale image), 3-d np.ndarray or torch.Tensor
+    # (3) a list of valid image
     if isinstance(images, (np.ndarray, torch.Tensor)) and images.ndim == 4:
         return True
     elif is_valid_image(images):
@@ -514,14 +517,23 @@ class VaeImageProcessor(ConfigMixin):
                 else:
                     image = np.expand_dims(image, axis=-1)
 
-        # image processor only accept image or a list of images or a batch of images (4d array/tensors) as inputs,
-        # while we do accept a list of 4d array/tensors, we concatenate them to a single image batch
         if isinstance(image, list) and isinstance(image[0], np.ndarray) and image[0].ndim == 4:
+            warnings.warn(
+                "Passing `image` as a list of 4d np.ndarray is deprecated."
+                "Please concatenate the list along the batch dimension and pass it as a single 4d np.ndarray",
+                FutureWarning,
+            )
             image = np.concatenate(image, axis=0)
         if isinstance(image, list) and isinstance(image[0], torch.Tensor) and image[0].ndim == 4:
+            warnings.warn(
+                "Passing `image` as a list of 4d torch.Tensor is deprecated."
+                "Please concatenate the list along the batch dimension and pass it as a single 4d torch.Tensor",
+                FutureWarning,
+            )
             image = torch.cat(image, axis=0)
 
-        # ensure the input is a list of images. if it is a batch of images, it is converted to a list of images
+        # ensure the input is a list of images.
+        # if it is a batch of images (4d torch.Tensor or np.ndarray), it is converted to a list of images (a list of 3d torch.Tensor or np.ndarray)
         # if it is a single image, it is converted to a list of one image
         if isinstance(image, (np.ndarray, torch.Tensor)) and image.ndim == 4:
             image = list(image)

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from typing import List, Union
 
 import numpy as np
@@ -67,14 +68,23 @@ class VideoProcessor(VaeImageProcessor):
                 * 5D Torch tensors: expected shape for each array: (batch_size, num_frames, num_channels, height,
                   width).
         """
-        # video processor only accept video or a list of videos or a batch of videos (5d array/tenssors) as inputs,
-        # while we do accept a list of 5d array/tensors, we concatenate them to a single video batch
         if isinstance(video, list) and isinstance(video[0], np.ndarray) and video[0].ndim == 5:
+            warnings.warn(
+                "Passing `video` as a list of 5d np.ndarray is deprecated."
+                "Please concatenate the list along the batch dimension and pass it as a single 5d np.ndarray",
+                FutureWarning,
+            )
             video = np.concatenate(video, axis=0)
         if isinstance(video, list) and isinstance(video[0], torch.Tensor) and video[0].ndim == 5:
+            warnings.warn(
+                "Passing `video` as a list of 5d torch.Tensor is deprecated."
+                "Please concatenate the list along the batch dimension and pass it as a single 5d torch.Tensor",
+                FutureWarning,
+            )
             video = torch.cat(video, axis=0)
 
-        # ensure the input is a list of videos. if it is a batch of videos, it is converted to a list of videos
+        # ensure the input is a list of videos.
+        # if it is a batch of videos (5d torch.Tensor or np.ndarray), it is converted to a list of videos (a list of 4d torch.Tensor or np.ndarray)
         # If it is is a single video, it is convereted to a list of one video.
         if isinstance(video, (np.ndarray, torch.Tensor)) and video.ndim == 5:
             video = list(video)
