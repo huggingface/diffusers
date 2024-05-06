@@ -532,9 +532,9 @@ class VaeImageProcessor(ConfigMixin):
             )
             image = torch.cat(image, axis=0)
 
-        # ensure the input is a list of images.
-        # if it is a batch of images (4d torch.Tensor or np.ndarray), it is converted to a list of images (a list of 3d torch.Tensor or np.ndarray)
-        # if it is a single image, it is converted to a list of one image
+        # ensure the input is a list of images:
+        # - if it is a batch of images (4d torch.Tensor or np.ndarray), it is converted to a list of images (a list of 3d torch.Tensor or np.ndarray)
+        # - if it is a single image, it is converted to a list of one image
         if isinstance(image, (np.ndarray, torch.Tensor)) and image.ndim == 4:
             image = list(image)
         if is_valid_image(image):
