@@ -315,8 +315,16 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps used to support arbitrary timesteps schedule. If `None`, timesteps will be generated
+                based on the `timestep_spacing` attribute. If `timesteps` is passed, `num_inference_steps` and `sigmas`
+                must be `None`, and `timestep_spacing` attribute will be ignored.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas used to support arbitrary timesteps schedule schedule. If `None`, timesteps and sigmas
+                will be generated based on the relevant scheduler attributes. If `sigmas` is passed,
+                `num_inference_steps` and `timesteps` must be `None`, and the timesteps will be generated based on the
+                custom sigmas schedule.
         """
-        self.num_inference_steps = num_inference_steps
 
         if timesteps is not None and sigmas is not None:
             raise ValueError("Only one of `timesteps` or `sigmas` should be set.")
@@ -326,6 +334,10 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("Can only pass one of `num_inference_steps` or `timesteps` or `sigmas`.")
         if timesteps is not None and self.config.use_karras_sigmas:
             raise ValueError("Cannot set `timesteps` with `config.use_karras_sigmas = True`.")
+
+        if num_inference_steps is None:
+            num_inference_steps = len(timesteps) if timesteps is not None else len(sigmas) - 1
+        self.num_inference_steps = num_inference_steps
 
         if sigmas is not None:
             log_sigmas = np.log(np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5))
