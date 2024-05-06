@@ -16,7 +16,9 @@ env:
 jobs:
   setup_torch_cuda_pipeline_matrix:
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
+    container:
+      image: diffusers/diffusers-pytorch-cpu
     outputs:
       pipeline_test_matrix: ${{ steps.fetch_pipeline_matrix.outputs.pipeline_test_matrix }}
     steps:
@@ -24,14 +26,13 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 2
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.8"
       - name: Install dependencies
         run: |
-          pip install -e .
-          pip install huggingface_hub
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+      - name: Environment
+        run: |
+          python utils/print_env.py
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
         run: |
@@ -55,7 +56,7 @@ jobs:
     runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      options: --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --gpus 0
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
