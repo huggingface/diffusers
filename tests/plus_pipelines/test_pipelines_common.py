@@ -1181,7 +1181,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
 
-        pipe.nable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload()
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload_twice = pipe(**inputs)[0]
 

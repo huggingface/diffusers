@@ -17,7 +17,7 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import CLIPTokenizer
+from transformers import CLIPTokenizer, CLIPTextModel
 from transformers.models.clip.configuration_clip import CLIPTextConfig
 
 from diffusers import AutoencoderKL, PNDMScheduler, UNet2DConditionModel
@@ -62,7 +62,7 @@ class EllaDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_attention_heads=1,
             max_position_embeddings=77,
         )
-        text_encoder = ContextCLIPTextModel(text_encoder_config)
+        text_encoder = CLIPTextModel(text_encoder_config)
 
         vae = AutoencoderKL(
             in_channels=4,
@@ -76,7 +76,7 @@ class EllaDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             norm_num_groups=16,
             sample_size=16,
         )
-        ELLA = ELLA.from_pretrained('shauray/ELLA_SD15')
+        ella = ELLA.from_pretrained('shauray/ELLA_SD15')
 
         unet = UNet2DConditionModel(
             block_out_channels=(16, 32),
@@ -89,7 +89,7 @@ class EllaDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=16,
         )
-        proxy_unet = ELLAProxyUNet(ELLA, unet)
+        proxy_unet = ELLAProxyUNet(ella, unet)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         scheduler = PNDMScheduler(
