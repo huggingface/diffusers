@@ -18,15 +18,14 @@ import numpy as np
 import torch
 from PIL import Image
 from transformers import CLIPTokenizer
-from transformers.models.blip_2.configuration_blip_2 import Blip2Config
 from transformers.models.clip.configuration_clip import CLIPTextConfig
 
-from diffusers_plus_plus import AutoencoderKL, BlipDiffusionPipeline, PNDMScheduler, UNet2DConditionModel
-from diffusers_plus_plus.utils.testing_utils import enable_full_determinism
-from src.diffusers_plus_plus.plus_models.ella import ELLA, ELLAProxyUNet
-from src.diffusers_plus_plus.plus_pipelines.ella.pipeline_ella import EllaFixedDiffusionPipeline
+from diffusers import AutoencoderKL, PNDMScheduler, UNet2DConditionModel
+from diffusers.utils.testing_utils import enable_full_determinism
+from src.diffusers.plus_models.ella import ELLA, ELLAProxyUNet
+from src.diffusers.plus_pipelines.ella.pipeline_ella import EllaFixedDiffusionPipeline
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ...pipelines.test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
