@@ -329,13 +329,6 @@ class TextToVideoZeroPipeline(DiffusionPipeline, StableDiffusionMixin, TextualIn
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
-        processor = (
-            CrossFrameAttnProcessor2_0(batch_size=2)
-            if hasattr(F, "scaled_dot_product_attention")
-            else CrossFrameAttnProcessor(batch_size=2)
-        )
-        self.unet.set_attn_processor(processor)
-
         if safety_checker is None and requires_safety_checker:
             logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
@@ -502,7 +495,12 @@ class TextToVideoZeroPipeline(DiffusionPipeline, StableDiffusionMixin, TextualIn
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -615,6 +613,15 @@ class TextToVideoZeroPipeline(DiffusionPipeline, StableDiffusionMixin, TextualIn
         assert len(frame_ids) == video_length
 
         assert num_videos_per_prompt == 1
+
+        # set the processor
+        original_attn_proc = self.unet.attn_processors
+        processor = (
+            CrossFrameAttnProcessor2_0(batch_size=2)
+            if hasattr(F, "scaled_dot_product_attention")
+            else CrossFrameAttnProcessor(batch_size=2)
+        )
+        self.unet.set_attn_processor(processor)
 
         if isinstance(prompt, str):
             prompt = [prompt]
@@ -739,6 +746,8 @@ class TextToVideoZeroPipeline(DiffusionPipeline, StableDiffusionMixin, TextualIn
 
         # Offload all models
         self.maybe_free_model_hooks()
+        # make sure to set the original attention processors back
+        self.unet.set_attn_processor(original_attn_proc)
 
         if not return_dict:
             return (image, has_nsfw_concept)

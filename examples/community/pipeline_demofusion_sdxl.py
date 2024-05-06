@@ -477,7 +477,12 @@ class DemoFusionSDXLPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -1299,7 +1304,11 @@ class DemoFusionSDXLPipeline(
             if isinstance(component, torch.nn.Module):
                 if hasattr(component, "_hf_hook"):
                     is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                    is_sequential_cpu_offload = (
+                        isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                        or hasattr(component._hf_hook, "hooks")
+                        and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+                    )
                     logger.info(
                         "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                     )
