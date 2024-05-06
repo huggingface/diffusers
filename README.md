@@ -13,10 +13,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 -->
-TO BE CHANGED
 <p align="center">
     <br>
-    <img src="./docs/source/en/imgs/diffusers_plus_plus.jpg" width="400"/>
+    <img src="./docs/source/en/imgs/diffusers_plus_plus.png" width="500"/>
     <br>
 <p>
 <p align="center">
