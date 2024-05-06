@@ -305,7 +305,7 @@ def fetch_ldm_config_and_checkpoint(
     pretrained_model_link_or_path,
     class_name,
     original_config_file=None,
-    resume_download=False,
+    resume_download=None,
     force_download=False,
     proxies=None,
     token=None,
