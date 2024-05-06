@@ -83,7 +83,7 @@ jobs:
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "not Flax and not Onnx" \
             --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
-            tests/pipelines/stable_video_diffusion/test_stable_video_diffusion.py::StableVideoDiffusionPipelineSlowTests::test_sd_video
+            tests/pipelines/stable_video_diffusion
       - name: Failure short reports
         if: ${{ failure() }}
         run: |
