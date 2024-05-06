@@ -105,7 +105,7 @@ image
 
 ### ckpt
 
-> [!WARNINNG]
+> [!WARNING]
 > Pickled files may be unsafe because they can be exploited to execute malicious code. It is recommended to use `.safetensors` files instead where possible, or convert the weights to `.safetensors` files.
 
 PyTorch's [torch.save](https://pytorch.org/docs/stable/generated/torch.save.html) function uses Python's [pickle](https://docs.python.org/3/library/pickle.html) utility to serialize and save models. You may see these files saved with the `.ckpt` extension and they contain the entire models weights. Use the [`~loaders.FromSingleFileMixin.from_single_file`] method to directly load a `.ckpt` file.
