@@ -46,7 +46,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ...pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionPipelineOutput
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...plus_models import ELLAProxyUNet, ELLA

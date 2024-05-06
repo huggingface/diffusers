@@ -109,6 +109,8 @@ class EllaDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "scheduler": scheduler,
             "ELLA": ELLA,
+            "safety_checker":None,
+            "feature_extractor":None,
         }
         return components
 

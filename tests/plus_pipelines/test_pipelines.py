@@ -56,7 +56,7 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
-from diffusers.pipelines.pipeline_utils import _get_pipeline_class
+from diffusers.plus_pipelines.pipeline_utils import _get_pipeline_class
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import (
     CONFIG_NAME,

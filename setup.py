@@ -133,7 +133,6 @@ _deps = [
     "torchvision",
     "transformers>=4.25.1",
     "urllib3<=2.0.0",
-    "diffusers",
 ]
 
 # this is a lookup table with items like:
@@ -252,7 +251,7 @@ install_requires = [
 version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
-    name="diffusers_plus_plus",
+    name="diffusers",
     version="0.0.1.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch (FORK).",
     long_description=open("README.md", "r", encoding="utf-8").read(),
