@@ -23,6 +23,7 @@ from transformers.models.clip.configuration_clip import CLIPTextConfig
 
 from diffusers_plus_plus import AutoencoderKL, BlipDiffusionPipeline, PNDMScheduler, UNet2DConditionModel
 from diffusers_plus_plus.utils.testing_utils import enable_full_determinism
+from src.diffusers_plus_plus.plus_models.ella import ELLA, ELLAProxyUNet
 from src.diffusers_plus_plus.plus_pipelines.ella.pipeline_ella import EllaFixedDiffusionPipeline
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -76,34 +77,7 @@ class EllaDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             norm_num_groups=16,
             sample_size=16,
         )
-
-        blip_vision_config = {
-            "hidden_size": 16,
-            "intermediate_size": 16,
-            "num_hidden_layers": 1,
-            "num_attention_heads": 1,
-            "image_size": 224,
-            "patch_size": 14,
-            "hidden_act": "quick_gelu",
-        }
-
-        blip_qformer_config = {
-            "vocab_size": 1000,
-            "hidden_size": 16,
-            "num_hidden_layers": 1,
-            "num_attention_heads": 1,
-            "intermediate_size": 16,
-            "max_position_embeddings": 512,
-            "cross_attention_frequency": 1,
-            "encoder_hidden_size": 16,
-        }
-        qformer_config = Blip2Config(
-            vision_config=blip_vision_config,
-            qformer_config=blip_qformer_config,
-            num_query_tokens=16,
-            tokenizer="hf-internal-testing/tiny-random-bert",
-        )
-        qformer = Blip2QFormerModel(qformer_config)
+        ELLA = ELLA.from_pretrained('shauray/ELLA_SD15')
 
         unet = UNet2DConditionModel(
             block_out_channels=(16, 32),
@@ -116,6 +90,7 @@ class EllaDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=16,
         )
+        proxy_unet = ELLAProxyUNet(ELLA, unet)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         scheduler = PNDMScheduler(
@@ -127,19 +102,14 @@ class EllaDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         vae.eval()
-        qformer.eval()
-        text_encoder.eval()
-
-        image_processor = BlipImageProcessor()
 
         components = {
             "text_encoder": text_encoder,
             "vae": vae,
-            "qformer": qformer,
-            "unet": unet,
+            "unet": proxy_unet,
             "tokenizer": tokenizer,
             "scheduler": scheduler,
-            "image_processor": image_processor,
+            "ELLA": ELLA,
         }
         return components
 
