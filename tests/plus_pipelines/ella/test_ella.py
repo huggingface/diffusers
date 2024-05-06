@@ -25,7 +25,7 @@ from diffusers.utils.testing_utils import enable_full_determinism
 from src.diffusers.plus_models.ella import ELLA, ELLAProxyUNet
 from src.diffusers.plus_pipelines.ella.pipeline_ella import EllaFixedDiffusionPipeline
 
-from ...pipelines.test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()

@@ -16,7 +16,7 @@ limitations under the License.
 TO BE CHANGED
 <p align="center">
     <br>
-    <img src="https://raw.githubusercontent.com/huggingface/diffusers/main/docs/source/en/imgs/diffusers_library.jpg" width="400"/>
+    <img src="./docs/source/en/imgs/diffusers_plus_plus.jpg" width="400"/>
     <br>
 <p>
 <p align="center">
