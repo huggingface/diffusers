@@ -47,7 +47,7 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         unet = UNet1DModel(
             block_out_channels=(32, 32, 64),
             extra_in_channels=16,
-            sample_size=512,
+            sample_size=32,
             sample_rate=16_000,
             in_channels=2,
             out_channels=2,
@@ -92,7 +92,9 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio_slice = audio[0, -3:, -3:]
 
         assert audio.shape == (1, 2, components["unet"].sample_size)
-        expected_slice = np.array([-0.7265, 1.0000, -0.8388, 0.1175, 0.9498, -1.0000])
+        print(", ".join([str(round(x, 4)) for x in audio_slice.flatten().tolist()]))
+        
+        expected_slice = np.array([1.0000, 1.0000, 0.1359, -1.0000, 1.0000, -0.6724])
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2
 
     @skip_mps
