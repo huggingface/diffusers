@@ -139,6 +139,7 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
                 **weights_only_kwarg,
             )
     except Exception as e:
+        raise (e)
         try:
             with open(checkpoint_file) as f:
                 if f.read().startswith("version"):
