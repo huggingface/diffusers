@@ -248,10 +248,11 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
                 return weight_
 
         parts = module_name.split(".")
+        # e.g. key = "down_blocks.1.attentions.0"
         key = f"{parts[0]}.{parts[1]}.attentions.{parts[3]}"
-        blocK_weight = weight_for_adapter.get(key, 1.0)
+        block_weight = weight_for_adapter.get(key, 1.0)
 
-        return blocK_weight
+        return block_weight
 
     # iterate over each adapter, make it active and set the corresponding scaling weight
     for adapter_name, weight in zip(adapter_names, weights):
