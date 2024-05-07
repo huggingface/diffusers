@@ -56,6 +56,7 @@ jobs:
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
       fail-fast: false
+      max-parallel: 5  # 5 jobs at a time
       matrix:
         module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
     runs-on: [single-gpu, nvidia-gpu, t4, ci]
