@@ -274,9 +274,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def scale_model_input(
-        self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]
-    ) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep. Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
@@ -637,9 +635,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = original_samples + noise * sigma
         return noisy_samples
 
-    def get_velocity(
-        self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor
-    ) -> torch.Tensor:
+    def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor) -> torch.Tensor:
         if (
             isinstance(timesteps, int)
             or isinstance(timesteps, torch.IntTensor)

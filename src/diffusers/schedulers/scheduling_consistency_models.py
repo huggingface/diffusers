@@ -126,9 +126,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def scale_model_input(
-        self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]
-    ) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
         """
         Scales the consistency model input by `(sigma**2 + sigma_data**2) ** 0.5`.
 

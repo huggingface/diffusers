@@ -522,9 +522,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
 
-    def get_velocity(
-        self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor
-    ) -> torch.Tensor:
+    def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor) -> torch.Tensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
         self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
         alphas_cumprod = self.alphas_cumprod.to(dtype=sample.dtype)
