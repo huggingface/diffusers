@@ -26,7 +26,7 @@ class VideoProcessor(VaeImageProcessor):
     r"""Simple video processor."""
 
     def preprocess_video(
-        self, video, height: Optional[int], width: Optional[int], preceed_with_frames: bool = False
+        self, video, height: Optional[int] = None, width: Optional[int] = None, preceed_with_frames: bool = False
     ) -> torch.Tensor:
         r"""
         Preprocesses input video(s).
