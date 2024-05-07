@@ -619,9 +619,7 @@ class AnimateDiffVideoToVideoPipeline(
         if video and not isinstance(video[0], list):
             video = [video]
         if latents is None:
-            video = torch.cat(
-                [self.video_processor.preprocess(vid, height=height, width=width).unsqueeze(0) for vid in video], dim=0
-            )
+            video = self.video_processor.preprocess_video(video, height=height, width=width, preceed_with_frames=True)
             video = video.to(device=device, dtype=dtype)
             num_frames = video.shape[1]
         else:

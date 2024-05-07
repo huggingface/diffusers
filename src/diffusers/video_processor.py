@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import warnings
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import PIL
@@ -25,7 +25,9 @@ from .image_processor import VaeImageProcessor, is_valid_image, is_valid_image_i
 class VideoProcessor(VaeImageProcessor):
     r"""Simple video processor."""
 
-    def preprocess_video(self, video) -> torch.Tensor:
+    def preprocess_video(
+        self, video, height: Optional[int], width: Optional[int], preceed_with_frames: bool = False
+    ) -> torch.Tensor:
         r"""
         Preprocesses input video(s).
 
@@ -41,6 +43,16 @@ class VideoProcessor(VaeImageProcessor):
                   num_channels).
                 * 5D Torch tensors: expected shape for each array: (batch_size, num_frames, num_channels, height,
                   width).
+            height (`int`, *optional*, defaults to `None`):
+                The height in preprocessed frames of the video. If `None`, will use the `get_default_height_width()` to
+                get default height.
+            width (`int`, *optional*`, defaults to `None`):
+                The width in preprocessed frames of the video. If `None`, will use get_default_height_width()` to get
+                the default width.
+            preceed_with_frames (`bool`, defaults to False):
+                Some pipelines keep the number of channels _before_ the number of frames in terms dimensions.
+                `(batch_size, num_channels, num_frames, height, width)`, for example. Some pipelines don't. This flag
+                helps to control that behaviour.
         """
         if isinstance(video, list) and isinstance(video[0], np.ndarray) and video[0].ndim == 5:
             warnings.warn(
@@ -71,8 +83,9 @@ class VideoProcessor(VaeImageProcessor):
                 "Input is in incorrect format. Currently, we only support numpy.ndarray, torch.Tensor, PIL.Image.Image"
             )
 
-        video = torch.stack([self.preprocess(img) for img in video], dim=0)
-        video = video.permute(0, 2, 1, 3, 4)
+        video = torch.stack([self.preprocess(img, height=height, width=width) for img in video], dim=0)
+        if not preceed_with_frames:
+            video = video.permute(0, 2, 1, 3, 4)
 
         return video
 
