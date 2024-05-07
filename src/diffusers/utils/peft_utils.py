@@ -246,7 +246,12 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
         for layer_name, weight_ in weight_for_adapter.items():
             if layer_name in module_name:
                 return weight_
-        return weight_for_adapter[layer_name]
+
+        parts = module_name.split(".")
+        key = f"{parts[0]}.{parts[1]}.attentions.{parts[3]}"
+        blocK_weight = weight_for_adapter.get(key, 1.0)
+
+        return blocK_weight
 
     # iterate over each adapter, make it active and set the corresponding scaling weight
     for adapter_name, weight in zip(adapter_names, weights):
