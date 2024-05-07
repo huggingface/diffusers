@@ -1,11 +1,11 @@
-name: Run Flax dependency tests
+name: Run dependency tests
 
 on:
   pull_request:
     branches:
       - main
     paths:
-      - "src/diffusers/**.py"
+      - "src/diffusers/**/*.py"
   push:
     branches:
       - main
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check_flax_dependencies:
+  check_dependencies:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -25,14 +25,13 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m pip install --upgrade pip uv
-          python -m uv pip install -e .
-          python -m uv pip install "jax[cpu]>=0.2.16,!=0.3.2"
-          python -m uv pip install "flax>=0.4.1"
-          python -m uv pip install "jaxlib>=0.1.65"
-          python -m uv pip install pytest
+          python -m venv /opt/venv
+          source /opt/venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
       - name: Check for soft dependencies
         run: |
-          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          source /opt/venv/bin/activate
           pytest tests/others/test_dependencies.py
+      
