@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "src/diffusers/**.py"
+      - "src/diffusers/**/*.py"
   push:
     branches:
       - main
@@ -25,12 +25,13 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m pip install --upgrade pip uv
-          python -m uv pip install -e .
-          python -m uv pip install pytest
+          python -m venv /opt/venv
+          source /opt/venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
       - name: Check for soft dependencies
         run: |
-          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          source /opt/venv/bin/activate
           pytest tests/others/test_dependencies.py
       
