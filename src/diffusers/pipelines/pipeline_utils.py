@@ -792,7 +792,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # import it here to avoid circular import
         from diffusers import pipelines
-        from diffusers import plus_pipelines
 
         # 6. Load each module in the pipeline
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):

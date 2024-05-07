@@ -481,6 +481,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
+        from plus_models import (
+            ELLA,
+            ELLAProxyUNet,
+        )
+
         from .models import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
@@ -505,10 +510,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
             VQModel,
-        )
-        from plus_models import (
-            ELLAProxyUNet,
-            ELLA,
         )
         from .optimization import (
             get_constant_schedule,
@@ -599,6 +600,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
+        from plus_pipelines import (
+            EllaFixedDiffusionPipeline,
+            EllaFlexDiffusionPipeline,
+        )
+
         from .pipelines import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
@@ -707,10 +713,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
-        )
-        from plus_pipelines import (
-            EllaFixedDiffusionPipeline,
-            EllaFlexDiffusionPipeline,
         )
 
     try:

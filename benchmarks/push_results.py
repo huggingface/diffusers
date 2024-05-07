@@ -13,7 +13,7 @@ from utils import (
     GITHUB_SHA,
     REPO_ID,
     collate_csv,
-)  # noqa: E402
+)
 
 
 def has_previous_benchmark() -> str:

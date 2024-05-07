@@ -72,6 +72,7 @@ from .import_utils import (
     is_peft_version,
     is_scipy_available,
     is_tensorboard_available,
+    is_torch2_available,
     is_torch_available,
     is_torch_npu_available,
     is_torch_version,
@@ -84,7 +85,6 @@ from .import_utils import (
     is_wandb_available,
     is_xformers_available,
     requires_backends,
-    is_torch2_available
 )
 from .loading_utils import load_image
 from .logging import get_logger

@@ -21,6 +21,7 @@ from ..utils import (
     is_torch_available,
 )
 
+
 _import_structure = {}
 
 if is_torch_available():
@@ -29,7 +30,7 @@ if is_torch_available():
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
-        from .ella import ELLAProxyUNet, ELLA
+        from .ella import ELLA, ELLAProxyUNet
 
 else:
     import sys

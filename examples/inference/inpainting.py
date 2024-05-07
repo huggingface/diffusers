@@ -2,7 +2,7 @@ import warnings
 
 from diffusers import (
     StableDiffusionInpaintPipeline as StableDiffusionInpaintPipeline,
-)  # noqa F401
+)
 
 
 warnings.warn(

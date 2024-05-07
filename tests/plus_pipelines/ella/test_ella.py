@@ -16,43 +16,34 @@ import unittest
 
 import numpy as np
 import torch
-from PIL import Image
-from transformers import CLIPTokenizer, CLIPTextModel
+from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.models.clip.configuration_clip import CLIPTextConfig
 
 from diffusers import AutoencoderKL, DDIMScheduler, UNet2DConditionModel
-from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.plus_models.ella import ELLA, ELLAProxyUNet
 from diffusers.plus_pipelines.ella.pipeline_ella import EllaFixedDiffusionPipeline
-
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    load_image,
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
     torch_device,
 )
 
-from ..test_pipelines_common import ( 
-    PipelineTesterMixin,
-    IPAdapterTesterMixin,
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineLatentTesterMixin,
-)
 from ...pipelines.pipeline_params import (
-    TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
-    TEXT_TO_IMAGE_PARAMS,
 )
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
+
 
 enable_full_determinism()
 
 
 class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
                                      PipelineLatentTesterMixin,
-                                     PipelineTesterMixin, 
+                                     PipelineTesterMixin,
                                      unittest.TestCase):
     print(torch_device)
     pipeline_class = EllaFixedDiffusionPipeline
@@ -122,7 +113,7 @@ class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        
+
         ella = ELLA(
             time_channel=4,
             time_embed_dim=4,
@@ -134,7 +125,7 @@ class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
             num_latents=64,
             input_dim=2048,
         )
-        
+
         #ella  = ELLA.from_pretrained('shauray/ELLA_SD15')
 
         unet = UNet2DConditionModel(
@@ -201,7 +192,7 @@ class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {image_slice.flatten()}, but got {image_slice.flatten()}"
-    
+
     @unittest.skip(reason="[to be fixed]")
     def test_ip_adapter_single(self):
         expected_pipe_slice = None
@@ -226,14 +217,14 @@ class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
     @unittest.skip(reason="useless")
     def test_save_load_optional_components(self):
         self.test_save_load_optional_components()
-        
+
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self):
         print(torch_device)
         self.test_save_load_float16()
-        
+
     @unittest.skip(reason="useless")
     def test_save_load_local(self):
         self.test_save_load_local()
-        
+
 

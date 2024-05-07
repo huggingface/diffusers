@@ -1,13 +1,15 @@
 from collections import OrderedDict
-from typing import Optional, Union, Any
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
-from ..models.modeling_utils import ModelMixin
+
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import UNet2DConditionLoadersMixin
 from ..models.embeddings import TimestepEmbedding, Timesteps
-from ..loaders import PeftAdapterMixin, UNet2DConditionLoadersMixin
-from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ..models.modeling_utils import ModelMixin
+
+
 class AdaLayerNorm(nn.Module):
     def __init__(self, embedding_dim: int, time_embedding_dim: Optional[int] = None):
         super().__init__()

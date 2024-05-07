@@ -1,15 +1,14 @@
 
-from .network import U2NET
-
 import os
-from PIL import Image
-import numpy as np
+from collections import OrderedDict
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as transforms
+from PIL import Image
 
-from collections import OrderedDict
+from .network import U2NET
 
 
 def load_checkpoint(model, checkpoint_path):

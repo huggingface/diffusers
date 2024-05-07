@@ -1,19 +1,22 @@
-from ...stable_diffusion.pipeline_stable_diffusion import *
 import copy
-import torch
-from safetensors import safe_open
-from .process import load_seg_model, generate_mask
-from ....utils import is_torch2_available
-from ... import UNet2DConditionModel
+
 import numpy as np
 import PIL
+import torch
+from safetensors import safe_open
+
+from ....utils import is_torch2_available
+from ... import UNet2DConditionModel
+from ...stable_diffusion.pipeline_stable_diffusion import *
+from .process import generate_mask, load_seg_model
+
 
 if is_torch2_available():
-    from .attention_processor import REFAttnProcessor2_0 as REFAttnProcessor
     from .attention_processor import AttnProcessor2_0 as AttnProcessor
     from .attention_processor import REFAnimateDiffAttnProcessor2_0 as REFAnimateDiffAttnProcessor
+    from .attention_processor import REFAttnProcessor2_0 as REFAttnProcessor
 else:
-    from .attention_processor import REFAttnProcessor, AttnProcessor
+    from .attention_processor import AttnProcessor, REFAttnProcessor
 
 def prepare_image(image, height, width):
     if image is None:

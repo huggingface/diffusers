@@ -34,8 +34,10 @@ from ...loaders import (
     LoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
-from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
+from ...models import AutoencoderKL, ImageProjection
 from ...models.lora import adjust_lora_scale_text_encoder
+from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from ...plus_models import ELLA, ELLAProxyUNet
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
@@ -48,8 +50,6 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionPipelineOutput
-from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from ...plus_models import ELLAProxyUNet, ELLA
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -223,7 +223,7 @@ class EllaFixedDiffusionPipeline(
         tokenizer: CLIPTokenizer,
         # tokenizer2: T5TextEmbedder,
         unet: ELLAProxyUNet,
-        scheduler: KarrasDiffusionSchedulers,    
+        scheduler: KarrasDiffusionSchedulers,
         ELLA: ELLA,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
@@ -978,7 +978,7 @@ class EllaFixedDiffusionPipeline(
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
             )
         # -1. pipe unet to ELLA
-    
+
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor

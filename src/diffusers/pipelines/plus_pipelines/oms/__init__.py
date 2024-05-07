@@ -14,6 +14,7 @@ from ....utils import (
     is_transformers_available,
 )
 
+
 _dummy_objects = {}
 
 _import_structure = {
@@ -36,7 +37,7 @@ else:
             "ClothAdapter"
         ]
     )
-    
+
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_torch_available() and is_transformers_available()):
@@ -44,11 +45,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ....utils.dummy_torch_and_transformers_objects import *
     else:
-        from .oms_pipeline import (
-            OmsDiffusionPipeline,
-            ClothAdapter
-        )
-    
+        from .oms_pipeline import ClothAdapter, OmsDiffusionPipeline
+
 
 else:
     import sys

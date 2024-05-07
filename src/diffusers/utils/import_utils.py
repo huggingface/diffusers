@@ -23,8 +23,8 @@ from collections import OrderedDict
 from itertools import chain
 from types import ModuleType
 from typing import Any, Union
-import torch.nn.functional as F
 
+import torch.nn.functional as F
 from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging import version
 from packaging.version import Version, parse
