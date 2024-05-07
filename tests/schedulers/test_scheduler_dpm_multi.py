@@ -345,19 +345,15 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         for algorithm_type in ["dpmsolver++", "sde-dpmsolver++"]:
             for prediction_type in ["epsilon", "sample", "v_prediction"]:
                 for final_sigmas_type in ["sigma_min", "zero"]:
-                    generator = torch.Generator(device="cpu").manual_seed(0)
                     sample = self.full_loop(
                         algorithm_type=algorithm_type,
                         prediction_type=prediction_type,
                         final_sigmas_type=final_sigmas_type,
-                        generator=generator,
                     )
-                    generator = torch.Generator(device="cpu").manual_seed(0)
                     sample_custom_timesteps = self.full_loop_custom_timesteps(
                         algorithm_type=algorithm_type,
                         prediction_type=prediction_type,
                         final_sigmas_type=final_sigmas_type,
-                        generator=generator,
                     )
                     assert (
                         torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5
