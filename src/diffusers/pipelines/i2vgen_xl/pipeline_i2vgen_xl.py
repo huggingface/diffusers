@@ -716,7 +716,7 @@ class I2VGenXLPipeline(
             video = latents
         else:
             video_tensor = self.decode_latents(latents, decode_chunk_size=decode_chunk_size)
-            video = self.video_processor.tensor2vid(video=video_tensor, output_type=output_type)
+            video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 9. Offload all models
         self.maybe_free_model_hooks()

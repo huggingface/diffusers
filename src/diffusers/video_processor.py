@@ -25,32 +25,6 @@ from .image_processor import VaeImageProcessor, is_valid_image, is_valid_image_i
 class VideoProcessor(VaeImageProcessor):
     r"""Simple video processor."""
 
-    def tensor2vid(
-        self, video: torch.Tensor, output_type: str = "np"
-    ) -> Union[np.ndarray, torch.Tensor, List[PIL.Image.Image]]:
-        r"""
-        Converts a video tensor to a list of frames for export.
-
-        Args:
-            video (`torch.Tensor`): The video as a tensor.
-            output_type (`str`, defaults to `"np"`): Output type of the postprocessed `video` tensor.
-        """
-        batch_size = video.shape[0]
-        outputs = []
-        for batch_idx in range(batch_size):
-            batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-            batch_output = self.postprocess(batch_vid, output_type)
-            outputs.append(batch_output)
-
-        if output_type == "np":
-            outputs = np.stack(outputs)
-        elif output_type == "pt":
-            outputs = torch.stack(outputs)
-        elif not output_type == "pil":
-            raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
-
-        return outputs
-
     def preprocess_video(self, video) -> torch.Tensor:
         r"""
         Preprocesses input video(s).
@@ -101,3 +75,29 @@ class VideoProcessor(VaeImageProcessor):
         video = video.permute(0, 2, 1, 3, 4)
 
         return video
+
+    def postprocess_video(
+        self, video: torch.Tensor, output_type: str = "np"
+    ) -> Union[np.ndarray, torch.Tensor, List[PIL.Image.Image]]:
+        r"""
+        Converts a video tensor to a list of frames for export.
+
+        Args:
+            video (`torch.Tensor`): The video as a tensor.
+            output_type (`str`, defaults to `"np"`): Output type of the postprocessed `video` tensor.
+        """
+        batch_size = video.shape[0]
+        outputs = []
+        for batch_idx in range(batch_size):
+            batch_vid = video[batch_idx].permute(1, 0, 2, 3)
+            batch_output = self.postprocess(batch_vid, output_type)
+            outputs.append(batch_output)
+
+        if output_type == "np":
+            outputs = np.stack(outputs)
+        elif output_type == "pt":
+            outputs = torch.stack(outputs)
+        elif not output_type == "pil":
+            raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
+
+        return outputs

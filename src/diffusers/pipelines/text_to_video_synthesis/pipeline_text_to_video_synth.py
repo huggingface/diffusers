@@ -629,7 +629,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInve
             video = latents
         else:
             video_tensor = self.decode_latents(latents)
-            video = self.video_processor.tensor2vid(video=video_tensor, output_type=output_type)
+            video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 9. Offload all models
         self.maybe_free_model_hooks()
