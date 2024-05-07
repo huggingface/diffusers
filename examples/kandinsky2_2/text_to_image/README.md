@@ -57,7 +57,7 @@ To disable wandb logging, remove the `--report_to=="wandb"` and `--validation_pr
 
 <!-- accelerate_snippet_start -->
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image_decoder.py \
   --dataset_name=$DATASET_NAME \
@@ -139,7 +139,7 @@ You can fine-tune the Kandinsky prior model with `train_text_to_image_prior.py` 
 
 <!-- accelerate_snippet_start -->
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image_prior.py \
   --dataset_name=$DATASET_NAME \
@@ -183,7 +183,7 @@ If you want to use a fine-tuned decoder checkpoint along with your fine-tuned pr
 for running distributed training with `accelerate`. Here is an example command:
 
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image_decoder.py \
   --dataset_name=$DATASET_NAME \
@@ -227,13 +227,13 @@ on consumer GPUs like Tesla T4, Tesla V100.
 
 ### Training
 
-First, you need to set up your development environment as explained in the [installation](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).  
+First, you need to set up your development environment as explained in the [installation](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions).  
 
 
 #### Train decoder 
 
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16" train_text_to_image_decoder_lora.py \
   --dataset_name=$DATASET_NAME --caption_column="text" \
@@ -252,7 +252,7 @@ accelerate launch --mixed_precision="fp16" train_text_to_image_decoder_lora.py \
 #### Train prior
 
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16" train_text_to_image_prior_lora.py \
   --dataset_name=$DATASET_NAME --caption_column="text" \
