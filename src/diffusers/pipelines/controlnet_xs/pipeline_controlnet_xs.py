@@ -660,11 +660,11 @@ class StableDiffusionControlNetXSPipeline(
             image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
                     `List[List[torch.Tensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
                 The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
-                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be
-                accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If height
-                and/or width are passed, `image` is resized accordingly. If multiple ControlNets are specified in
-                `init`, images must be passed as a list such that each element of the list can be correctly batched for
-                input to a single ControlNet.
+                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
+                as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
+                width are passed, `image` is resized accordingly. If multiple ControlNets are specified in `init`,
+                images must be passed as a list such that each element of the list can be correctly batched for input
+                to a single ControlNet.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):

@@ -328,9 +328,7 @@ class T5LayerFFCond(nn.Module):
         self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(
-        self, hidden_states: torch.Tensor, conditioning_emb: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, conditioning_emb: Optional[torch.Tensor] = None) -> torch.Tensor:
         forwarded_states = self.layer_norm(hidden_states)
         if conditioning_emb is not None:
             forwarded_states = self.film(forwarded_states, conditioning_emb)

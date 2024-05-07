@@ -644,8 +644,7 @@ class AnimateDiffPipeline(
                 contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
                 provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated video. Choose between `torch.Tensor`, `PIL.Image` or
-                `np.array`.
+                The output format of the generated video. Choose between `torch.Tensor`, `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] instead
                 of a plain tuple.

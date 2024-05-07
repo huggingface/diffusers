@@ -612,8 +612,8 @@ class UNetMidBlock2D(nn.Module):
         output_scale_factor (`float`, *optional*, defaults to 1.0): The output scale factor.
 
     Returns:
-        `torch.Tensor`: The output of the last residual block, which is a tensor of shape `(batch_size,
-        in_channels, height, width)`.
+        `torch.Tensor`: The output of the last residual block, which is a tensor of shape `(batch_size, in_channels,
+        height, width)`.
 
     """
 

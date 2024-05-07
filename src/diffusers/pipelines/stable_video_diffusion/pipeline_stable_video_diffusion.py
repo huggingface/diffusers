@@ -486,8 +486,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] is
-                returned, otherwise a `tuple` of (`List[List[PIL.Image.Image]]` or `np.ndarray` or `torch.Tensor`)
-                is returned.
+                returned, otherwise a `tuple` of (`List[List[PIL.Image.Image]]` or `np.ndarray` or `torch.Tensor`) is
+                returned.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor

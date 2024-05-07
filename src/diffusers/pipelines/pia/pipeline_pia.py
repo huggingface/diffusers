@@ -770,8 +770,7 @@ class PIAPipeline(
                 added. Must be between 0 and 8. Set between 0-2 to only increase the amount of motion. Set between 3-5
                 to create looping motion. Set between 6-8 to perform motion with image style transfer.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated video. Choose between `torch.Tensor`, `PIL.Image` or
-                `np.array`.
+                The output format of the generated video. Choose between `torch.Tensor`, `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] instead
                 of a plain tuple.

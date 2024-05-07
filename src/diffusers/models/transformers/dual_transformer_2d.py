@@ -106,8 +106,7 @@ class DualTransformer2DModel(nn.Module):
         """
         Args:
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
-                When continuous, `torch.Tensor` of shape `(batch size, channel, height, width)`): Input
-                hidden_states.
+                When continuous, `torch.Tensor` of shape `(batch size, channel, height, width)`): Input hidden_states.
             encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.

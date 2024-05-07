@@ -1126,11 +1126,11 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             control_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
                     `List[List[torch.Tensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
                 The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet. If
-                the type is specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can
-                also be accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If
-                height and/or width are passed, `image` is resized according to them. If multiple ControlNets are
-                specified in init, images must be passed as a list such that each element of the list can be correctly
-                batched for input to a single controlnet.
+                the type is specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also
+                be accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If height
+                and/or width are passed, `image` is resized according to them. If multiple ControlNets are specified in
+                init, images must be passed as a list such that each element of the list can be correctly batched for
+                input to a single controlnet.
             height (`int`, *optional*, defaults to the size of control_image):
                 The height in pixels of the generated image. Anything below 512 pixels won't work well for
                 [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)

@@ -939,11 +939,11 @@ class StableDiffusionControlNetPipeline(
             image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
                     `List[List[torch.Tensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
                 The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
-                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be
-                accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If height
-                and/or width are passed, `image` is resized accordingly. If multiple ControlNets are specified in
-                `init`, images must be passed as a list such that each element of the list can be correctly batched for
-                input to a single ControlNet. When `prompt` is a list, and if a list of images is passed for a single
+                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
+                as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
+                width are passed, `image` is resized accordingly. If multiple ControlNets are specified in `init`,
+                images must be passed as a list such that each element of the list can be correctly batched for input
+                to a single ControlNet. When `prompt` is a list, and if a list of images is passed for a single
                 ControlNet, each will be paired with each prompt in the `prompt` list. This also applies to multiple
                 ControlNets, where a list of image lists can be passed to batch for each prompt and each ControlNet.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):

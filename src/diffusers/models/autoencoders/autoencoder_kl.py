@@ -281,9 +281,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(
-        self, z: torch.Tensor, return_dict: bool = True, generator=None
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True, generator=None) -> Union[DecoderOutput, torch.Tensor]:
         """
         Decode a batch of images.
 
