@@ -28,6 +28,7 @@ jobs:
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m pip install --upgrade pip uv
           python -m uv pip install -e .
+          pip install torch
           python -m uv pip install pytest
       - name: Check for soft dependencies
         run: |
