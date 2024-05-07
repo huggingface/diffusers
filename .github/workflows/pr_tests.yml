@@ -92,7 +92,7 @@ jobs:
 
     name: ${{ matrix.config.name }}
 
-    runs-on: github.actions/default
+    runs-on: ubuntu-latest
 
     defaults:
       run:
@@ -175,7 +175,7 @@ jobs:
 
     name: ${{ matrix.config.name }}
 
-    runs-on: github.actions/default
+    runs-on: ubuntu-latest
     
     defaults:
       run:
