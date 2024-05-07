@@ -97,7 +97,7 @@ def load_single_file_sub_model(
             cached_model_config_path = None
 
         loaded_sub_model = load_method(
-            pretrained_model_name_or_path_or_dict=checkpoint,
+            pretrained_model_link_or_path_or_dict=checkpoint,
             original_config=original_config,
             config=cached_model_config_path,
             subfolder=name,
@@ -500,13 +500,13 @@ class FromSingleFileMixin:
 
             else:
                 loaded_sub_model = load_single_file_sub_model(
-                    checkpoint=checkpoint,
                     library_name=library_name,
                     class_name=class_name,
+                    name=name,
+                    checkpoint=checkpoint,
                     is_pipeline_module=is_pipeline_module,
                     cached_model_config_path=cached_model_config_path,
                     pipelines=pipelines,
-                    name=name,
                     torch_dtype=torch_dtype,
                     original_config=original_config,
                     local_files_only=local_files_only,
