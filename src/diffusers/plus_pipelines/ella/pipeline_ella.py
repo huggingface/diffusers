@@ -223,12 +223,12 @@ class EllaFixedDiffusionPipeline(
         tokenizer: CLIPTokenizer,
         # tokenizer2: T5TextEmbedder,
         unet: ELLAProxyUNet,
-        scheduler: KarrasDiffusionSchedulers,
+        scheduler: KarrasDiffusionSchedulers,    
+        ELLA: ELLA,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
-        ELLA: ELLA,
         image_encoder: CLIPVisionModelWithProjection = None,
-        requires_safety_checker: bool = True,
+        requires_safety_checker: bool = False,
     ):
         super().__init__()
 
@@ -319,7 +319,7 @@ class EllaFixedDiffusionPipeline(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             ELLA=ELLA,
-            unet=ELLAProxyUNet(ELLA, unet),
+            unet=ELLAProxyUNet(ELLA,unet),
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
@@ -368,7 +368,6 @@ class EllaFixedDiffusionPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        max_length=128,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
@@ -397,8 +396,6 @@ class EllaFixedDiffusionPipeline(
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            max_length (`int`, *optional*):
-                Max length for tokenizer.
             lora_scale (`float`, *optional*):
                 A LoRA scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
             clip_skip (`int`, *optional*):
@@ -428,21 +425,23 @@ class EllaFixedDiffusionPipeline(
             if isinstance(self, TextualInversionLoaderMixin):
                 prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
-            t5_encoder = T5TextEmbedder().to(device, dtype=self.unet.dtype)
-            prompt_embeds = t5_encoder(
+            text_inputs = self.tokenizer(
                 prompt,
-                max_length=128,
-            ).to(device, dtype=self.unet.dtype)
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            t5_encoder = T5TextEmbedder().to(device, dtype=self.unet.dtype)
+            prompt_embeds = t5_encoder(prompt, max_length=128).to(device, self.unet.dtype)
             neg_prompt = "" if negative_prompt is None else negative_prompt
             negative_prompt_embeds = t5_encoder(
                 neg_prompt,
                 max_length=128,
             ).to(device, dtype=self.unet.dtype)
-
             # Access the `hidden_states` first, that contains a tuple of
             # all the hidden states from the encoder layers. Then index into
             # the tuple to access the hidden states from the desired layer.
-            # prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
             # We also need to apply the final LayerNorm here to not mess with the
             # representations. The `last_hidden_states` that we typically use for
             # obtaining the final prompt representations passes through the LayerNorm
@@ -460,9 +459,7 @@ class EllaFixedDiffusionPipeline(
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -498,35 +495,25 @@ class EllaFixedDiffusionPipeline(
                 return_tensors="pt",
             )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
 
-            """
             negative_prompt_embeds = self.text_encoder(
                 uncond_input.input_ids.to(device),
                 attention_mask=attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
-            """
+
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(
-                dtype=prompt_embeds_dtype, device=device
-            )
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(
-                1, num_images_per_prompt, 1
-            )
-            negative_prompt_embeds = negative_prompt_embeds.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
@@ -2228,3 +2215,4 @@ class EllaFlexDiffusionPipeline(
         return StableDiffusionPipelineOutput(
             images=image, nsfw_content_detected=has_nsfw_concept
         )
+
