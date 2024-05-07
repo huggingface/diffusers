@@ -283,7 +283,7 @@ def _get_model_file(
     cache_dir: Optional[str] = None,
     force_download: bool = False,
     proxies: Optional[Dict] = None,
-    resume_download: bool = False,
+    resume_download: Optional[bool] = None,
     local_files_only: bool = False,
     token: Optional[str] = None,
     user_agent: Optional[Union[Dict, str]] = None,

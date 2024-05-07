@@ -1256,8 +1256,8 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
 
     def test_download_from_hub(self):
         ckpt_paths = [
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
-            "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix_base.ckpt",
+            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
+            "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix.safetensors",
         ]
 
         for ckpt_path in ckpt_paths:
@@ -1270,7 +1270,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         assert image_out.shape == (512, 512, 3)
 
     def test_download_local(self):
-        ckpt_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.ckpt")
+        ckpt_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.safetensors")
         config_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-inference.yaml")
 
         pipe = StableDiffusionPipeline.from_single_file(

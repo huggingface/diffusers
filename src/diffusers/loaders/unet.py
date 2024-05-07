@@ -98,9 +98,9 @@ class UNet2DConditionLoadersMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -144,7 +144,7 @@ class UNet2DConditionLoadersMixin:
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
@@ -354,7 +354,11 @@ class UNet2DConditionLoadersMixin:
                 for _, component in _pipeline.components.items():
                     if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
                         is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                        is_sequential_cpu_offload = (
+                            isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                            or hasattr(component._hf_hook, "hooks")
+                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+                        )
 
                         logger.info(
                             "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
@@ -997,3 +1001,57 @@ class UNet2DConditionLoadersMixin:
         self.config.encoder_hid_dim_type = "ip_image_proj"
 
         self.to(dtype=self.dtype, device=self.device)
+
+    def _load_ip_adapter_loras(self, state_dicts):
+        lora_dicts = {}
+        for key_id, name in enumerate(self.attn_processors.keys()):
+            for i, state_dict in enumerate(state_dicts):
+                if f"{key_id}.to_k_lora.down.weight" in state_dict["ip_adapter"]:
+                    if i not in lora_dicts:
+                        lora_dicts[i] = {}
+                    lora_dicts[i].update(
+                        {
+                            f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][
+                                f"{key_id}.to_k_lora.down.weight"
+                            ]
+                        }
+                    )
+                    lora_dicts[i].update(
+                        {
+                            f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][
+                                f"{key_id}.to_q_lora.down.weight"
+                            ]
+                        }
+                    )
+                    lora_dicts[i].update(
+                        {
+                            f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][
+                                f"{key_id}.to_v_lora.down.weight"
+                            ]
+                        }
+                    )
+                    lora_dicts[i].update(
+                        {
+                            f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][
+                                f"{key_id}.to_out_lora.down.weight"
+                            ]
+                        }
+                    )
+                    lora_dicts[i].update(
+                        {f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]}
+                    )
+                    lora_dicts[i].update(
+                        {f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]}
+                    )
+                    lora_dicts[i].update(
+                        {f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]}
+                    )
+                    lora_dicts[i].update(
+                        {
+                            f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][
+                                f"{key_id}.to_out_lora.up.weight"
+                            ]
+                        }
+                    )
+        return lora_dicts
+

@@ -89,8 +89,8 @@ EXAMPLE_DOC_STRING = """
         ...     variant="fp16",
         ...     use_safetensors=True,
         ...     torch_dtype=torch.float16,
-        ... ).to("cuda")
-        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16).to("cuda")
+        ... )
+        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
         >>> pipe = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     controlnet=controlnet,
@@ -98,7 +98,7 @@ EXAMPLE_DOC_STRING = """
         ...     variant="fp16",
         ...     use_safetensors=True,
         ...     torch_dtype=torch.float16,
-        ... ).to("cuda")
+        ... )
         >>> pipe.enable_model_cpu_offload()
 
 
