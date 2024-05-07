@@ -100,7 +100,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def full_loop(self, scheduler=None, generator=None, **config):
+    def full_loop(self, scheduler=None, **config):
         if scheduler is None:
             scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config(**config)
@@ -110,6 +110,8 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         model = self.dummy_model()
         sample = self.dummy_sample_deter
         scheduler.set_timesteps(num_inference_steps)
+
+        generator = torch.manual_seed(0)
 
         for i, t in enumerate(scheduler.timesteps):
             residual = model(sample, t)
@@ -129,6 +131,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         scheduler = scheduler_class(**scheduler_config)
         scheduler.set_timesteps(num_inference_steps=None, timesteps=timesteps)
 
+        generator = torch.manual_seed(0)
         model = self.dummy_model()
         sample = self.dummy_sample_deter
 

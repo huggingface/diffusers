@@ -334,6 +334,14 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("Can only pass one of `num_inference_steps` or `timesteps` or `sigmas`.")
         if timesteps is not None and self.config.use_karras_sigmas:
             raise ValueError("Cannot set `timesteps` with `config.use_karras_sigmas = True`.")
+        if (
+            timesteps is not None
+            and self.config.timestep_type == "continuous"
+            and self.config.prediction_type == "v_prediction"
+        ):
+            raise ValueError(
+                "Cannot set `timesteps` with `config.timestep_type = 'continuous'` and `config.prediction_type = 'v_prediction'`."
+            )
 
         if num_inference_steps is None:
             num_inference_steps = len(timesteps) if timesteps is not None else len(sigmas) - 1
@@ -346,7 +354,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         else:
             if timesteps is not None:
-                timesteps = np.array(timesteps).astype(np.int64)
+                timesteps = np.array(timesteps).astype(np.float32)
             else:
                 # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
                 if self.config.timestep_spacing == "linspace":
