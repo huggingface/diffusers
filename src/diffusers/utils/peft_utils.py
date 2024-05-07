@@ -246,7 +246,7 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
         for layer_name, weight_ in weight_for_adapter.items():
             if layer_name in module_name:
                 return weight_
-        raise RuntimeError(f"No LoRA weight found for module {module_name}.")
+        return weight_for_adapter[layer_name]
 
     # iterate over each adapter, make it active and set the corresponding scaling weight
     for adapter_name, weight in zip(adapter_names, weights):
