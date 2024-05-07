@@ -480,7 +480,7 @@ def load_sub_model(
 
 def _fetch_class_library_tuple(module):
     # import it here to avoid circular import
-    diffusers_module = importlib.import_module(__name__.split(".")[0])
+    diffusers_module = importlib.import_module("src.diffusers")
     pipelines = getattr(diffusers_module, "plus_pipelines")
 
     # register the config from the original module, not the dynamo compiled one
