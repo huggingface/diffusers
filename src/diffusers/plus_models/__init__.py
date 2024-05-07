@@ -25,7 +25,7 @@ from ..utils import (
 _import_structure = {}
 
 if is_torch_available():
-    _import_structure["ella"] = ["ELLAProxyUNet", "ELLA"]
+    _import_structure["ella"] = ["ELLA", "ELLAProxyUNet"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:

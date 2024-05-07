@@ -24,9 +24,9 @@ _import_structure = {
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
+    "plus_pipelines": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
-    "plus_pipelines": [],
 }
 
 try:
@@ -308,6 +308,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_flax_and_transformers_objects))
 else:
     _import_structure["controlnet"].extend(["FlaxStableDiffusionControlNetPipeline"])
+    _import_structure["plus_pipelines"].extend(["ClothAdapter", "OmsDiffusionPipeline"])
     _import_structure["stable_diffusion"].extend(
         [
             "FlaxStableDiffusionImg2ImgPipeline",
@@ -320,7 +321,6 @@ else:
             "FlaxStableDiffusionXLPipeline",
         ]
     )
-    _import_structure["plus_pipelines"].extend(["OmsDiffusionPipeline", "ClothAdapter"])
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:

@@ -28,8 +28,8 @@ from .utils import (
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
     "models": [],
-    "plus_models": [],
     "pipelines": [],
+    "plus_models": [],
     "plus_pipelines": [],
     "schedulers": [],
     "utils": [
@@ -103,12 +103,6 @@ else:
         ]
     )
 
-    _import_structure["plus_models"].extend(
-        [
-            "EllaELLAProxyUNet",
-            "ELLA",
-        ]
-    )
     _import_structure["optimization"] = [
         "get_constant_schedule",
         "get_constant_schedule_with_warmup",
@@ -138,6 +132,12 @@ else:
             "RePaintPipeline",
             "ScoreSdeVePipeline",
             "StableDiffusionMixin",
+        ]
+    )
+    _import_structure["plus_models"].extend(
+        [
+            "ELLA",
+            "EllaELLAProxyUNet",
         ]
     )
     _import_structure["schedulers"].extend(

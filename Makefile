@@ -1,7 +1,7 @@
 .PHONY: deps_table_update modified_only_fixup extra_style_checks quality style fixup fix-copies test test-examples
 
-# make sure to test the local checkout in scripts and not the pre-installed one (don't use quotes!)
-export PYTHONPATH = usr/bin/python3
+# make sure to test the local checkout in scripts and not the pre-installed one (don't use quotes!
+export PYTHONPATH = src
 
 check_dirs := examples scripts src tests utils benchmarks
 
@@ -18,7 +18,7 @@ modified_only_fixup:
 # Update src/diffusers/dependency_versions_table.py
 
 deps_table_update:
-	@python setup.py deps_table_update
+	@python3 setup.py deps_table_update
 
 deps_table_check_updated:
 	@md5sum src/diffusers/dependency_versions_table.py > md5sum.saved
@@ -42,13 +42,13 @@ repo-consistency:
 quality:
 	ruff check $(check_dirs) setup.py
 	ruff format --check $(check_dirs) setup.py
-	python utils/check_doc_toc.py
+	python3 utils/check_doc_toc.py
 
 # Format source code automatically and check is there are any problems left that need manual fixing
 
 extra_style_checks:
-	python utils/custom_init_isort.py
-	python utils/check_doc_toc.py --fix_and_overwrite
+	python3 utils/custom_init_isort.py
+	python3 utils/check_doc_toc.py --fix_and_overwrite
 
 # this target runs checks on all files and potentially modifies some of them
 
@@ -65,8 +65,8 @@ fixup: modified_only_fixup extra_style_checks autogenerate_code repo-consistency
 # Make marked copies of snippets of codes conform to the original
 
 fix-copies:
-	python utils/check_copies.py --fix_and_overwrite
-	python utils/check_dummies.py --fix_and_overwrite
+	python3 utils/check_copies.py --fix_and_overwrite
+	python3 utils/check_dummies.py --fix_and_overwrite
 
 # Run tests for the library
 

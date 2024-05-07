@@ -719,10 +719,7 @@ class EllaFixedDiffusionPipeline(
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
-        self,
-        w: torch.Tensor,
-        embedding_dim: int = 512,
-        dtype: torch.dtype = torch.float32,
+        self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
     ) -> torch.FloatTensor:
         """
         See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
@@ -1653,10 +1650,7 @@ class EllaFlexDiffusionPipeline(
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
-        self,
-        w: torch.Tensor,
-        embedding_dim: int = 512,
-        dtype: torch.dtype = torch.float32,
+        self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
     ) -> torch.FloatTensor:
         """
         See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298

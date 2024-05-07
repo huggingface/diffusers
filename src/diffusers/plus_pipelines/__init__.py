@@ -24,9 +24,9 @@ _import_structure = {
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
+    "plus_pipelines": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
-    "plus_pipelines": [],
 }
 
 try:
