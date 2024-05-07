@@ -29,6 +29,7 @@ jobs:
           source /opt/venv/bin/activate
           python -m pip install --upgrade pip
           pip install -e .
+          pip install torch
           pip install pytest
       - name: Check for soft dependencies
         run: |
