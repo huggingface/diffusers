@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, Tuple
 
 import torch
 import torch.nn as nn
@@ -24,7 +24,7 @@ class AdaLayerNorm(nn.Module):
 
         self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(self, x: torch.Tensor, timestep_embedding: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, timestep_embedding: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         emb = self.linear(self.silu(timestep_embedding))
         shift, scale = emb.view(len(x), 1, -1).chunk(2, dim=-1)
         x = self.norm(x) * (1 + scale) + shift
