@@ -359,9 +359,16 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
 
         # Preprocess image
         image = preprocess(image, width, height)
-        latents = self.prepare_latents(
-            image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, self.device, generator
-        )
+        if latents is None:
+            latents = self.prepare_latents(
+                image,
+                latent_timestep,
+                batch_size,
+                num_images_per_prompt,
+                text_embeddings.dtype,
+                self.device,
+                generator,
+            )
 
         if clip_guidance_scale > 0:
             if clip_prompt is not None:
