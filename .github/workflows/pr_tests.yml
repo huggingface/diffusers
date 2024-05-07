@@ -92,7 +92,7 @@ jobs:
 
     name: ${{ matrix.config.name }}
 
-    runs-on: github.actions/default
+    runs-on: ubuntu-latest
 
     defaults:
       run:
@@ -108,6 +108,7 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        pip install uv
         python -m uv pip install -e [quality,test]
         python -m uv pip install accelerate
 
@@ -175,7 +176,7 @@ jobs:
 
     name: ${{ matrix.config.name }}
 
-    runs-on: github.actions/default
+    runs-on: ubuntu-latest
     
     defaults:
       run:
@@ -191,6 +192,7 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        pip install uv
         python -m uv pip install -e [quality,test]
 
     - name: Environment
