@@ -100,7 +100,7 @@ jobs:
 
     name: ${{ matrix.config.name }}
 
-    runs-on: ${{ matrix.config.runner }}
+    runs-on: github.actions/default
 
     container:
       image: ${{ matrix.config.image }}
@@ -189,7 +189,7 @@ jobs:
 
     name: ${{ matrix.config.name }}
 
-    runs-on: ${{ matrix.config.runner }}
+    runs-on: github.actions/default
 
     container:
       image: ${{ matrix.config.image }}
