@@ -295,6 +295,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
+_bitsandbytes_available = importlib.util.find_spec("bitsandbytes") is not None
+try:
+    _bitsandbytes_version = importlib_metadata.version("bitsandbytes")
+    logger.debug(f"Successfully imported bitsandbytes version {_bitsandbytes_version}")
+except importlib_metadata.PackageNotFoundError:
+    _bitsandbytes_available = False
+
 # Taken from `huggingface_hub`.
 _is_notebook = False
 try:
@@ -407,6 +414,10 @@ def is_torchvision_available():
 
 def is_safetensors_available():
     return _safetensors_available
+
+
+def is_bitsandbytes_available():
+    return _bitsandbytes_available
 
 
 def is_notebook():
@@ -534,6 +545,11 @@ SAFETENSORS_IMPORT_ERROR = """
 {0} requires the safetensors library but it was not found in your environment. You can install it with pip: `pip install safetensors`
 """
 
+# docstyle-ignore
+BITSANDBYTES_IMPORT_ERROR = """
+{0} requires the bitsandbytes library but it was not found in your environment. You can install it with pip: `pip install bitsandbytes`
+"""
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
@@ -556,6 +572,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("invisible_watermark", (is_invisible_watermark_available, INVISIBLE_WATERMARK_IMPORT_ERROR)),
         ("peft", (is_peft_available, PEFT_IMPORT_ERROR)),
         ("safetensors", (is_safetensors_available, SAFETENSORS_IMPORT_ERROR)),
+        ("bitsandbytes", (is_bitsandbytes_available, BITSANDBYTES_IMPORT_ERROR)),
     ]
 )
 

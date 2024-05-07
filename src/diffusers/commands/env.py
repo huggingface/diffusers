@@ -21,6 +21,7 @@ import huggingface_hub
 from .. import __version__ as version
 from ..utils import (
     is_accelerate_available,
+    is_bitsandbytes_available,
     is_flax_available,
     is_google_colab,
     is_notebook,
@@ -92,6 +93,12 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
             peft_version = peft.__version__
 
+        bitsandbytes_version = "not installed"
+        if is_bitsandbytes_available():
+            import bitsandbytes
+
+            bitsandbytes_version = bitsandbytes.__version__
+
         xformers_version = "not installed"
         if is_xformers_available():
             import xformers
@@ -157,6 +164,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             "Transformers version": transformers_version,
             "Accelerate version": accelerate_version,
             "PEFT version": peft_version,
+            "Bitsandbytes version": bitsandbytes_version,
             "Safetensors version": safetensors_version,
             "xFormers version": xformers_version,
             "Accelerator": accelerator,
