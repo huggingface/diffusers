@@ -103,11 +103,11 @@ accelerate launch train_unconditional.py \
 <div class="flex justify-center">
     <img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png"/>
 </div>
-[Pokemon](https://huggingface.co/datasets/huggan/naruto) 데이터셋을 사용할 경우:
+[Naruto](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) 데이터셋을 사용할 경우:
 
 ```bash
 accelerate launch train_unconditional.py \
-  --dataset_name="huggan/naruto" \
+  --dataset_name="lambdalabs/naruto-blip-captions" \
   --resolution=64 \
   --output_dir="ddpm-ema-naruto-64" \
   --train_batch_size=16 \
@@ -129,7 +129,7 @@ accelerate launch train_unconditional.py \
 
 ```bash
 accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
-  --dataset_name="huggan/naruto" \
+  --dataset_name="lambdalabs/naruto-blip-captions" \
   --resolution=64 --center_crop --random_flip \
   --output_dir="ddpm-ema-naruto-64" \
   --train_batch_size=16 \
