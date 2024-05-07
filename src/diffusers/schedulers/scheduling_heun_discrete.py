@@ -257,7 +257,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps = num_train_timesteps or self.config.num_train_timesteps
 
         if timesteps is not None:
-            timesteps = np.array(timesteps, dtype=np.int64)
+            timesteps = np.array(timesteps, dtype=np.float32)
         else:
             # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
             if self.config.timestep_spacing == "linspace":
