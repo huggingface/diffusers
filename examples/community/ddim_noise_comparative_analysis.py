@@ -65,9 +65,7 @@ class DDIMNoiseComparativeAnalysisPipeline(DiffusionPipeline):
 
     def check_inputs(self, strength):
         if strength < 0 or strength > 1:
-            raise ValueError(
-                f"The value of strength should in [0.0, 1.0] but is {strength}"
-            )
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
@@ -78,9 +76,7 @@ class DDIMNoiseComparativeAnalysisPipeline(DiffusionPipeline):
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(
-        self, image, timestep, batch_size, dtype, device, generator=None
-    ):
+    def prepare_latents(self, image, timestep, batch_size, dtype, device, generator=None):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -159,15 +155,11 @@ class DDIMNoiseComparativeAnalysisPipeline(DiffusionPipeline):
 
         # 3. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=self.device)
-        timesteps, num_inference_steps = self.get_timesteps(
-            num_inference_steps, strength, self.device
-        )
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, self.device)
         latent_timestep = timesteps[:1].repeat(batch_size)
 
         # 4. Prepare latent variables
-        latents = self.prepare_latents(
-            image, latent_timestep, batch_size, self.unet.dtype, self.device, generator
-        )
+        latents = self.prepare_latents(image, latent_timestep, batch_size, self.unet.dtype, self.device, generator)
         image = latents
 
         # 5. Denoising loop

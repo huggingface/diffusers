@@ -145,10 +145,7 @@ class StableDiffusionReferencePipeline(
     ):
         super().__init__()
 
-        if (
-            hasattr(scheduler.config, "steps_offset")
-            and scheduler.config.steps_offset != 1
-        ):
+        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -157,17 +154,12 @@ class StableDiffusionReferencePipeline(
                 " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
                 " file"
             )
-            deprecate(
-                "steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False
-            )
+            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if (
-            hasattr(scheduler.config, "skip_prk_steps")
-            and scheduler.config.skip_prk_steps is False
-        ):
+        if hasattr(scheduler.config, "skip_prk_steps") and scheduler.config.skip_prk_steps is False:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration"
                 " `skip_prk_steps`. `skip_prk_steps` should be set to True in the configuration file. Please make"
@@ -202,16 +194,10 @@ class StableDiffusionReferencePipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(
-            unet.config, "_diffusers_version"
-        ) and version.parse(
+        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
             version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse(
-            "0.9.0.dev0"
-        )
-        is_unet_sample_size_less_64 = (
-            hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
-        )
+        ) < version.parse("0.9.0.dev0")
+        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -224,9 +210,7 @@ class StableDiffusionReferencePipeline(
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
                 " the `unet/config.json` file"
             )
-            deprecate(
-                "sample_size<64", "1.0.0", deprecation_message, standard_warn=False
-            )
+            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
@@ -338,20 +322,15 @@ class StableDiffusionReferencePipeline(
             None
         """
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if callback_steps is not None and (
-            not isinstance(callback_steps, int) or callback_steps <= 0
-        ):
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs
-            for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -366,12 +345,8 @@ class StableDiffusionReferencePipeline(
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (
-            not isinstance(prompt, str) and not isinstance(prompt, list)
-        ):
-            raise ValueError(
-                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
-            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -515,13 +490,11 @@ class StableDiffusionReferencePipeline(
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(
-                prompt, padding="longest", return_tensors="pt"
-            ).input_ids
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[
-                -1
-            ] and not torch.equal(text_input_ids, untruncated_ids):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -530,18 +503,13 @@ class StableDiffusionReferencePipeline(
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
 
             if clip_skip is None:
-                prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask
-                )
+                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
@@ -557,9 +525,7 @@ class StableDiffusionReferencePipeline(
                 # representations. The `last_hidden_states` that we typically use for
                 # obtaining the final prompt representations passes through the LayerNorm
                 # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(
-                    prompt_embeds
-                )
+                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
 
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
@@ -573,9 +539,7 @@ class StableDiffusionReferencePipeline(
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -611,10 +575,7 @@ class StableDiffusionReferencePipeline(
                 return_tensors="pt",
             )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -629,16 +590,10 @@ class StableDiffusionReferencePipeline(
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(
-                dtype=prompt_embeds_dtype, device=device
-            )
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(
-                1, num_images_per_prompt, 1
-            )
-            negative_prompt_embeds = negative_prompt_embeds.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
@@ -687,9 +642,7 @@ class StableDiffusionReferencePipeline(
             )
 
         if latents is None:
-            latents = randn_tensor(
-                shape, generator=generator, device=device, dtype=dtype
-            )
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
 
@@ -716,26 +669,20 @@ class StableDiffusionReferencePipeline(
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
     def prepare_image(
         self,
-        image: Union[
-            torch.Tensor, PIL.Image.Image, List[Union[torch.Tensor, PIL.Image.Image]]
-        ],
+        image: Union[torch.Tensor, PIL.Image.Image, List[Union[torch.Tensor, PIL.Image.Image]]],
         width: int,
         height: int,
         batch_size: int,
@@ -771,9 +718,7 @@ class StableDiffusionReferencePipeline(
 
                 for image_ in image:
                     image_ = image_.convert("RGB")
-                    image_ = image_.resize(
-                        (width, height), resample=PIL_INTERPOLATION["lanczos"]
-                    )
+                    image_ = image_.resize((width, height), resample=PIL_INTERPOLATION["lanczos"])
                     image_ = np.array(image_)
                     image_ = image_[None, :]
                     images.append(image_)
@@ -833,16 +778,12 @@ class StableDiffusionReferencePipeline(
         # encode the mask image into latents space so we can concatenate it to the latents
         if isinstance(generator, list):
             ref_image_latents = [
-                self.vae.encode(refimage[i : i + 1]).latent_dist.sample(
-                    generator=generator[i]
-                )
+                self.vae.encode(refimage[i : i + 1]).latent_dist.sample(generator=generator[i])
                 for i in range(batch_size)
             ]
             ref_image_latents = torch.cat(ref_image_latents, dim=0)
         else:
-            ref_image_latents = self.vae.encode(refimage).latent_dist.sample(
-                generator=generator
-            )
+            ref_image_latents = self.vae.encode(refimage).latent_dist.sample(generator=generator)
         ref_image_latents = self.vae.config.scaling_factor * ref_image_latents
 
         # duplicate mask and ref_image_latents for each generation per prompt, using mps friendly method
@@ -853,9 +794,7 @@ class StableDiffusionReferencePipeline(
                     f" to a total batch size of {batch_size}, but {ref_image_latents.shape[0]} images were passed."
                     " Make sure the number of images that you pass is divisible by the total requested batch size."
                 )
-            ref_image_latents = ref_image_latents.repeat(
-                batch_size // ref_image_latents.shape[0], 1, 1, 1
-            )
+            ref_image_latents = ref_image_latents.repeat(batch_size // ref_image_latents.shape[0], 1, 1, 1)
 
         # aligning device to prevent device errors when concating it with the latent model input
         ref_image_latents = ref_image_latents.to(device=device, dtype=dtype)
@@ -884,14 +823,10 @@ class StableDiffusionReferencePipeline(
             has_nsfw_concept = None
         else:
             if torch.is_tensor(image):
-                feature_extractor_input = self.image_processor.postprocess(
-                    image, output_type="pil"
-                )
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
             else:
                 feature_extractor_input = self.image_processor.numpy_to_pil(image)
-            safety_checker_input = self.feature_extractor(
-                feature_extractor_input, return_tensors="pt"
-            ).to(device)
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -1015,9 +950,7 @@ class StableDiffusionReferencePipeline(
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        assert (
-            reference_attn or reference_adain
-        ), "`reference_attn` or `reference_adain` must be True."
+        assert reference_attn or reference_adain, "`reference_attn` or `reference_adain` must be True."
 
         # 0. Default height and width to unet
         height, width = self._default_height_width(height, width, ref_image)
@@ -1049,9 +982,7 @@ class StableDiffusionReferencePipeline(
 
         # 3. Encode input prompt
         text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None)
-            if cross_attention_kwargs is not None
-            else None
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
         prompt_embeds = self._encode_prompt(
             prompt,
@@ -1108,10 +1039,7 @@ class StableDiffusionReferencePipeline(
         # 9. Modify self attention and group norm
         MODE = "write"
         uc_mask = (
-            torch.Tensor(
-                [1] * batch_size * num_images_per_prompt
-                + [0] * batch_size * num_images_per_prompt
-            )
+            torch.Tensor([1] * batch_size * num_images_per_prompt + [0] * batch_size * num_images_per_prompt)
             .type_as(ref_image_latents)
             .bool()
         )
@@ -1145,15 +1073,11 @@ class StableDiffusionReferencePipeline(
                 norm_hidden_states = self.norm1(hidden_states)
 
             # 1. Self-Attention
-            cross_attention_kwargs = (
-                cross_attention_kwargs if cross_attention_kwargs is not None else {}
-            )
+            cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
             if self.only_cross_attention:
                 attn_output = self.attn1(
                     norm_hidden_states,
-                    encoder_hidden_states=encoder_hidden_states
-                    if self.only_cross_attention
-                    else None,
+                    encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
                     attention_mask=attention_mask,
                     **cross_attention_kwargs,
                 )
@@ -1162,9 +1086,7 @@ class StableDiffusionReferencePipeline(
                     self.bank.append(norm_hidden_states.detach().clone())
                     attn_output = self.attn1(
                         norm_hidden_states,
-                        encoder_hidden_states=encoder_hidden_states
-                        if self.only_cross_attention
-                        else None,
+                        encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
                         attention_mask=attention_mask,
                         **cross_attention_kwargs,
                     )
@@ -1172,9 +1094,7 @@ class StableDiffusionReferencePipeline(
                     if attention_auto_machine_weight > self.attn_weight:
                         attn_output_uc = self.attn1(
                             norm_hidden_states,
-                            encoder_hidden_states=torch.cat(
-                                [norm_hidden_states] + self.bank, dim=1
-                            ),
+                            encoder_hidden_states=torch.cat([norm_hidden_states] + self.bank, dim=1),
                             # attention_mask=attention_mask,
                             **cross_attention_kwargs,
                         )
@@ -1185,17 +1105,12 @@ class StableDiffusionReferencePipeline(
                                 encoder_hidden_states=norm_hidden_states[uc_mask],
                                 **cross_attention_kwargs,
                             )
-                        attn_output = (
-                            style_fidelity * attn_output_c
-                            + (1.0 - style_fidelity) * attn_output_uc
-                        )
+                        attn_output = style_fidelity * attn_output_c + (1.0 - style_fidelity) * attn_output_uc
                         self.bank.clear()
                     else:
                         attn_output = self.attn1(
                             norm_hidden_states,
-                            encoder_hidden_states=encoder_hidden_states
-                            if self.only_cross_attention
-                            else None,
+                            encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
                             attention_mask=attention_mask,
                             **cross_attention_kwargs,
                         )
@@ -1205,9 +1120,7 @@ class StableDiffusionReferencePipeline(
 
             if self.attn2 is not None:
                 norm_hidden_states = (
-                    self.norm2(hidden_states, timestep)
-                    if self.use_ada_layer_norm
-                    else self.norm2(hidden_states)
+                    self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
                 )
 
                 # 2. Cross-Attention
@@ -1223,9 +1136,7 @@ class StableDiffusionReferencePipeline(
             norm_hidden_states = self.norm3(hidden_states)
 
             if self.use_ada_layer_norm_zero:
-                norm_hidden_states = (
-                    norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
-                )
+                norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
             ff_output = self.ff(norm_hidden_states)
 
@@ -1241,22 +1152,16 @@ class StableDiffusionReferencePipeline(
             x = self.original_forward(*args, **kwargs)
             if MODE == "write":
                 if gn_auto_machine_weight >= self.gn_weight:
-                    var, mean = torch.var_mean(
-                        x, dim=(2, 3), keepdim=True, correction=0
-                    )
+                    var, mean = torch.var_mean(x, dim=(2, 3), keepdim=True, correction=0)
                     self.mean_bank.append(mean)
                     self.var_bank.append(var)
             if MODE == "read":
                 if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
-                    var, mean = torch.var_mean(
-                        x, dim=(2, 3), keepdim=True, correction=0
-                    )
+                    var, mean = torch.var_mean(x, dim=(2, 3), keepdim=True, correction=0)
                     std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
                     mean_acc = sum(self.mean_bank) / float(len(self.mean_bank))
                     var_acc = sum(self.var_bank) / float(len(self.var_bank))
-                    std_acc = (
-                        torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
-                    )
+                    std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
                     x_uc = (((x - mean) / std) * std_acc) + mean_acc
                     x_c = x_uc.clone()
                     if do_classifier_free_guidance and style_fidelity > 0:
@@ -1292,35 +1197,21 @@ class StableDiffusionReferencePipeline(
                 )[0]
                 if MODE == "write":
                     if gn_auto_machine_weight >= self.gn_weight:
-                        var, mean = torch.var_mean(
-                            hidden_states, dim=(2, 3), keepdim=True, correction=0
-                        )
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         self.mean_bank.append([mean])
                         self.var_bank.append([var])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
-                        var, mean = torch.var_mean(
-                            hidden_states, dim=(2, 3), keepdim=True, correction=0
-                        )
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
-                        mean_acc = sum(self.mean_bank[i]) / float(
-                            len(self.mean_bank[i])
-                        )
+                        mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
                         var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
-                        std_acc = (
-                            torch.maximum(var_acc, torch.zeros_like(var_acc) + eps)
-                            ** 0.5
-                        )
-                        hidden_states_uc = (
-                            ((hidden_states - mean) / std) * std_acc
-                        ) + mean_acc
+                        std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
+                        hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
                         hidden_states_c = hidden_states_uc.clone()
                         if do_classifier_free_guidance and style_fidelity > 0:
                             hidden_states_c[uc_mask] = hidden_states[uc_mask]
-                        hidden_states = (
-                            style_fidelity * hidden_states_c
-                            + (1.0 - style_fidelity) * hidden_states_uc
-                        )
+                        hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
 
                 output_states = output_states + (hidden_states,)
 
@@ -1351,35 +1242,21 @@ class StableDiffusionReferencePipeline(
 
                 if MODE == "write":
                     if gn_auto_machine_weight >= self.gn_weight:
-                        var, mean = torch.var_mean(
-                            hidden_states, dim=(2, 3), keepdim=True, correction=0
-                        )
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         self.mean_bank.append([mean])
                         self.var_bank.append([var])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
-                        var, mean = torch.var_mean(
-                            hidden_states, dim=(2, 3), keepdim=True, correction=0
-                        )
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
-                        mean_acc = sum(self.mean_bank[i]) / float(
-                            len(self.mean_bank[i])
-                        )
+                        mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
                         var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
-                        std_acc = (
-                            torch.maximum(var_acc, torch.zeros_like(var_acc) + eps)
-                            ** 0.5
-                        )
-                        hidden_states_uc = (
-                            ((hidden_states - mean) / std) * std_acc
-                        ) + mean_acc
+                        std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
+                        hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
                         hidden_states_c = hidden_states_uc.clone()
                         if do_classifier_free_guidance and style_fidelity > 0:
                             hidden_states_c[uc_mask] = hidden_states[uc_mask]
-                        hidden_states = (
-                            style_fidelity * hidden_states_c
-                            + (1.0 - style_fidelity) * hidden_states_uc
-                        )
+                        hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
 
                 output_states = output_states + (hidden_states,)
 
@@ -1425,35 +1302,21 @@ class StableDiffusionReferencePipeline(
 
                 if MODE == "write":
                     if gn_auto_machine_weight >= self.gn_weight:
-                        var, mean = torch.var_mean(
-                            hidden_states, dim=(2, 3), keepdim=True, correction=0
-                        )
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         self.mean_bank.append([mean])
                         self.var_bank.append([var])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
-                        var, mean = torch.var_mean(
-                            hidden_states, dim=(2, 3), keepdim=True, correction=0
-                        )
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
-                        mean_acc = sum(self.mean_bank[i]) / float(
-                            len(self.mean_bank[i])
-                        )
+                        mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
                         var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
-                        std_acc = (
-                            torch.maximum(var_acc, torch.zeros_like(var_acc) + eps)
-                            ** 0.5
-                        )
-                        hidden_states_uc = (
-                            ((hidden_states - mean) / std) * std_acc
-                        ) + mean_acc
+                        std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
+                        hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
                         hidden_states_c = hidden_states_uc.clone()
                         if do_classifier_free_guidance and style_fidelity > 0:
                             hidden_states_c[uc_mask] = hidden_states[uc_mask]
-                        hidden_states = (
-                            style_fidelity * hidden_states_c
-                            + (1.0 - style_fidelity) * hidden_states_uc
-                        )
+                        hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
 
             if MODE == "read":
                 self.mean_bank = []
@@ -1483,35 +1346,21 @@ class StableDiffusionReferencePipeline(
 
                 if MODE == "write":
                     if gn_auto_machine_weight >= self.gn_weight:
-                        var, mean = torch.var_mean(
-                            hidden_states, dim=(2, 3), keepdim=True, correction=0
-                        )
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         self.mean_bank.append([mean])
                         self.var_bank.append([var])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
-                        var, mean = torch.var_mean(
-                            hidden_states, dim=(2, 3), keepdim=True, correction=0
-                        )
+                        var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         std = torch.maximum(var, torch.zeros_like(var) + eps) ** 0.5
-                        mean_acc = sum(self.mean_bank[i]) / float(
-                            len(self.mean_bank[i])
-                        )
+                        mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
                         var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
-                        std_acc = (
-                            torch.maximum(var_acc, torch.zeros_like(var_acc) + eps)
-                            ** 0.5
-                        )
-                        hidden_states_uc = (
-                            ((hidden_states - mean) / std) * std_acc
-                        ) + mean_acc
+                        std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
+                        hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
                         hidden_states_c = hidden_states_uc.clone()
                         if do_classifier_free_guidance and style_fidelity > 0:
                             hidden_states_c[uc_mask] = hidden_states[uc_mask]
-                        hidden_states = (
-                            style_fidelity * hidden_states_c
-                            + (1.0 - style_fidelity) * hidden_states_uc
-                        )
+                        hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
 
             if MODE == "read":
                 self.mean_bank = []
@@ -1524,20 +1373,12 @@ class StableDiffusionReferencePipeline(
             return hidden_states
 
         if reference_attn:
-            attn_modules = [
-                module
-                for module in torch_dfs(self.unet)
-                if isinstance(module, BasicTransformerBlock)
-            ]
-            attn_modules = sorted(
-                attn_modules, key=lambda x: -x.norm1.normalized_shape[0]
-            )
+            attn_modules = [module for module in torch_dfs(self.unet) if isinstance(module, BasicTransformerBlock)]
+            attn_modules = sorted(attn_modules, key=lambda x: -x.norm1.normalized_shape[0])
 
             for i, module in enumerate(attn_modules):
                 module._original_inner_forward = module.forward
-                module.forward = hacked_basic_transformer_inner_forward.__get__(
-                    module, BasicTransformerBlock
-                )
+                module.forward = hacked_basic_transformer_inner_forward.__get__(module, BasicTransformerBlock)
                 module.bank = []
                 module.attn_weight = float(i) / float(len(attn_modules))
 
@@ -1562,17 +1403,11 @@ class StableDiffusionReferencePipeline(
                     # mid_block
                     module.forward = hacked_mid_forward.__get__(module, torch.nn.Module)
                 elif isinstance(module, CrossAttnDownBlock2D):
-                    module.forward = hack_CrossAttnDownBlock2D_forward.__get__(
-                        module, CrossAttnDownBlock2D
-                    )
+                    module.forward = hack_CrossAttnDownBlock2D_forward.__get__(module, CrossAttnDownBlock2D)
                 elif isinstance(module, DownBlock2D):
-                    module.forward = hacked_DownBlock2D_forward.__get__(
-                        module, DownBlock2D
-                    )
+                    module.forward = hacked_DownBlock2D_forward.__get__(module, DownBlock2D)
                 elif isinstance(module, CrossAttnUpBlock2D):
-                    module.forward = hacked_CrossAttnUpBlock2D_forward.__get__(
-                        module, CrossAttnUpBlock2D
-                    )
+                    module.forward = hacked_CrossAttnUpBlock2D_forward.__get__(module, CrossAttnUpBlock2D)
                 elif isinstance(module, UpBlock2D):
                     module.forward = hacked_UpBlock2D_forward.__get__(module, UpBlock2D)
                 module.mean_bank = []
@@ -1584,12 +1419,8 @@ class StableDiffusionReferencePipeline(
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                )
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # ref only part
                 noise = randn_tensor(
@@ -1605,9 +1436,7 @@ class StableDiffusionReferencePipeline(
                         1,
                     ),
                 )
-                ref_xt = (
-                    torch.cat([ref_xt] * 2) if do_classifier_free_guidance else ref_xt
-                )
+                ref_xt = torch.cat([ref_xt] * 2) if do_classifier_free_guidance else ref_xt
                 ref_xt = self.scheduler.scale_model_input(ref_xt, t)
 
                 MODE = "write"
@@ -1632,37 +1461,25 @@ class StableDiffusionReferencePipeline(
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_text - noise_pred_uncond
-                    )
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(
-                        noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
-                    )
+                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False
-                )[0]
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(
-                latents / self.vae.config.scaling_factor, return_dict=False
-            )[0]
-            image, has_nsfw_concept = self.run_safety_checker(
-                image, device, prompt_embeds.dtype
-            )
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
             has_nsfw_concept = None
@@ -1672,9 +1489,7 @@ class StableDiffusionReferencePipeline(
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        image = self.image_processor.postprocess(
-            image, output_type=output_type, do_denormalize=do_denormalize
-        )
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
@@ -1683,6 +1498,4 @@ class StableDiffusionReferencePipeline(
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(
-            images=image, nsfw_content_detected=has_nsfw_concept
-        )
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

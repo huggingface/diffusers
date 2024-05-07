@@ -107,12 +107,8 @@ def save_model_card(
         - text: '{instance_prompt}'
         """
     embeddings_filename = f"{repo_folder}_emb"
-    instance_prompt_webui = re.sub(
-        r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1)
-    )
-    ti_keys = ", ".join(
-        f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt)
-    )
+    instance_prompt_webui = re.sub(r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1))
+    ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
     if instance_prompt_webui != embeddings_filename:
         instance_prompt_sentence = f"For example, `{instance_prompt_webui}`"
     else:
@@ -405,9 +401,7 @@ def parse_args(input_args=None):
         default="lora-dreambooth-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
-    parser.add_argument(
-        "--seed", type=int, default=None, help="A seed for reproducible training."
-    )
+    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
@@ -640,9 +634,7 @@ def parse_args(input_args=None):
         help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default. "
         "Ignored if optimizer is adamW",
     )
-    parser.add_argument(
-        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
-    )
+    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument(
         "--push_to_hub",
         action="store_true",
@@ -718,9 +710,7 @@ def parse_args(input_args=None):
         action="store_true",
         help="Whether or not to use xformers.",
     )
-    parser.add_argument(
-        "--noise_offset", type=float, default=0, help="The scale of noise offset."
-    )
+    parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
     parser.add_argument(
         "--rank",
         type=int,
@@ -752,9 +742,7 @@ def parse_args(input_args=None):
         raise ValueError("Specify either `--dataset_name` or `--instance_data_dir`")
 
     if args.dataset_name is not None and args.instance_data_dir is not None:
-        raise ValueError(
-            "Specify only one of `--dataset_name` or `--instance_data_dir`"
-        )
+        raise ValueError("Specify only one of `--dataset_name` or `--instance_data_dir`")
 
     if args.train_text_encoder and args.train_text_encoder_ti:
         raise ValueError(
@@ -775,13 +763,9 @@ def parse_args(input_args=None):
     else:
         # logger is not available yet
         if args.class_data_dir is not None:
-            warnings.warn(
-                "You need not use --class_data_dir without --with_prior_preservation."
-            )
+            warnings.warn("You need not use --class_data_dir without --with_prior_preservation.")
         if args.class_prompt is not None:
-            warnings.warn(
-                "You need not use --class_prompt without --with_prior_preservation."
-            )
+            warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
 
@@ -799,9 +783,7 @@ class TokenEmbeddingsHandler:
     def initialize_new_tokens(self, inserting_toks: List[str]):
         idx = 0
         for tokenizer, text_encoder in zip(self.tokenizers, self.text_encoders):
-            assert isinstance(
-                inserting_toks, list
-            ), "inserting_toks should be a list of strings."
+            assert isinstance(inserting_toks, list), "inserting_toks should be a list of strings."
             assert all(
                 isinstance(tok, str) for tok in inserting_toks
             ), "All elements in inserting_toks should be strings."
@@ -814,25 +796,19 @@ class TokenEmbeddingsHandler:
             self.train_ids = tokenizer.convert_tokens_to_ids(self.inserting_toks)
 
             # random initialization of new tokens
-            std_token_embedding = (
-                text_encoder.text_model.embeddings.token_embedding.weight.data.std()
-            )
+            std_token_embedding = text_encoder.text_model.embeddings.token_embedding.weight.data.std()
 
             print(f"{idx} text encodedr's std_token_embedding: {std_token_embedding}")
 
-            text_encoder.text_model.embeddings.token_embedding.weight.data[
-                self.train_ids
-            ] = (
-                torch.randn(
-                    len(self.train_ids), text_encoder.text_model.config.hidden_size
-                )
+            text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
+                torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
                 .to(device=self.device)
                 .to(dtype=self.dtype)
                 * std_token_embedding
             )
-            self.embeddings_settings[
-                f"original_embeddings_{idx}"
-            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            self.embeddings_settings[f"original_embeddings_{idx}"] = (
+                text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            )
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             inu = torch.ones((len(tokenizer),), dtype=torch.bool)
@@ -846,21 +822,15 @@ class TokenEmbeddingsHandler:
 
     # copied from train_dreambooth_lora_sdxl_advanced.py
     def save_embeddings(self, file_path: str):
-        assert (
-            self.train_ids is not None
-        ), "Initialize new tokens before saving embeddings."
+        assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
         tensors = {}
         # text_encoder_0 - CLIP ViT-L/14, text_encoder_1 -  CLIP ViT-G/14 - TODO - change for sd
         idx_to_text_encoder_name = {0: "clip_l", 1: "clip_g"}
         for idx, text_encoder in enumerate(self.text_encoders):
-            assert text_encoder.text_model.embeddings.token_embedding.weight.data.shape[
-                0
-            ] == len(self.tokenizers[0]), "Tokenizers should be the same."
-            new_token_embeddings = (
-                text_encoder.text_model.embeddings.token_embedding.weight.data[
-                    self.train_ids
-                ]
-            )
+            assert text_encoder.text_model.embeddings.token_embedding.weight.data.shape[0] == len(
+                self.tokenizers[0]
+            ), "Tokenizers should be the same."
+            new_token_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids]
 
             # New tokens for each text encoder are saved under "clip_l" (for text_encoder 0), "clip_g" (for
             # text_encoder 1) to keep compatible with the ecosystem.
@@ -882,9 +852,7 @@ class TokenEmbeddingsHandler:
     def retract_embeddings(self):
         for idx, text_encoder in enumerate(self.text_encoders):
             index_no_updates = self.embeddings_settings[f"index_no_updates_{idx}"]
-            text_encoder.text_model.embeddings.token_embedding.weight.data[
-                index_no_updates
-            ] = (
+            text_encoder.text_model.embeddings.token_embedding.weight.data[index_no_updates] = (
                 self.embeddings_settings[f"original_embeddings_{idx}"][index_no_updates]
                 .to(device=text_encoder.device)
                 .to(dtype=text_encoder.dtype)
@@ -895,17 +863,11 @@ class TokenEmbeddingsHandler:
             std_token_embedding = self.embeddings_settings[f"std_token_embedding_{idx}"]
 
             index_updates = ~index_no_updates
-            new_embeddings = (
-                text_encoder.text_model.embeddings.token_embedding.weight.data[
-                    index_updates
-                ]
-            )
+            new_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates]
             off_ratio = std_token_embedding / new_embeddings.std()
 
             new_embeddings = new_embeddings * (off_ratio**0.1)
-            text_encoder.text_model.embeddings.token_embedding.weight.data[
-                index_updates
-            ] = new_embeddings
+            text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates] = new_embeddings
 
 
 class DreamBoothDataset(Dataset):
@@ -989,17 +951,13 @@ class DreamBoothDataset(Dataset):
                 # create final list of captions according to --repeats
                 self.custom_instance_prompts = []
                 for caption in custom_instance_prompts:
-                    self.custom_instance_prompts.extend(
-                        itertools.repeat(caption, repeats)
-                    )
+                    self.custom_instance_prompts.extend(itertools.repeat(caption, repeats))
         else:
             self.instance_data_root = Path(instance_data_root)
             if not self.instance_data_root.exists():
                 raise ValueError("Instance images root doesn't exists.")
 
-            instance_images = [
-                Image.open(path) for path in list(Path(instance_data_root).iterdir())
-            ]
+            instance_images = [Image.open(path) for path in list(Path(instance_data_root).iterdir())]
             self.custom_instance_prompts = None
 
         self.instance_images = []
@@ -1022,12 +980,8 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(
-                    size, interpolation=transforms.InterpolationMode.BILINEAR
-                ),
-                transforms.CenterCrop(size)
-                if center_crop
-                else transforms.RandomCrop(size),
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -1063,9 +1017,7 @@ class DreamBoothDataset(Dataset):
             example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
-            class_image = Image.open(
-                self.class_images_path[index % self.num_class_images]
-            )
+            class_image = Image.open(self.class_images_path[index % self.num_class_images])
             class_image = exif_transpose(class_image)
 
             if not class_image.mode == "RGB":
@@ -1150,9 +1102,7 @@ def main(args):
 
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(
-        project_dir=args.output_dir, logging_dir=logging_dir
-    )
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
     kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -1164,9 +1114,7 @@ def main(args):
 
     if args.report_to == "wandb":
         if not is_wandb_available():
-            raise ImportError(
-                "Make sure to install wandb if you want to use it for logging during training."
-            )
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
         import wandb
 
     # Make one log on every process with the configuration for debugging.
@@ -1195,9 +1143,7 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            torch_dtype = (
-                torch.float16 if accelerator.device.type == "cuda" else torch.float32
-            )
+            torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
             if args.prior_generation_precision == "fp32":
                 torch_dtype = torch.float32
             elif args.prior_generation_precision == "fp16":
@@ -1216,9 +1162,7 @@ def main(args):
             logger.info(f"Number of class images to sample: {num_new_images}.")
 
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
-            sample_dataloader = torch.utils.data.DataLoader(
-                sample_dataset, batch_size=args.sample_batch_size
-            )
+            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
 
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
@@ -1232,10 +1176,7 @@ def main(args):
 
                 for i, image in enumerate(images):
                     hash_image = hashlib.sha1(image.tobytes()).hexdigest()
-                    image_filename = (
-                        class_images_dir
-                        / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
-                    )
+                    image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
             del pipeline
@@ -1250,9 +1191,7 @@ def main(args):
         model_id = args.hub_model_id or Path(args.output_dir).name
         repo_id = None
         if args.push_to_hub:
-            repo_id = create_repo(
-                repo_id=model_id, exist_ok=True, token=args.hub_token
-            ).repo_id
+            repo_id = create_repo(repo_id=model_id, exist_ok=True, token=args.hub_token).repo_id
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
@@ -1269,9 +1208,7 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="scheduler"
-    )
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
@@ -1307,20 +1244,15 @@ def main(args):
         token_idx = 0
         for i, token in enumerate(token_abstraction_list):
             token_abstraction_dict[token] = [
-                f"<s{token_idx + i + j}>"
-                for j in range(args.num_new_tokens_per_abstraction)
+                f"<s{token_idx + i + j}>" for j in range(args.num_new_tokens_per_abstraction)
             ]
             token_idx += args.num_new_tokens_per_abstraction - 1
 
         # replace instances of --token_abstraction in --instance_prompt with the new tokens: "<si><si+1>" etc.
         for token_abs, token_replacement in token_abstraction_dict.items():
-            args.instance_prompt = args.instance_prompt.replace(
-                token_abs, "".join(token_replacement)
-            )
+            args.instance_prompt = args.instance_prompt.replace(token_abs, "".join(token_replacement))
             if args.with_prior_preservation:
-                args.class_prompt = args.class_prompt.replace(
-                    token_abs, "".join(token_replacement)
-                )
+                args.class_prompt = args.class_prompt.replace(token_abs, "".join(token_replacement))
 
         # initialize the new tokens for textual inversion
         embedding_handler = TokenEmbeddingsHandler([text_encoder_one], [tokenizer_one])
@@ -1362,9 +1294,7 @@ def main(args):
                 )
             unet.enable_xformers_memory_efficient_attention()
         else:
-            raise ValueError(
-                "xformers is not available. Make sure it is installed correctly"
-            )
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -1427,17 +1357,11 @@ def main(args):
 
             for model in models:
                 if isinstance(model, type(accelerator.unwrap_model(unet))):
-                    unet_lora_layers_to_save = convert_state_dict_to_diffusers(
-                        get_peft_model_state_dict(model)
-                    )
-                elif isinstance(
-                    model, type(accelerator.unwrap_model(text_encoder_one))
-                ):
+                    unet_lora_layers_to_save = convert_state_dict_to_diffusers(get_peft_model_state_dict(model))
+                elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
                     if args.train_text_encoder:
-                        text_encoder_one_lora_layers_to_save = (
-                            convert_state_dict_to_diffusers(
-                                get_peft_model_state_dict(model)
-                            )
+                        text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(model)
                         )
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1450,9 +1374,7 @@ def main(args):
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
             )
         if args.train_text_encoder_ti:
-            embedding_handler.save_embeddings(
-                f"{output_dir}/{args.output_dir}_emb.safetensors"
-            )
+            embedding_handler.save_embeddings(f"{output_dir}/{args.output_dir}_emb.safetensors")
 
     def load_model_hook(models, input_dir):
         unet_ = None
@@ -1469,13 +1391,9 @@ def main(args):
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
         lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(
-            lora_state_dict, network_alphas=network_alphas, unet=unet_
-        )
+        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
 
-        text_encoder_state_dict = {
-            k: v for k, v in lora_state_dict.items() if "text_encoder." in k
-        }
+        text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
         LoraLoaderMixin.load_lora_into_text_encoder(
             text_encoder_state_dict,
             network_alphas=network_alphas,
@@ -1492,18 +1410,13 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate
-            * args.gradient_accumulation_steps
-            * args.train_batch_size
-            * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     unet_lora_parameters = list(filter(lambda p: p.requires_grad, unet.parameters()))
 
     if args.train_text_encoder:
-        text_lora_parameters_one = list(
-            filter(lambda p: p.requires_grad, text_encoder_one.parameters())
-        )
+        text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
 
     # If neither --train_text_encoder nor --train_text_encoder_ti, text_encoders remain frozen during training
     freeze_text_encoder = not (args.train_text_encoder or args.train_text_encoder_ti)
@@ -1567,9 +1480,7 @@ def main(args):
         try:
             import prodigyopt
         except ImportError:
-            raise ImportError(
-                "To use Prodigy, please install the prodigyopt library: `pip install prodigyopt`"
-            )
+            raise ImportError("To use Prodigy, please install the prodigyopt library: `pip install prodigyopt`")
 
         optimizer_class = prodigyopt.Prodigy
 
@@ -1611,9 +1522,7 @@ def main(args):
         train_text_encoder_ti=args.train_text_encoder_ti,
         caption_column=args.caption_column,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        token_abstraction_dict=token_abstraction_dict
-        if args.train_text_encoder_ti
-        else None,
+        token_abstraction_dict=token_abstraction_dict if args.train_text_encoder_ti else None,
         class_num=args.num_class_images,
         size=args.resolution,
         repeats=args.repeats,
@@ -1642,16 +1551,12 @@ def main(args):
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if freeze_text_encoder and not train_dataset.custom_instance_prompts:
-        instance_prompt_hidden_states = compute_text_embeddings(
-            args.instance_prompt, text_encoders, tokenizers
-        )
+        instance_prompt_hidden_states = compute_text_embeddings(args.instance_prompt, text_encoders, tokenizers)
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
         if freeze_text_encoder:
-            class_prompt_hidden_states = compute_text_embeddings(
-                args.class_prompt, text_encoders, tokenizers
-            )
+            class_prompt_hidden_states = compute_text_embeddings(args.class_prompt, text_encoders, tokenizers)
 
     # Clear the memory here
     if freeze_text_encoder and not train_dataset.custom_instance_prompts:
@@ -1666,20 +1571,14 @@ def main(args):
         if freeze_text_encoder:
             prompt_embeds = instance_prompt_hidden_states
             if args.with_prior_preservation:
-                prompt_embeds = torch.cat(
-                    [prompt_embeds, class_prompt_hidden_states], dim=0
-                )
+                prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
 
         # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
         # batch prompts on all training steps
         else:
-            tokens_one = tokenize_prompt(
-                tokenizer_one, args.instance_prompt, add_special_tokens
-            )
+            tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt, add_special_tokens)
             if args.with_prior_preservation:
-                class_tokens_one = tokenize_prompt(
-                    tokenizer_one, args.class_prompt, add_special_tokens
-                )
+                class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt, add_special_tokens)
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
 
     if args.train_text_encoder_ti and args.validation_prompt:
@@ -1688,9 +1587,7 @@ def main(args):
             token_abs,
             token_replacement,
         ) in train_dataset.token_abstraction_dict.items():
-            args.validation_prompt = args.validation_prompt.replace(
-                token_abs, "".join(token_replacement)
-            )
+            args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
     print("validation prompt:", args.validation_prompt)
 
     if args.cache_latents:
@@ -1709,9 +1606,7 @@ def main(args):
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -1733,18 +1628,14 @@ def main(args):
             optimizer,
             train_dataloader,
             lr_scheduler,
-        ) = accelerator.prepare(
-            unet, text_encoder_one, optimizer, train_dataloader, lr_scheduler
-        )
+        ) = accelerator.prepare(unet, text_encoder_one, optimizer, train_dataloader, lr_scheduler)
     else:
         unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
             unet, optimizer, train_dataloader, lr_scheduler
         )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -1756,20 +1647,14 @@ def main(args):
         accelerator.init_trackers("dreambooth-lora-sd-15", config=vars(args))
 
     # Train!
-    total_batch_size = (
-        args.train_batch_size
-        * accelerator.num_processes
-        * args.gradient_accumulation_steps
-    )
+    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num batches each epoch = {len(train_dataloader)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(
-        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
-    )
+    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
@@ -1812,13 +1697,9 @@ def main(args):
     )
 
     if args.train_text_encoder:
-        num_train_epochs_text_encoder = int(
-            args.train_text_encoder_frac * args.num_train_epochs
-        )
+        num_train_epochs_text_encoder = int(args.train_text_encoder_frac * args.num_train_epochs)
     elif args.train_text_encoder_ti:  # args.train_text_encoder_ti
-        num_train_epochs_text_encoder = int(
-            args.train_text_encoder_ti_frac * args.num_train_epochs
-        )
+        num_train_epochs_text_encoder = int(args.train_text_encoder_ti_frac * args.num_train_epochs)
 
     for epoch in range(first_epoch, args.num_train_epochs):
         # if performing any kind of optimization of text_encoder params
@@ -1843,14 +1724,10 @@ def main(args):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
                     if freeze_text_encoder:
-                        prompt_embeds = compute_text_embeddings(
-                            prompts, text_encoders, tokenizers
-                        )
+                        prompt_embeds = compute_text_embeddings(prompts, text_encoders, tokenizers)
 
                     else:
-                        tokens_one = tokenize_prompt(
-                            tokenizer_one, prompts, add_special_tokens
-                        )
+                        tokens_one = tokenize_prompt(tokenizer_one, prompts, add_special_tokens)
 
                 if args.cache_latents:
                     model_input = latents_cache[step].sample()
@@ -1882,27 +1759,19 @@ def main(args):
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_model_input = noise_scheduler.add_noise(
-                    model_input, noise, timesteps
-                )
+                noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
                 if not train_dataset.custom_instance_prompts:
-                    elems_to_repeat_text_embeds = (
-                        bsz // 2 if args.with_prior_preservation else bsz
-                    )
+                    elems_to_repeat_text_embeds = bsz // 2 if args.with_prior_preservation else bsz
 
                 else:
                     elems_to_repeat_text_embeds = 1
 
                 # Predict the noise residual
                 if freeze_text_encoder:
-                    prompt_embeds_input = prompt_embeds.repeat(
-                        elems_to_repeat_text_embeds, 1, 1
-                    )
-                    model_pred = unet(
-                        noisy_model_input, timesteps, prompt_embeds_input
-                    ).sample
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
+                    model_pred = unet(noisy_model_input, timesteps, prompt_embeds_input).sample
                 else:
                     prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one],
@@ -1910,12 +1779,8 @@ def main(args):
                         prompt=None,
                         text_input_ids_list=[tokens_one],
                     )
-                    prompt_embeds_input = prompt_embeds.repeat(
-                        elems_to_repeat_text_embeds, 1, 1
-                    )
-                    model_pred = unet(
-                        noisy_model_input, timesteps, prompt_embeds_input
-                    ).sample
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
+                    model_pred = unet(noisy_model_input, timesteps, prompt_embeds_input).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -1923,9 +1788,7 @@ def main(args):
                 elif noise_scheduler.config.prediction_type == "v_prediction":
                     target = noise_scheduler.get_velocity(model_input, noise, timesteps)
                 else:
-                    raise ValueError(
-                        f"Unknown prediction type {noise_scheduler.config.prediction_type}"
-                    )
+                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
@@ -1933,14 +1796,10 @@ def main(args):
                     target, target_prior = torch.chunk(target, 2, dim=0)
 
                     # Compute prior loss
-                    prior_loss = F.mse_loss(
-                        model_pred_prior.float(), target_prior.float(), reduction="mean"
-                    )
+                    prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
 
                 if args.snr_gamma is None:
-                    loss = F.mse_loss(
-                        model_pred.float(), target.float(), reduction="mean"
-                    )
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 else:
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
@@ -1969,13 +1828,8 @@ def main(args):
                         # Epsilon and sample both use the same loss weights.
                         mse_loss_weights = base_weight
 
-                    loss = F.mse_loss(
-                        model_pred.float(), target.float(), reduction="none"
-                    )
-                    loss = (
-                        loss.mean(dim=list(range(1, len(loss.shape))))
-                        * mse_loss_weights
-                    )
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
 
                 if args.with_prior_preservation:
@@ -2009,36 +1863,24 @@ def main(args):
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [
-                                d for d in checkpoints if d.startswith("checkpoint")
-                            ]
-                            checkpoints = sorted(
-                                checkpoints, key=lambda x: int(x.split("-")[1])
-                            )
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
                             # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
                             if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = (
-                                    len(checkpoints) - args.checkpoints_total_limit + 1
-                                )
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
                                 removing_checkpoints = checkpoints[0:num_to_remove]
 
                                 logger.info(
                                     f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
                                 )
-                                logger.info(
-                                    f"removing checkpoints: {', '.join(removing_checkpoints)}"
-                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
                                 for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(
-                                        args.output_dir, removing_checkpoint
-                                    )
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
                                     shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(
-                            args.output_dir, f"checkpoint-{global_step}"
-                        )
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
@@ -2050,10 +1892,7 @@ def main(args):
                 break
 
         if accelerator.is_main_process:
-            if (
-                args.validation_prompt is not None
-                and epoch % args.validation_epochs == 0
-            ):
+            if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 logger.info(
                     f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                     f" {args.validation_prompt}."
@@ -2096,11 +1935,7 @@ def main(args):
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
-                generator = (
-                    torch.Generator(device=accelerator.device).manual_seed(args.seed)
-                    if args.seed
-                    else None
-                )
+                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
                 with torch.cuda.amp.autocast():
@@ -2112,16 +1947,12 @@ def main(args):
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
                         np_images = np.stack([np.asarray(img) for img in images])
-                        tracker.writer.add_images(
-                            "validation", np_images, epoch, dataformats="NHWC"
-                        )
+                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
                     if tracker.name == "wandb":
                         tracker.log(
                             {
                                 "validation": [
-                                    wandb.Image(
-                                        image, caption=f"{i}: {args.validation_prompt}"
-                                    )
+                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
                                     for i, image in enumerate(images)
                                 ]
                             }
@@ -2135,9 +1966,7 @@ def main(args):
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
         unet = unet.to(torch.float32)
-        unet_lora_layers = convert_state_dict_to_diffusers(
-            get_peft_model_state_dict(unet)
-        )
+        unet_lora_layers = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
 
         if args.train_text_encoder:
             text_encoder_one = accelerator.unwrap_model(text_encoder_one)
@@ -2163,9 +1992,7 @@ def main(args):
             # Load previous pipeline
             vae = AutoencoderKL.from_pretrained(
                 vae_path,
-                subfolder="vae"
-                if args.pretrained_vae_model_name_or_path is None
-                else None,
+                subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
                 revision=args.revision,
                 variant=args.variant,
                 torch_dtype=weight_dtype,
@@ -2189,9 +2016,7 @@ def main(args):
 
                 scheduler_args["variance_type"] = variance_type
 
-            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
-                pipeline.scheduler.config, **scheduler_args
-            )
+            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
@@ -2210,40 +2035,28 @@ def main(args):
                 )
             # run inference
             pipeline = pipeline.to(accelerator.device)
-            generator = (
-                torch.Generator(device=accelerator.device).manual_seed(args.seed)
-                if args.seed
-                else None
-            )
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
             images = [
-                pipeline(
-                    args.validation_prompt, num_inference_steps=25, generator=generator
-                ).images[0]
+                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
                 for _ in range(args.num_validation_images)
             ]
 
             for tracker in accelerator.trackers:
                 if tracker.name == "tensorboard":
                     np_images = np.stack([np.asarray(img) for img in images])
-                    tracker.writer.add_images(
-                        "test", np_images, epoch, dataformats="NHWC"
-                    )
+                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
                 if tracker.name == "wandb":
                     tracker.log(
                         {
                             "test": [
-                                wandb.Image(
-                                    image, caption=f"{i}: {args.validation_prompt}"
-                                )
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
                                 for i, image in enumerate(images)
                             ]
                         }
                     )
 
         # Conver to WebUI format
-        lora_state_dict = load_file(
-            f"{args.output_dir}/pytorch_lora_weights.safetensors"
-        )
+        lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
         peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
         kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
         save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")

@@ -73,9 +73,7 @@ WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Simple example of a training script for InstructPix2Pix."
-    )
+    parser = argparse.ArgumentParser(description="Simple example of a training script for InstructPix2Pix.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -188,9 +186,7 @@ def parse_args():
         default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
-    parser.add_argument(
-        "--seed", type=int, default=None, help="A seed for reproducible training."
-    )
+    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
@@ -284,9 +280,7 @@ def parse_args():
             " https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices"
         ),
     )
-    parser.add_argument(
-        "--use_ema", action="store_true", help="Whether to use EMA model."
-    )
+    parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument(
         "--non_ema_revision",
         type=str,
@@ -317,18 +311,14 @@ def parse_args():
         default=0.999,
         help="The beta2 parameter for the Adam optimizer.",
     )
-    parser.add_argument(
-        "--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use."
-    )
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
     parser.add_argument(
         "--adam_epsilon",
         type=float,
         default=1e-08,
         help="Epsilon value for the Adam optimizer",
     )
-    parser.add_argument(
-        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
-    )
+    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument(
         "--push_to_hub",
         action="store_true",
@@ -457,9 +447,7 @@ def main():
             ),
         )
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-    accelerator_project_config = ProjectConfiguration(
-        project_dir=args.output_dir, logging_dir=logging_dir
-    )
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
@@ -471,9 +459,7 @@ def main():
 
     if args.report_to == "wandb":
         if not is_wandb_available():
-            raise ImportError(
-                "Make sure to install wandb if you want to use it for logging during training."
-            )
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
         import wandb
 
     # Make one log on every process with the configuration for debugging.
@@ -509,9 +495,7 @@ def main():
             ).repo_id
 
     # Load scheduler, tokenizer and models.
-    noise_scheduler = DDPMScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="scheduler"
-    )
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
@@ -563,9 +547,7 @@ def main():
 
     # Create EMA for the unet.
     if args.use_ema:
-        ema_unet = EMAModel(
-            unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config
-        )
+        ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -578,9 +560,7 @@ def main():
                 )
             unet.enable_xformers_memory_efficient_attention()
         else:
-            raise ValueError(
-                "xformers is not available. Make sure it is installed correctly"
-            )
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -603,9 +583,7 @@ def main():
 
         def load_model_hook(models, input_dir):
             if args.use_ema:
-                load_model = EMAModel.from_pretrained(
-                    os.path.join(input_dir, "unet_ema"), UNet2DConditionModel
-                )
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
                 ema_unet.load_state_dict(load_model.state_dict())
                 ema_unet.to(accelerator.device)
                 del load_model
@@ -615,9 +593,7 @@ def main():
                 model = models.pop()
 
                 # load diffusers style into model
-                load_model = UNet2DConditionModel.from_pretrained(
-                    input_dir, subfolder="unet"
-                )
+                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
                 model.register_to_config(**load_model.config)
 
                 model.load_state_dict(load_model.state_dict())
@@ -636,10 +612,7 @@ def main():
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate
-            * args.gradient_accumulation_steps
-            * args.train_batch_size
-            * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Initialize the optimizer
@@ -694,9 +667,7 @@ def main():
     # 6. Get the column names for input/target.
     dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
     if args.original_image_column is None:
-        original_image_column = (
-            dataset_columns[0] if dataset_columns is not None else column_names[0]
-        )
+        original_image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
     else:
         original_image_column = args.original_image_column
         if original_image_column not in column_names:
@@ -704,9 +675,7 @@ def main():
                 f"--original_image_column' value '{args.original_image_column}' needs to be one of: {', '.join(column_names)}"
             )
     if args.edit_prompt_column is None:
-        edit_prompt_column = (
-            dataset_columns[1] if dataset_columns is not None else column_names[1]
-        )
+        edit_prompt_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
     else:
         edit_prompt_column = args.edit_prompt_column
         if edit_prompt_column not in column_names:
@@ -714,9 +683,7 @@ def main():
                 f"--edit_prompt_column' value '{args.edit_prompt_column}' needs to be one of: {', '.join(column_names)}"
             )
     if args.edited_image_column is None:
-        edited_image_column = (
-            dataset_columns[2] if dataset_columns is not None else column_names[2]
-        )
+        edited_image_column = dataset_columns[2] if dataset_columns is not None else column_names[2]
     else:
         edited_image_column = args.edited_image_column
         if edited_image_column not in column_names:
@@ -739,27 +706,17 @@ def main():
     # Preprocessing the datasets.
     train_transforms = transforms.Compose(
         [
-            transforms.CenterCrop(args.resolution)
-            if args.center_crop
-            else transforms.RandomCrop(args.resolution),
-            transforms.RandomHorizontalFlip()
-            if args.random_flip
-            else transforms.Lambda(lambda x: x),
+            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
         ]
     )
 
     def preprocess_images(examples):
         original_images = np.concatenate(
-            [
-                convert_to_np(image, args.resolution)
-                for image in examples[original_image_column]
-            ]
+            [convert_to_np(image, args.resolution) for image in examples[original_image_column]]
         )
         edited_images = np.concatenate(
-            [
-                convert_to_np(image, args.resolution)
-                for image in examples[edited_image_column]
-            ]
+            [convert_to_np(image, args.resolution) for image in examples[edited_image_column]]
         )
         # We need to ensure that the original and the edited images undergo the same
         # augmentation transforms.
@@ -775,9 +732,7 @@ def main():
         # applying the transformations, we need to separate them and reshape
         # them accordingly.
         original_images, edited_images = preprocessed_images.chunk(2)
-        original_images = original_images.reshape(
-            -1, 3, args.resolution, args.resolution
-        )
+        original_images = original_images.reshape(-1, 3, args.resolution, args.resolution)
         edited_images = edited_images.reshape(-1, 3, args.resolution, args.resolution)
 
         # Collate the preprocessed images into the `examples`.
@@ -791,27 +746,15 @@ def main():
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
-            dataset["train"] = (
-                dataset["train"]
-                .shuffle(seed=args.seed)
-                .select(range(args.max_train_samples))
-            )
+            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
         train_dataset = dataset["train"].with_transform(preprocess_train)
 
     def collate_fn(examples):
-        original_pixel_values = torch.stack(
-            [example["original_pixel_values"] for example in examples]
-        )
-        original_pixel_values = original_pixel_values.to(
-            memory_format=torch.contiguous_format
-        ).float()
-        edited_pixel_values = torch.stack(
-            [example["edited_pixel_values"] for example in examples]
-        )
-        edited_pixel_values = edited_pixel_values.to(
-            memory_format=torch.contiguous_format
-        ).float()
+        original_pixel_values = torch.stack([example["original_pixel_values"] for example in examples])
+        original_pixel_values = original_pixel_values.to(memory_format=torch.contiguous_format).float()
+        edited_pixel_values = torch.stack([example["edited_pixel_values"] for example in examples])
+        edited_pixel_values = edited_pixel_values.to(memory_format=torch.contiguous_format).float()
         input_ids = torch.stack([example["input_ids"] for example in examples])
         return {
             "original_pixel_values": original_pixel_values,
@@ -830,9 +773,7 @@ def main():
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -865,9 +806,7 @@ def main():
     vae.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -879,19 +818,13 @@ def main():
         accelerator.init_trackers("instruct-pix2pix", config=vars(args))
 
     # Train!
-    total_batch_size = (
-        args.train_batch_size
-        * accelerator.num_processes
-        * args.gradient_accumulation_steps
-    )
+    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(
-        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
-    )
+    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
@@ -920,9 +853,7 @@ def main():
 
             resume_global_step = global_step * args.gradient_accumulation_steps
             first_epoch = global_step // num_update_steps_per_epoch
-            resume_step = resume_global_step % (
-                num_update_steps_per_epoch * args.gradient_accumulation_steps
-            )
+            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(
@@ -936,11 +867,7 @@ def main():
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
-            if (
-                args.resume_from_checkpoint
-                and epoch == first_epoch
-                and step < resume_step
-            ):
+            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
                 if step % args.gradient_accumulation_steps == 0:
                     progress_bar.update(1)
                 continue
@@ -949,9 +876,7 @@ def main():
                 # We want to learn the denoising process w.r.t the edited images which
                 # are conditioned on the original image (which was edited) and the edit instruction.
                 # So, first, convert images to latent space.
-                latents = vae.encode(
-                    batch["edited_pixel_values"].to(weight_dtype)
-                ).latent_dist.sample()
+                latents = vae.encode(batch["edited_pixel_values"].to(weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
@@ -975,45 +900,31 @@ def main():
 
                 # Get the additional image embedding for conditioning.
                 # Instead of getting a diagonal Gaussian here, we simply take the mode.
-                original_image_embeds = vae.encode(
-                    batch["original_pixel_values"].to(weight_dtype)
-                ).latent_dist.mode()
+                original_image_embeds = vae.encode(batch["original_pixel_values"].to(weight_dtype)).latent_dist.mode()
 
                 # Conditioning dropout to support classifier-free guidance during inference. For more details
                 # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
                 if args.conditioning_dropout_prob is not None:
-                    random_p = torch.rand(
-                        bsz, device=latents.device, generator=generator
-                    )
+                    random_p = torch.rand(bsz, device=latents.device, generator=generator)
                     # Sample masks for the edit prompts.
                     prompt_mask = random_p < 2 * args.conditioning_dropout_prob
                     prompt_mask = prompt_mask.reshape(bsz, 1, 1)
                     # Final text conditioning.
-                    null_conditioning = text_encoder(
-                        tokenize_captions([""]).to(accelerator.device)
-                    )[0]
-                    encoder_hidden_states = torch.where(
-                        prompt_mask, null_conditioning, encoder_hidden_states
-                    )
+                    null_conditioning = text_encoder(tokenize_captions([""]).to(accelerator.device))[0]
+                    encoder_hidden_states = torch.where(prompt_mask, null_conditioning, encoder_hidden_states)
 
                     # Sample masks for the original images.
                     image_mask_dtype = original_image_embeds.dtype
                     image_mask = 1 - (
-                        (random_p >= args.conditioning_dropout_prob).to(
-                            image_mask_dtype
-                        )
-                        * (random_p < 3 * args.conditioning_dropout_prob).to(
-                            image_mask_dtype
-                        )
+                        (random_p >= args.conditioning_dropout_prob).to(image_mask_dtype)
+                        * (random_p < 3 * args.conditioning_dropout_prob).to(image_mask_dtype)
                     )
                     image_mask = image_mask.reshape(bsz, 1, 1, 1)
                     # Final image conditioning.
                     original_image_embeds = image_mask * original_image_embeds
 
                 # Concatenate the `original_image_embeds` with the `noisy_latents`.
-                concatenated_noisy_latents = torch.cat(
-                    [noisy_latents, original_image_embeds], dim=1
-                )
+                concatenated_noisy_latents = torch.cat([noisy_latents, original_image_embeds], dim=1)
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -1021,9 +932,7 @@ def main():
                 elif noise_scheduler.config.prediction_type == "v_prediction":
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
-                    raise ValueError(
-                        f"Unknown prediction type {noise_scheduler.config.prediction_type}"
-                    )
+                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
                 model_pred = unet(
@@ -1060,36 +969,24 @@ def main():
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [
-                                d for d in checkpoints if d.startswith("checkpoint")
-                            ]
-                            checkpoints = sorted(
-                                checkpoints, key=lambda x: int(x.split("-")[1])
-                            )
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
                             # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
                             if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = (
-                                    len(checkpoints) - args.checkpoints_total_limit + 1
-                                )
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
                                 removing_checkpoints = checkpoints[0:num_to_remove]
 
                                 logger.info(
                                     f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
                                 )
-                                logger.info(
-                                    f"removing checkpoints: {', '.join(removing_checkpoints)}"
-                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
                                 for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(
-                                        args.output_dir, removing_checkpoint
-                                    )
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
                                     shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(
-                            args.output_dir, f"checkpoint-{global_step}"
-                        )
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 

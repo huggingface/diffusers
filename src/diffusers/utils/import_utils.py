@@ -300,8 +300,10 @@ except importlib_metadata.PackageNotFoundError:
 def is_torch_available():
     return _torch_available
 
+
 def is_torch2_available():
     return hasattr(F, "scaled_dot_product_attention")
+
 
 def is_torch_xla_available():
     return _torch_xla_available

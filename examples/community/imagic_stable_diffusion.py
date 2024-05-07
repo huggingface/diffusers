@@ -180,9 +180,7 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             self.to(device)
 
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # Freeze vae and unet
         self.vae.requires_grad_(False)
@@ -240,9 +238,7 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
 
         global_step = 0
 
-        logger.info(
-            "First optimizing the text embedding to better reconstruct the init image"
-        )
+        logger.info("First optimizing the text embedding to better reconstruct the init image")
         for _ in range(text_embedding_optimization_steps):
             with accelerator.accumulate(text_embeddings):
                 # Sample noise that we'll add to the latents
@@ -251,18 +247,12 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = self.scheduler.add_noise(
-                    image_latents, noise, timesteps
-                )
+                noisy_latents = self.scheduler.add_noise(image_latents, noise, timesteps)
 
                 # Predict the noise residual
                 noise_pred = self.unet(noisy_latents, timesteps, text_embeddings).sample
 
-                loss = (
-                    F.mse_loss(noise_pred, noise, reduction="none")
-                    .mean([1, 2, 3])
-                    .mean()
-                )
+                loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
                 accelerator.backward(loss)
 
                 optimizer.step()
@@ -273,9 +263,7 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 progress_bar.update(1)
                 global_step += 1
 
-            logs = {
-                "loss": loss.detach().item()
-            }  # , "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {"loss": loss.detach().item()}  # , "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
@@ -295,9 +283,7 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             disable=not accelerator.is_local_main_process,
         )
 
-        logger.info(
-            "Next fine tuning the entire model to better reconstruct the init image"
-        )
+        logger.info("Next fine tuning the entire model to better reconstruct the init image")
         for _ in range(model_fine_tuning_optimization_steps):
             with accelerator.accumulate(self.unet.parameters()):
                 # Sample noise that we'll add to the latents
@@ -306,18 +292,12 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = self.scheduler.add_noise(
-                    image_latents, noise, timesteps
-                )
+                noisy_latents = self.scheduler.add_noise(image_latents, noise, timesteps)
 
                 # Predict the noise residual
                 noise_pred = self.unet(noisy_latents, timesteps, text_embeddings).sample
 
-                loss = (
-                    F.mse_loss(noise_pred, noise, reduction="none")
-                    .mean([1, 2, 3])
-                    .mean()
-                )
+                loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
                 accelerator.backward(loss)
 
                 optimizer.step()
@@ -328,9 +308,7 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 progress_bar.update(1)
                 global_step += 1
 
-            logs = {
-                "loss": loss.detach().item()
-            }  # , "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {"loss": loss.detach().item()}  # , "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
@@ -390,21 +368,13 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             (nsfw) content, according to the `safety_checker`.
         """
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
         if self.text_embeddings is None:
-            raise ValueError(
-                "Please run the pipe.train() before trying to generate an image."
-            )
+            raise ValueError("Please run the pipe.train() before trying to generate an image.")
         if self.text_embeddings_orig is None:
-            raise ValueError(
-                "Please run the pipe.train() before trying to generate an image."
-            )
+            raise ValueError("Please run the pipe.train() before trying to generate an image.")
 
-        text_embeddings = (
-            alpha * self.text_embeddings_orig + (1 - alpha) * self.text_embeddings
-        )
+        text_embeddings = alpha * self.text_embeddings_orig + (1 - alpha) * self.text_embeddings
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -421,9 +391,7 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 truncation=True,
                 return_tensors="pt",
             )
-            uncond_embeddings = self.text_encoder(
-                uncond_input.input_ids.to(self.device)
-            )[0]
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = uncond_embeddings.shape[1]
@@ -443,9 +411,9 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         latents_dtype = text_embeddings.dtype
         if self.device.type == "mps":
             # randn does not exist on mps
-            latents = torch.randn(
-                latents_shape, generator=generator, device="cpu", dtype=latents_dtype
-            ).to(self.device)
+            latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
+                self.device
+            )
         else:
             latents = torch.randn(
                 latents_shape,
@@ -468,36 +436,26 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
-        accepts_eta = "eta" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
-            latent_model_input = (
-                torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            )
+            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
-            noise_pred = self.unet(
-                latent_model_input, t, encoder_hidden_states=text_embeddings
-            ).sample
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
             # perform guidance
             if do_classifier_free_guidance:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance_scale * (
-                    noise_pred_text - noise_pred_uncond
-                )
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(
-                noise_pred, t, latents, **extra_step_kwargs
-            ).prev_sample
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
@@ -508,9 +466,9 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(
-                self.numpy_to_pil(image), return_tensors="pt"
-            ).to(self.device)
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(
+                self.device
+            )
             image, has_nsfw_concept = self.safety_checker(
                 images=image,
                 clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype),
@@ -524,6 +482,4 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(
-            images=image, nsfw_content_detected=has_nsfw_concept
-        )
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

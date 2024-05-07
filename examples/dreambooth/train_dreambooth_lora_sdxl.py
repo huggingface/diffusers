@@ -163,9 +163,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="openrail++"
-        if "playground" not in base_model
-        else "playground-v2dot5-community",
+        license="openrail++" if "playground" not in base_model else "playground-v2dot5-community",
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
@@ -213,19 +211,13 @@ def log_validation(
 
             scheduler_args["variance_type"] = variance_type
 
-        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
-            pipeline.scheduler.config, **scheduler_args
-        )
+        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = (
-        torch.Generator(device=accelerator.device).manual_seed(args.seed)
-        if args.seed
-        else None
-    )
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
     enable_autocast = True
@@ -240,10 +232,7 @@ def log_validation(
         accelerator.device.type,
         enabled=enable_autocast,
     ):
-        images = [
-            pipeline(**pipeline_args, generator=generator).images[0]
-            for _ in range(args.num_validation_images)
-        ]
+        images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
@@ -254,8 +243,7 @@ def log_validation(
             tracker.log(
                 {
                     phase_name: [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                        for i, image in enumerate(images)
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
                     ]
                 }
             )
@@ -446,9 +434,7 @@ def parse_args(input_args=None):
         action="store_true",
         help="Flag to additionally generate final state dict in the Kohya format so that it becomes compatible with A111, Comfy, Kohya, etc.",
     )
-    parser.add_argument(
-        "--seed", type=int, default=None, help="A seed for reproducible training."
-    )
+    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
@@ -666,9 +652,7 @@ def parse_args(input_args=None):
         help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default. "
         "Ignored if optimizer is adamW",
     )
-    parser.add_argument(
-        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
-    )
+    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument(
         "--push_to_hub",
         action="store_true",
@@ -769,9 +753,7 @@ def parse_args(input_args=None):
         raise ValueError("Specify either `--dataset_name` or `--instance_data_dir`")
 
     if args.dataset_name is not None and args.instance_data_dir is not None:
-        raise ValueError(
-            "Specify only one of `--dataset_name` or `--instance_data_dir`"
-        )
+        raise ValueError("Specify only one of `--dataset_name` or `--instance_data_dir`")
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -785,13 +767,9 @@ def parse_args(input_args=None):
     else:
         # logger is not available yet
         if args.class_data_dir is not None:
-            warnings.warn(
-                "You need not use --class_data_dir without --with_prior_preservation."
-            )
+            warnings.warn("You need not use --class_data_dir without --with_prior_preservation.")
         if args.class_prompt is not None:
-            warnings.warn(
-                "You need not use --class_prompt without --with_prior_preservation."
-            )
+            warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
 
@@ -870,17 +848,13 @@ class DreamBoothDataset(Dataset):
                 # create final list of captions according to --repeats
                 self.custom_instance_prompts = []
                 for caption in custom_instance_prompts:
-                    self.custom_instance_prompts.extend(
-                        itertools.repeat(caption, repeats)
-                    )
+                    self.custom_instance_prompts.extend(itertools.repeat(caption, repeats))
         else:
             self.instance_data_root = Path(instance_data_root)
             if not self.instance_data_root.exists():
                 raise ValueError("Instance images root doesn't exists.")
 
-            instance_images = [
-                Image.open(path) for path in list(Path(instance_data_root).iterdir())
-            ]
+            instance_images = [Image.open(path) for path in list(Path(instance_data_root).iterdir())]
             self.custom_instance_prompts = None
 
         self.instance_images = []
@@ -891,12 +865,8 @@ class DreamBoothDataset(Dataset):
         self.original_sizes = []
         self.crop_top_lefts = []
         self.pixel_values = []
-        train_resize = transforms.Resize(
-            size, interpolation=transforms.InterpolationMode.BILINEAR
-        )
-        train_crop = (
-            transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
-        )
+        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+        train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
         train_flip = transforms.RandomHorizontalFlip(p=1.0)
         train_transforms = transforms.Compose(
             [
@@ -918,9 +888,7 @@ class DreamBoothDataset(Dataset):
                 x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
                 image = train_crop(image)
             else:
-                y1, x1, h, w = train_crop.get_params(
-                    image, (args.resolution, args.resolution)
-                )
+                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
                 image = crop(image, y1, x1, h, w)
             crop_top_left = (y1, x1)
             self.crop_top_lefts.append(crop_top_left)
@@ -944,12 +912,8 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(
-                    size, interpolation=transforms.InterpolationMode.BILINEAR
-                ),
-                transforms.CenterCrop(size)
-                if center_crop
-                else transforms.RandomCrop(size),
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -978,9 +942,7 @@ class DreamBoothDataset(Dataset):
             example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
-            class_image = Image.open(
-                self.class_images_path[index % self.num_class_images]
-            )
+            class_image = Image.open(self.class_images_path[index % self.num_class_images])
             class_image = exif_transpose(class_image)
 
             if not class_image.mode == "RGB":
@@ -1084,9 +1046,7 @@ def main(args):
         )
 
     if args.do_edm_style_training and args.snr_gamma is not None:
-        raise ValueError(
-            "Min-SNR formulation is not supported when conducting EDM-style training."
-        )
+        raise ValueError("Min-SNR formulation is not supported when conducting EDM-style training.")
 
     if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
         # due to pytorch#99272, MPS does not yet support bfloat16.
@@ -1096,9 +1056,7 @@ def main(args):
 
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(
-        project_dir=args.output_dir, logging_dir=logging_dir
-    )
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
     kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -1110,9 +1068,7 @@ def main(args):
 
     if args.report_to == "wandb":
         if not is_wandb_available():
-            raise ImportError(
-                "Make sure to install wandb if you want to use it for logging during training."
-            )
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -1140,12 +1096,8 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            has_supported_fp16_accelerator = (
-                torch.cuda.is_available() or torch.backends.mps.is_available()
-            )
-            torch_dtype = (
-                torch.float16 if has_supported_fp16_accelerator else torch.float32
-            )
+            has_supported_fp16_accelerator = torch.cuda.is_available() or torch.backends.mps.is_available()
+            torch_dtype = torch.float16 if has_supported_fp16_accelerator else torch.float32
             if args.prior_generation_precision == "fp32":
                 torch_dtype = torch.float32
             elif args.prior_generation_precision == "fp16":
@@ -1164,9 +1116,7 @@ def main(args):
             logger.info(f"Number of class images to sample: {num_new_images}.")
 
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
-            sample_dataloader = torch.utils.data.DataLoader(
-                sample_dataset, batch_size=args.sample_batch_size
-            )
+            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
 
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
@@ -1180,10 +1130,7 @@ def main(args):
 
                 for i, image in enumerate(images):
                     hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
-                    image_filename = (
-                        class_images_dir
-                        / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
-                    )
+                    image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
             del pipeline
@@ -1225,14 +1172,10 @@ def main(args):
     )
 
     # Load scheduler and models
-    scheduler_type = determine_scheduler_type(
-        args.pretrained_model_name_or_path, args.revision
-    )
+    scheduler_type = determine_scheduler_type(args.pretrained_model_name_or_path, args.revision)
     if "EDM" in scheduler_type:
         args.do_edm_style_training = True
-        noise_scheduler = EDMEulerScheduler.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="scheduler"
-        )
+        noise_scheduler = EDMEulerScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
         logger.info("Performing EDM-style training!")
     elif args.do_edm_style_training:
         noise_scheduler = EulerDiscreteScheduler.from_pretrained(
@@ -1240,9 +1183,7 @@ def main(args):
         )
         logger.info("Performing EDM-style training!")
     else:
-        noise_scheduler = DDPMScheduler.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="scheduler"
-        )
+        noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -1321,9 +1262,7 @@ def main(args):
                 )
             unet.enable_xformers_memory_efficient_attention()
         else:
-            raise ValueError(
-                "xformers is not available. Make sure it is installed correctly"
-            )
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -1370,20 +1309,14 @@ def main(args):
 
             for model in models:
                 if isinstance(model, type(unwrap_model(unet))):
-                    unet_lora_layers_to_save = convert_state_dict_to_diffusers(
+                    unet_lora_layers_to_save = convert_state_dict_to_diffusers(get_peft_model_state_dict(model))
+                elif isinstance(model, type(unwrap_model(text_encoder_one))):
+                    text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
                         get_peft_model_state_dict(model)
                     )
-                elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                    text_encoder_one_lora_layers_to_save = (
-                        convert_state_dict_to_diffusers(
-                            get_peft_model_state_dict(model)
-                        )
-                    )
                 elif isinstance(model, type(unwrap_model(text_encoder_two))):
-                    text_encoder_two_lora_layers_to_save = (
-                        convert_state_dict_to_diffusers(
-                            get_peft_model_state_dict(model)
-                        )
+                    text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
+                        get_peft_model_state_dict(model)
                     )
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
@@ -1417,15 +1350,9 @@ def main(args):
 
         lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
 
-        unet_state_dict = {
-            f'{k.replace("unet.", "")}': v
-            for k, v in lora_state_dict.items()
-            if k.startswith("unet.")
-        }
+        unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
-        incompatible_keys = set_peft_model_state_dict(
-            unet_, unet_state_dict, adapter_name="default"
-        )
+        incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
         if incompatible_keys is not None:
             # check only for unexpected keys
             unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
@@ -1437,9 +1364,7 @@ def main(args):
 
         if args.train_text_encoder:
             # Do we need to call `scale_lora_layers()` here?
-            _set_state_dict_into_text_encoder(
-                lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_
-            )
+            _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
 
             _set_state_dict_into_text_encoder(
                 lora_state_dict,
@@ -1467,10 +1392,7 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate
-            * args.gradient_accumulation_steps
-            * args.train_batch_size
-            * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Make sure the trainable params are in float32.
@@ -1485,12 +1407,8 @@ def main(args):
     unet_lora_parameters = list(filter(lambda p: p.requires_grad, unet.parameters()))
 
     if args.train_text_encoder:
-        text_lora_parameters_one = list(
-            filter(lambda p: p.requires_grad, text_encoder_one.parameters())
-        )
-        text_lora_parameters_two = list(
-            filter(lambda p: p.requires_grad, text_encoder_two.parameters())
-        )
+        text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
+        text_lora_parameters_two = list(filter(lambda p: p.requires_grad, text_encoder_two.parameters()))
 
     # Optimization parameters
     unet_lora_parameters_with_lr = {
@@ -1555,9 +1473,7 @@ def main(args):
         try:
             import prodigyopt
         except ImportError:
-            raise ImportError(
-                "To use Prodigy, please install the prodigyopt library: `pip install prodigyopt`"
-            )
+            raise ImportError("To use Prodigy, please install the prodigyopt library: `pip install prodigyopt`")
 
         optimizer_class = prodigyopt.Prodigy
 
@@ -1627,9 +1543,7 @@ def main(args):
 
         def compute_text_embeddings(prompt, text_encoders, tokenizers):
             with torch.no_grad():
-                prompt_embeds, pooled_prompt_embeds = encode_prompt(
-                    text_encoders, tokenizers, prompt
-                )
+                prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
                 prompt_embeds = prompt_embeds.to(accelerator.device)
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
@@ -1667,12 +1581,8 @@ def main(args):
             prompt_embeds = instance_prompt_hidden_states
             unet_add_text_embeds = instance_pooled_prompt_embeds
             if args.with_prior_preservation:
-                prompt_embeds = torch.cat(
-                    [prompt_embeds, class_prompt_hidden_states], dim=0
-                )
-                unet_add_text_embeds = torch.cat(
-                    [unet_add_text_embeds, class_pooled_prompt_embeds], dim=0
-                )
+                prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
+                unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
         # if we're optmizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
         # batch prompts on all training steps
         else:
@@ -1686,9 +1596,7 @@ def main(args):
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -1725,9 +1633,7 @@ def main(args):
         )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -1744,20 +1650,14 @@ def main(args):
         accelerator.init_trackers(tracker_name, config=vars(args))
 
     # Train!
-    total_batch_size = (
-        args.train_batch_size
-        * accelerator.num_processes
-        * args.gradient_accumulation_steps
-    )
+    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num batches each epoch = {len(train_dataloader)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(
-        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
-    )
+    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
@@ -1818,12 +1718,8 @@ def main(args):
             text_encoder_two.train()
 
             # set top parameter requires_grad = True for gradient checkpointing works
-            accelerator.unwrap_model(
-                text_encoder_one
-            ).text_model.embeddings.requires_grad_(True)
-            accelerator.unwrap_model(
-                text_encoder_two
-            ).text_model.embeddings.requires_grad_(True)
+            accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
+            accelerator.unwrap_model(text_encoder_two).text_model.embeddings.requires_grad_(True)
 
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
@@ -1848,17 +1744,9 @@ def main(args):
                     if args.pretrained_vae_model_name_or_path is None:
                         model_input = model_input.to(weight_dtype)
                 else:
-                    latents_mean = latents_mean.to(
-                        device=model_input.device, dtype=model_input.dtype
-                    )
-                    latents_std = latents_std.to(
-                        device=model_input.device, dtype=model_input.dtype
-                    )
-                    model_input = (
-                        (model_input - latents_mean)
-                        * vae.config.scaling_factor
-                        / latents_std
-                    )
+                    latents_mean = latents_mean.to(device=model_input.device, dtype=model_input.dtype)
+                    latents_std = latents_std.to(device=model_input.device, dtype=model_input.dtype)
+                    model_input = (model_input - latents_mean) * vae.config.scaling_factor / latents_std
                     model_input = model_input.to(dtype=weight_dtype)
 
                 # Sample noise that we'll add to the latents
@@ -1878,49 +1766,33 @@ def main(args):
                     # in EDM formulation, the model is conditioned on the pre-conditioned noise levels
                     # instead of discrete timesteps, so here we sample indices to get the noise levels
                     # from `scheduler.timesteps`
-                    indices = torch.randint(
-                        0, noise_scheduler.config.num_train_timesteps, (bsz,)
-                    )
-                    timesteps = noise_scheduler.timesteps[indices].to(
-                        device=model_input.device
-                    )
+                    indices = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,))
+                    timesteps = noise_scheduler.timesteps[indices].to(device=model_input.device)
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_model_input = noise_scheduler.add_noise(
-                    model_input, noise, timesteps
-                )
+                noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
                 # For EDM-style training, we first obtain the sigmas based on the continuous timesteps.
                 # We then precondition the final model inputs based on these sigmas instead of the timesteps.
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                 if args.do_edm_style_training:
-                    sigmas = get_sigmas(
-                        timesteps, len(noisy_model_input.shape), noisy_model_input.dtype
-                    )
+                    sigmas = get_sigmas(timesteps, len(noisy_model_input.shape), noisy_model_input.dtype)
                     if "EDM" in scheduler_type:
-                        inp_noisy_latents = noise_scheduler.precondition_inputs(
-                            noisy_model_input, sigmas
-                        )
+                        inp_noisy_latents = noise_scheduler.precondition_inputs(noisy_model_input, sigmas)
                     else:
-                        inp_noisy_latents = noisy_model_input / (
-                            (sigmas**2 + 1) ** 0.5
-                        )
+                        inp_noisy_latents = noisy_model_input / ((sigmas**2 + 1) ** 0.5)
 
                 # time ids
                 add_time_ids = torch.cat(
                     [
                         compute_time_ids(original_size=s, crops_coords_top_left=c)
-                        for s, c in zip(
-                            batch["original_sizes"], batch["crop_top_lefts"]
-                        )
+                        for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])
                     ]
                 )
 
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
                 if not train_dataset.custom_instance_prompts:
-                    elems_to_repeat_text_embeds = (
-                        bsz // 2 if args.with_prior_preservation else bsz
-                    )
+                    elems_to_repeat_text_embeds = bsz // 2 if args.with_prior_preservation else bsz
                 else:
                     elems_to_repeat_text_embeds = 1
 
@@ -1928,17 +1800,11 @@ def main(args):
                 if not args.train_text_encoder:
                     unet_added_conditions = {
                         "time_ids": add_time_ids,
-                        "text_embeds": unet_add_text_embeds.repeat(
-                            elems_to_repeat_text_embeds, 1
-                        ),
+                        "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat_text_embeds, 1),
                     }
-                    prompt_embeds_input = prompt_embeds.repeat(
-                        elems_to_repeat_text_embeds, 1, 1
-                    )
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
-                        inp_noisy_latents
-                        if args.do_edm_style_training
-                        else noisy_model_input,
+                        inp_noisy_latents if args.do_edm_style_training else noisy_model_input,
                         timesteps,
                         prompt_embeds_input,
                         added_cond_kwargs=unet_added_conditions,
@@ -1953,19 +1819,11 @@ def main(args):
                         text_input_ids_list=[tokens_one, tokens_two],
                     )
                     unet_added_conditions.update(
-                        {
-                            "text_embeds": pooled_prompt_embeds.repeat(
-                                elems_to_repeat_text_embeds, 1
-                            )
-                        }
+                        {"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat_text_embeds, 1)}
                     )
-                    prompt_embeds_input = prompt_embeds.repeat(
-                        elems_to_repeat_text_embeds, 1, 1
-                    )
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
-                        inp_noisy_latents
-                        if args.do_edm_style_training
-                        else noisy_model_input,
+                        inp_noisy_latents if args.do_edm_style_training else noisy_model_input,
                         timesteps,
                         prompt_embeds_input,
                         added_cond_kwargs=unet_added_conditions,
@@ -1978,16 +1836,14 @@ def main(args):
                     # on noised model inputs (before preconditioning) and the sigmas.
                     # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                     if "EDM" in scheduler_type:
-                        model_pred = noise_scheduler.precondition_outputs(
-                            noisy_model_input, model_pred, sigmas
-                        )
+                        model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
                     else:
                         if noise_scheduler.config.prediction_type == "epsilon":
                             model_pred = model_pred * (-sigmas) + noisy_model_input
                         elif noise_scheduler.config.prediction_type == "v_prediction":
-                            model_pred = model_pred * (
-                                -sigmas / (sigmas**2 + 1) ** 0.5
-                            ) + (noisy_model_input / (sigmas**2 + 1))
+                            model_pred = model_pred * (-sigmas / (sigmas**2 + 1) ** 0.5) + (
+                                noisy_model_input / (sigmas**2 + 1)
+                            )
                     # We are not doing weighting here because it tends result in numerical problems.
                     # See: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
                     # There might be other alternatives for weighting as well:
@@ -2005,9 +1861,7 @@ def main(args):
                         else noise_scheduler.get_velocity(model_input, noise, timesteps)
                     )
                 else:
-                    raise ValueError(
-                        f"Unknown prediction type {noise_scheduler.config.prediction_type}"
-                    )
+                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
@@ -2017,10 +1871,9 @@ def main(args):
                     # Compute prior loss
                     if weighting is not None:
                         prior_loss = torch.mean(
-                            (
-                                weighting.float()
-                                * (model_pred_prior.float() - target_prior.float()) ** 2
-                            ).reshape(target_prior.shape[0], -1),
+                            (weighting.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
+                                target_prior.shape[0], -1
+                            ),
                             1,
                         )
                         prior_loss = prior_loss.mean()
@@ -2034,27 +1887,21 @@ def main(args):
                 if args.snr_gamma is None:
                     if weighting is not None:
                         loss = torch.mean(
-                            (
-                                weighting.float()
-                                * (model_pred.float() - target.float()) ** 2
-                            ).reshape(target.shape[0], -1),
+                            (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(
+                                target.shape[0], -1
+                            ),
                             1,
                         )
                         loss = loss.mean()
                     else:
-                        loss = F.mse_loss(
-                            model_pred.float(), target.float(), reduction="mean"
-                        )
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 else:
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
                     snr = compute_snr(noise_scheduler, timesteps)
                     base_weight = (
-                        torch.stack(
-                            [snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1
-                        ).min(dim=1)[0]
-                        / snr
+                        torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                     )
 
                     if noise_scheduler.config.prediction_type == "v_prediction":
@@ -2064,13 +1911,8 @@ def main(args):
                         # Epsilon and sample both use the same loss weights.
                         mse_loss_weights = base_weight
 
-                    loss = F.mse_loss(
-                        model_pred.float(), target.float(), reduction="none"
-                    )
-                    loss = (
-                        loss.mean(dim=list(range(1, len(loss.shape))))
-                        * mse_loss_weights
-                    )
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
 
                 if args.with_prior_preservation:
@@ -2104,36 +1946,24 @@ def main(args):
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [
-                                d for d in checkpoints if d.startswith("checkpoint")
-                            ]
-                            checkpoints = sorted(
-                                checkpoints, key=lambda x: int(x.split("-")[1])
-                            )
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
                             # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
                             if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = (
-                                    len(checkpoints) - args.checkpoints_total_limit + 1
-                                )
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
                                 removing_checkpoints = checkpoints[0:num_to_remove]
 
                                 logger.info(
                                     f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
                                 )
-                                logger.info(
-                                    f"removing checkpoints: {', '.join(removing_checkpoints)}"
-                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
                                 for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(
-                                        args.output_dir, removing_checkpoint
-                                    )
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
                                     shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(
-                            args.output_dir, f"checkpoint-{global_step}"
-                        )
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
@@ -2145,10 +1975,7 @@ def main(args):
                 break
 
         if accelerator.is_main_process:
-            if (
-                args.validation_prompt is not None
-                and epoch % args.validation_epochs == 0
-            ):
+            if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
                 if not args.train_text_encoder:
                     text_encoder_one = text_encoder_cls_one.from_pretrained(
@@ -2188,9 +2015,7 @@ def main(args):
     if accelerator.is_main_process:
         unet = unwrap_model(unet)
         unet = unet.to(torch.float32)
-        unet_lora_layers = convert_state_dict_to_diffusers(
-            get_peft_model_state_dict(unet)
-        )
+        unet_lora_layers = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
 
         if args.train_text_encoder:
             text_encoder_one = unwrap_model(text_encoder_one)
@@ -2212,9 +2037,7 @@ def main(args):
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
         )
         if args.output_kohya_format:
-            lora_state_dict = load_file(
-                f"{args.output_dir}/pytorch_lora_weights.safetensors"
-            )
+            lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
             peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
             kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
             save_file(

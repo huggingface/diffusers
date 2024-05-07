@@ -133,8 +133,7 @@ class AmusedInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_inference_batch_consistent(batch_sizes=batch_sizes, batch_generator=False)
 
     @unittest.skip("aMUSEd does not support lists of generators")
-    def test_inference_batch_single_identical(self):
-        ...
+    def test_inference_batch_single_identical(self): ...
 
 
 @slow

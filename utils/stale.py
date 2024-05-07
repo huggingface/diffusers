@@ -42,14 +42,9 @@ def main():
     for issue in open_issues:
         labels = [label.name.lower() for label in issue.get_labels()]
         if "stale" in labels:
-            comments = sorted(
-                issue.get_comments(), key=lambda i: i.created_at, reverse=True
-            )
+            comments = sorted(issue.get_comments(), key=lambda i: i.created_at, reverse=True)
             last_comment = comments[0] if len(comments) > 0 else None
-            if (
-                last_comment is not None
-                and last_comment.user.login != "github-actions[bot]"
-            ):
+            if last_comment is not None and last_comment.user.login != "github-actions[bot]":
                 # Opens the issue if someone other than Stalebot commented.
                 issue.edit(state="open")
                 issue.remove_from_labels("stale")

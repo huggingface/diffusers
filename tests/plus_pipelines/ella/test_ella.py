@@ -20,7 +20,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.models.clip.configuration_clip import CLIPTextConfig
 
 from diffusers import AutoencoderKL, DDIMScheduler, UNet2DConditionModel
-from diffusers.plus_models.ella import ELLA, ELLAProxyUNet
+from diffusers.plus_models.ella import ELLA
 from diffusers.plus_pipelines.ella.pipeline_ella import EllaFixedDiffusionPipeline
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -41,10 +41,9 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
-                                     PipelineLatentTesterMixin,
-                                     PipelineTesterMixin,
-                                     unittest.TestCase):
+class EllaDiffusionPipelineFastTests(
+    IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     print(torch_device)
     pipeline_class = EllaFixedDiffusionPipeline
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -117,8 +116,8 @@ class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
         ella = ELLA(
             time_channel=4,
             time_embed_dim=4,
-            act_fn = "silu",
-            out_dim = 4,
+            act_fn="silu",
+            out_dim=4,
             width=32,
             layers=6,
             heads=8,
@@ -126,7 +125,7 @@ class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
             input_dim=2048,
         )
 
-        #ella  = ELLA.from_pretrained('shauray/ELLA_SD15')
+        # ella  = ELLA.from_pretrained('shauray/ELLA_SD15')
 
         unet = UNet2DConditionModel(
             block_out_channels=(4, 8),
@@ -139,7 +138,6 @@ class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
-        proxy_unet = ELLAProxyUNet(ella, unet)
 
         components = {
             "unet": unet,
@@ -154,17 +152,16 @@ class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
         }
         return components
 
-
     def get_dummy_inputs(self, torch_device, seed=0):
         np.random.seed(seed)
-        torch_device='cpu'
+        torch_device = "cpu"
         if str(torch_device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=torch_device).manual_seed(seed)
         inputs = {
             "prompt": "swimming underwater",
-            "negative_prompt": 'bad anatomy',
+            "negative_prompt": "bad anatomy",
             "generator": generator,
             "height": 32,
             "width": 32,
@@ -188,7 +185,9 @@ class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
 
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array([0.466643, 0.6084577, 0.5677999, 0.5846181, 0.47652572, 0.5419115, 0.6090933, 0.51999027, 0.5651997])
+        expected_slice = np.array(
+            [0.466643, 0.6084577, 0.5677999, 0.5846181, 0.47652572, 0.5419115, 0.6090933, 0.51999027, 0.5651997]
+        )
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {image_slice.flatten()}, but got {image_slice.flatten()}"
@@ -226,5 +225,3 @@ class EllaDiffusionPipelineFastTests(IPAdapterTesterMixin,
     @unittest.skip(reason="useless")
     def test_save_load_local(self):
         self.test_save_load_local()
-
-

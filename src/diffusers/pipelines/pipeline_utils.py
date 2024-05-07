@@ -1235,7 +1235,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             diffusers_module = importlib.import_module(__name__.split(".")[0])
             pipelines = getattr(diffusers_module, "pipelines")
-            plus_pipelines = getattr(diffusers_module, "plus_pipelines")
 
             # optionally create a custom component <> custom file mapping
             custom_components = {}
@@ -1773,4 +1772,3 @@ class StableDiffusionMixin:
             else:
                 self.vae.unfuse_qkv_projections()
                 self.fusing_vae = False
-

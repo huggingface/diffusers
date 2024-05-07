@@ -320,12 +320,7 @@ else:
             "FlaxStableDiffusionXLPipeline",
         ]
     )
-    _import_structure["plus_pipelines"].extend(
-        [
-            "OmsDiffusionPipeline",
-            "ClothAdapter"
-        ]
-    )
+    _import_structure["plus_pipelines"].extend(["OmsDiffusionPipeline", "ClothAdapter"])
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:

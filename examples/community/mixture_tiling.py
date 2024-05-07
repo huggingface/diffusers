@@ -17,9 +17,7 @@ try:
     from ligo.segments import segment
     from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 except ImportError:
-    raise ImportError(
-        "Please install transformers and ligo-segments to use the mixture pipeline"
-    )
+    raise ImportError("Please install transformers and ligo-segments to use the mixture pipeline")
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -50,9 +48,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def _tile2pixel_indices(
-    tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap
-):
+def _tile2pixel_indices(tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap):
     """Given a tile row and column numbers returns the range of pixels affected by that tiles in the overall image
 
     Returns a tuple with:
@@ -73,9 +69,7 @@ def _pixel2latent_indices(px_row_init, px_row_end, px_col_init, px_col_end):
     return px_row_init // 8, px_row_end // 8, px_col_init // 8, px_col_end // 8
 
 
-def _tile2latent_indices(
-    tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap
-):
+def _tile2latent_indices(tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap):
     """Given a tile row and column numbers returns the range of latents affected by that tiles in the overall image
 
     Returns a tuple with:
@@ -229,29 +223,18 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
             A PIL image with the generated image.
 
         """
-        if not isinstance(prompt, list) or not all(
-            isinstance(row, list) for row in prompt
-        ):
-            raise ValueError(
-                f"`prompt` has to be a list of lists but is {type(prompt)}"
-            )
+        if not isinstance(prompt, list) or not all(isinstance(row, list) for row in prompt):
+            raise ValueError(f"`prompt` has to be a list of lists but is {type(prompt)}")
         grid_rows = len(prompt)
         grid_cols = len(prompt[0])
         if not all(len(row) == grid_cols for row in prompt):
-            raise ValueError(
-                "All prompt rows must have the same number of prompt columns"
-            )
+            raise ValueError("All prompt rows must have the same number of prompt columns")
         if not isinstance(seed_tiles_mode, str) and (
-            not isinstance(seed_tiles_mode, list)
-            or not all(isinstance(row, list) for row in seed_tiles_mode)
+            not isinstance(seed_tiles_mode, list) or not all(isinstance(row, list) for row in seed_tiles_mode)
         ):
-            raise ValueError(
-                f"`seed_tiles_mode` has to be a string or list of lists but is {type(prompt)}"
-            )
+            raise ValueError(f"`seed_tiles_mode` has to be a string or list of lists but is {type(prompt)}")
         if isinstance(seed_tiles_mode, str):
-            seed_tiles_mode = [
-                [seed_tiles_mode for _ in range(len(row))] for row in prompt
-            ]
+            seed_tiles_mode = [[seed_tiles_mode for _ in range(len(row))] for row in prompt]
 
         modes = [mode.value for mode in self.SeedTilesMode]
         if any(mode not in modes for row in seed_tiles_mode for mode in row):
@@ -331,9 +314,7 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
             )
 
         # Prepare scheduler
-        accepts_offset = "offset" in set(
-            inspect.signature(self.scheduler.set_timesteps).parameters.keys()
-        )
+        accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
         extra_set_kwargs = {}
         if accepts_offset:
             extra_set_kwargs["offset"] = 1
@@ -356,17 +337,12 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
             ]
             for row in prompt
         ]
-        text_embeddings = [
-            [self.text_encoder(col.input_ids.to(self.device))[0] for col in row]
-            for row in text_input
-        ]
+        text_embeddings = [[self.text_encoder(col.input_ids.to(self.device))[0] for col in row] for row in text_input]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = (
-            guidance_scale > 1.0
-        )  # TODO: also active if any tile has guidance scale
+        do_classifier_free_guidance = guidance_scale > 1.0  # TODO: also active if any tile has guidance scale
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
             for i in range(grid_rows):
@@ -378,24 +354,18 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
                         max_length=max_length,
                         return_tensors="pt",
                     )
-                    uncond_embeddings = self.text_encoder(
-                        uncond_input.input_ids.to(self.device)
-                    )[0]
+                    uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
                     # For classifier free guidance, we need to do two forward passes.
                     # Here we concatenate the unconditional and text embeddings into a single batch
                     # to avoid doing two forward passes
-                    text_embeddings[i][j] = torch.cat(
-                        [uncond_embeddings, text_embeddings[i][j]]
-                    )
+                    text_embeddings[i][j] = torch.cat([uncond_embeddings, text_embeddings[i][j]])
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
-        accepts_eta = "eta" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
@@ -423,18 +393,10 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
                         tile_row_overlap,
                         tile_col_overlap,
                     )
-                    tile_latents = latents[
-                        :, :, px_row_init:px_row_end, px_col_init:px_col_end
-                    ]
+                    tile_latents = latents[:, :, px_row_init:px_row_end, px_col_init:px_col_end]
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = (
-                        torch.cat([tile_latents] * 2)
-                        if do_classifier_free_guidance
-                        else tile_latents
-                    )
-                    latent_model_input = self.scheduler.scale_model_input(
-                        latent_model_input, t
-                    )
+                    latent_model_input = torch.cat([tile_latents] * 2) if do_classifier_free_guidance else tile_latents
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                     # predict the noise residual
                     noise_pred = self.unet(
                         latent_model_input,
@@ -446,13 +408,10 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         guidance = (
                             guidance_scale
-                            if guidance_scale_tiles is None
-                            or guidance_scale_tiles[row][col] is None
+                            if guidance_scale_tiles is None or guidance_scale_tiles[row][col] is None
                             else guidance_scale_tiles[row][col]
                         )
-                        noise_pred_tile = noise_pred_uncond + guidance * (
-                            noise_pred_text - noise_pred_uncond
-                        )
+                        noise_pred_tile = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
                         noise_preds_row.append(noise_pred_tile)
                 noise_preds.append(noise_preds_row)
             # Stitch noise predictions for all tiles
@@ -474,12 +433,10 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
                         tile_row_overlap,
                         tile_col_overlap,
                     )
-                    noise_pred[
-                        :, :, px_row_init:px_row_end, px_col_init:px_col_end
-                    ] += (noise_preds[row][col] * tile_weights)
-                    contributors[
-                        :, :, px_row_init:px_row_end, px_col_init:px_col_end
-                    ] += tile_weights
+                    noise_pred[:, :, px_row_init:px_row_end, px_col_init:px_col_end] += (
+                        noise_preds[row][col] * tile_weights
+                    )
+                    contributors[:, :, px_row_init:px_row_end, px_col_init:px_col_end] += tile_weights
             # Average overlapping areas with more than 1 contributor
             noise_pred /= contributors
 
@@ -500,28 +457,14 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
         latent_height = tile_height // 8
 
         var = 0.01
-        midpoint = (
-            latent_width - 1
-        ) / 2  # -1 because index goes from 0 to latent_width - 1
+        midpoint = (latent_width - 1) / 2  # -1 because index goes from 0 to latent_width - 1
         x_probs = [
-            exp(
-                -(x - midpoint)
-                * (x - midpoint)
-                / (latent_width * latent_width)
-                / (2 * var)
-            )
-            / sqrt(2 * pi * var)
+            exp(-(x - midpoint) * (x - midpoint) / (latent_width * latent_width) / (2 * var)) / sqrt(2 * pi * var)
             for x in range(latent_width)
         ]
         midpoint = latent_height / 2
         y_probs = [
-            exp(
-                -(y - midpoint)
-                * (y - midpoint)
-                / (latent_height * latent_height)
-                / (2 * var)
-            )
-            / sqrt(2 * pi * var)
+            exp(-(y - midpoint) * (y - midpoint) / (latent_height * latent_height) / (2 * var)) / sqrt(2 * pi * var)
             for y in range(latent_height)
         ]
 

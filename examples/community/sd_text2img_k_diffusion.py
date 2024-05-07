@@ -38,9 +38,7 @@ class ModelWrapper:
             args = args[:2]
         if kwargs.get("cond", None) is not None:
             encoder_hidden_states = kwargs.pop("cond")
-        return self.model(
-            *args, encoder_hidden_states=encoder_hidden_states, **kwargs
-        ).sample
+        return self.model(*args, encoder_hidden_states=encoder_hidden_states, **kwargs).sample
 
 
 class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
@@ -114,9 +112,7 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             self.k_diffusion_model = CompVisDenoiser(model)
 
     def set_sampler(self, scheduler_type: str):
-        warnings.warn(
-            "The `set_sampler` method is deprecated, please use `set_scheduler` instead."
-        )
+        warnings.warn("The `set_sampler` method is deprecated, please use `set_scheduler` instead.")
         return self.set_scheduler(scheduler_type)
 
     def set_scheduler(self, scheduler_type: str):
@@ -158,23 +154,16 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        untruncated_ids = self.tokenizer(
-            prompt, padding="max_length", return_tensors="pt"
-        ).input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="max_length", return_tensors="pt").input_ids
 
         if not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.tokenizer.batch_decode(
-                untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
-            )
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
 
-        if (
-            hasattr(self.text_encoder.config, "use_attention_mask")
-            and self.text_encoder.config.use_attention_mask
-        ):
+        if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
             attention_mask = text_inputs.attention_mask.to(device)
         else:
             attention_mask = None
@@ -188,9 +177,7 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
         text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
-        text_embeddings = text_embeddings.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
+        text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
@@ -222,10 +209,7 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 return_tensors="pt",
             )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -239,9 +223,7 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = uncond_embeddings.shape[1]
             uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
+            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -252,9 +234,7 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(
-                self.numpy_to_pil(image), return_tensors="pt"
-            ).to(device)
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -272,18 +252,13 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
 
     def check_inputs(self, prompt, height, width, callback_steps):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
-            raise ValueError(
-                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
-            )
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
-            callback_steps is not None
-            and (not isinstance(callback_steps, int) or callback_steps <= 0)
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
@@ -305,18 +280,12 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         if latents is None:
             if device.type == "mps":
                 # randn does not work reproducibly on mps
-                latents = torch.randn(
-                    shape, generator=generator, device="cpu", dtype=dtype
-                ).to(device)
+                latents = torch.randn(shape, generator=generator, device="cpu", dtype=dtype).to(device)
             else:
-                latents = torch.randn(
-                    shape, generator=generator, device=device, dtype=dtype
-                )
+                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
         else:
             if latents.shape != shape:
-                raise ValueError(
-                    f"Unexpected latents shape, got {latents.shape}, expected {shape}"
-                )
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
@@ -437,21 +406,15 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         )
         latents = latents * sigmas[0]
         self.k_diffusion_model.sigmas = self.k_diffusion_model.sigmas.to(latents.device)
-        self.k_diffusion_model.log_sigmas = self.k_diffusion_model.log_sigmas.to(
-            latents.device
-        )
+        self.k_diffusion_model.log_sigmas = self.k_diffusion_model.log_sigmas.to(latents.device)
 
         def model_fn(x, t):
             latent_model_input = torch.cat([x] * 2)
 
-            noise_pred = self.k_diffusion_model(
-                latent_model_input, t, cond=text_embeddings
-            )
+            noise_pred = self.k_diffusion_model(latent_model_input, t, cond=text_embeddings)
 
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + guidance_scale * (
-                noise_pred_text - noise_pred_uncond
-            )
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
             return noise_pred
 
         latents = self.sampler(model_fn, latents, sigmas)
@@ -460,9 +423,7 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         image = self.decode_latents(latents)
 
         # 9. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(
-            image, device, text_embeddings.dtype
-        )
+        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
 
         # 10. Convert to PIL
         if output_type == "pil":
@@ -471,6 +432,4 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(
-            images=image, nsfw_content_detected=has_nsfw_concept
-        )
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

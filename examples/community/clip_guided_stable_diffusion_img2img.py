@@ -84,10 +84,7 @@ def preprocess(image, w, h):
         image = [image]
 
     if isinstance(image[0], PIL.Image.Image):
-        image = [
-            np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :]
-            for i in image
-        ]
+        image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
         image = np.concatenate(image, axis=0)
         image = np.array(image).astype(np.float32) / 255.0
         image = image.transpose(0, 3, 1, 2)
@@ -111,14 +108,10 @@ class MakeCutouts(nn.Module):
         min_size = min(sideX, sideY, self.cut_size)
         cutouts = []
         for _ in range(num_cutouts):
-            size = int(
-                torch.rand([]) ** self.cut_power * (max_size - min_size) + min_size
-            )
+            size = int(torch.rand([]) ** self.cut_power * (max_size - min_size) + min_size)
             offsetx = torch.randint(0, sideX - size + 1, ())
             offsety = torch.randint(0, sideY - size + 1, ())
-            cutout = pixel_values[
-                :, :, offsety : offsety + size, offsetx : offsetx + size
-            ]
+            cutout = pixel_values[:, :, offsety : offsety + size, offsetx : offsetx + size]
             cutouts.append(F.adaptive_avg_pool2d(cutout, self.cut_size))
         return torch.cat(cutouts)
 
@@ -166,9 +159,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
             feature_extractor=feature_extractor,
         )
 
-        self.normalize = transforms.Normalize(
-            mean=feature_extractor.image_mean, std=feature_extractor.image_std
-        )
+        self.normalize = transforms.Normalize(mean=feature_extractor.image_mean, std=feature_extractor.image_std)
         self.cut_out_size = (
             feature_extractor.size
             if isinstance(feature_extractor.size, int)
@@ -226,8 +217,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
 
         if isinstance(generator, list):
             init_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i])
-                for i in range(batch_size)
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
             ]
             init_latents = torch.cat(init_latents, dim=0)
         else:
@@ -235,10 +225,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
 
         init_latents = self.vae.config.scaling_factor * init_latents
 
-        if (
-            batch_size > init_latents.shape[0]
-            and batch_size % init_latents.shape[0] == 0
-        ):
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
             # expand init_latents for batch_size
             deprecation_message = (
                 f"You have passed {batch_size} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
@@ -253,13 +240,8 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
                 standard_warn=False,
             )
             additional_image_per_prompt = batch_size // init_latents.shape[0]
-            init_latents = torch.cat(
-                [init_latents] * additional_image_per_prompt, dim=0
-            )
-        elif (
-            batch_size > init_latents.shape[0]
-            and batch_size % init_latents.shape[0] != 0
-        ):
+            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
+        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
             raise ValueError(
                 f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
             )
@@ -293,20 +275,14 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         latent_model_input = self.scheduler.scale_model_input(latents, timestep)
 
         # predict the noise residual
-        noise_pred = self.unet(
-            latent_model_input, timestep, encoder_hidden_states=text_embeddings
-        ).sample
+        noise_pred = self.unet(latent_model_input, timestep, encoder_hidden_states=text_embeddings).sample
 
-        if isinstance(
-            self.scheduler, (PNDMScheduler, DDIMScheduler, DPMSolverMultistepScheduler)
-        ):
+        if isinstance(self.scheduler, (PNDMScheduler, DDIMScheduler, DPMSolverMultistepScheduler)):
             alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
             beta_prod_t = 1 - alpha_prod_t
             # compute predicted original sample from predicted noise also called
             # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-            pred_original_sample = (
-                latents - beta_prod_t ** (0.5) * noise_pred
-            ) / alpha_prod_t ** (0.5)
+            pred_original_sample = (latents - beta_prod_t ** (0.5) * noise_pred) / alpha_prod_t ** (0.5)
 
             fac = torch.sqrt(beta_prod_t)
             sample = pred_original_sample * (fac) + latents * (1 - fac)
@@ -327,19 +303,14 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         image = self.normalize(image).to(latents.dtype)
 
         image_embeddings_clip = self.clip_model.get_image_features(image)
-        image_embeddings_clip = image_embeddings_clip / image_embeddings_clip.norm(
-            p=2, dim=-1, keepdim=True
-        )
+        image_embeddings_clip = image_embeddings_clip / image_embeddings_clip.norm(p=2, dim=-1, keepdim=True)
 
         if use_cutouts:
             dists = spherical_dist_loss(image_embeddings_clip, text_embeddings_clip)
             dists = dists.view([num_cutouts, sample.shape[0], -1])
             loss = dists.sum(2).mean(0).sum() * clip_guidance_scale
         else:
-            loss = (
-                spherical_dist_loss(image_embeddings_clip, text_embeddings_clip).mean()
-                * clip_guidance_scale
-            )
+            loss = spherical_dist_loss(image_embeddings_clip, text_embeddings_clip).mean() * clip_guidance_scale
 
         grads = -torch.autograd.grad(loss, latents)[0]
 
@@ -376,14 +347,10 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         elif isinstance(prompt, list):
             batch_size = len(prompt)
         else:
-            raise ValueError(
-                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
-            )
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # get prompt text embeddings
         text_input = self.tokenizer(
@@ -395,14 +362,10 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         )
         text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
         # duplicate text embeddings for each generation per prompt
-        text_embeddings = text_embeddings.repeat_interleave(
-            num_images_per_prompt, dim=0
-        )
+        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
 
         # set timesteps
-        accepts_offset = "offset" in set(
-            inspect.signature(self.scheduler.set_timesteps).parameters.keys()
-        )
+        accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
         extra_set_kwargs = {}
         if accepts_offset:
             extra_set_kwargs["offset"] = 1
@@ -412,9 +375,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         # It's more optimized to move all timesteps to correct device beforehand
         self.scheduler.timesteps.to(self.device)
 
-        timesteps, num_inference_steps = self.get_timesteps(
-            num_inference_steps, strength, self.device
-        )
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, self.device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # Preprocess image
@@ -441,13 +402,9 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
             else:
                 clip_text_input = text_input.input_ids.to(self.device)
             text_embeddings_clip = self.clip_model.get_text_features(clip_text_input)
-            text_embeddings_clip = text_embeddings_clip / text_embeddings_clip.norm(
-                p=2, dim=-1, keepdim=True
-            )
+            text_embeddings_clip = text_embeddings_clip / text_embeddings_clip.norm(p=2, dim=-1, keepdim=True)
             # duplicate text embeddings clip for each generation per prompt
-            text_embeddings_clip = text_embeddings_clip.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
+            text_embeddings_clip = text_embeddings_clip.repeat_interleave(num_images_per_prompt, dim=0)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -456,16 +413,10 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
             max_length = text_input.input_ids.shape[-1]
-            uncond_input = self.tokenizer(
-                [""], padding="max_length", max_length=max_length, return_tensors="pt"
-            )
-            uncond_embeddings = self.text_encoder(
-                uncond_input.input_ids.to(self.device)
-            )[0]
+            uncond_input = self.tokenizer([""], padding="max_length", max_length=max_length, return_tensors="pt")
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
             # duplicate unconditional embeddings for each generation per prompt
-            uncond_embeddings = uncond_embeddings.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
+            uncond_embeddings = uncond_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -502,9 +453,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
                 )
         else:
             if latents.shape != latents_shape:
-                raise ValueError(
-                    f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}"
-                )
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
             latents = latents.to(self.device)
 
         # scale the initial noise by the standard deviation required by the scheduler
@@ -514,48 +463,34 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
-        accepts_eta = "eta" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
 
         with self.progress_bar(total=num_inference_steps):
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                )
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input, t, encoder_hidden_states=text_embeddings
-                ).sample
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
                 # perform classifier free guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_text - noise_pred_uncond
-                    )
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # perform clip guidance
                 if clip_guidance_scale > 0:
                     text_embeddings_for_guidance = (
-                        text_embeddings.chunk(2)[1]
-                        if do_classifier_free_guidance
-                        else text_embeddings
+                        text_embeddings.chunk(2)[1] if do_classifier_free_guidance else text_embeddings
                     )
                     noise_pred, latents = self.cond_fn(
                         latents,
@@ -570,9 +505,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
                     )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, **extra_step_kwargs
-                ).prev_sample
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
         # scale and decode the image latents with vae
         latents = 1 / self.vae.config.scaling_factor * latents

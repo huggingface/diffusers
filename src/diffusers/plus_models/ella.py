@@ -24,9 +24,7 @@ class AdaLayerNorm(nn.Module):
 
         self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(
-        self, x: torch.Tensor, timestep_embedding: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, timestep_embedding: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         emb = self.linear(self.silu(timestep_embedding))
         shift, scale = emb.view(len(x), 1, -1).chunk(2, dim=-1)
         x = self.norm(x) * (1 + scale) + shift
@@ -36,6 +34,7 @@ class AdaLayerNorm(nn.Module):
 class SquaredReLU(nn.Module):
     def forward(self, x: torch.Tensor):
         return torch.square(torch.relu(x))
+
 
 class ELLA(ModelMixin, ConfigMixin):
     @register_to_config
@@ -53,9 +52,7 @@ class ELLA(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        self.position = Timesteps(
-            time_channel, flip_sin_to_cos=True, downscale_freq_shift=0
-        )
+        self.position = Timesteps(time_channel, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedding = TimestepEmbedding(
             in_channels=time_channel,
             time_embed_dim=time_embed_dim,
@@ -77,24 +74,17 @@ class ELLA(ModelMixin, ConfigMixin):
         dtype = text_encode_features.dtype
 
         ori_time_feature = self.position(timesteps.view(-1)).to(device, dtype=dtype)
-        ori_time_feature = (
-            ori_time_feature.unsqueeze(dim=1)
-            if ori_time_feature.ndim == 2
-            else ori_time_feature
-        )
+        ori_time_feature = ori_time_feature.unsqueeze(dim=1) if ori_time_feature.ndim == 2 else ori_time_feature
         ori_time_feature = ori_time_feature.expand(len(text_encode_features), -1, -1)
         time_embedding = self.time_embedding(ori_time_feature)
 
-        encoder_hidden_states = self.connector(
-            text_encode_features, timestep_embedding=time_embedding
-        )
+        encoder_hidden_states = self.connector(text_encode_features, timestep_embedding=time_embedding)
 
         return encoder_hidden_states
 
+
 class PerceiverAttentionBlock(nn.Module):
-    def __init__(
-        self, d_model: int, n_heads: int, time_embedding_dim: Optional[int] = None
-    ):
+    def __init__(self, d_model: int, n_heads: int, time_embedding_dim: Optional[int] = None):
         super().__init__()
         self.attn = nn.MultiheadAttention(d_model, n_heads, batch_first=True)
 
@@ -146,32 +136,21 @@ class PerceiverResampler(nn.Module):
         self.output_dim = output_dim
         self.input_dim = input_dim
         self.latents = nn.Parameter(width**-0.5 * torch.randn(num_latents, width))
-        self.time_aware_linear = nn.Linear(
-            time_embedding_dim or width, width, bias=True
-        )
+        self.time_aware_linear = nn.Linear(time_embedding_dim or width, width, bias=True)
 
         if self.input_dim is not None:
             self.proj_in = nn.Linear(input_dim, width)
 
         self.perceiver_blocks = nn.Sequential(
-            *[
-                PerceiverAttentionBlock(
-                    width, heads, time_embedding_dim=time_embedding_dim
-                )
-                for _ in range(layers)
-            ]
+            *[PerceiverAttentionBlock(width, heads, time_embedding_dim=time_embedding_dim) for _ in range(layers)]
         )
 
         if self.output_dim is not None:
-            self.proj_out = nn.Sequential(
-                nn.Linear(width, output_dim), nn.LayerNorm(output_dim)
-            )
+            self.proj_out = nn.Sequential(nn.Linear(width, output_dim), nn.LayerNorm(output_dim))
 
     def forward(self, x: torch.Tensor, timestep_embedding: torch.Tensor = None):
         learnable_latents = self.latents.unsqueeze(dim=0).repeat(len(x), 1, 1)
-        latents = learnable_latents + self.time_aware_linear(
-            torch.nn.functional.silu(timestep_embedding)
-        )
+        latents = learnable_latents + self.time_aware_linear(torch.nn.functional.silu(timestep_embedding))
         if self.input_dim is not None:
             x = self.proj_in(x)
         for p_block in self.perceiver_blocks:
@@ -181,6 +160,7 @@ class PerceiverResampler(nn.Module):
             latents = self.proj_out(latents)
 
         return latents
+
 
 class ELLAProxyUNet(torch.nn.Module, UNet2DConditionLoadersMixin):
     def __init__(self, ella, unet):
@@ -218,13 +198,9 @@ class ELLAProxyUNet(torch.nn.Module, UNet2DConditionLoadersMixin):
                     self.ella(encoder_hidden_states[i : i + 1, :max_length], timestep)
                 )
             # No matter how many tokens are text features, the ella output must be 64 tokens.
-            time_aware_encoder_hidden_states = torch.cat(
-                time_aware_encoder_hidden_state_list, dim=0
-            )
+            time_aware_encoder_hidden_states = torch.cat(time_aware_encoder_hidden_state_list, dim=0)
         else:
-            time_aware_encoder_hidden_states = self.ella(
-                encoder_hidden_states, timestep
-            )
+            time_aware_encoder_hidden_states = self.ella(encoder_hidden_states, timestep)
 
         return self.unet(
             sample=sample,
@@ -241,6 +217,3 @@ class ELLAProxyUNet(torch.nn.Module, UNet2DConditionLoadersMixin):
             encoder_attention_mask=encoder_attention_mask,
             return_dict=return_dict,
         )
-
-
-

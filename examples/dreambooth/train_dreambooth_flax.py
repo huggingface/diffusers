@@ -124,12 +124,8 @@ def parse_args():
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
-    parser.add_argument(
-        "--save_steps", type=int, default=None, help="Save a checkpoint every X steps."
-    )
-    parser.add_argument(
-        "--seed", type=int, default=0, help="A seed for reproducible training."
-    )
+    parser.add_argument("--save_steps", type=int, default=None, help="Save a checkpoint every X steps.")
+    parser.add_argument("--seed", type=int, default=0, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
@@ -196,18 +192,14 @@ def parse_args():
         default=0.999,
         help="The beta2 parameter for the Adam optimizer.",
     )
-    parser.add_argument(
-        "--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use."
-    )
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
     parser.add_argument(
         "--adam_epsilon",
         type=float,
         default=1e-08,
         help="Epsilon value for the Adam optimizer",
     )
-    parser.add_argument(
-        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
-    )
+    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument(
         "--push_to_hub",
         action="store_true",
@@ -314,12 +306,8 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(
-                    size, interpolation=transforms.InterpolationMode.BILINEAR
-                ),
-                transforms.CenterCrop(size)
-                if center_crop
-                else transforms.RandomCrop(size),
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -330,9 +318,7 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(
-            self.instance_images_path[index % self.num_instance_images]
-        )
+        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
@@ -344,9 +330,7 @@ class DreamBoothDataset(Dataset):
         ).input_ids
 
         if self.class_data_root:
-            class_image = Image.open(
-                self.class_images_path[index % self.num_class_images]
-            )
+            class_image = Image.open(self.class_images_path[index % self.num_class_images])
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
@@ -420,9 +404,7 @@ def main():
 
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
             total_sample_batch_size = args.sample_batch_size * jax.local_device_count()
-            sample_dataloader = torch.utils.data.DataLoader(
-                sample_dataset, batch_size=total_sample_batch_size
-            )
+            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=total_sample_batch_size)
 
             for example in tqdm(
                 sample_dataloader,
@@ -435,17 +417,12 @@ def main():
                 rng = jax.random.split(rng)[0]
                 sample_rng = jax.random.split(rng, jax.device_count())
                 images = pipeline(prompt_ids, p_params, sample_rng, jit=True).images
-                images = images.reshape(
-                    (images.shape[0] * images.shape[1],) + images.shape[-3:]
-                )
+                images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
                 images = pipeline.numpy_to_pil(np.array(images))
 
                 for i, image in enumerate(images):
                     hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
-                    image_filename = (
-                        class_images_dir
-                        / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
-                    )
+                    image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
             del pipeline
@@ -581,9 +558,7 @@ def main():
         adamw,
     )
 
-    unet_state = train_state.TrainState.create(
-        apply_fn=unet.__call__, params=unet_params, tx=optimizer
-    )
+    unet_state = train_state.TrainState.create(apply_fn=unet.__call__, params=unet_params, tx=optimizer)
     text_encoder_state = train_state.TrainState.create(
         apply_fn=text_encoder.__call__, params=text_encoder.params, tx=optimizer
     )
@@ -637,9 +612,7 @@ def main():
 
             # Add noise to the latents according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
-            noisy_latents = noise_scheduler.add_noise(
-                noise_scheduler_state, latents, noise, timesteps
-            )
+            noisy_latents = noise_scheduler.add_noise(noise_scheduler_state, latents, noise, timesteps)
 
             # Get the text embedding for conditioning
             if args.train_text_encoder:
@@ -667,13 +640,9 @@ def main():
             if noise_scheduler.config.prediction_type == "epsilon":
                 target = noise
             elif noise_scheduler.config.prediction_type == "v_prediction":
-                target = noise_scheduler.get_velocity(
-                    noise_scheduler_state, latents, noise, timesteps
-                )
+                target = noise_scheduler.get_velocity(noise_scheduler_state, latents, noise, timesteps)
             else:
-                raise ValueError(
-                    f"Unknown prediction type {noise_scheduler.config.prediction_type}"
-                )
+                raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
             if args.with_prior_preservation:
                 # Chunk the noise and noise_pred into two parts and compute the loss on each part separately.
@@ -702,9 +671,7 @@ def main():
 
         new_unet_state = unet_state.apply_gradients(grads=grad["unet"])
         if args.train_text_encoder:
-            new_text_encoder_state = text_encoder_state.apply_gradients(
-                grads=grad["text_encoder"]
-            )
+            new_text_encoder_state = text_encoder_state.apply_gradients(grads=grad["text_encoder"])
         else:
             new_text_encoder_state = text_encoder_state
 
@@ -734,16 +701,12 @@ def main():
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(
-        f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}"
-    )
+    logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
 
     def checkpoint(step=None):
         # Create the pipeline using the trained modules and save it.
-        scheduler, _ = FlaxPNDMScheduler.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", subfolder="scheduler"
-        )
+        scheduler, _ = FlaxPNDMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
         safety_checker = FlaxStableDiffusionSafetyChecker.from_pretrained(
             "CompVis/stable-diffusion-safety-checker", from_pt=True
         )
@@ -754,9 +717,7 @@ def main():
             tokenizer=tokenizer,
             scheduler=scheduler,
             safety_checker=safety_checker,
-            feature_extractor=CLIPImageProcessor.from_pretrained(
-                "openai/clip-vit-base-patch32"
-            ),
+            feature_extractor=CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32"),
         )
 
         outdir = os.path.join(args.output_dir, str(step)) if step else args.output_dir
@@ -788,9 +749,7 @@ def main():
         train_metrics = []
 
         steps_per_epoch = len(train_dataset) // total_train_batch_size
-        train_step_progress_bar = tqdm(
-            total=steps_per_epoch, desc="Training...", position=1, leave=False
-        )
+        train_step_progress_bar = tqdm(total=steps_per_epoch, desc="Training...", position=1, leave=False)
         # train
         for batch in train_dataloader:
             batch = shard(batch)
@@ -802,11 +761,7 @@ def main():
             train_step_progress_bar.update(jax.local_device_count())
 
             global_step += 1
-            if (
-                jax.process_index() == 0
-                and args.save_steps
-                and global_step % args.save_steps == 0
-            ):
+            if jax.process_index() == 0 and args.save_steps and global_step % args.save_steps == 0:
                 checkpoint(global_step)
             if global_step >= args.max_train_steps:
                 break
@@ -814,9 +769,7 @@ def main():
         train_metric = jax_utils.unreplicate(train_metric)
 
         train_step_progress_bar.close()
-        epochs.write(
-            f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})"
-        )
+        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
 
     if jax.process_index() == 0:
         checkpoint()

@@ -30,9 +30,7 @@ def slerp(val, low, high):
     high_norm = high / torch.norm(high)
     omega = torch.acos((low_norm * high_norm))
     so = torch.sin(omega)
-    res = (torch.sin((1.0 - val) * omega) / so) * low + (
-        torch.sin(val * omega) / so
-    ) * high
+    res = (torch.sin((1.0 - val) * omega) / so) * low + (torch.sin(val * omega) / so) * high
     return res
 
 
@@ -112,14 +110,10 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
-            latents = randn_tensor(
-                shape, generator=generator, device=device, dtype=dtype
-            )
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             if latents.shape != shape:
-                raise ValueError(
-                    f"Unexpected latents shape, got {latents.shape}, expected {shape}"
-                )
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
 
         latents = latents * scheduler.init_noise_sigma
@@ -148,13 +142,11 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
             text_input_ids = text_inputs.input_ids
             text_mask = text_inputs.attention_mask.bool().to(device)
 
-            untruncated_ids = self.tokenizer(
-                prompt, padding="longest", return_tensors="pt"
-            ).input_ids
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[
-                -1
-            ] and not torch.equal(text_input_ids, untruncated_ids):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -178,9 +170,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
             text_mask = text_attention_mask
 
         prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-        text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(
-            num_images_per_prompt, dim=0
-        )
+        text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
         text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
@@ -194,37 +184,23 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             uncond_text_mask = uncond_input.attention_mask.bool().to(device)
-            negative_prompt_embeds_text_encoder_output = self.text_encoder(
-                uncond_input.input_ids.to(device)
-            )
+            negative_prompt_embeds_text_encoder_output = self.text_encoder(uncond_input.input_ids.to(device))
 
-            negative_prompt_embeds = (
-                negative_prompt_embeds_text_encoder_output.text_embeds
-            )
-            uncond_text_encoder_hidden_states = (
-                negative_prompt_embeds_text_encoder_output.last_hidden_state
-            )
+            negative_prompt_embeds = negative_prompt_embeds_text_encoder_output.text_embeds
+            uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.last_hidden_state
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
 
             seq_len = negative_prompt_embeds.shape[1]
-            negative_prompt_embeds = negative_prompt_embeds.repeat(
-                1, num_images_per_prompt
-            )
-            negative_prompt_embeds = negative_prompt_embeds.view(
-                batch_size * num_images_per_prompt, seq_len
-            )
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len)
 
             seq_len = uncond_text_encoder_hidden_states.shape[1]
-            uncond_text_encoder_hidden_states = (
-                uncond_text_encoder_hidden_states.repeat(1, num_images_per_prompt, 1)
-            )
+            uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.repeat(1, num_images_per_prompt, 1)
             uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.view(
                 batch_size * num_images_per_prompt, seq_len, -1
             )
-            uncond_text_mask = uncond_text_mask.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
+            uncond_text_mask = uncond_text_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
             # done duplicates
 
@@ -232,9 +208,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-            text_encoder_hidden_states = torch.cat(
-                [uncond_text_encoder_hidden_states, text_encoder_hidden_states]
-            )
+            text_encoder_hidden_states = torch.cat([uncond_text_encoder_hidden_states, text_encoder_hidden_states])
 
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
@@ -327,12 +301,8 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
         inputs.to(device)
         text_model_output = self.text_encoder(**inputs)
 
-        text_attention_mask = torch.max(
-            inputs.attention_mask[0], inputs.attention_mask[1]
-        )
-        text_attention_mask = torch.cat([text_attention_mask.unsqueeze(0)] * steps).to(
-            device
-        )
+        text_attention_mask = torch.max(inputs.attention_mask[0], inputs.attention_mask[1])
+        text_attention_mask = torch.cat([text_attention_mask.unsqueeze(0)] * steps).to(device)
 
         # Interpolate from the start to end prompt using slerp and add the generated images to an image output pipeline
         batch_text_embeds = []
@@ -361,9 +331,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
 
         batch_size = text_model_output[0].shape[0]
 
-        do_classifier_free_guidance = (
-            prior_guidance_scale > 1.0 or decoder_guidance_scale > 1.0
-        )
+        do_classifier_free_guidance = prior_guidance_scale > 1.0 or decoder_guidance_scale > 1.0
 
         prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
             prompt=None,
@@ -392,11 +360,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
 
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
-            latent_model_input = (
-                torch.cat([prior_latents] * 2)
-                if do_classifier_free_guidance
-                else prior_latents
-            )
+            latent_model_input = torch.cat([prior_latents] * 2) if do_classifier_free_guidance else prior_latents
 
             predicted_image_embedding = self.prior(
                 latent_model_input,
@@ -411,13 +375,8 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
                     predicted_image_embedding_uncond,
                     predicted_image_embedding_text,
                 ) = predicted_image_embedding.chunk(2)
-                predicted_image_embedding = (
-                    predicted_image_embedding_uncond
-                    + prior_guidance_scale
-                    * (
-                        predicted_image_embedding_text
-                        - predicted_image_embedding_uncond
-                    )
+                predicted_image_embedding = predicted_image_embedding_uncond + prior_guidance_scale * (
+                    predicted_image_embedding_text - predicted_image_embedding_uncond
                 )
 
             if i + 1 == prior_timesteps_tensor.shape[0]:
@@ -452,14 +411,10 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
             # HACK: MPS: There is a panic when padding bool tensors,
             # so cast to int tensor for the pad and back to bool afterwards
             text_mask = text_mask.type(torch.int)
-            decoder_text_mask = F.pad(
-                text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=1
-            )
+            decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=1)
             decoder_text_mask = decoder_text_mask.type(torch.bool)
         else:
-            decoder_text_mask = F.pad(
-                text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=True
-            )
+            decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=True)
 
         self.decoder_scheduler.set_timesteps(decoder_num_inference_steps, device=device)
         decoder_timesteps_tensor = self.decoder_scheduler.timesteps
@@ -479,11 +434,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
 
         for i, t in enumerate(self.progress_bar(decoder_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
-            latent_model_input = (
-                torch.cat([decoder_latents] * 2)
-                if do_classifier_free_guidance
-                else decoder_latents
-            )
+            latent_model_input = torch.cat([decoder_latents] * 2) if do_classifier_free_guidance else decoder_latents
 
             noise_pred = self.decoder(
                 sample=latent_model_input,
@@ -495,15 +446,9 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
 
             if do_classifier_free_guidance:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred_uncond, _ = noise_pred_uncond.split(
-                    latent_model_input.shape[1], dim=1
-                )
-                noise_pred_text, predicted_variance = noise_pred_text.split(
-                    latent_model_input.shape[1], dim=1
-                )
-                noise_pred = noise_pred_uncond + decoder_guidance_scale * (
-                    noise_pred_text - noise_pred_uncond
-                )
+                noise_pred_uncond, _ = noise_pred_uncond.split(latent_model_input.shape[1], dim=1)
+                noise_pred_text, predicted_variance = noise_pred_text.split(latent_model_input.shape[1], dim=1)
+                noise_pred = noise_pred_uncond + decoder_guidance_scale * (noise_pred_text - noise_pred_uncond)
                 noise_pred = torch.cat([noise_pred, predicted_variance], dim=1)
 
             if i + 1 == decoder_timesteps_tensor.shape[0]:
@@ -528,9 +473,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
 
         # super res
 
-        self.super_res_scheduler.set_timesteps(
-            super_res_num_inference_steps, device=device
-        )
+        self.super_res_scheduler.set_timesteps(super_res_num_inference_steps, device=device)
         super_res_timesteps_tensor = self.super_res_scheduler.timesteps
 
         channels = self.super_res_first.config.in_channels // 2

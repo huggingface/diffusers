@@ -93,9 +93,7 @@ def log_validation(
     if not is_final_validation:
         controlnet = accelerator.unwrap_model(controlnet)
     else:
-        controlnet = ControlNetModel.from_pretrained(
-            args.output_dir, torch_dtype=weight_dtype
-        )
+        controlnet = ControlNetModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
 
     pipeline = StableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -136,13 +134,9 @@ def log_validation(
         )
 
     image_logs = []
-    inference_ctx = (
-        contextlib.nullcontext() if is_final_validation else torch.autocast("cuda")
-    )
+    inference_ctx = contextlib.nullcontext() if is_final_validation else torch.autocast("cuda")
 
-    for validation_prompt, validation_image in zip(
-        validation_prompts, validation_images
-    ):
+    for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
 
         images = []
@@ -183,9 +177,7 @@ def log_validation(
 
                 formatted_images = np.stack(formatted_images)
 
-                tracker.writer.add_images(
-                    validation_prompt, formatted_images, step, dataformats="NHWC"
-                )
+                tracker.writer.add_images(validation_prompt, formatted_images, step, dataformats="NHWC")
         elif tracker.name == "wandb":
             formatted_images = []
 
@@ -194,9 +186,7 @@ def log_validation(
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
 
-                formatted_images.append(
-                    wandb.Image(validation_image, caption="Controlnet conditioning")
-                )
+                formatted_images.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
 
                 for image in images:
                     image = wandb.Image(image, caption=validation_prompt)
@@ -213,9 +203,7 @@ def log_validation(
         return image_logs
 
 
-def import_model_class_from_model_name_or_path(
-    pretrained_model_name_or_path: str, revision: str
-):
+def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path,
         subfolder="text_encoder",
@@ -248,9 +236,7 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             validation_image.save(os.path.join(repo_folder, "image_control.png"))
             img_str += f"prompt: {validation_prompt}\n"
             images = [validation_image] + images
-            image_grid(images, 1, len(images)).save(
-                os.path.join(repo_folder, f"images_{i}.png")
-            )
+            image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
     model_description = f"""
@@ -282,9 +268,7 @@ These are controlnet weights trained on {base_model} with new type of conditioni
 
 
 def parse_args(input_args=None):
-    parser = argparse.ArgumentParser(
-        description="Simple example of a ControlNet training script."
-    )
+    parser = argparse.ArgumentParser(description="Simple example of a ControlNet training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -330,9 +314,7 @@ def parse_args(input_args=None):
         default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
-    parser.add_argument(
-        "--seed", type=int, default=None, help="A seed for reproducible training."
-    )
+    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
@@ -457,18 +439,14 @@ def parse_args(input_args=None):
         default=0.999,
         help="The beta2 parameter for the Adam optimizer.",
     )
-    parser.add_argument(
-        "--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use."
-    )
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
     parser.add_argument(
         "--adam_epsilon",
         type=float,
         default=1e-08,
         help="Epsilon value for the Adam optimizer",
     )
-    parser.add_argument(
-        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
-    )
+    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument(
         "--push_to_hub",
         action="store_true",
@@ -660,14 +638,10 @@ def parse_args(input_args=None):
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
 
     if args.validation_prompt is not None and args.validation_image is None:
-        raise ValueError(
-            "`--validation_image` must be set if `--validation_prompt` is set"
-        )
+        raise ValueError("`--validation_image` must be set if `--validation_prompt` is set")
 
     if args.validation_prompt is None and args.validation_image is not None:
-        raise ValueError(
-            "`--validation_prompt` must be set if `--validation_image` is set"
-        )
+        raise ValueError("`--validation_prompt` must be set if `--validation_image` is set")
 
     if (
         args.validation_image is not None
@@ -738,9 +712,7 @@ def make_train_dataset(args, tokenizer, accelerator):
 
     if args.conditioning_image_column is None:
         conditioning_image_column = column_names[2]
-        logger.info(
-            f"conditioning image column defaulting to {conditioning_image_column}"
-        )
+        logger.info(f"conditioning image column defaulting to {conditioning_image_column}")
     else:
         conditioning_image_column = args.conditioning_image_column
         if conditioning_image_column not in column_names:
@@ -773,9 +745,7 @@ def make_train_dataset(args, tokenizer, accelerator):
 
     image_transforms = transforms.Compose(
         [
-            transforms.Resize(
-                args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
-            ),
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
@@ -784,9 +754,7 @@ def make_train_dataset(args, tokenizer, accelerator):
 
     conditioning_image_transforms = transforms.Compose(
         [
-            transforms.Resize(
-                args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
-            ),
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
         ]
@@ -796,12 +764,8 @@ def make_train_dataset(args, tokenizer, accelerator):
         images = [image.convert("RGB") for image in examples[image_column]]
         images = [image_transforms(image) for image in images]
 
-        conditioning_images = [
-            image.convert("RGB") for image in examples[conditioning_image_column]
-        ]
-        conditioning_images = [
-            conditioning_image_transforms(image) for image in conditioning_images
-        ]
+        conditioning_images = [image.convert("RGB") for image in examples[conditioning_image_column]]
+        conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
 
         examples["pixel_values"] = images
         examples["conditioning_pixel_values"] = conditioning_images
@@ -811,11 +775,7 @@ def make_train_dataset(args, tokenizer, accelerator):
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
-            dataset["train"] = (
-                dataset["train"]
-                .shuffle(seed=args.seed)
-                .select(range(args.max_train_samples))
-            )
+            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
         train_dataset = dataset["train"].with_transform(preprocess_train)
 
@@ -826,12 +786,8 @@ def collate_fn(examples):
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    conditioning_pixel_values = torch.stack(
-        [example["conditioning_pixel_values"] for example in examples]
-    )
-    conditioning_pixel_values = conditioning_pixel_values.to(
-        memory_format=torch.contiguous_format
-    ).float()
+    conditioning_pixel_values = torch.stack([example["conditioning_pixel_values"] for example in examples])
+    conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
 
     input_ids = torch.stack([example["input_ids"] for example in examples])
 
@@ -851,9 +807,7 @@ def main(args):
 
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(
-        project_dir=args.output_dir, logging_dir=logging_dir
-    )
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -894,9 +848,7 @@ def main(args):
 
     # Load the tokenizer
     if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            args.tokenizer_name, revision=args.revision, use_fast=False
-        )
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, revision=args.revision, use_fast=False)
     elif args.pretrained_model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -906,14 +858,10 @@ def main(args):
         )
 
     # import correct text encoder class
-    text_encoder_cls = import_model_class_from_model_name_or_path(
-        args.pretrained_model_name_or_path, args.revision
-    )
+    text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="scheduler"
-    )
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder = text_encoder_cls.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
@@ -968,9 +916,7 @@ def main(args):
                 model = models.pop()
 
                 # load diffusers style into model
-                load_model = ControlNetModel.from_pretrained(
-                    input_dir, subfolder="controlnet"
-                )
+                load_model = ControlNetModel.from_pretrained(input_dir, subfolder="controlnet")
                 model.register_to_config(**load_model.config)
 
                 model.load_state_dict(load_model.state_dict())
@@ -996,9 +942,7 @@ def main(args):
             unet.enable_xformers_memory_efficient_attention()
             controlnet.enable_xformers_memory_efficient_attention()
         else:
-            raise ValueError(
-                "xformers is not available. Make sure it is installed correctly"
-            )
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     if args.gradient_checkpointing:
         controlnet.enable_gradient_checkpointing()
@@ -1021,10 +965,7 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate
-            * args.gradient_accumulation_steps
-            * args.train_batch_size
-            * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
@@ -1062,9 +1003,7 @@ def main(args):
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -1097,9 +1036,7 @@ def main(args):
     text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -1117,20 +1054,14 @@ def main(args):
         accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
     # Train!
-    total_batch_size = (
-        args.train_batch_size
-        * accelerator.num_processes
-        * args.gradient_accumulation_steps
-    )
+    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num batches each epoch = {len(train_dataloader)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(
-        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
-    )
+    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
@@ -1176,9 +1107,7 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
                 # Convert images to latent space
-                latents = vae.encode(
-                    batch["pixel_values"].to(dtype=weight_dtype)
-                ).latent_dist.sample()
+                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
@@ -1198,13 +1127,9 @@ def main(args):
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(
-                    batch["input_ids"], return_dict=False
-                )[0]
+                encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False)[0]
 
-                controlnet_image = batch["conditioning_pixel_values"].to(
-                    dtype=weight_dtype
-                )
+                controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
 
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
@@ -1220,12 +1145,9 @@ def main(args):
                     timesteps,
                     encoder_hidden_states=encoder_hidden_states,
                     down_block_additional_residuals=[
-                        sample.to(dtype=weight_dtype)
-                        for sample in down_block_res_samples
+                        sample.to(dtype=weight_dtype) for sample in down_block_res_samples
                     ],
-                    mid_block_additional_residual=mid_block_res_sample.to(
-                        dtype=weight_dtype
-                    ),
+                    mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
                     return_dict=False,
                 )[0]
 
@@ -1235,9 +1157,7 @@ def main(args):
                 elif noise_scheduler.config.prediction_type == "v_prediction":
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
-                    raise ValueError(
-                        f"Unknown prediction type {noise_scheduler.config.prediction_type}"
-                    )
+                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 accelerator.backward(loss)
@@ -1258,43 +1178,28 @@ def main(args):
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [
-                                d for d in checkpoints if d.startswith("checkpoint")
-                            ]
-                            checkpoints = sorted(
-                                checkpoints, key=lambda x: int(x.split("-")[1])
-                            )
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
                             # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
                             if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = (
-                                    len(checkpoints) - args.checkpoints_total_limit + 1
-                                )
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
                                 removing_checkpoints = checkpoints[0:num_to_remove]
 
                                 logger.info(
                                     f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
                                 )
-                                logger.info(
-                                    f"removing checkpoints: {', '.join(removing_checkpoints)}"
-                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
                                 for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(
-                                        args.output_dir, removing_checkpoint
-                                    )
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
                                     shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(
-                            args.output_dir, f"checkpoint-{global_step}"
-                        )
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-                    if (
-                        args.validation_prompt is not None
-                        and global_step % args.validation_steps == 0
-                    ):
+                    if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         image_logs = log_validation(
                             vae,
                             text_encoder,

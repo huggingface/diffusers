@@ -40,9 +40,7 @@ def retrieve_timesteps(
         second element is the number of inference steps.
     """
     if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(
-            inspect.signature(scheduler.set_timesteps).parameters.keys()
-        )
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accepts_timesteps:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -61,13 +59,9 @@ class NullTextPipeline(StableDiffusionPipeline):
     def get_noise_pred(self, latents, t, context):
         latents_input = torch.cat([latents] * 2)
         guidance_scale = 7.5
-        noise_pred = self.unet(latents_input, t, encoder_hidden_states=context)[
-            "sample"
-        ]
+        noise_pred = self.unet(latents_input, t, encoder_hidden_states=context)["sample"]
         noise_pred_uncond, noise_prediction_text = noise_pred.chunk(2)
-        noise_pred = noise_pred_uncond + guidance_scale * (
-            noise_prediction_text - noise_pred_uncond
-        )
+        noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
         latents = self.prev_step(noise_pred, t, latents)
         return latents
 
@@ -93,50 +87,31 @@ class NullTextPipeline(StableDiffusionPipeline):
         return image
 
     def prev_step(self, model_output, timestep, sample):
-        prev_timestep = (
-            timestep
-            - self.scheduler.config.num_train_timesteps
-            // self.scheduler.num_inference_steps
-        )
+        prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
         alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
         alpha_prod_t_prev = (
-            self.scheduler.alphas_cumprod[prev_timestep]
-            if prev_timestep >= 0
-            else self.scheduler.final_alpha_cumprod
+            self.scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
         )
         beta_prod_t = 1 - alpha_prod_t
-        pred_original_sample = (
-            sample - beta_prod_t**0.5 * model_output
-        ) / alpha_prod_t**0.5
+        pred_original_sample = (sample - beta_prod_t**0.5 * model_output) / alpha_prod_t**0.5
         pred_sample_direction = (1 - alpha_prod_t_prev) ** 0.5 * model_output
-        prev_sample = (
-            alpha_prod_t_prev**0.5 * pred_original_sample + pred_sample_direction
-        )
+        prev_sample = alpha_prod_t_prev**0.5 * pred_original_sample + pred_sample_direction
         return prev_sample
 
     def next_step(self, model_output, timestep, sample):
         timestep, next_timestep = (
             min(
-                timestep
-                - self.scheduler.config.num_train_timesteps // self.num_inference_steps,
+                timestep - self.scheduler.config.num_train_timesteps // self.num_inference_steps,
                 999,
             ),
             timestep,
         )
-        alpha_prod_t = (
-            self.scheduler.alphas_cumprod[timestep]
-            if timestep >= 0
-            else self.scheduler.final_alpha_cumprod
-        )
+        alpha_prod_t = self.scheduler.alphas_cumprod[timestep] if timestep >= 0 else self.scheduler.final_alpha_cumprod
         alpha_prod_t_next = self.scheduler.alphas_cumprod[next_timestep]
         beta_prod_t = 1 - alpha_prod_t
-        next_original_sample = (
-            sample - beta_prod_t**0.5 * model_output
-        ) / alpha_prod_t**0.5
+        next_original_sample = (sample - beta_prod_t**0.5 * model_output) / alpha_prod_t**0.5
         next_sample_direction = (1 - alpha_prod_t_next) ** 0.5 * model_output
-        next_sample = (
-            alpha_prod_t_next**0.5 * next_original_sample + next_sample_direction
-        )
+        next_sample = alpha_prod_t_next**0.5 * next_original_sample + next_sample_direction
         return next_sample
 
     def null_optimization(self, latents, context, num_inner_steps, epsilon):
@@ -151,16 +126,10 @@ class NullTextPipeline(StableDiffusionPipeline):
             latent_prev = latents[len(latents) - i - 2]
             t = self.scheduler.timesteps[i]
             with torch.no_grad():
-                noise_pred_cond = self.get_noise_pred_single(
-                    latent_cur, t, cond_embeddings
-                )
+                noise_pred_cond = self.get_noise_pred_single(latent_cur, t, cond_embeddings)
             for j in range(num_inner_steps):
-                noise_pred_uncond = self.get_noise_pred_single(
-                    latent_cur, t, uncond_embeddings
-                )
-                noise_pred = noise_pred_uncond + 7.5 * (
-                    noise_pred_cond - noise_pred_uncond
-                )
+                noise_pred_uncond = self.get_noise_pred_single(latent_cur, t, uncond_embeddings)
+                noise_pred = noise_pred_uncond + 7.5 * (noise_pred_cond - noise_pred_uncond)
                 latents_prev_rec = self.prev_step(noise_pred, t, latent_cur)
                 loss = nnf.mse_loss(latents_prev_rec, latent_prev)
                 optimizer.zero_grad()
@@ -188,9 +157,7 @@ class NullTextPipeline(StableDiffusionPipeline):
         with torch.no_grad():
             for i in range(0, self.num_inference_steps):
                 t = self.scheduler.timesteps[len(self.scheduler.timesteps) - i - 1]
-                noise_pred = self.unet(
-                    latent, t, encoder_hidden_states=cond_embeddings
-                )["sample"]
+                noise_pred = self.unet(latent, t, encoder_hidden_states=cond_embeddings)["sample"]
                 latent = self.next_step(noise_pred, t, latent)
                 all_latent.append(latent)
         return all_latent
@@ -229,9 +196,7 @@ class NullTextPipeline(StableDiffusionPipeline):
         if os.path.exists(image_path + ".pt"):
             uncond_embeddings = torch.load(image_path + ".pt")
         else:
-            uncond_embeddings = self.null_optimization(
-                ddim_latents, context, num_inner_steps, early_stop_epsilon
-            )
+            uncond_embeddings = self.null_optimization(ddim_latents, context, num_inner_steps, early_stop_epsilon)
             uncond_embeddings = torch.stack(uncond_embeddings, 0)
             torch.save(uncond_embeddings, image_path + ".pt")
         return ddim_latents[-1], uncond_embeddings
@@ -282,25 +247,15 @@ class NullTextPipeline(StableDiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
         )
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps
-        )
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         latents = inverted_latent
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                noise_pred_uncond = self.unet(
-                    latents, t, encoder_hidden_states=uncond_embeddings[i]
-                )["sample"]
-                noise_pred = self.unet(latents, t, encoder_hidden_states=prompt_embeds)[
-                    "sample"
-                ]
-                noise_pred = noise_pred_uncond + guidance_scale * (
-                    noise_pred - noise_pred_uncond
-                )
+                noise_pred_uncond = self.unet(latents, t, encoder_hidden_states=uncond_embeddings[i])["sample"]
+                noise_pred = self.unet(latents, t, encoder_hidden_states=prompt_embeds)["sample"]
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, return_dict=False
-                )[0]
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
                 progress_bar.update()
         if not output_type == "latent":
             image = self.vae.decode(

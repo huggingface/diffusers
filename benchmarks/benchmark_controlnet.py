@@ -24,8 +24,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     benchmark_pipe = (
-        ControlNetBenchmark(args)
-        if args.ckpt == "lllyasviel/sd-controlnet-canny"
-        else ControlNetSDXLBenchmark(args)
+        ControlNetBenchmark(args) if args.ckpt == "lllyasviel/sd-controlnet-canny" else ControlNetSDXLBenchmark(args)
     )
     benchmark_pipe.benchmark(args)

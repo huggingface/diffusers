@@ -111,9 +111,7 @@ class PerceiverAttention(nn.Module):
 
         # attention
         scale = 1 / math.sqrt(math.sqrt(self.dim_head))
-        weight = (q * scale) @ (k * scale).transpose(
-            -2, -1
-        )  # More stable with f16 than dividing afterwards
+        weight = (q * scale) @ (k * scale).transpose(-2, -1)  # More stable with f16 than dividing afterwards
         weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
         out = weight @ v
 
@@ -195,32 +193,22 @@ class AttnProcessor(nn.Module):
 
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(
-                batch_size, channel, height * width
-            ).transpose(1, 2)
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
         batch_size, sequence_length, _ = (
-            hidden_states.shape
-            if encoder_hidden_states is None
-            else encoder_hidden_states.shape
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
-        attention_mask = attn.prepare_attention_mask(
-            attention_mask, sequence_length, batch_size
-        )
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(
-                1, 2
-            )
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(
-                encoder_hidden_states
-            )
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -239,9 +227,7 @@ class AttnProcessor(nn.Module):
         hidden_states = attn.to_out[1](hidden_states)
 
         if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(
-                batch_size, channel, height, width
-            )
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual
@@ -273,12 +259,8 @@ class IPAttnProcessor(nn.Module):
         self.scale = scale
         self.num_tokens = num_tokens
 
-        self.to_k_ip = nn.Linear(
-            cross_attention_dim or hidden_size, hidden_size, bias=False
-        )
-        self.to_v_ip = nn.Linear(
-            cross_attention_dim or hidden_size, hidden_size, bias=False
-        )
+        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
 
     def __call__(
         self,
@@ -297,23 +279,15 @@ class IPAttnProcessor(nn.Module):
 
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(
-                batch_size, channel, height * width
-            ).transpose(1, 2)
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
         batch_size, sequence_length, _ = (
-            hidden_states.shape
-            if encoder_hidden_states is None
-            else encoder_hidden_states.shape
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
-        attention_mask = attn.prepare_attention_mask(
-            attention_mask, sequence_length, batch_size
-        )
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(
-                1, 2
-            )
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states)
 
@@ -327,9 +301,7 @@ class IPAttnProcessor(nn.Module):
                 encoder_hidden_states[:, end_pos:, :],
             )
             if attn.norm_cross:
-                encoder_hidden_states = attn.norm_encoder_hidden_states(
-                    encoder_hidden_states
-                )
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -339,9 +311,7 @@ class IPAttnProcessor(nn.Module):
         value = attn.head_to_batch_dim(value)
 
         if xformers_available:
-            hidden_states = self._memory_efficient_attention_xformers(
-                query, key, value, attention_mask
-            )
+            hidden_states = self._memory_efficient_attention_xformers(query, key, value, attention_mask)
         else:
             attention_probs = attn.get_attention_scores(query, key, attention_mask)
             hidden_states = torch.bmm(attention_probs, value)
@@ -355,9 +325,7 @@ class IPAttnProcessor(nn.Module):
         ip_value = attn.head_to_batch_dim(ip_value)
 
         if xformers_available:
-            ip_hidden_states = self._memory_efficient_attention_xformers(
-                query, ip_key, ip_value, None
-            )
+            ip_hidden_states = self._memory_efficient_attention_xformers(query, ip_key, ip_value, None)
         else:
             ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
             ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
@@ -371,9 +339,7 @@ class IPAttnProcessor(nn.Module):
         hidden_states = attn.to_out[1](hidden_states)
 
         if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(
-                batch_size, channel, height, width
-            )
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual
@@ -387,9 +353,7 @@ class IPAttnProcessor(nn.Module):
         query = query.contiguous()
         key = key.contiguous()
         value = value.contiguous()
-        hidden_states = xformers.ops.memory_efficient_attention(
-            query, key, value, attn_bias=attention_mask
-        )
+        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask)
         return hidden_states
 
 
@@ -488,9 +452,7 @@ def draw_kps(
     return out_img_pil
 
 
-class StableDiffusionXLInstantIDImg2ImgPipeline(
-    StableDiffusionXLControlNetImg2ImgPipeline
-):
+class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2ImgPipeline):
     def cuda(self, dtype=torch.float16, use_xformers=False):
         self.to("cuda", dtype)
 
@@ -509,13 +471,9 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
                     )
                 self.enable_xformers_memory_efficient_attention()
             else:
-                raise ValueError(
-                    "xformers is not available. Make sure it is installed correctly"
-                )
+                raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-    def load_ip_adapter_instantid(
-        self, model_ckpt, image_emb_dim=512, num_tokens=16, scale=0.5
-    ):
+    def load_ip_adapter_instantid(self, model_ckpt, image_emb_dim=512, num_tokens=16, scale=0.5):
         self.set_image_proj_model(model_ckpt, image_emb_dim, num_tokens)
         self.set_ip_adapter(model_ckpt, num_tokens, scale)
 
@@ -545,11 +503,7 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
         unet = self.unet
         attn_procs = {}
         for name in unet.attn_processors.keys():
-            cross_attention_dim = (
-                None
-                if name.endswith("attn1.processor")
-                else unet.config.cross_attention_dim
-            )
+            cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
             if name.startswith("mid_block"):
                 hidden_size = unet.config.block_out_channels[-1]
             elif name.startswith("up_blocks"):
@@ -581,23 +535,17 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
             if isinstance(attn_processor, IPAttnProcessor):
                 attn_processor.scale = scale
 
-    def _encode_prompt_image_emb(
-        self, prompt_image_emb, device, dtype, do_classifier_free_guidance
-    ):
+    def _encode_prompt_image_emb(self, prompt_image_emb, device, dtype, do_classifier_free_guidance):
         if isinstance(prompt_image_emb, torch.Tensor):
             prompt_image_emb = prompt_image_emb.clone().detach()
         else:
             prompt_image_emb = torch.tensor(prompt_image_emb)
 
         prompt_image_emb = prompt_image_emb.to(device=device, dtype=dtype)
-        prompt_image_emb = prompt_image_emb.reshape(
-            [1, -1, self.image_proj_model_in_features]
-        )
+        prompt_image_emb = prompt_image_emb.reshape([1, -1, self.image_proj_model_in_features])
 
         if do_classifier_free_guidance:
-            prompt_image_emb = torch.cat(
-                [torch.zeros_like(prompt_image_emb), prompt_image_emb], dim=0
-            )
+            prompt_image_emb = torch.cat([torch.zeros_like(prompt_image_emb), prompt_image_emb], dim=0)
         else:
             prompt_image_emb = torch.cat([prompt_image_emb], dim=0)
 
@@ -797,31 +745,15 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
             )
 
-        controlnet = (
-            self.controlnet._orig_mod
-            if is_compiled_module(self.controlnet)
-            else self.controlnet
-        )
+        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
         # align format for control guidance
-        if not isinstance(control_guidance_start, list) and isinstance(
-            control_guidance_end, list
-        ):
-            control_guidance_start = len(control_guidance_end) * [
-                control_guidance_start
-            ]
-        elif not isinstance(control_guidance_end, list) and isinstance(
-            control_guidance_start, list
-        ):
+        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
+            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
+        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
-        elif not isinstance(control_guidance_start, list) and not isinstance(
-            control_guidance_end, list
-        ):
-            mult = (
-                len(controlnet.nets)
-                if isinstance(controlnet, MultiControlNetModel)
-                else 1
-            )
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
             control_guidance_start, control_guidance_end = (
                 mult * [control_guidance_start],
                 mult * [control_guidance_end],
@@ -863,12 +795,8 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
 
         device = self._execution_device
 
-        if isinstance(controlnet, MultiControlNetModel) and isinstance(
-            controlnet_conditioning_scale, float
-        ):
-            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(
-                controlnet.nets
-            )
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
 
         global_pool_conditions = (
             controlnet.config.global_pool_conditions
@@ -879,9 +807,7 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
 
         # 3.1 Encode input prompt
         text_encoder_lora_scale = (
-            self.cross_attention_kwargs.get("scale", None)
-            if self.cross_attention_kwargs is not None
-            else None
+            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
         (
             prompt_embeds,
@@ -910,14 +836,10 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
         )
         bs_embed, seq_len, _ = prompt_image_emb.shape
         prompt_image_emb = prompt_image_emb.repeat(1, num_images_per_prompt, 1)
-        prompt_image_emb = prompt_image_emb.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
+        prompt_image_emb = prompt_image_emb.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # 4. Prepare image and controlnet_conditioning_image
-        image = self.image_processor.preprocess(image, height=height, width=width).to(
-            dtype=torch.float32
-        )
+        image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
 
         if isinstance(controlnet, ControlNetModel):
             control_image = self.prepare_control_image(
@@ -957,9 +879,7 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps = self.get_timesteps(
-            num_inference_steps, strength, device
-        )
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         self._num_timesteps = len(timesteps)
 
@@ -978,9 +898,7 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
         # # 6.5 Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
-            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(
-                batch_size * num_images_per_prompt
-            )
+            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
             timestep_cond = self.get_guidance_scale_embedding(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
@@ -995,9 +913,7 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
                 1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
-            controlnet_keep.append(
-                keeps[0] if isinstance(controlnet, ControlNetModel) else keeps
-            )
+            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
         # 7.2 Prepare added time ids & embeddings
         if isinstance(control_image, list):
@@ -1033,19 +949,13 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat(
-                [negative_pooled_prompt_embeds, add_text_embeds], dim=0
-            )
-            add_neg_time_ids = add_neg_time_ids.repeat(
-                batch_size * num_images_per_prompt, 1
-            )
+            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            add_neg_time_ids = add_neg_time_ids.repeat(batch_size * num_images_per_prompt, 1)
             add_time_ids = torch.cat([add_neg_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
-        add_time_ids = add_time_ids.to(device).repeat(
-            batch_size * num_images_per_prompt, 1
-        )
+        add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
         encoder_hidden_states = torch.cat([prompt_embeds, prompt_image_emb], dim=1)
 
         # 8. Denoising loop
@@ -1058,19 +968,11 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
             for i, t in enumerate(timesteps):
                 # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
-                if (
-                    is_unet_compiled and is_controlnet_compiled
-                ) and is_torch_higher_equal_2_1:
+                if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:
                     torch._inductor.cudagraph_mark_step_begin()
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2)
-                    if self.do_classifier_free_guidance
-                    else latents
-                )
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 added_cond_kwargs = {
                     "text_embeds": add_text_embeds,
@@ -1081,9 +983,7 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
                 if guess_mode and self.do_classifier_free_guidance:
                     # Infer ControlNet only for the conditional batch.
                     control_model_input = latents
-                    control_model_input = self.scheduler.scale_model_input(
-                        control_model_input, t
-                    )
+                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
                     controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
                     controlnet_added_cond_kwargs = {
                         "text_embeds": add_text_embeds.chunk(2)[1],
@@ -1095,12 +995,7 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
                     controlnet_added_cond_kwargs = added_cond_kwargs
 
                 if isinstance(controlnet_keep[i], list):
-                    cond_scale = [
-                        c * s
-                        for c, s in zip(
-                            controlnet_conditioning_scale, controlnet_keep[i]
-                        )
-                    ]
+                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
                     controlnet_cond_scale = controlnet_conditioning_scale
                     if isinstance(controlnet_cond_scale, list):
@@ -1122,13 +1017,8 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
                     # Infered ControlNet only for the conditional batch.
                     # To apply the output of ControlNet to both the unconditional and conditional batches,
                     # add 0 to the unconditional batch to keep it unchanged.
-                    down_block_res_samples = [
-                        torch.cat([torch.zeros_like(d), d])
-                        for d in down_block_res_samples
-                    ]
-                    mid_block_res_sample = torch.cat(
-                        [torch.zeros_like(mid_block_res_sample), mid_block_res_sample]
-                    )
+                    down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
+                    mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -1146,14 +1036,10 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
                 # perform guidance
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_text - noise_pred_uncond
-                    )
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False
-                )[0]
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -1163,14 +1049,10 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop(
-                        "negative_prompt_embeds", negative_prompt_embeds
-                    )
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
@@ -1178,18 +1060,12 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
-            needs_upcasting = (
-                self.vae.dtype == torch.float16 and self.vae.config.force_upcast
-            )
+            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
             if needs_upcasting:
                 self.upcast_vae()
-                latents = latents.to(
-                    next(iter(self.vae.post_quant_conv.parameters())).dtype
-                )
+                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-            image = self.vae.decode(
-                latents / self.vae.config.scaling_factor, return_dict=False
-            )[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
 
             # cast back to fp16 if needed
             if needs_upcasting:

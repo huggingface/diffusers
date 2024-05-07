@@ -175,9 +175,7 @@ def get_all_tests() -> List[str]:
     # test folders/files directly under `tests` folder
     tests = os.listdir(PATH_TO_TESTS)
     tests = [f"tests/{f}" for f in tests if "__pycache__" not in f]
-    tests = sorted(
-        [f for f in tests if (PATH_TO_REPO / f).is_dir() or f.startswith("tests/test_")]
-    )
+    tests = sorted([f for f in tests if (PATH_TO_REPO / f).is_dir() or f.startswith("tests/test_")])
 
     return tests
 
@@ -269,9 +267,7 @@ def get_diff(repo: Repo, base_commit: str, commits: List[str]) -> List[str]:
                 else:
                     # Otherwise, we check modifications are in code and not docstrings.
                     if diff_is_docstring_only(repo, commit, diff_obj.b_path):
-                        print(
-                            f"Ignoring diff in {diff_obj.b_path} as it only concerns docstrings or comments."
-                        )
+                        print(f"Ignoring diff in {diff_obj.b_path} as it only concerns docstrings or comments.")
                     else:
                         code_diff.append(diff_obj.a_path)
 
@@ -311,9 +307,7 @@ def get_modified_python_files(diff_with_last_commit: bool = False) -> List[str]:
         return get_diff(repo, repo.head.commit, parent_commits)
 
 
-def get_diff_for_doctesting(
-    repo: Repo, base_commit: str, commits: List[str]
-) -> List[str]:
+def get_diff_for_doctesting(repo: Repo, base_commit: str, commits: List[str]) -> List[str]:
     """
     Get the diff in doc examples between a base commit and one or several commits.
 
@@ -334,9 +328,7 @@ def get_diff_for_doctesting(
     for commit in commits:
         for diff_obj in commit.diff(base_commit):
             # We only consider Python files and doc files.
-            if not diff_obj.b_path.endswith(".py") and not diff_obj.b_path.endswith(
-                ".md"
-            ):
+            if not diff_obj.b_path.endswith(".py") and not diff_obj.b_path.endswith(".md"):
                 continue
             # We always add new python/md files
             if diff_obj.change_type in ["A"]:
@@ -351,9 +343,7 @@ def get_diff_for_doctesting(
                     if diff_contains_doc_examples(repo, commit, diff_obj.b_path):
                         code_diff.append(diff_obj.a_path)
                     else:
-                        print(
-                            f"Ignoring diff in {diff_obj.b_path} as it doesn't contain any doc example."
-                        )
+                        print(f"Ignoring diff in {diff_obj.b_path} as it doesn't contain any doc example.")
 
     return code_diff
 
@@ -372,13 +362,9 @@ def get_all_doctest_files() -> List[str]:
     test_files_to_run = py_files + md_files
 
     # only include files in `src` or `docs/source/en/`
-    test_files_to_run = [
-        x for x in test_files_to_run if x.startswith(("src/", "docs/source/en/"))
-    ]
+    test_files_to_run = [x for x in test_files_to_run if x.startswith(("src/", "docs/source/en/"))]
     # not include init files
-    test_files_to_run = [
-        x for x in test_files_to_run if not x.endswith(("__init__.py",))
-    ]
+    test_files_to_run = [x for x in test_files_to_run if not x.endswith(("__init__.py",))]
 
     # These are files not doctested yet.
     with open("utils/not_doctested.txt") as fp:
@@ -439,17 +425,13 @@ def get_doctest_files(diff_with_last_commit: bool = False) -> List[str]:
         branching_commits = repo.merge_base(upstream_main, repo.head)
         for commit in branching_commits:
             print(f"Branching commit: {commit}")
-        test_files_to_run = get_diff_for_doctesting(
-            repo, repo.head.commit, branching_commits
-        )
+        test_files_to_run = get_diff_for_doctesting(repo, repo.head.commit, branching_commits)
     else:
         print(f"main is at {repo.head.commit}")
         parent_commits = repo.head.commit.parents
         for commit in parent_commits:
             print(f"Parent commit: {commit}")
-        test_files_to_run = get_diff_for_doctesting(
-            repo, repo.head.commit, parent_commits
-        )
+        test_files_to_run = get_diff_for_doctesting(repo, repo.head.commit, parent_commits)
 
     all_test_files_to_run = get_all_doctest_files()
 
@@ -461,9 +443,7 @@ def get_doctest_files(diff_with_last_commit: bool = False) -> List[str]:
     with open("utils/slow_documentation_tests.txt") as fp:
         slow_documentation_tests = set(fp.read().strip().split("\n"))
     test_files_to_run = [
-        x
-        for x in test_files_to_run
-        if x in all_test_files_to_run and x not in slow_documentation_tests
+        x for x in test_files_to_run if x in all_test_files_to_run and x not in slow_documentation_tests
     ]
 
     # Make sure we did not end up with a test file that was removed
@@ -476,29 +456,21 @@ def get_doctest_files(diff_with_last_commit: bool = False) -> List[str]:
 # \s*from\s+(\.+\S+)\s+import\s+([^\n]+) -> Line only contains from .xxx import yyy and we catch .xxx and yyy
 # (?=\n) -> Look-ahead to a new line. We can't just put \n here or using find_all on this re will only catch every
 #           other import.
-_re_single_line_relative_imports = re.compile(
-    r"(?:^|\n)\s*from\s+(\.+\S+)\s+import\s+([^\n]+)(?=\n)"
-)
+_re_single_line_relative_imports = re.compile(r"(?:^|\n)\s*from\s+(\.+\S+)\s+import\s+([^\n]+)(?=\n)")
 # (:?^|\n) -> Non-catching group for the beginning of the doc or a new line.
 # \s*from\s+(\.+\S+)\s+import\s+\(([^\)]+)\) -> Line continues with from .xxx import (yyy) and we catch .xxx and yyy
 # yyy will take multiple lines otherwise there wouldn't be parenthesis.
-_re_multi_line_relative_imports = re.compile(
-    r"(?:^|\n)\s*from\s+(\.+\S+)\s+import\s+\(([^\)]+)\)"
-)
+_re_multi_line_relative_imports = re.compile(r"(?:^|\n)\s*from\s+(\.+\S+)\s+import\s+\(([^\)]+)\)")
 # (:?^|\n) -> Non-catching group for the beginning of the doc or a new line.
 # \s*from\s+transformers(\S*)\s+import\s+([^\n]+) -> Line only contains from transformers.xxx import yyy and we catch
 #           .xxx and yyy
 # (?=\n) -> Look-ahead to a new line. We can't just put \n here or using find_all on this re will only catch every
 #           other import.
-_re_single_line_direct_imports = re.compile(
-    r"(?:^|\n)\s*from\s+diffusers(\S*)\s+import\s+([^\n]+)(?=\n)"
-)
+_re_single_line_direct_imports = re.compile(r"(?:^|\n)\s*from\s+diffusers(\S*)\s+import\s+([^\n]+)(?=\n)")
 # (:?^|\n) -> Non-catching group for the beginning of the doc or a new line.
 # \s*from\s+transformers(\S*)\s+import\s+\(([^\)]+)\) -> Line continues with from transformers.xxx import (yyy) and we
 # catch .xxx and yyy. yyy will take multiple lines otherwise there wouldn't be parenthesis.
-_re_multi_line_direct_imports = re.compile(
-    r"(?:^|\n)\s*from\s+diffusers(\S*)\s+import\s+\(([^\)]+)\)"
-)
+_re_multi_line_direct_imports = re.compile(r"(?:^|\n)\s*from\s+diffusers(\S*)\s+import\s+\(([^\)]+)\)")
 
 
 def extract_imports(module_fname: str, cache: Dict[str, List[str]] = None) -> List[str]:
@@ -536,16 +508,10 @@ def extract_imports(module_fname: str, cache: Dict[str, List[str]] = None) -> Li
     # Let's start with relative imports
     relative_imports = _re_single_line_relative_imports.findall(content)
     relative_imports = [
-        (mod, imp)
-        for mod, imp in relative_imports
-        if "# tests_ignore" not in imp and imp.strip() != "("
+        (mod, imp) for mod, imp in relative_imports if "# tests_ignore" not in imp and imp.strip() != "("
     ]
     multiline_relative_imports = _re_multi_line_relative_imports.findall(content)
-    relative_imports += [
-        (mod, imp)
-        for mod, imp in multiline_relative_imports
-        if "# tests_ignore" not in imp
-    ]
+    relative_imports += [(mod, imp) for mod, imp in multiline_relative_imports if "# tests_ignore" not in imp]
 
     # We need to remove parts of the module name depending on the depth of the relative imports.
     for module, imports in relative_imports:
@@ -559,47 +525,29 @@ def extract_imports(module_fname: str, cache: Dict[str, List[str]] = None) -> Li
         else:
             dep_parts = module_parts[: len(module_parts) - level]
         imported_module = os.path.sep.join(dep_parts)
-        imported_modules.append(
-            (imported_module, [imp.strip() for imp in imports.split(",")])
-        )
+        imported_modules.append((imported_module, [imp.strip() for imp in imports.split(",")]))
 
     # Let's continue with direct imports
     direct_imports = _re_single_line_direct_imports.findall(content)
-    direct_imports = [
-        (mod, imp)
-        for mod, imp in direct_imports
-        if "# tests_ignore" not in imp and imp.strip() != "("
-    ]
+    direct_imports = [(mod, imp) for mod, imp in direct_imports if "# tests_ignore" not in imp and imp.strip() != "("]
     multiline_direct_imports = _re_multi_line_direct_imports.findall(content)
-    direct_imports += [
-        (mod, imp)
-        for mod, imp in multiline_direct_imports
-        if "# tests_ignore" not in imp
-    ]
+    direct_imports += [(mod, imp) for mod, imp in multiline_direct_imports if "# tests_ignore" not in imp]
 
     # We need to find the relative path of those imports.
     for module, imports in direct_imports:
-        import_parts = module.split(".")[
-            1:
-        ]  # ignore the name of the repo since we add it below.
+        import_parts = module.split(".")[1:]  # ignore the name of the repo since we add it below.
         dep_parts = ["src", "diffusers"] + import_parts
         imported_module = os.path.sep.join(dep_parts)
-        imported_modules.append(
-            (imported_module, [imp.strip() for imp in imports.split(",")])
-        )
+        imported_modules.append((imported_module, [imp.strip() for imp in imports.split(",")]))
 
     result = []
     # Double check we get proper modules (either a python file or a folder with an init).
     for module_file, imports in imported_modules:
         if (PATH_TO_REPO / f"{module_file}.py").is_file():
             module_file = f"{module_file}.py"
-        elif (PATH_TO_REPO / module_file).is_dir() and (
-            PATH_TO_REPO / module_file / "__init__.py"
-        ).is_file():
+        elif (PATH_TO_REPO / module_file).is_dir() and (PATH_TO_REPO / module_file / "__init__.py").is_file():
             module_file = os.path.sep.join([module_file, "__init__.py"])
-        imports = [
-            imp for imp in imports if len(imp) > 0 and re.match("^[A-Za-z0-9_]*$", imp)
-        ]
+        imports = [imp for imp in imports if len(imp) > 0 and re.match("^[A-Za-z0-9_]*$", imp)]
         if len(imports) > 0:
             result.append((module_file, imports))
 
@@ -609,9 +557,7 @@ def extract_imports(module_fname: str, cache: Dict[str, List[str]] = None) -> Li
     return result
 
 
-def get_module_dependencies(
-    module_fname: str, cache: Dict[str, List[str]] = None
-) -> List[str]:
+def get_module_dependencies(module_fname: str, cache: Dict[str, List[str]] = None) -> List[str]:
     """
     Refines the result of `extract_imports` to remove subfolders and get a proper list of module filenames: if a file
     as an import `from utils import Foo, Bar`, with `utils` being a subfolder containing many files, this will traverse
@@ -646,9 +592,7 @@ def get_module_dependencies(
                 for new_module, new_imports in new_imported_modules:
                     if any(i in new_imports for i in imports):
                         if new_module not in dependencies:
-                            new_modules.append(
-                                (new_module, [i for i in new_imports if i in imports])
-                            )
+                            new_modules.append((new_module, [i for i in new_imports if i in imports]))
                         imports = [i for i in imports if i not in new_imports]
                 if len(imports) > 0:
                     # If there are any objects lefts, they may be a submodule
@@ -660,9 +604,7 @@ def get_module_dependencies(
                             if (path_to_module / f"{i}.py").is_file()
                         ]
                     )
-                    imports = [
-                        i for i in imports if not (path_to_module / f"{i}.py").is_file()
-                    ]
+                    imports = [i for i in imports if not (path_to_module / f"{i}.py").is_file()]
                     if len(imports) > 0:
                         # Then if there are still objects left, they are fully defined in the init, so we keep it as a
                         # dependency.
@@ -680,22 +622,14 @@ def create_reverse_dependency_tree() -> List[Tuple[str, str]]:
     Create a list of all edges (a, b) which mean that modifying a impacts b with a going over all module and test files.
     """
     cache = {}
-    all_modules = list(PATH_TO_DIFFUSERS.glob("**/*.py")) + list(
-        PATH_TO_TESTS.glob("**/*.py")
-    )
+    all_modules = list(PATH_TO_DIFFUSERS.glob("**/*.py")) + list(PATH_TO_TESTS.glob("**/*.py"))
     all_modules = [str(mod.relative_to(PATH_TO_REPO)) for mod in all_modules]
-    edges = [
-        (dep, mod)
-        for mod in all_modules
-        for dep in get_module_dependencies(mod, cache=cache)
-    ]
+    edges = [(dep, mod) for mod in all_modules for dep in get_module_dependencies(mod, cache=cache)]
 
     return list(set(edges))
 
 
-def get_tree_starting_at(
-    module: str, edges: List[Tuple[str, str]]
-) -> List[Union[str, List[str]]]:
+def get_tree_starting_at(module: str, edges: List[Tuple[str, str]]) -> List[Union[str, List[str]]]:
     """
     Returns the tree starting at a given module following all edges.
 
@@ -708,11 +642,7 @@ def get_tree_starting_at(
         starting at module], [list of edges starting at the preceding level], ...]
     """
     vertices_seen = [module]
-    new_edges = [
-        edge
-        for edge in edges
-        if edge[0] == module and edge[1] != module and "__init__.py" not in edge[1]
-    ]
+    new_edges = [edge for edge in edges if edge[0] == module and edge[1] != module and "__init__.py" not in edge[1]]
     tree = [module]
     while len(new_edges) > 0:
         tree.append(new_edges)
@@ -721,9 +651,7 @@ def get_tree_starting_at(
         new_edges = [
             edge
             for edge in edges
-            if edge[0] in final_vertices
-            and edge[1] not in vertices_seen
-            and "__init__.py" not in edge[1]
+            if edge[0] in final_vertices and edge[1] not in vertices_seen and "__init__.py" not in edge[1]
         ]
 
     return tree
@@ -755,11 +683,7 @@ def print_tree_deps_of(module, all_edges=None):
             pos = 0
             while lines[pos][1] != start:
                 pos += 1
-            lines = (
-                lines[: pos + 1]
-                + [(" " * (2 * index) + end, end) for end in end_edges]
-                + lines[pos + 1 :]
-            )
+            lines = lines[: pos + 1] + [(" " * (2 * index) + end, end) for end in end_edges] + lines[pos + 1 :]
 
     for line in lines:
         # We don't print the refs that where just here to help build lines.
@@ -785,9 +709,7 @@ def init_test_examples_dependencies() -> Tuple[Dict[str, List[str]], List[str]]:
         # Remove the files at the root of examples/framework since they are not proper examples (they are eith utils
         # or example test files).
         examples = [
-            f
-            for f in (PATH_TO_EXAMPLES / framework).glob("**/*.py")
-            if f.parent != PATH_TO_EXAMPLES / framework
+            f for f in (PATH_TO_EXAMPLES / framework).glob("**/*.py") if f.parent != PATH_TO_EXAMPLES / framework
         ]
         all_examples.extend(examples)
         for test_file in test_files:
@@ -817,11 +739,7 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
     # Start from the example deps init.
     example_deps, examples = init_test_examples_dependencies()
     # Add all modules and all tests to all examples
-    all_modules = (
-        list(PATH_TO_DIFFUSERS.glob("**/*.py"))
-        + list(PATH_TO_TESTS.glob("**/*.py"))
-        + examples
-    )
+    all_modules = list(PATH_TO_DIFFUSERS.glob("**/*.py")) + list(PATH_TO_TESTS.glob("**/*.py")) + examples
     all_modules = [str(mod.relative_to(PATH_TO_REPO)) for mod in all_modules]
     # Compute the direct dependencies of all modules.
     direct_deps = {m: get_module_dependencies(m, cache=cache) for m in all_modules}
@@ -863,9 +781,7 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
     return reverse_map
 
 
-def create_module_to_test_map(
-    reverse_map: Dict[str, List[str]] = None
-) -> Dict[str, List[str]]:
+def create_module_to_test_map(reverse_map: Dict[str, List[str]] = None) -> Dict[str, List[str]]:
     """
     Extract the tests from the reverse_dependency_map and potentially filters the model tests.
 
@@ -886,16 +802,12 @@ def create_module_to_test_map(
     def is_test(fname):
         if fname.startswith("tests"):
             return True
-        if fname.startswith("examples") and fname.split(os.path.sep)[-1].startswith(
-            "test"
-        ):
+        if fname.startswith("examples") and fname.split(os.path.sep)[-1].startswith("test"):
             return True
         return False
 
     # Build the test map
-    test_map = {
-        module: [f for f in deps if is_test(f)] for module, deps in reverse_map.items()
-    }
+    test_map = {module: [f for f in deps if is_test(f)] for module, deps in reverse_map.items()}
 
     return test_map
 
@@ -906,9 +818,7 @@ def check_imports_all_exist():
     code is not lost. This checks all imports in a given file do exist.
     """
     cache = {}
-    all_modules = list(PATH_TO_DIFFUSERS.glob("**/*.py")) + list(
-        PATH_TO_TESTS.glob("**/*.py")
-    )
+    all_modules = list(PATH_TO_DIFFUSERS.glob("**/*.py")) + list(PATH_TO_TESTS.glob("**/*.py"))
     all_modules = [str(mod.relative_to(PATH_TO_REPO)) for mod in all_modules]
     direct_deps = {m: get_module_dependencies(m, cache=cache) for m in all_modules}
 
@@ -932,9 +842,7 @@ def update_test_map_with_core_pipelines(json_output_file: str):
 
     # Add core pipelines as their own test group
     test_map["core_pipelines"] = " ".join(
-        sorted(
-            [str(PATH_TO_TESTS / f"pipelines/{pipe}") for pipe in IMPORTANT_PIPELINES]
-        )
+        sorted([str(PATH_TO_TESTS / f"pipelines/{pipe}") for pipe in IMPORTANT_PIPELINES])
     )
 
     # If there are no existing pipeline tests save the map
@@ -959,9 +867,7 @@ def update_test_map_with_core_pipelines(json_output_file: str):
         json.dump(test_map, fp, ensure_ascii=False)
 
 
-def create_json_map(
-    test_files_to_run: List[str], json_output_file: Optional[str] = None
-):
+def create_json_map(test_files_to_run: List[str], json_output_file: Optional[str] = None):
     """
     Creates a map from a list of tests to run to easily split them by category, when running parallelism of slow tests.
 
@@ -1030,9 +936,7 @@ def infer_tests_to_run(
             The path where to store the json file mapping categories of tests to tests to run (used for parallelism or
             the slow tests).
     """
-    modified_files = get_modified_python_files(
-        diff_with_last_commit=diff_with_last_commit
-    )
+    modified_files = get_modified_python_files(diff_with_last_commit=diff_with_last_commit)
     print(f"\n### MODIFIED FILES ###\n{_print_list(modified_files)}")
     # Create the map that will give us all impacted modules.
     reverse_map = create_reverse_dependency_map()
@@ -1056,9 +960,7 @@ def infer_tests_to_run(
     else:
         # All modified tests need to be run.
         test_files_to_run = [
-            f
-            for f in modified_files
-            if f.startswith("tests") and f.split(os.path.sep)[-1].startswith("test")
+            f for f in modified_files if f.startswith("tests") and f.split(os.path.sep)[-1].startswith("test")
         ]
         # Then we grab the corresponding test files.
         test_map = create_module_to_test_map(reverse_map=reverse_map)
@@ -1067,9 +969,7 @@ def infer_tests_to_run(
                 test_files_to_run.extend(test_map[f])
         test_files_to_run = sorted(set(test_files_to_run))
         # Make sure we did not end up with a test file that was removed
-        test_files_to_run = [
-            f for f in test_files_to_run if (PATH_TO_REPO / f).exists()
-        ]
+        test_files_to_run = [f for f in test_files_to_run if (PATH_TO_REPO / f).exists()]
 
         any(f.split(os.path.sep)[0] == "utils" for f in modified_files)
 
@@ -1118,11 +1018,7 @@ def filter_tests(output_file: str, filters: List[str]):
         return
 
     if test_files == ["tests"]:
-        test_files = [
-            os.path.join("tests", f)
-            for f in os.listdir("tests")
-            if f not in ["__init__.py"] + filters
-        ]
+        test_files = [os.path.join("tests", f) for f in os.listdir("tests") if f not in ["__init__.py"] + filters]
     else:
         test_files = [f for f in test_files if f.split(os.path.sep)[1] not in filters]
 
@@ -1208,11 +1104,7 @@ if __name__ == "__main__":
             print("Force-launching all tests")
 
         diff_with_last_commit = args.diff_with_last_commit
-        if (
-            not diff_with_last_commit
-            and not repo.head.is_detached
-            and repo.head.ref == repo.refs.main
-        ):
+        if not diff_with_last_commit and not repo.head.is_detached and repo.head.ref == repo.refs.main:
             print("main branch detected, fetching tests against last commit.")
             diff_with_last_commit = True
 
@@ -1224,14 +1116,10 @@ if __name__ == "__main__":
                     json_output_file=args.json_output_file,
                 )
                 filter_tests(args.output_file, ["repo_utils"])
-                update_test_map_with_core_pipelines(
-                    json_output_file=args.json_output_file
-                )
+                update_test_map_with_core_pipelines(json_output_file=args.json_output_file)
 
             except Exception as e:
-                print(
-                    f"\nError when trying to grab the relevant tests: {e}\n\nRunning all tests."
-                )
+                print(f"\nError when trying to grab the relevant tests: {e}\n\nRunning all tests.")
                 commit_flags["test_all"] = True
 
         if commit_flags["test_all"]:

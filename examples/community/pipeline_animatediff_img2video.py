@@ -194,9 +194,7 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         outputs = torch.stack(outputs)
 
     elif not output_type == "pil":
-        raise ValueError(
-            f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']"
-        )
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
 
     return outputs
 
@@ -247,9 +245,7 @@ def retrieve_timesteps(
         second element is the number of inference steps.
     """
     if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(
-            inspect.signature(scheduler.set_timesteps).parameters.keys()
-        )
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accepts_timesteps:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -409,13 +405,11 @@ class AnimateDiffImgToVideoPipeline(
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(
-                prompt, padding="longest", return_tensors="pt"
-            ).input_ids
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[
-                -1
-            ] and not torch.equal(text_input_ids, untruncated_ids):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -424,18 +418,13 @@ class AnimateDiffImgToVideoPipeline(
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
 
             if clip_skip is None:
-                prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask
-                )
+                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
@@ -451,9 +440,7 @@ class AnimateDiffImgToVideoPipeline(
                 # representations. The `last_hidden_states` that we typically use for
                 # obtaining the final prompt representations passes through the LayerNorm
                 # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(
-                    prompt_embeds
-                )
+                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
 
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
@@ -467,9 +454,7 @@ class AnimateDiffImgToVideoPipeline(
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -505,10 +490,7 @@ class AnimateDiffImgToVideoPipeline(
                 return_tensors="pt",
             )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -523,16 +505,10 @@ class AnimateDiffImgToVideoPipeline(
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(
-                dtype=prompt_embeds_dtype, device=device
-            )
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(
-                1, num_images_per_prompt, 1
-            )
-            negative_prompt_embeds = negative_prompt_embeds.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
@@ -541,9 +517,7 @@ class AnimateDiffImgToVideoPipeline(
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(
-        self, image, device, num_images_per_prompt, output_hidden_states=None
-    ):
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
@@ -551,19 +525,13 @@ class AnimateDiffImgToVideoPipeline(
 
         image = image.to(device=device, dtype=dtype)
         if output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(
-                image, output_hidden_states=True
-            ).hidden_states[-2]
-            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
             uncond_image_enc_hidden_states = self.image_encoder(
                 torch.zeros_like(image), output_hidden_states=True
             ).hidden_states[-2]
-            uncond_image_enc_hidden_states = (
-                uncond_image_enc_hidden_states.repeat_interleave(
-                    num_images_per_prompt, dim=0
-                )
+            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
             )
             return image_enc_hidden_states, uncond_image_enc_hidden_states
         else:
@@ -581,9 +549,7 @@ class AnimateDiffImgToVideoPipeline(
             if not isinstance(ip_adapter_image, list):
                 ip_adapter_image = [ip_adapter_image]
 
-            if len(ip_adapter_image) != len(
-                self.unet.encoder_hid_proj.image_projection_layers
-            ):
+            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
                 raise ValueError(
                     f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
                 )
@@ -596,17 +562,13 @@ class AnimateDiffImgToVideoPipeline(
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
                     single_ip_adapter_image, device, 1, output_hidden_state
                 )
-                single_image_embeds = torch.stack(
-                    [single_image_embeds] * num_images_per_prompt, dim=0
-                )
+                single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
                 single_negative_image_embeds = torch.stack(
                     [single_negative_image_embeds] * num_images_per_prompt, dim=0
                 )
 
                 if self.do_classifier_free_guidance:
-                    single_image_embeds = torch.cat(
-                        [single_negative_image_embeds, single_image_embeds]
-                    )
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                     single_image_embeds = single_image_embeds.to(device)
 
                 image_embeds.append(single_image_embeds)
@@ -619,9 +581,7 @@ class AnimateDiffImgToVideoPipeline(
         latents = 1 / self.vae.config.scaling_factor * latents
 
         batch_size, channels, num_frames, height, width = latents.shape
-        latents = latents.permute(0, 2, 1, 3, 4).reshape(
-            batch_size * num_frames, channels, height, width
-        )
+        latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
         image = self.vae.decode(latents).sample
         video = (
@@ -647,17 +607,13 @@ class AnimateDiffImgToVideoPipeline(
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -675,20 +631,15 @@ class AnimateDiffImgToVideoPipeline(
         latent_interpolation_method=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if callback_steps is not None and (
-            not isinstance(callback_steps, int) or callback_steps <= 0
-        ):
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs
-            for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -703,12 +654,8 @@ class AnimateDiffImgToVideoPipeline(
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (
-            not isinstance(prompt, str) and not isinstance(prompt, list)
-        ):
-            raise ValueError(
-                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
-            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -774,25 +721,19 @@ class AnimateDiffImgToVideoPipeline(
                         )
 
                     init_latents = [
-                        retrieve_latents(
-                            self.vae.encode(image[i : i + 1]), generator=generator[i]
-                        )
+                        retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                         for i in range(batch_size)
                     ]
                     init_latents = torch.cat(init_latents, dim=0)
                 else:
-                    init_latents = retrieve_latents(
-                        self.vae.encode(image), generator=generator
-                    )
+                    init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
                 if self.vae.config.force_upcast:
                     self.vae.to(dtype)
 
                 init_latents = init_latents.to(dtype)
                 init_latents = self.vae.config.scaling_factor * init_latents
-                latents = randn_tensor(
-                    shape, generator=generator, device=device, dtype=dtype
-                )
+                latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
                 latents = latents * self.scheduler.init_noise_sigma
 
                 if latent_interpolation_method == "lerp":
@@ -809,15 +750,11 @@ class AnimateDiffImgToVideoPipeline(
                     latent_cls = latent_interpolation_method
 
                 for i in range(num_frames):
-                    latents[:, :, i, :, :] = latent_cls(
-                        latents[:, :, i, :, :], init_latents, i
-                    )
+                    latents[:, :, i, :, :] = latent_cls(latents[:, :, i, :, :], init_latents, i)
         else:
             if shape != latents.shape:
                 # [B, C, F, H, W]
-                raise ValueError(
-                    f"`latents` expected to have {shape=}, but found {latents.shape=}"
-                )
+                raise ValueError(f"`latents` expected to have {shape=}, but found {latents.shape=}")
             latents = latents.to(device, dtype=dtype)
 
         return latents
@@ -849,9 +786,7 @@ class AnimateDiffImgToVideoPipeline(
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
-        latent_interpolation_method: Union[
-            str, Callable[[torch.Tensor, torch.Tensor, int], torch.Tensor]
-        ] = "slerp",
+        latent_interpolation_method: Union[str, Callable[[torch.Tensor, torch.Tensor, int], torch.Tensor]] = "slerp",
     ):
         r"""
         The call function to the pipeline for generation.
@@ -966,9 +901,7 @@ class AnimateDiffImgToVideoPipeline(
 
         # 3. Encode input prompt
         text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None)
-            if cross_attention_kwargs is not None
-            else None
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
@@ -1000,9 +933,7 @@ class AnimateDiffImgToVideoPipeline(
         image = self.image_processor.preprocess(image, height=height, width=width)
 
         # 5. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps
-        )
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
 
         # 6. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -1036,12 +967,8 @@ class AnimateDiffImgToVideoPipeline(
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                )
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -1055,19 +982,13 @@ class AnimateDiffImgToVideoPipeline(
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_text - noise_pred_uncond
-                    )
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, **extra_step_kwargs
-                ).prev_sample
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
@@ -1080,9 +1001,7 @@ class AnimateDiffImgToVideoPipeline(
             video = latents
         else:
             video_tensor = self.decode_latents(latents)
-            video = tensor2vid(
-                video_tensor, self.image_processor, output_type=output_type
-            )
+            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
         # 11. Offload all models
         self.maybe_free_model_hooks()

@@ -1428,8 +1428,9 @@ class PipelineTesterMixin:
         self.assertTrue(hasattr(pipe, "vae") and isinstance(pipe.vae, (AutoencoderKL, AutoencoderTiny)))
         self.assertTrue(
             hasattr(pipe, "unet")
-            and isinstance(pipe.unet, (UNet2DConditionModel,
-                UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, ELLAProxyUNet))
+            and isinstance(
+                pipe.unet, (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, ELLAProxyUNet)
+            )
         )
 
 

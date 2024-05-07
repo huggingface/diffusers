@@ -63,9 +63,7 @@ class CanvasRegion:
                 )
         # Check noise eps is non-negative
         if self.noise_eps < 0:
-            raise ValueError(
-                f"A CanvasRegion must be defined noises eps non-negative, found {self.noise_eps}"
-            )
+            raise ValueError(f"A CanvasRegion must be defined noises eps non-negative, found {self.noise_eps}")
         # Compute coordinates for this region in latent space
         self.latent_row_init = self.row_init // 8
         self.latent_row_end = self.row_end // 8
@@ -110,12 +108,8 @@ class Text2ImageRegion(DiffusionRegion):
     """Class defining a region where a text guided diffusion process is acting"""
 
     prompt: str = ""  # Text prompt guiding the diffuser in this region
-    guidance_scale: float = (
-        7.5  # Guidance scale of the diffuser in this region. If None, randomize
-    )
-    mask_type: MaskModes = (
-        MaskModes.GAUSSIAN.value
-    )  # Kind of weight mask applied to this region
+    guidance_scale: float = 7.5  # Guidance scale of the diffuser in this region. If None, randomize
+    mask_type: MaskModes = MaskModes.GAUSSIAN.value  # Kind of weight mask applied to this region
     mask_weight: float = 1.0  # Global weights multiplier of the mask
     tokenized_prompt = None  # Tokenized prompt
     encoded_prompt = None  # Encoded prompt
@@ -153,9 +147,7 @@ class Text2ImageRegion(DiffusionRegion):
         assert self.tokenized_prompt is not None, ValueError(
             "Prompt in diffusion region must be tokenized before encoding"
         )
-        self.encoded_prompt = text_encoder(self.tokenized_prompt.input_ids.to(device))[
-            0
-        ]
+        self.encoded_prompt = text_encoder(self.tokenized_prompt.input_ids.to(device))[0]
 
 
 @dataclass
@@ -168,30 +160,22 @@ class Image2ImageRegion(DiffusionRegion):
     def __post_init__(self):
         super().__post_init__()
         if self.reference_image is None:
-            raise ValueError(
-                "Must provide a reference image when creating an Image2ImageRegion"
-            )
+            raise ValueError("Must provide a reference image when creating an Image2ImageRegion")
         if self.strength < 0 or self.strength > 1:
-            raise ValueError(
-                f"The value of strength should in [0.0, 1.0] but is {self.strength}"
-            )
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {self.strength}")
         # Rescale image to region shape
-        self.reference_image = resize(
-            self.reference_image, size=[self.height, self.width]
-        )
+        self.reference_image = resize(self.reference_image, size=[self.height, self.width])
 
     def encode_reference_image(self, encoder, device, generator, cpu_vae=False):
         """Encodes the reference image for this Image2Image region into the latent space"""
         # Place encoder in CPU or not following the parameter cpu_vae
         if cpu_vae:
             # Note here we use mean instead of sample, to avoid moving also generator to CPU, which is troublesome
-            self.reference_latents = (
-                encoder.cpu().encode(self.reference_image).latent_dist.mean.to(device)
-            )
+            self.reference_latents = encoder.cpu().encode(self.reference_image).latent_dist.mean.to(device)
         else:
-            self.reference_latents = encoder.encode(
-                self.reference_image.to(device)
-            ).latent_dist.sample(generator=generator)
+            self.reference_latents = encoder.encode(self.reference_image.to(device)).latent_dist.sample(
+                generator=generator
+            )
         self.reference_latents = 0.18215 * self.reference_latents
 
     @property
@@ -199,10 +183,7 @@ class Image2ImageRegion(DiffusionRegion):
         # This class requires special casting to dict because of the reference_image tensor. Otherwise it cannot be casted to JSON
 
         # Get all basic fields from parent class
-        super_fields = {
-            key: getattr(self, key)
-            for key in DiffusionRegion.__dataclass_fields__.keys()
-        }
+        super_fields = {key: getattr(self, key) for key in DiffusionRegion.__dataclass_fields__.keys()}
         # Pack other fields
         return {
             **super_fields,
@@ -245,10 +226,7 @@ class MaskWeightsBuilder:
         """Computes a tensor of constant for a given diffusion region"""
         latent_width = region.latent_col_end - region.latent_col_init
         latent_height = region.latent_row_end - region.latent_row_init
-        return (
-            torch.ones(self.nbatch, self.latent_space_dim, latent_height, latent_width)
-            * region.mask_weight
-        )
+        return torch.ones(self.nbatch, self.latent_space_dim, latent_height, latent_width) * region.mask_weight
 
     def _gaussian_weights(self, region: DiffusionRegion) -> torch.tensor:
         """Generates a gaussian mask of weights for tile contributions"""
@@ -256,35 +234,19 @@ class MaskWeightsBuilder:
         latent_height = region.latent_row_end - region.latent_row_init
 
         var = 0.01
-        midpoint = (
-            latent_width - 1
-        ) / 2  # -1 because index goes from 0 to latent_width - 1
+        midpoint = (latent_width - 1) / 2  # -1 because index goes from 0 to latent_width - 1
         x_probs = [
-            exp(
-                -(x - midpoint)
-                * (x - midpoint)
-                / (latent_width * latent_width)
-                / (2 * var)
-            )
-            / sqrt(2 * pi * var)
+            exp(-(x - midpoint) * (x - midpoint) / (latent_width * latent_width) / (2 * var)) / sqrt(2 * pi * var)
             for x in range(latent_width)
         ]
         midpoint = (latent_height - 1) / 2
         y_probs = [
-            exp(
-                -(y - midpoint)
-                * (y - midpoint)
-                / (latent_height * latent_height)
-                / (2 * var)
-            )
-            / sqrt(2 * pi * var)
+            exp(-(y - midpoint) * (y - midpoint) / (latent_height * latent_height) / (2 * var)) / sqrt(2 * pi * var)
             for y in range(latent_height)
         ]
 
         weights = np.outer(y_probs, x_probs) * region.mask_weight
-        return torch.tile(
-            torch.tensor(weights), (self.nbatch, self.latent_space_dim, 1, 1)
-        )
+        return torch.tile(torch.tensor(weights), (self.nbatch, self.latent_space_dim, 1, 1))
 
     def _quartic_weights(self, region: DiffusionRegion) -> torch.tensor:
         """Generates a quartic mask of weights for tile contributions
@@ -293,21 +255,17 @@ class MaskWeightsBuilder:
         """
         quartic_constant = 15.0 / 16.0
 
-        support = (
-            np.array(range(region.latent_col_init, region.latent_col_end))
-            - region.latent_col_init
-        ) / (region.latent_col_end - region.latent_col_init - 1) * 1.99 - (1.99 / 2.0)
+        support = (np.array(range(region.latent_col_init, region.latent_col_end)) - region.latent_col_init) / (
+            region.latent_col_end - region.latent_col_init - 1
+        ) * 1.99 - (1.99 / 2.0)
         x_probs = quartic_constant * np.square(1 - np.square(support))
-        support = (
-            np.array(range(region.latent_row_init, region.latent_row_end))
-            - region.latent_row_init
-        ) / (region.latent_row_end - region.latent_row_init - 1) * 1.99 - (1.99 / 2.0)
+        support = (np.array(range(region.latent_row_init, region.latent_row_end)) - region.latent_row_init) / (
+            region.latent_row_end - region.latent_row_init - 1
+        ) * 1.99 - (1.99 / 2.0)
         y_probs = quartic_constant * np.square(1 - np.square(support))
 
         weights = np.outer(y_probs, x_probs) * region.mask_weight
-        return torch.tile(
-            torch.tensor(weights), (self.nbatch, self.latent_space_dim, 1, 1)
-        )
+        return torch.tile(torch.tensor(weights), (self.nbatch, self.latent_space_dim, 1, 1))
 
 
 class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
@@ -390,12 +348,8 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
         self.scheduler.set_timesteps(num_inference_steps, device=self.device)
 
         # Split diffusion regions by their kind
-        text2image_regions = [
-            region for region in regions if isinstance(region, Text2ImageRegion)
-        ]
-        image2image_regions = [
-            region for region in regions if isinstance(region, Image2ImageRegion)
-        ]
+        text2image_regions = [region for region in regions if isinstance(region, Text2ImageRegion)]
+        image2image_regions = [region for region in regions if isinstance(region, Image2ImageRegion)]
 
         # Prepare text embeddings
         for region in text2image_regions:
@@ -433,9 +387,7 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
                 )
 
         # Apply epsilon noise to regions: first diffusion regions, then reroll regions
-        all_eps_rerolls = regions + [
-            r for r in reroll_regions if r.reroll_mode == RerollModes.EPSILON.value
-        ]
+        all_eps_rerolls = regions + [r for r in reroll_regions if r.reroll_mode == RerollModes.EPSILON.value]
         for region in all_eps_rerolls:
             if region.noise_eps > 0:
                 region_noise = init_noise[
@@ -471,31 +423,20 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
                 max_length=max_length,
                 return_tensors="pt",
             )
-            uncond_embeddings = self.text_encoder(
-                uncond_input.input_ids.to(self.device)
-            )[0]
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            region.encoded_prompt = torch.cat(
-                [uncond_embeddings, region.encoded_prompt]
-            )
+            region.encoded_prompt = torch.cat([uncond_embeddings, region.encoded_prompt])
 
         # Prepare image latents
         for region in image2image_regions:
-            region.encode_reference_image(
-                self.vae, device=self.device, generator=generator
-            )
+            region.encode_reference_image(self.vae, device=self.device, generator=generator)
 
         # Prepare mask of weights for each region
-        mask_builder = MaskWeightsBuilder(
-            latent_space_dim=self.unet.config.in_channels, nbatch=batch_size
-        )
-        mask_weights = [
-            mask_builder.compute_mask_weights(region).to(self.device)
-            for region in text2image_regions
-        ]
+        mask_builder = MaskWeightsBuilder(latent_space_dim=self.unet.config.in_channels, nbatch=batch_size)
+        mask_weights = [mask_builder.compute_mask_weights(region).to(self.device) for region in text2image_regions]
 
         # Diffusion timesteps
         for i, t in tqdm(enumerate(self.scheduler.timesteps)):
@@ -513,18 +454,12 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([region_latents] * 2)
                 # scale model input following scheduler rules
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                 # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input, t, encoder_hidden_states=region.encoded_prompt
-                )["sample"]
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=region.encoded_prompt)["sample"]
                 # perform guidance
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred_region = noise_pred_uncond + region.guidance_scale * (
-                    noise_pred_text - noise_pred_uncond
-                )
+                noise_pred_region = noise_pred_uncond + region.guidance_scale * (noise_pred_text - noise_pred_uncond)
                 noise_preds_regions.append(noise_pred_region)
 
             # Merge noise predictions for all tiles
@@ -539,9 +474,7 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
                     :,
                     region.latent_row_init : region.latent_row_end,
                     region.latent_col_init : region.latent_col_end,
-                ] += (
-                    noise_pred_region * mask_weights_region
-                )
+                ] += noise_pred_region * mask_weights_region
                 contributors[
                     :,
                     :,
@@ -559,9 +492,7 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
 
             # Image2Image regions: override latents generated by the scheduler
             for region in image2image_regions:
-                influence_step = self.get_latest_timestep_img2img(
-                    num_inference_steps, region.strength
-                )
+                influence_step = self.get_latest_timestep_img2img(num_inference_steps, region.strength)
                 # Only override in the timesteps before the last influence step of the image (given by its strength)
                 if t > influence_step:
                     timestep = t.repeat(batch_size)
@@ -571,9 +502,7 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
                         region.latent_row_init : region.latent_row_end,
                         region.latent_col_init : region.latent_col_end,
                     ]
-                    region_latents = self.scheduler.add_noise(
-                        region.reference_latents, region_init_noise, timestep
-                    )
+                    region_latents = self.scheduler.add_noise(region.reference_latents, region_init_noise, timestep)
                     latents[
                         :,
                         :,

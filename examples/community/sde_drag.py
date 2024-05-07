@@ -164,12 +164,8 @@ class SdeDragPipeline(DiffusionPipeline):
         mask = torch.tensor(np.array(mask))
         mask = mask.unsqueeze(0).expand_as(latent).to(self.device)
 
-        source_points = torch.tensor(source_points).div(
-            torch.tensor([8]), rounding_mode="trunc"
-        )
-        target_points = torch.tensor(target_points).div(
-            torch.tensor([8]), rounding_mode="trunc"
-        )
+        source_points = torch.tensor(source_points).div(torch.tensor([8]), rounding_mode="trunc")
+        target_points = torch.tensor(target_points).div(torch.tensor([8]), rounding_mode="trunc")
 
         distance = target_points - source_points
         distance_norm_max = torch.norm(distance.float(), dim=1, keepdim=True).max()
@@ -177,9 +173,7 @@ class SdeDragPipeline(DiffusionPipeline):
         if distance_norm_max <= step_size:
             drag_num = 1
         else:
-            drag_num = distance_norm_max.div(
-                torch.tensor([step_size]), rounding_mode="trunc"
-            )
+            drag_num = distance_norm_max.div(torch.tensor([step_size]), rounding_mode="trunc")
             if (distance_norm_max / drag_num - step_size).abs() > (
                 distance_norm_max / (drag_num + 1) - step_size
             ).abs():
@@ -239,25 +233,17 @@ class SdeDragPipeline(DiffusionPipeline):
 
         unet_lora_attn_procs = {}
         for name, attn_processor in self.unet.attn_processors.items():
-            cross_attention_dim = (
-                None
-                if name.endswith("attn1.processor")
-                else self.unet.config.cross_attention_dim
-            )
+            cross_attention_dim = None if name.endswith("attn1.processor") else self.unet.config.cross_attention_dim
             if name.startswith("mid_block"):
                 hidden_size = self.unet.config.block_out_channels[-1]
             elif name.startswith("up_blocks"):
                 block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(self.unet.config.block_out_channels))[
-                    block_id
-                ]
+                hidden_size = list(reversed(self.unet.config.block_out_channels))[block_id]
             elif name.startswith("down_blocks"):
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = self.unet.config.block_out_channels[block_id]
             else:
-                raise NotImplementedError(
-                    "name must start with up_blocks, mid_blocks, or down_blocks"
-                )
+                raise NotImplementedError("name must start with up_blocks, mid_blocks, or down_blocks")
 
             if isinstance(
                 attn_processor,
@@ -361,13 +347,9 @@ class SdeDragPipeline(DiffusionPipeline):
             elif self.scheduler.config.prediction_type == "v_prediction":
                 target = self.scheduler.get_velocity(model_input, noise, timesteps)
             else:
-                raise ValueError(
-                    f"Unknown prediction type {self.scheduler.config.prediction_type}"
-                )
+                raise ValueError(f"Unknown prediction type {self.scheduler.config.prediction_type}")
 
-            loss = torch.nn.functional.mse_loss(
-                model_pred.float(), target.float(), reduction="mean"
-            )
+            loss = torch.nn.functional.mse_loss(model_pred.float(), target.float(), reduction="mean")
             accelerator.backward(loss)
             optimizer.step()
             lr_scheduler.step()
@@ -398,9 +380,7 @@ class SdeDragPipeline(DiffusionPipeline):
 
         return text_inputs
 
-    def _encode_prompt(
-        self, input_ids, attention_mask, text_encoder_use_attention_mask=False
-    ):
+    def _encode_prompt(self, input_ids, attention_mask, text_encoder_use_attention_mask=False):
         text_input_ids = input_ids.to(self.device)
 
         if text_encoder_use_attention_mask:
@@ -444,9 +424,7 @@ class SdeDragPipeline(DiffusionPipeline):
             r_x_lower = min(adapt_radius, source[0], target[0])
             r_x_upper = min(adapt_radius, max_width - source[0], max_width - target[0])
             r_y_lower = min(adapt_radius, source[1], target[1])
-            r_y_upper = min(
-                adapt_radius, max_height - source[1], max_height - target[1]
-            )
+            r_y_upper = min(adapt_radius, max_height - source[1], max_height - target[1])
             return r_x_lower, r_x_upper, r_y_lower, r_y_upper
 
         for source_, target_ in zip(source_new, target_new):
@@ -480,9 +458,7 @@ class SdeDragPipeline(DiffusionPipeline):
                 :,
                 target_[1] - r_y_lower : target_[1] + r_y_upper,
                 target_[0] - r_x_lower : target_[0] + r_x_upper,
-            ] = (
-                source_feature * 1.1
-            )
+            ] = source_feature * 1.1
         return latent
 
     @torch.no_grad()
@@ -499,13 +475,9 @@ class SdeDragPipeline(DiffusionPipeline):
         return latent
 
     @torch.no_grad()
-    def _get_eps(
-        self, latent, timestep, guidance_scale, text_embeddings, lora_scale=None
-    ):
+    def _get_eps(self, latent, timestep, guidance_scale, text_embeddings, lora_scale=None):
         latent_model_input = torch.cat([latent] * 2) if guidance_scale > 1.0 else latent
-        text_embeddings = (
-            text_embeddings if guidance_scale > 1.0 else text_embeddings.chunk(2)[1]
-        )
+        text_embeddings = text_embeddings if guidance_scale > 1.0 else text_embeddings.chunk(2)[1]
 
         cross_attention_kwargs = None if lora_scale is None else {"scale": lora_scale}
 
@@ -524,9 +496,7 @@ class SdeDragPipeline(DiffusionPipeline):
             noise_pred_uncond = 0.0
         else:
             raise NotImplementedError(guidance_scale)
-        noise_pred = noise_pred_uncond + guidance_scale * (
-            noise_pred_text - noise_pred_uncond
-        )
+        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
         return noise_pred
 
@@ -547,48 +517,33 @@ class SdeDragPipeline(DiffusionPipeline):
 
         prev_timestep = timestep + num_train_timesteps // steps
 
-        alpha_prod_t = (
-            alphas_cumprod[timestep] if timestep >= 0 else initial_alpha_cumprod
-        )
+        alpha_prod_t = alphas_cumprod[timestep] if timestep >= 0 else initial_alpha_cumprod
         alpha_prod_t_prev = alphas_cumprod[prev_timestep]
 
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
-        x_prev = (alpha_prod_t_prev / alpha_prod_t) ** (0.5) * sample + (
-            1 - alpha_prod_t_prev / alpha_prod_t
-        ) ** (0.5) * torch.randn(
+        x_prev = (alpha_prod_t_prev / alpha_prod_t) ** (0.5) * sample + (1 - alpha_prod_t_prev / alpha_prod_t) ** (
+            0.5
+        ) * torch.randn(
             sample.size(),
             dtype=sample.dtype,
             layout=sample.layout,
             device=self.device,
             generator=generator,
         )
-        eps = self._get_eps(
-            x_prev, prev_timestep, guidance_scale, text_embeddings, lora_scale
-        )
+        eps = self._get_eps(x_prev, prev_timestep, guidance_scale, text_embeddings, lora_scale)
 
         sigma_t_prev = (
             eta
             * (1 - alpha_prod_t) ** (0.5)
-            * (
-                1
-                - alpha_prod_t_prev
-                / (1 - alpha_prod_t_prev)
-                * (1 - alpha_prod_t)
-                / alpha_prod_t
-            )
-            ** (0.5)
+            * (1 - alpha_prod_t_prev / (1 - alpha_prod_t_prev) * (1 - alpha_prod_t) / alpha_prod_t) ** (0.5)
         )
 
-        pred_original_sample = (
-            x_prev - beta_prod_t_prev ** (0.5) * eps
-        ) / alpha_prod_t_prev ** (0.5)
+        pred_original_sample = (x_prev - beta_prod_t_prev ** (0.5) * eps) / alpha_prod_t_prev ** (0.5)
         pred_sample_direction_coeff = (1 - alpha_prod_t - sigma_t_prev**2) ** (0.5)
 
         noise = (
-            sample
-            - alpha_prod_t ** (0.5) * pred_original_sample
-            - pred_sample_direction_coeff * eps
+            sample - alpha_prod_t ** (0.5) * pred_original_sample - pred_sample_direction_coeff * eps
         ) / sigma_t_prev
 
         return x_prev, noise
@@ -610,16 +565,12 @@ class SdeDragPipeline(DiffusionPipeline):
         alphas_cumprod = self.scheduler.alphas_cumprod
         final_alpha_cumprod = torch.tensor(1.0)
 
-        eps = self._get_eps(
-            sample, timestep, guidance_scale, text_embeddings, lora_scale
-        )
+        eps = self._get_eps(sample, timestep, guidance_scale, text_embeddings, lora_scale)
 
         prev_timestep = timestep - num_train_timesteps // steps
 
         alpha_prod_t = alphas_cumprod[timestep]
-        alpha_prod_t_prev = (
-            alphas_cumprod[prev_timestep] if prev_timestep >= 0 else final_alpha_cumprod
-        )
+        alpha_prod_t_prev = alphas_cumprod[prev_timestep] if prev_timestep >= 0 else final_alpha_cumprod
 
         beta_prod_t = 1 - alpha_prod_t
 
@@ -631,9 +582,7 @@ class SdeDragPipeline(DiffusionPipeline):
             else 0
         )
 
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * eps) / alpha_prod_t ** (
-            0.5
-        )
+        pred_original_sample = (sample - beta_prod_t ** (0.5) * eps) / alpha_prod_t ** (0.5)
         pred_sample_direction_coeff = (1 - alpha_prod_t_prev - sigma_t**2) ** (0.5)
 
         noise = (
@@ -648,9 +597,7 @@ class SdeDragPipeline(DiffusionPipeline):
             else noise
         )
         latent = (
-            alpha_prod_t_prev ** (0.5) * pred_original_sample
-            + pred_sample_direction_coeff * eps
-            + sigma_t * noise
+            alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction_coeff * eps + sigma_t * noise
         )
 
         return latent

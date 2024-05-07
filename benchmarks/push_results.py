@@ -19,9 +19,7 @@ from utils import (
 def has_previous_benchmark() -> str:
     csv_path = None
     try:
-        csv_path = hf_hub_download(
-            repo_id=REPO_ID, repo_type="dataset", filename=FINAL_CSV_FILE
-        )
+        csv_path = hf_hub_download(repo_id=REPO_ID, repo_type="dataset", filename=FINAL_CSV_FILE)
     except EntryNotFoundError:
         csv_path = None
     return csv_path
@@ -43,45 +41,30 @@ def push_to_hf_dataset():
         current_results = pd.read_csv(FINAL_CSV_FILE)
         previous_results = pd.read_csv(csv_path)
 
-        numeric_columns = current_results.select_dtypes(
-            include=["float64", "int64"]
-        ).columns
+        numeric_columns = current_results.select_dtypes(include=["float64", "int64"]).columns
         numeric_columns = [
-            c
-            for c in numeric_columns
-            if c not in ["batch_size", "num_inference_steps", "actual_gpu_memory (gbs)"]
+            c for c in numeric_columns if c not in ["batch_size", "num_inference_steps", "actual_gpu_memory (gbs)"]
         ]
 
         for column in numeric_columns:
-            previous_results[column] = previous_results[column].map(
-                lambda x: filter_float(x)
-            )
+            previous_results[column] = previous_results[column].map(lambda x: filter_float(x))
 
             # Calculate the percentage change
             current_results[column] = current_results[column].astype(float)
             previous_results[column] = previous_results[column].astype(float)
-            percent_change = (
-                (current_results[column] - previous_results[column])
-                / previous_results[column]
-            ) * 100
+            percent_change = ((current_results[column] - previous_results[column]) / previous_results[column]) * 100
 
             # Format the values with '+' or '-' sign and append to original values
-            current_results[column] = current_results[column].map(
-                str
-            ) + percent_change.map(lambda x: f" ({'+' if x > 0 else ''}{x:.2f}%)")
-            # There might be newly added rows. So, filter out the NaNs.
-            current_results[column] = current_results[column].map(
-                lambda x: x.replace(" (nan%)", "")
+            current_results[column] = current_results[column].map(str) + percent_change.map(
+                lambda x: f" ({'+' if x > 0 else ''}{x:.2f}%)"
             )
+            # There might be newly added rows. So, filter out the NaNs.
+            current_results[column] = current_results[column].map(lambda x: x.replace(" (nan%)", ""))
 
         # Overwrite the current result file.
         current_results.to_csv(FINAL_CSV_FILE, index=False)
 
-    commit_message = (
-        f"upload from sha: {GITHUB_SHA}"
-        if GITHUB_SHA is not None
-        else "upload benchmark results"
-    )
+    commit_message = f"upload from sha: {GITHUB_SHA}" if GITHUB_SHA is not None else "upload benchmark results"
     upload_file(
         repo_id=REPO_ID,
         path_in_repo=FINAL_CSV_FILE,

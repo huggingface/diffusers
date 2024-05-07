@@ -169,26 +169,16 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
         )
         crop_rect_with_overlap = add_overlap_rect(crop_rect, tile_border, image.size)
         tile = image.crop(crop_rect_with_overlap)
-        translated_slice_x = (
-            (crop_rect[0] + ((crop_rect[2] - crop_rect[0]) / 2)) / image.size[0]
-        ) * tile.size[0]
+        translated_slice_x = ((crop_rect[0] + ((crop_rect[2] - crop_rect[0]) / 2)) / image.size[0]) * tile.size[0]
         translated_slice_x = translated_slice_x - (original_image_slice / 2)
         translated_slice_x = max(0, translated_slice_x)
         to_input = squeeze_tile(tile, image, original_image_slice, translated_slice_x)
         orig_input_size = to_input.size
         to_input = to_input.resize((tile_size, tile_size), Image.BICUBIC)
-        upscaled_tile = (
-            super(StableDiffusionTiledUpscalePipeline, self)
-            .__call__(image=to_input, **kwargs)
-            .images[0]
-        )
-        upscaled_tile = upscaled_tile.resize(
-            (orig_input_size[0] * 4, orig_input_size[1] * 4), Image.BICUBIC
-        )
+        upscaled_tile = super(StableDiffusionTiledUpscalePipeline, self).__call__(image=to_input, **kwargs).images[0]
+        upscaled_tile = upscaled_tile.resize((orig_input_size[0] * 4, orig_input_size[1] * 4), Image.BICUBIC)
         upscaled_tile = unsqueeze_tile(upscaled_tile, original_image_slice)
-        upscaled_tile = upscaled_tile.resize(
-            (tile.size[0] * 4, tile.size[1] * 4), Image.BICUBIC
-        )
+        upscaled_tile = upscaled_tile.resize((tile.size[0] * 4, tile.size[1] * 4), Image.BICUBIC)
         remove_borders = []
         if x == 0:
             remove_borders.append("l")
@@ -318,9 +308,7 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
 def main():
     # Run a demo
     model_id = "stabilityai/stable-diffusion-x4-upscaler"
-    pipe = StableDiffusionTiledUpscalePipeline.from_pretrained(
-        model_id, revision="fp16", torch_dtype=torch.float16
-    )
+    pipe = StableDiffusionTiledUpscalePipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
     pipe = pipe.to("cuda")
     image = Image.open("../../docs/source/imgs/diffusers_library.jpg")
 

@@ -53,9 +53,9 @@ def retrieve(class_prompt, class_data_dir, num_class_images):
     total = 0
     pbar = tqdm(desc="downloading real regularization images", total=num_class_images)
 
-    with open(f"{class_data_dir}/caption.txt", "w") as f1, open(
-        f"{class_data_dir}/urls.txt", "w"
-    ) as f2, open(f"{class_data_dir}/images.txt", "w") as f3:
+    with open(f"{class_data_dir}/caption.txt", "w") as f1, open(f"{class_data_dir}/urls.txt", "w") as f2, open(
+        f"{class_data_dir}/images.txt", "w"
+    ) as f3:
         while total < num_class_images:
             images = class_images[count]
             count += 1
@@ -79,15 +79,9 @@ def retrieve(class_prompt, class_data_dir, num_class_images):
 
 def parse_args():
     parser = argparse.ArgumentParser("", add_help=False)
-    parser.add_argument(
-        "--class_prompt", help="text prompt to retrieve images", required=True, type=str
-    )
-    parser.add_argument(
-        "--class_data_dir", help="path to save images", required=True, type=str
-    )
-    parser.add_argument(
-        "--num_class_images", help="number of images to download", default=200, type=int
-    )
+    parser.add_argument("--class_prompt", help="text prompt to retrieve images", required=True, type=str)
+    parser.add_argument("--class_data_dir", help="path to save images", required=True, type=str)
+    parser.add_argument("--num_class_images", help="number of images to download", default=200, type=int)
     return parser.parse_args()
 
 

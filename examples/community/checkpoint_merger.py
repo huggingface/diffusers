@@ -139,20 +139,14 @@ class CheckpointMergerPipeline(DiffusionPipeline):
 
         comparison_result = True
         for idx in range(1, len(config_dicts)):
-            comparison_result &= self._compare_model_configs(
-                config_dicts[idx - 1], config_dicts[idx]
-            )
+            comparison_result &= self._compare_model_configs(config_dicts[idx - 1], config_dicts[idx])
             if not force and comparison_result is False:
-                raise ValueError(
-                    "Incompatible checkpoints. Please check model_index.json for the models."
-                )
+                raise ValueError("Incompatible checkpoints. Please check model_index.json for the models.")
                 print(config_dicts[0], config_dicts[1])
         print("Compatible model_index.json files found")
         # Step 2: Basic Validation has succeeded. Let's download the models and save them into our local files.
         cached_folders = []
-        for pretrained_model_name_or_path, config_dict in zip(
-            pretrained_model_name_or_path_list, config_dicts
-        ):
+        for pretrained_model_name_or_path, config_dict in zip(pretrained_model_name_or_path_list, config_dicts):
             folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [
@@ -225,9 +219,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     checkpoint_path_2 = os.path.join(cached_folders[2], attr)
                     if os.path.exists(checkpoint_path_2):
                         files = [
-                            *glob.glob(
-                                os.path.join(checkpoint_path_2, "*.safetensors")
-                            ),
+                            *glob.glob(os.path.join(checkpoint_path_2, "*.safetensors")),
                             *glob.glob(os.path.join(checkpoint_path_2, "*.bin")),
                         ]
                         checkpoint_path_2 = files[0] if len(files) > 0 else None
@@ -238,9 +230,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     continue
                 try:
                     module = getattr(final_pipe, attr)
-                    if isinstance(
-                        module, bool
-                    ):  # ignore requires_safety_checker boolean
+                    if isinstance(module, bool):  # ignore requires_safety_checker boolean
                         continue
                     theta_0 = getattr(module, "state_dict")
                     theta_0 = theta_0()
@@ -271,13 +261,9 @@ class CheckpointMergerPipeline(DiffusionPipeline):
 
                 for key in theta_0.keys():
                     if theta_2:
-                        theta_0[key] = theta_func(
-                            theta_0[key], theta_1[key], theta_2[key], alpha
-                        )
+                        theta_0[key] = theta_func(theta_0[key], theta_1[key], theta_2[key], alpha)
                     else:
-                        theta_0[key] = theta_func(
-                            theta_0[key], theta_1[key], None, alpha
-                        )
+                        theta_0[key] = theta_func(theta_0[key], theta_1[key], None, alpha)
 
                 del theta_1
                 del theta_2

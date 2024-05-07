@@ -81,23 +81,15 @@ class TextToImageBenchmark(BaseBenchmak):
             if not isinstance(pipe, WuerstchenCombinedPipeline):
                 pipe.unet.to(memory_format=torch.channels_last)
                 print("Run torch compile")
-                pipe.unet = torch.compile(
-                    pipe.unet, mode="reduce-overhead", fullgraph=True
-                )
+                pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
                 if hasattr(pipe, "movq") and getattr(pipe, "movq", None) is not None:
                     pipe.movq.to(memory_format=torch.channels_last)
-                    pipe.movq = torch.compile(
-                        pipe.movq, mode="reduce-overhead", fullgraph=True
-                    )
+                    pipe.movq = torch.compile(pipe.movq, mode="reduce-overhead", fullgraph=True)
             else:
                 print("Run torch compile")
-                pipe.decoder = torch.compile(
-                    pipe.decoder, mode="reduce-overhead", fullgraph=True
-                )
-                pipe.vqgan = torch.compile(
-                    pipe.vqgan, mode="reduce-overhead", fullgraph=True
-                )
+                pipe.decoder = torch.compile(pipe.decoder, mode="reduce-overhead", fullgraph=True)
+                pipe.vqgan = torch.compile(pipe.vqgan, mode="reduce-overhead", fullgraph=True)
 
         pipe.set_progress_bar_config(disable=True)
         self.pipe = pipe
@@ -112,9 +104,7 @@ class TextToImageBenchmark(BaseBenchmak):
     def benchmark(self, args):
         flush()
 
-        print(
-            f"[INFO] {self.pipe.__class__.__name__}: Running benchmark with: {vars(args)}\n"
-        )
+        print(f"[INFO] {self.pipe.__class__.__name__}: Running benchmark with: {vars(args)}\n")
 
         time = benchmark_fn(self.run_inference, self.pipe, args)  # in seconds.
         memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())  # in GBs.
@@ -179,9 +169,7 @@ class LCMLoRATextToImageBenchmark(TextToImageBenchmark):
     def benchmark(self, args):
         flush()
 
-        print(
-            f"[INFO] {self.pipe.__class__.__name__}: Running benchmark with: {vars(args)}\n"
-        )
+        print(f"[INFO] {self.pipe.__class__.__name__}: Running benchmark with: {vars(args)}\n")
 
         time = benchmark_fn(self.run_inference, self.pipe, args)  # in seconds.
         memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())  # in GBs.
@@ -259,14 +247,10 @@ class IPAdapterTextToImageBenchmark(TextToImageBenchmark):
     image = load_image(url)
 
     def __init__(self, args):
-        pipe = self.pipeline_class.from_pretrained(
-            args.ckpt, torch_dtype=torch.float16
-        ).to("cuda")
+        pipe = self.pipeline_class.from_pretrained(args.ckpt, torch_dtype=torch.float16).to("cuda")
         pipe.load_ip_adapter(
             args.ip_adapter_id[0],
-            subfolder="models"
-            if "sdxl" not in args.ip_adapter_id[1]
-            else "sdxl_models",
+            subfolder="models" if "sdxl" not in args.ip_adapter_id[1] else "sdxl_models",
             weight_name=args.ip_adapter_id[1],
         )
 
@@ -296,12 +280,8 @@ class ControlNetBenchmark(TextToImageBenchmark):
     image = load_image(url).convert("RGB")
 
     def __init__(self, args):
-        aux_network = self.aux_network_class.from_pretrained(
-            args.ckpt, torch_dtype=torch.float16
-        )
-        pipe = self.pipeline_class.from_pretrained(
-            self.root_ckpt, controlnet=aux_network, torch_dtype=torch.float16
-        )
+        aux_network = self.aux_network_class.from_pretrained(args.ckpt, torch_dtype=torch.float16)
+        pipe = self.pipeline_class.from_pretrained(self.root_ckpt, controlnet=aux_network, torch_dtype=torch.float16)
         pipe = pipe.to("cuda")
 
         pipe.set_progress_bar_config(disable=True)
@@ -313,9 +293,7 @@ class ControlNetBenchmark(TextToImageBenchmark):
 
             print("Run torch compile")
             pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-            pipe.controlnet = torch.compile(
-                pipe.controlnet, mode="reduce-overhead", fullgraph=True
-            )
+            pipe.controlnet = torch.compile(pipe.controlnet, mode="reduce-overhead", fullgraph=True)
 
         self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
 
@@ -345,12 +323,8 @@ class T2IAdapterBenchmark(ControlNetBenchmark):
     image = load_image(url).convert("L")
 
     def __init__(self, args):
-        aux_network = self.aux_network_class.from_pretrained(
-            args.ckpt, torch_dtype=torch.float16
-        )
-        pipe = self.pipeline_class.from_pretrained(
-            self.root_ckpt, adapter=aux_network, torch_dtype=torch.float16
-        )
+        aux_network = self.aux_network_class.from_pretrained(args.ckpt, torch_dtype=torch.float16)
+        pipe = self.pipeline_class.from_pretrained(self.root_ckpt, adapter=aux_network, torch_dtype=torch.float16)
         pipe = pipe.to("cuda")
 
         pipe.set_progress_bar_config(disable=True)
@@ -362,9 +336,7 @@ class T2IAdapterBenchmark(ControlNetBenchmark):
 
             print("Run torch compile")
             pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-            pipe.adapter = torch.compile(
-                pipe.adapter, mode="reduce-overhead", fullgraph=True
-            )
+            pipe.adapter = torch.compile(pipe.adapter, mode="reduce-overhead", fullgraph=True)
 
         self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
 

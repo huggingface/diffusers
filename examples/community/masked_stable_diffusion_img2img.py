@@ -136,9 +136,7 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
 
         # 2. Encode input prompt
         text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None)
-            if cross_attention_kwargs is not None
-            else None
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
         prompt_embeds = self._encode_prompt(
             prompt,
@@ -156,9 +154,7 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
 
         # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps = self.get_timesteps(
-            num_inference_steps, strength, device
-        )
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 5. Prepare latent variables
@@ -175,9 +171,7 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
 
         # mean of the latent distribution
         init_latents = [
-            self.vae.encode(
-                image.to(device=device, dtype=prompt_embeds.dtype)[i : i + 1]
-            ).latent_dist.mean
+            self.vae.encode(image.to(device=device, dtype=prompt_embeds.dtype)[i : i + 1]).latent_dist.mean
             for i in range(batch_size)
         ]
         init_latents = torch.cat(init_latents, dim=0)
@@ -193,12 +187,8 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                )
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -212,9 +202,7 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_text - noise_pred_uncond
-                    )
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if latent_mask is not None:
                     latents = torch.lerp(
@@ -222,19 +210,13 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
                         latents,
                         latent_mask,
                     )
-                    noise_pred = torch.lerp(
-                        torch.zeros_like(noise_pred), noise_pred, latent_mask
-                    )
+                    noise_pred = torch.lerp(torch.zeros_like(noise_pred), noise_pred, latent_mask)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False
-                )[0]
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
@@ -247,16 +229,10 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
                 scaled = torch.lerp(init_latents, scaled, latent_mask)
             image = self.vae.decode(scaled, return_dict=False)[0]
             if self.debug_save:
-                image_gen = self.vae.decode(
-                    latents / self.vae.config.scaling_factor, return_dict=False
-                )[0]
-                image_gen = self.image_processor.postprocess(
-                    image_gen, output_type=output_type, do_denormalize=[True]
-                )
+                image_gen = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+                image_gen = self.image_processor.postprocess(image_gen, output_type=output_type, do_denormalize=[True])
                 image_gen[0].save("from_latent.png")
-            image, has_nsfw_concept = self.run_safety_checker(
-                image, device, prompt_embeds.dtype
-            )
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
             has_nsfw_concept = None
@@ -266,9 +242,7 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        image = self.image_processor.postprocess(
-            image, output_type=output_type, do_denormalize=do_denormalize
-        )
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
@@ -277,9 +251,7 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(
-            images=image, nsfw_content_detected=has_nsfw_concept
-        )
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
     def _make_latent_mask(self, latents, mask):
         if mask is not None:
@@ -301,9 +273,7 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
                 resized = self.image_processor.resize(m, l_height, l_width)
                 if self.debug_save:
                     resized.save("latent_mask.png")
-                latent_mask.append(
-                    np.repeat(np.array(resized)[np.newaxis, :, :], l_channels, axis=0)
-                )
+                latent_mask.append(np.repeat(np.array(resized)[np.newaxis, :, :], l_channels, axis=0))
             latent_mask = torch.as_tensor(np.stack(latent_mask)).to(latents)
             latent_mask = latent_mask / latent_mask.max()
         return latent_mask

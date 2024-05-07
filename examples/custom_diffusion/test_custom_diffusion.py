@@ -53,11 +53,7 @@ class CustomDiffusion(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(
-                os.path.isfile(
-                    os.path.join(tmpdir, "pytorch_custom_diffusion_weights.bin")
-                )
-            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_custom_diffusion_weights.bin")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "<new1>.bin")))
 
     def test_custom_diffusion_checkpointing_checkpoints_total_limit(self):

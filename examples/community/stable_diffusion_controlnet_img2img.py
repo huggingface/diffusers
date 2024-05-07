@@ -104,27 +104,15 @@ def prepare_controlnet_conditioning_image(
 
         if isinstance(controlnet_conditioning_image[0], PIL.Image.Image):
             controlnet_conditioning_image = [
-                np.array(
-                    i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"])
-                )[None, :]
+                np.array(i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"]))[None, :]
                 for i in controlnet_conditioning_image
             ]
-            controlnet_conditioning_image = np.concatenate(
-                controlnet_conditioning_image, axis=0
-            )
-            controlnet_conditioning_image = (
-                np.array(controlnet_conditioning_image).astype(np.float32) / 255.0
-            )
-            controlnet_conditioning_image = controlnet_conditioning_image.transpose(
-                0, 3, 1, 2
-            )
-            controlnet_conditioning_image = torch.from_numpy(
-                controlnet_conditioning_image
-            )
+            controlnet_conditioning_image = np.concatenate(controlnet_conditioning_image, axis=0)
+            controlnet_conditioning_image = np.array(controlnet_conditioning_image).astype(np.float32) / 255.0
+            controlnet_conditioning_image = controlnet_conditioning_image.transpose(0, 3, 1, 2)
+            controlnet_conditioning_image = torch.from_numpy(controlnet_conditioning_image)
         elif isinstance(controlnet_conditioning_image[0], torch.Tensor):
-            controlnet_conditioning_image = torch.cat(
-                controlnet_conditioning_image, dim=0
-            )
+            controlnet_conditioning_image = torch.cat(controlnet_conditioning_image, dim=0)
 
     image_batch_size = controlnet_conditioning_image.shape[0]
 
@@ -134,13 +122,9 @@ def prepare_controlnet_conditioning_image(
         # image batch size is the same as prompt batch size
         repeat_by = num_images_per_prompt
 
-    controlnet_conditioning_image = controlnet_conditioning_image.repeat_interleave(
-        repeat_by, dim=0
-    )
+    controlnet_conditioning_image = controlnet_conditioning_image.repeat_interleave(repeat_by, dim=0)
 
-    controlnet_conditioning_image = controlnet_conditioning_image.to(
-        device=device, dtype=dtype
-    )
+    controlnet_conditioning_image = controlnet_conditioning_image.to(device=device, dtype=dtype)
 
     if do_classifier_free_guidance:
         controlnet_conditioning_image = torch.cat([controlnet_conditioning_image] * 2)
@@ -255,13 +239,11 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(
-                prompt, padding="longest", return_tensors="pt"
-            ).input_ids
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[
-                -1
-            ] and not torch.equal(text_input_ids, untruncated_ids):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -270,10 +252,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -289,9 +268,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -323,10 +300,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
                 return_tensors="pt",
             )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -341,16 +315,10 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(
-                dtype=self.text_encoder.dtype, device=device
-            )
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(
-                1, num_images_per_prompt, 1
-            )
-            negative_prompt_embeds = negative_prompt_embeds.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -361,9 +329,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(
-                self.numpy_to_pil(image), return_tensors="pt"
-            ).to(device)
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -385,17 +351,13 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -403,19 +365,10 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
     def check_controlnet_conditioning_image(self, image, prompt, prompt_embeds):
         image_is_pil = isinstance(image, PIL.Image.Image)
         image_is_tensor = isinstance(image, torch.Tensor)
-        image_is_pil_list = isinstance(image, list) and isinstance(
-            image[0], PIL.Image.Image
-        )
-        image_is_tensor_list = isinstance(image, list) and isinstance(
-            image[0], torch.Tensor
-        )
+        image_is_pil_list = isinstance(image, list) and isinstance(image[0], PIL.Image.Image)
+        image_is_tensor_list = isinstance(image, list) and isinstance(image[0], torch.Tensor)
 
-        if (
-            not image_is_pil
-            and not image_is_tensor
-            and not image_is_pil_list
-            and not image_is_tensor_list
-        ):
+        if not image_is_pil and not image_is_tensor and not image_is_pil_list and not image_is_tensor_list:
             raise TypeError(
                 "image must be passed and be one of PIL image, torch tensor, list of PIL images, or list of torch tensors"
             )
@@ -462,13 +415,10 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
         controlnet_conditioning_scale=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
-            callback_steps is not None
-            and (not isinstance(callback_steps, int) or callback_steps <= 0)
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
@@ -484,12 +434,8 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (
-            not isinstance(prompt, str) and not isinstance(prompt, list)
-        ):
-            raise ValueError(
-                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
-            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -508,9 +454,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
         # check controlnet condition image
 
         if isinstance(self.controlnet, ControlNetModel):
-            self.check_controlnet_conditioning_image(
-                controlnet_conditioning_image, prompt, prompt_embeds
-            )
+            self.check_controlnet_conditioning_image(controlnet_conditioning_image, prompt, prompt_embeds)
         elif isinstance(self.controlnet, MultiControlNetModel):
             if not isinstance(controlnet_conditioning_image, list):
                 raise TypeError("For multiple controlnets: `image` must be type `list`")
@@ -529,13 +473,11 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
 
         if isinstance(self.controlnet, ControlNetModel):
             if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError(
-                    "For single controlnet: `controlnet_conditioning_scale` must be type `float`."
-                )
+                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
         elif isinstance(self.controlnet, MultiControlNetModel):
-            if isinstance(controlnet_conditioning_scale, list) and len(
-                controlnet_conditioning_scale
-            ) != len(self.controlnet.nets):
+            if isinstance(controlnet_conditioning_scale, list) and len(controlnet_conditioning_scale) != len(
+                self.controlnet.nets
+            ):
                 raise ValueError(
                     "For multiple controlnets: When `controlnet_conditioning_scale` is specified as `list`, it must have"
                     " the same length as the number of controlnets"
@@ -574,9 +516,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
             )
 
         if strength < 0 or strength > 1:
-            raise ValueError(
-                f"The value of `strength` should in [0.0, 1.0] but is {strength}"
-            )
+            raise ValueError(f"The value of `strength` should in [0.0, 1.0] but is {strength}")
 
         if controlnet_guidance_start < 0 or controlnet_guidance_start > 1:
             raise ValueError(
@@ -629,8 +569,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
 
         if isinstance(generator, list):
             init_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i])
-                for i in range(batch_size)
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
             ]
             init_latents = torch.cat(init_latents, dim=0)
         else:
@@ -638,10 +577,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
 
         init_latents = self.vae.config.scaling_factor * init_latents
 
-        if (
-            batch_size > init_latents.shape[0]
-            and batch_size % init_latents.shape[0] == 0
-        ):
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
             raise ValueError(
                 f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
             )
@@ -802,9 +738,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
             (nsfw) content, according to the `safety_checker`.
         """
         # 0. Default height and width to unet
-        height, width = self._default_height_width(
-            height, width, controlnet_conditioning_image
-        )
+        height, width = self._default_height_width(height, width, controlnet_conditioning_image)
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -837,12 +771,8 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        if isinstance(self.controlnet, MultiControlNetModel) and isinstance(
-            controlnet_conditioning_scale, float
-        ):
-            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(
-                self.controlnet.nets
-            )
+        if isinstance(self.controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(self.controlnet.nets)
 
         # 3. Encode input prompt
         prompt_embeds = self._encode_prompt(
@@ -893,9 +823,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps = self.get_timesteps(
-            num_inference_steps, strength, device
-        )
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
@@ -917,13 +845,9 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                )
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # compute the percentage of total steps we are at
                 current_sampling_percent = i / len(timesteps)
@@ -959,19 +883,13 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_text - noise_pred_uncond
-                    )
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, **extra_step_kwargs
-                ).prev_sample
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
@@ -992,9 +910,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
             image = self.decode_latents(latents)
 
             # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(
-                image, device, prompt_embeds.dtype
-            )
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
             # 10. Convert to PIL
             image = self.numpy_to_pil(image)
@@ -1003,9 +919,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
             image = self.decode_latents(latents)
 
             # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(
-                image, device, prompt_embeds.dtype
-            )
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
@@ -1014,6 +928,4 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(
-            images=image, nsfw_content_detected=has_nsfw_concept
-        )
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

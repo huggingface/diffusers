@@ -110,10 +110,7 @@ class StableDiffusionIPEXPipeline(
     ):
         super().__init__()
 
-        if (
-            hasattr(scheduler.config, "steps_offset")
-            and scheduler.config.steps_offset != 1
-        ):
+        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -122,17 +119,12 @@ class StableDiffusionIPEXPipeline(
                 " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
                 " file"
             )
-            deprecate(
-                "steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False
-            )
+            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if (
-            hasattr(scheduler.config, "clip_sample")
-            and scheduler.config.clip_sample is True
-        ):
+        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
                 " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
@@ -140,9 +132,7 @@ class StableDiffusionIPEXPipeline(
                 " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
                 " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
             )
-            deprecate(
-                "clip_sample not set", "1.0.0", deprecation_message, standard_warn=False
-            )
+            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(scheduler.config)
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
@@ -163,16 +153,10 @@ class StableDiffusionIPEXPipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(
-            unet.config, "_diffusers_version"
-        ) and version.parse(
+        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
             version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse(
-            "0.9.0.dev0"
-        )
-        is_unet_sample_size_less_64 = (
-            hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
-        )
+        ) < version.parse("0.9.0.dev0")
+        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -185,9 +169,7 @@ class StableDiffusionIPEXPipeline(
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
                 " the `unet/config.json` file"
             )
-            deprecate(
-                "sample_size<64", "1.0.0", deprecation_message, standard_warn=False
-            )
+            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
@@ -269,9 +251,7 @@ class StableDiffusionIPEXPipeline(
             latents,
         )
         dummy = torch.ones(1, dtype=torch.int32)
-        latent_model_input = (
-            torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-        )
+        latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
         latent_model_input = self.scheduler.scale_model_input(latent_model_input, dummy)
 
         unet_input_example = (latent_model_input, dummy, prompt_embeds)
@@ -279,36 +259,22 @@ class StableDiffusionIPEXPipeline(
 
         return unet_input_example, vae_decoder_input_example
 
-    def prepare_for_ipex(
-        self, promt, dtype=torch.float32, height=None, width=None, guidance_scale=7.5
-    ):
+    def prepare_for_ipex(self, promt, dtype=torch.float32, height=None, width=None, guidance_scale=7.5):
         self.unet = self.unet.to(memory_format=torch.channels_last)
         self.vae.decoder = self.vae.decoder.to(memory_format=torch.channels_last)
         self.text_encoder = self.text_encoder.to(memory_format=torch.channels_last)
         if self.safety_checker is not None:
-            self.safety_checker = self.safety_checker.to(
-                memory_format=torch.channels_last
-            )
+            self.safety_checker = self.safety_checker.to(memory_format=torch.channels_last)
 
-        unet_input_example, vae_decoder_input_example = self.get_input_example(
-            promt, height, width, guidance_scale
-        )
+        unet_input_example, vae_decoder_input_example = self.get_input_example(promt, height, width, guidance_scale)
 
         # optimize with ipex
         if dtype == torch.bfloat16:
-            self.unet = ipex.optimize(
-                self.unet.eval(), dtype=torch.bfloat16, inplace=True
-            )
-            self.vae.decoder = ipex.optimize(
-                self.vae.decoder.eval(), dtype=torch.bfloat16, inplace=True
-            )
-            self.text_encoder = ipex.optimize(
-                self.text_encoder.eval(), dtype=torch.bfloat16, inplace=True
-            )
+            self.unet = ipex.optimize(self.unet.eval(), dtype=torch.bfloat16, inplace=True)
+            self.vae.decoder = ipex.optimize(self.vae.decoder.eval(), dtype=torch.bfloat16, inplace=True)
+            self.text_encoder = ipex.optimize(self.text_encoder.eval(), dtype=torch.bfloat16, inplace=True)
             if self.safety_checker is not None:
-                self.safety_checker = ipex.optimize(
-                    self.safety_checker.eval(), dtype=torch.bfloat16, inplace=True
-                )
+                self.safety_checker = ipex.optimize(self.safety_checker.eval(), dtype=torch.bfloat16, inplace=True)
         elif dtype == torch.float32:
             self.unet = ipex.optimize(
                 self.unet.eval(),
@@ -340,15 +306,11 @@ class StableDiffusionIPEXPipeline(
                     auto_kernel_selection=False,
                 )
         else:
-            raise ValueError(
-                " The value of 'dtype' should be 'torch.bfloat16' or 'torch.float32' !"
-            )
+            raise ValueError(" The value of 'dtype' should be 'torch.bfloat16' or 'torch.float32' !")
 
         # trace unet model to get better performance on IPEX
         with torch.cpu.amp.autocast(enabled=dtype == torch.bfloat16), torch.no_grad():
-            unet_trace_model = torch.jit.trace(
-                self.unet, unet_input_example, check_trace=False, strict=False
-            )
+            unet_trace_model = torch.jit.trace(self.unet, unet_input_example, check_trace=False, strict=False)
             unet_trace_model = torch.jit.freeze(unet_trace_model)
         self.unet.forward = unet_trace_model.forward
 
@@ -417,13 +379,11 @@ class StableDiffusionIPEXPipeline(
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(
-                prompt, padding="longest", return_tensors="pt"
-            ).input_ids
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[
-                -1
-            ] and not torch.equal(text_input_ids, untruncated_ids):
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
                 removed_text = self.tokenizer.batch_decode(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
@@ -432,10 +392,7 @@ class StableDiffusionIPEXPipeline(
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -451,9 +408,7 @@ class StableDiffusionIPEXPipeline(
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -489,10 +444,7 @@ class StableDiffusionIPEXPipeline(
                 return_tensors="pt",
             )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -507,16 +459,10 @@ class StableDiffusionIPEXPipeline(
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(
-                dtype=self.text_encoder.dtype, device=device
-            )
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(
-                1, num_images_per_prompt, 1
-            )
-            negative_prompt_embeds = negative_prompt_embeds.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -527,9 +473,7 @@ class StableDiffusionIPEXPipeline(
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(
-                self.numpy_to_pil(image), return_tensors="pt"
-            ).to(device)
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -551,17 +495,13 @@ class StableDiffusionIPEXPipeline(
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -577,13 +517,10 @@ class StableDiffusionIPEXPipeline(
         negative_prompt_embeds=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
-            callback_steps is not None
-            and (not isinstance(callback_steps, int) or callback_steps <= 0)
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
@@ -599,12 +536,8 @@ class StableDiffusionIPEXPipeline(
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (
-            not isinstance(prompt, str) and not isinstance(prompt, list)
-        ):
-            raise ValueError(
-                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
-            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -644,9 +577,7 @@ class StableDiffusionIPEXPipeline(
             )
 
         if latents is None:
-            latents = randn_tensor(
-                shape, generator=generator, device=device, dtype=dtype
-            )
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
 
@@ -810,34 +741,22 @@ class StableDiffusionIPEXPipeline(
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                )
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input, t, encoder_hidden_states=prompt_embeds
-                )["sample"]
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds)["sample"]
 
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_text - noise_pred_uncond
-                    )
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, **extra_step_kwargs
-                ).prev_sample
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
@@ -851,9 +770,7 @@ class StableDiffusionIPEXPipeline(
             image = self.decode_latents(latents)
 
             # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(
-                image, device, prompt_embeds.dtype
-            )
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
             # 10. Convert to PIL
             image = self.numpy_to_pil(image)
@@ -862,9 +779,7 @@ class StableDiffusionIPEXPipeline(
             image = self.decode_latents(latents)
 
             # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(
-                image, device, prompt_embeds.dtype
-            )
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
@@ -873,6 +788,4 @@ class StableDiffusionIPEXPipeline(
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(
-            images=image, nsfw_content_detected=has_nsfw_concept
-        )
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

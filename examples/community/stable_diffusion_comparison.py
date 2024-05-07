@@ -89,9 +89,7 @@ class StableDiffusionComparisonPipeline(DiffusionPipeline, StableDiffusionMixin)
 
     @property
     def layers(self) -> Dict[str, Any]:
-        return {
-            k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")
-        }
+        return {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
 
     @torch.no_grad()
     def text2img_sd1_1(
@@ -308,9 +306,7 @@ class StableDiffusionComparisonPipeline(DiffusionPipeline, StableDiffusionMixin)
 
         # Checks if the height and width are divisible by 8 or not
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` must be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` must be divisible by 8 but are {height} and {width}.")
 
         # Get first result from Stable Diffusion Checkpoint v1.1
         res1 = self.text2img_sd1_1(
