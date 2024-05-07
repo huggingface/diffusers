@@ -905,6 +905,7 @@ class StableDiffusionControlNetPipeline(
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
+        sigmas: List[float] = None,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -1175,7 +1176,9 @@ class StableDiffusionControlNetPipeline(
             assert False
 
         # 5. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, timesteps, sigmas
+        )
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare latent variables

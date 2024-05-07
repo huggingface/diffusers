@@ -763,6 +763,7 @@ class AnimateDiffVideoToVideoPipeline(
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
+        sigmas: Optional[List[float]] = None,
         guidance_scale: float = 7.5,
         strength: float = 0.8,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -925,7 +926,9 @@ class AnimateDiffVideoToVideoPipeline(
             )
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, timesteps, sigmas
+        )
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
 

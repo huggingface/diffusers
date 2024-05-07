@@ -846,6 +846,7 @@ class StableDiffusionImg2ImgPipeline(
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         timesteps: List[int] = None,
+        sigmas: List[float] = None,
         guidance_scale: Optional[float] = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -1022,7 +1023,9 @@ class StableDiffusionImg2ImgPipeline(
         image = self.image_processor.preprocess(image)
 
         # 5. set timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, timesteps, sigmas
+        )
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
