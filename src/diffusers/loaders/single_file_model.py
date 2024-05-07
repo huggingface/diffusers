@@ -18,7 +18,7 @@ from typing import Optional
 
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..utils import is_accelerate_available, logging
+from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     convert_controlnet_checkpoint,
     convert_ldm_unet_checkpoint,
@@ -84,19 +84,18 @@ class FromOriginalModelMixin:
 
     @classmethod
     @validate_hf_hub_args
-    def from_single_file(cls, pretrained_model_link_or_path: Optional[str] = None, **kwargs):
+    def from_single_file(cls, pretrained_model_link_or_path_or_dict: Optional[str] = None, **kwargs):
         r"""
         Instantiate a model from pretrained weights saved in the original `.ckpt` or `.safetensors` format. The model
         is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
-            pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
+            pretrained_model_link_or_path_or_dict (`str`, *optional*):
                 Can be either:
-                    - A link to the `.ckpt` file (for example
-                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
-                    - A path to a *file* containing all pipeline weights.
-            checkpoint (`str`, *optional*):
-                state dict containing the model weights.
+                    - A link to the `.safetensors` or `.ckpt` file (for example
+                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.safetensors"`) on the Hub.
+                    - A path to a local *file* containing the weights of the component model.
+                    - A state dict containing the component model weights.
             config (`str`, *optional*):
                 - A string, the *repo id* (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline hosted
                   on the Hub.
@@ -150,11 +149,13 @@ class FromOriginalModelMixin:
                 f"FromOriginalModelMixin is currently only compatible with {', '.join(SINGLE_FILE_LOADABLE_CLASSES.keys())}"
             )
 
-        checkpoint = kwargs.pop("checkpoint", None)
-        if pretrained_model_link_or_path is None and checkpoint is None:
-            raise ValueError(
-                "Please provide either a `pretrained_model_link_or_path` or a `checkpoint` to load the model."
+        pretrained_model_link_or_path = kwargs.get("pretrained_model_link_or_path", None)
+        if pretrained_model_link_or_path is not None:
+            deprecation_message = (
+                "Please use `pretrained_model_link_or_path_or_dict` argument instead for model classes"
             )
+            deprecate("pretrained_model_link_or_path", "1.0.0", deprecation_message)
+            pretrained_model_link_or_path_or_dict = pretrained_model_link_or_path
 
         config = kwargs.pop("config", None)
         original_config = kwargs.pop("original_config", None)
@@ -174,9 +175,11 @@ class FromOriginalModelMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
 
-        if checkpoint is None:
+        if isinstance(pretrained_model_link_or_path_or_dict, dict):
+            checkpoint = pretrained_model_link_or_path_or_dict
+        else:
             checkpoint = load_single_file_checkpoint(
-                pretrained_model_link_or_path,
+                pretrained_model_link_or_path_or_dict,
                 resume_download=resume_download,
                 force_download=force_download,
                 proxies=proxies,

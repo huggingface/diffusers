@@ -48,7 +48,6 @@ if is_transformers_available():
 def load_single_file_sub_model(
     library_name,
     class_name,
-    pretrained_model_name_or_path,
     name,
     checkpoint,
     pipelines,
@@ -152,19 +151,23 @@ def load_single_file_sub_model(
             loading_kwargs.update({"torch_dtype": torch_dtype})
 
         if is_diffusers_model or is_transformers_model:
-            logger.warning(
-                (
-                    f"Pipeline component {name}'s weights do not appear to be included in the checkpoint "
-                    f"or {class_obj.__name__} does not currently support single file loading.\n"
-                    "Attempting to load the component using `from_pretrained` and inferred model repository:\n"
-                    f"{pretrained_model_name_or_path}."
-                )
-            )
             if not _is_model_weights_in_cached_folder(cached_model_config_path, name):
+                default_pretrained_model_name_or_path = fetch_diffusers_config(checkpoint)[
+                    "pretrained_model_name_or_path"
+                ]
+                logger.warning(
+                    (
+                        f"Pipeline component {name}'s weights do not appear to be included in the checkpoint "
+                        f"or {class_obj.__name__} does not currently support single file loading.\n"
+                        "Attempting to load the component using `from_pretrained` and inferred model repository:\n"
+                        f"{default_pretrained_model_name_or_path}."
+                    )
+                )
+
                 # download the model weights if they are not in the cached path
                 loading_kwargs.update(
                     {
-                        "pretrained_model_name_or_path": pretrained_model_name_or_path,
+                        "pretrained_model_name_or_path": default_pretrained_model_name_or_path,
                         "local_files_only": False,
                     }
                 )
@@ -237,7 +240,7 @@ def _infer_pipeline_config_dict(pipeline_class):
 
 
 def _download_diffusers_model_config_from_hub(
-    default_pretrained_model_name_or_path,
+    pretrained_model_name_or_path,
     cache_dir,
     revision,
     proxies,
@@ -248,7 +251,7 @@ def _download_diffusers_model_config_from_hub(
 ):
     allow_patterns = ["**/*.json", "*.json", "*.txt", "**/*.txt"]
     cached_model_path = snapshot_download(
-        default_pretrained_model_name_or_path,
+        pretrained_model_name_or_path,
         cache_dir=cache_dir,
         revision=revision,
         proxies=proxies,
@@ -391,22 +394,20 @@ class FromSingleFileMixin:
             revision=revision,
         )
 
-        # Always infer the default diffusers pretrained_model config from the checkpoint
-        # although it might not be used to configure the pipeline
-        config = {"pretrained_model_name_or_path": config} if config else fetch_diffusers_config(checkpoint)
-        default_pretrained_model_name_or_path = config["pretrained_model_name_or_path"]
+        if config is None:
+            config = fetch_diffusers_config(checkpoint)["pretrained_model_name_or_path"]
 
-        if not os.path.isdir(default_pretrained_model_name_or_path):
+        if not os.path.isdir(config):
             # Provided config is a repo_id
-            if default_pretrained_model_name_or_path.count("/") > 1:
+            if config.count("/") > 1:
                 raise ValueError(
-                    f'The provided pretrained_model_name_or_path "{default_pretrained_model_name_or_path}"'
+                    f'The provided config "{config}"'
                     " is neither a valid local path nor a valid repo id. Please check the parameter."
                 )
             try:
                 # Attempt to download the config files for the pipeline
                 cached_model_config_path = _download_diffusers_model_config_from_hub(
-                    default_pretrained_model_name_or_path,
+                    config,
                     cache_dir=cache_dir,
                     revision=revision,
                     proxies=proxies,
@@ -423,15 +424,13 @@ class FromSingleFileMixin:
                 # to fetch the config files from the hub so that we have a way
                 # to configure the pipeline components.
 
-                # For backwards compatibility
-                # If `original_config` is provided, then we need to assume we are using legacy loading for pipeline components
                 if original_config is None:
                     logger.warning(
                         "`local_files_only` is True but no local configs were found for this checkpoint.\n"
                         "Attempting to download the necessary config files for this pipeline.\n"
                     )
                     cached_model_config_path = _download_diffusers_model_config_from_hub(
-                        default_pretrained_model_name_or_path,
+                        config,
                         cache_dir=cache_dir,
                         revision=revision,
                         proxies=proxies,
@@ -443,6 +442,8 @@ class FromSingleFileMixin:
                     config_dict = pipeline_class.load_config(cached_model_config_path)
 
                 else:
+                    # For backwards compatibility
+                    # If `original_config` is provided, then we need to assume we are using legacy loading for pipeline components
                     logger.warning(
                         "Detected legacy `from_single_file` loading behavior. Attempting to create the pipeline based on inferred components.\n"
                         "This may lead to errors if the model components are not correctly inferred. \n"
@@ -458,8 +459,8 @@ class FromSingleFileMixin:
                     config_dict["_class_name"] = pipeline_class.__name__
 
         else:
-            # Provide config is a path to a local directory attempt to load directly.
-            cached_model_config_path = default_pretrained_model_name_or_path
+            # Provided config is a path to a local directory attempt to load directly.
+            cached_model_config_path = config
             config_dict = pipeline_class.load_config(cached_model_config_path)
 
         #   pop out "_ignore_files" as it is only needed for download
@@ -502,7 +503,6 @@ class FromSingleFileMixin:
                     checkpoint=checkpoint,
                     library_name=library_name,
                     class_name=class_name,
-                    pretrained_model_name_or_path=default_pretrained_model_name_or_path,
                     is_pipeline_module=is_pipeline_module,
                     cached_model_config_path=cached_model_config_path,
                     pipelines=pipelines,
@@ -535,8 +535,6 @@ class FromSingleFileMixin:
             deprecation_message = (
                 "Please pass instances of `StableDiffusionSafetyChecker` and `AutoImageProcessor`"
                 "using the `safety_checker` and `feature_extractor` arguments in `from_single_file`"
-                "If no safety checker components are provided, the safety checker will be loaded based"
-                f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
             )
             deprecate("load_safety_checker", "1.0.0", deprecation_message)
 
