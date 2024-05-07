@@ -289,8 +289,6 @@ def _get_model_file(
     user_agent: Optional[Union[Dict, str]] = None,
     revision: Optional[str] = None,
     commit_hash: Optional[str] = None,
-    local_dir: Optional[str] = None,
-    local_dir_use_symlinks: Optional[str] = "auto",
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
     if os.path.isfile(pretrained_model_name_or_path):
@@ -329,8 +327,6 @@ def _get_model_file(
                     user_agent=user_agent,
                     subfolder=subfolder,
                     revision=revision or commit_hash,
-                    local_dir=local_dir,
-                    local_dir_use_symlinks=local_dir_use_symlinks,
                 )
                 warnings.warn(
                     f"Loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` is deprecated. Loading instead from `revision='main'` with `variant={revision}`. Loading model variants via `revision='{revision}'` will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
@@ -356,8 +352,6 @@ def _get_model_file(
                 user_agent=user_agent,
                 subfolder=subfolder,
                 revision=revision or commit_hash,
-                local_dir=local_dir,
-                local_dir_use_symlinks=local_dir_use_symlinks,
             )
             return model_file
 

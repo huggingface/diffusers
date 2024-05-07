@@ -53,11 +53,10 @@ def load_single_file_sub_model(
     checkpoint,
     pipelines,
     is_pipeline_module,
-    cached_model_path,
+    cached_model_config_path,
     original_config=None,
     local_files_only=False,
     torch_dtype=None,
-    use_safetensors=None,
     is_legacy_loading=False,
     **kwargs,
 ):
@@ -94,14 +93,14 @@ def load_single_file_sub_model(
         load_method = getattr(class_obj, "from_single_file")
 
         # We cannot provide two different config options to the `from_single_file` method
-        # Here we have to ignore loading the config from `pretrained_model_name_or_path` if `original_config` is provided
+        # Here we have to ignore loading the config from `cached_model_config_path` if `original_config` is provided
         if original_config:
-            pretrained_model_name_or_path = None
+            cached_model_config_path = None
 
         loaded_sub_model = load_method(
-            checkpoint=checkpoint,
+            pretrained_model_name_or_path_or_dict=checkpoint,
             original_config=original_config,
-            config=pretrained_model_name_or_path,
+            config=cached_model_config_path,
             subfolder=name,
             torch_dtype=torch_dtype,
             local_files_only=local_files_only,
@@ -112,7 +111,7 @@ def load_single_file_sub_model(
         loaded_sub_model = create_diffusers_clip_model_from_ldm(
             class_obj,
             checkpoint=checkpoint,
-            config=pretrained_model_name_or_path,
+            config=cached_model_config_path,
             subfolder=name,
             torch_dtype=torch_dtype,
             local_files_only=local_files_only,
@@ -121,7 +120,7 @@ def load_single_file_sub_model(
 
     elif is_tokenizer and is_legacy_loading:
         loaded_sub_model = _legacy_load_clip_tokenizer(
-            class_obj, checkpoint=checkpoint, config=pretrained_model_name_or_path, local_files_only=local_files_only
+            class_obj, checkpoint=checkpoint, config=cached_model_config_path, local_files_only=local_files_only
         )
 
     elif is_diffusers_scheduler and is_legacy_loading:
@@ -141,10 +140,9 @@ def load_single_file_sub_model(
         loading_kwargs = {}
         loading_kwargs.update(
             {
-                "pretrained_model_name_or_path": cached_model_path,
+                "pretrained_model_name_or_path": cached_model_config_path,
                 "subfolder": name,
                 "local_files_only": local_files_only,
-                "use_safetensors": use_safetensors,
             }
         )
 
@@ -162,7 +160,7 @@ def load_single_file_sub_model(
                     f"{pretrained_model_name_or_path}."
                 )
             )
-            if not _is_model_weights_in_cached_folder(cached_model_path, name):
+            if not _is_model_weights_in_cached_folder(cached_model_config_path, name):
                 # download the model weights if they are not in the cached path
                 loading_kwargs.update(
                     {
@@ -362,7 +360,6 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        use_safetensors = kwargs.pop("use_safetensors", None)
 
         is_legacy_loading = False
 
@@ -408,7 +405,7 @@ class FromSingleFileMixin:
                 )
             try:
                 # Attempt to download the config files for the pipeline
-                cached_model_path = _download_diffusers_model_config_from_hub(
+                cached_model_config_path = _download_diffusers_model_config_from_hub(
                     default_pretrained_model_name_or_path,
                     cache_dir=cache_dir,
                     revision=revision,
@@ -418,7 +415,7 @@ class FromSingleFileMixin:
                     local_files_only=local_files_only,
                     token=token,
                 )
-                config_dict = pipeline_class.load_config(cached_model_path)
+                config_dict = pipeline_class.load_config(cached_model_config_path)
 
             except LocalEntryNotFoundError:
                 # `local_files_only=True` but a local diffusers format model config is not available in the cache
@@ -433,7 +430,7 @@ class FromSingleFileMixin:
                         "`local_files_only` is True but no local configs were found for this checkpoint.\n"
                         "Attempting to download the necessary config files for this pipeline.\n"
                     )
-                    cached_model_path = _download_diffusers_model_config_from_hub(
+                    cached_model_config_path = _download_diffusers_model_config_from_hub(
                         default_pretrained_model_name_or_path,
                         cache_dir=cache_dir,
                         revision=revision,
@@ -443,26 +440,27 @@ class FromSingleFileMixin:
                         local_files_only=False,
                         token=token,
                     )
-                    config_dict = pipeline_class.load_config(cached_model_path)
+                    config_dict = pipeline_class.load_config(cached_model_config_path)
 
                 else:
                     logger.warning(
                         "Detected legacy `from_single_file` loading behavior. Attempting to create the pipeline based on inferred components.\n"
-                        "This may lead to errors if the model components are not correctly inferred. "
-                        "To avoid this warning, please explicity pass the `config` argument to `from_single_file` with a path to a local diffusers model repo "
+                        "This may lead to errors if the model components are not correctly inferred. \n"
+                        "To avoid this warning, please explicity pass the `config` argument to `from_single_file` with a path to a local diffusers model repo \n"
+                        "e.g. `from_single_file(<my model checkpoint path>, config=<path to local diffusers model repo>) \n"
                         "or run `from_single_file` with `local_files_only=False` first to update the local cache directory with "
                         "the necessary config files.\n"
                     )
                     is_legacy_loading = True
-                    cached_model_path = None
+                    cached_model_config_path = None
 
                     config_dict = _infer_pipeline_config_dict(pipeline_class)
                     config_dict["_class_name"] = pipeline_class.__name__
 
         else:
             # Provide config is a path to a local directory attempt to load directly.
-            cached_model_path = default_pretrained_model_name_or_path
-            config_dict = pipeline_class.load_config(cached_model_path)
+            cached_model_config_path = default_pretrained_model_name_or_path
+            config_dict = pipeline_class.load_config(cached_model_config_path)
 
         #   pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
@@ -506,13 +504,12 @@ class FromSingleFileMixin:
                     class_name=class_name,
                     pretrained_model_name_or_path=default_pretrained_model_name_or_path,
                     is_pipeline_module=is_pipeline_module,
-                    cached_model_path=cached_model_path,
+                    cached_model_config_path=cached_model_config_path,
                     pipelines=pipelines,
                     name=name,
                     torch_dtype=torch_dtype,
                     original_config=original_config,
                     local_files_only=local_files_only,
-                    use_safetensors=use_safetensors,
                     is_legacy_loading=is_legacy_loading,
                     **kwargs,
                 )

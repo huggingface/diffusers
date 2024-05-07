@@ -296,8 +296,6 @@ def load_single_file_checkpoint(
     token=None,
     cache_dir=None,
     local_files_only=None,
-    local_dir=None,
-    local_dir_use_symlinks="auto",
     revision=None,
 ):
     if os.path.isfile(pretrained_model_link_or_path):
@@ -313,8 +311,6 @@ def load_single_file_checkpoint(
             resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
-            local_dir=local_dir,
-            local_dir_use_symlinks=local_dir_use_symlinks,
             token=token,
             revision=revision,
         )
