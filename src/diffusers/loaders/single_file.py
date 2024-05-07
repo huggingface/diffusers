@@ -53,6 +53,7 @@ def load_single_file_sub_model(
     pipelines,
     is_pipeline_module,
     cached_model_config_path,
+    default_pretrained_model_config_name=None,
     original_config=None,
     local_files_only=False,
     torch_dtype=None,
@@ -152,22 +153,24 @@ def load_single_file_sub_model(
 
         if is_diffusers_model or is_transformers_model:
             if not _is_model_weights_in_cached_folder(cached_model_config_path, name):
-                default_pretrained_model_name_or_path = fetch_diffusers_config(checkpoint)[
-                    "pretrained_model_name_or_path"
-                ]
+                if os.isdir(default_pretrained_model_config_name):
+                    pretrained_model_name_or_path = fetch_diffusers_config(checkpoint)["pretrained_model_name_or_path"]
+                else:
+                    pretrained_model_name_or_path = default_pretrained_model_config_name
+
                 logger.warning(
                     (
                         f"Pipeline component {name}'s weights do not appear to be included in the checkpoint "
                         f"or {class_obj.__name__} does not currently support single file loading.\n"
                         "Attempting to load the component using `from_pretrained` and inferred model repository:\n"
-                        f"{default_pretrained_model_name_or_path}."
+                        f"{pretrained_model_name_or_path}."
                     )
                 )
 
                 # download the model weights if they are not in the cached path
                 loading_kwargs.update(
                     {
-                        "pretrained_model_name_or_path": default_pretrained_model_name_or_path,
+                        "pretrained_model_name_or_path": pretrained_model_name_or_path,
                         "local_files_only": False,
                     }
                 )
@@ -395,9 +398,12 @@ class FromSingleFileMixin:
         )
 
         if config is None:
-            config = fetch_diffusers_config(checkpoint)["pretrained_model_name_or_path"]
+            config = fetch_diffusers_config(checkpoint)
+            default_pretrained_model_config_name = config["pretrained_model_name_or_path"]
+        else:
+            default_pretrained_model_config_name = config
 
-        if not os.path.isdir(config):
+        if not os.path.isdir(default_pretrained_model_config_name):
             # Provided config is a repo_id
             if config.count("/") > 1:
                 raise ValueError(
@@ -407,7 +413,7 @@ class FromSingleFileMixin:
             try:
                 # Attempt to download the config files for the pipeline
                 cached_model_config_path = _download_diffusers_model_config_from_hub(
-                    config,
+                    default_pretrained_model_config_name,
                     cache_dir=cache_dir,
                     revision=revision,
                     proxies=proxies,
@@ -430,7 +436,7 @@ class FromSingleFileMixin:
                         "Attempting to download the necessary config files for this pipeline.\n"
                     )
                     cached_model_config_path = _download_diffusers_model_config_from_hub(
-                        config,
+                        default_pretrained_model_config_name,
                         cache_dir=cache_dir,
                         revision=revision,
                         proxies=proxies,
@@ -460,7 +466,7 @@ class FromSingleFileMixin:
 
         else:
             # Provided config is a path to a local directory attempt to load directly.
-            cached_model_config_path = config
+            cached_model_config_path = default_pretrained_model_config_name
             config_dict = pipeline_class.load_config(cached_model_config_path)
 
         #   pop out "_ignore_files" as it is only needed for download
@@ -506,6 +512,7 @@ class FromSingleFileMixin:
                     checkpoint=checkpoint,
                     is_pipeline_module=is_pipeline_module,
                     cached_model_config_path=cached_model_config_path,
+                    default_pretrained_model_config_name=default_pretrained_model_config_name,
                     pipelines=pipelines,
                     torch_dtype=torch_dtype,
                     original_config=original_config,
