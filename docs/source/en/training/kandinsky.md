@@ -205,7 +205,7 @@ model_pred = unet(noisy_latents, timesteps, None, added_cond_kwargs=added_cond_k
 
 Once you’ve made all your changes or you’re okay with the default configuration, you’re ready to launch the training script! 🚀
 
-You'll train on the [Naruto BLIP captions](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) dataset to generate your own Pokémon, but you can also create and train on your own dataset by following the [Create a dataset for training](create_dataset) guide. Set the environment variable `DATASET_NAME` to the name of the dataset on the Hub or if you're training on your own files, set the environment variable `TRAIN_DIR` to a path to your dataset.
+You'll train on the [Naruto BLIP captions](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) dataset to generate your own Naruto characters, but you can also create and train on your own dataset by following the [Create a dataset for training](create_dataset) guide. Set the environment variable `DATASET_NAME` to the name of the dataset on the Hub or if you're training on your own files, set the environment variable `TRAIN_DIR` to a path to your dataset.
 
 If you’re training on more than one GPU, add the `--multi_gpu` parameter to the `accelerate launch` command.
 
