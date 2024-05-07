@@ -232,10 +232,10 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_prior.py \
   --checkpoints_total_limit=3 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --validation_prompts="A robot pokemon, 4k photo" \
+  --validation_prompts="A robot naruto, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="kandi2-prior-pokemon-model"
+  --output_dir="kandi2-prior-naruto-model"
 ```
 
 </hfoption>
@@ -256,10 +256,10 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_decoder.py \
   --checkpoints_total_limit=3 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --validation_prompts="A robot pokemon, 4k photo" \
+  --validation_prompts="A robot naruto, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="kandi2-decoder-pokemon-model"
+  --output_dir="kandi2-decoder-naruto-model"
 ```
 
 </hfoption>
@@ -279,7 +279,7 @@ prior_components = {"prior_" + k: v for k,v in prior_pipeline.components.items()
 pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, torch_dtype=torch.float16)
 
 pipe.enable_model_cpu_offload()
-prompt="A robot pokemon, 4k photo"
+prompt="A robot naruto, 4k photo"
 image = pipeline(prompt=prompt, negative_prompt=negative_prompt).images[0]
 ```
 
@@ -299,7 +299,7 @@ import torch
 pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
-prompt="A robot pokemon, 4k photo"
+prompt="A robot naruto, 4k photo"
 image = pipeline(prompt=prompt).images[0]
 ```
 
@@ -313,7 +313,7 @@ unet = UNet2DConditionModel.from_pretrained("path/to/saved/model" + "/checkpoint
 pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
-image = pipeline(prompt="A robot pokemon, 4k photo").images[0]
+image = pipeline(prompt="A robot naruto, 4k photo").images[0]
 ```
 
 </hfoption>

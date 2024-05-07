@@ -211,7 +211,7 @@ accelerate launch train_text_to_image_sdxl.py \
   --validation_prompt="a cute Sundar Pichai creature" \
   --validation_epochs 5 \
   --checkpointing_steps=5000 \
-  --output_dir="sdxl-pokemon-model" \
+  --output_dir="sdxl-naruto-model" \
   --push_to_hub
 ```
 
@@ -226,9 +226,9 @@ import torch
 
 pipeline = DiffusionPipeline.from_pretrained("path/to/your/model", torch_dtype=torch.float16).to("cuda")
 
-prompt = "A pokemon with green eyes and red legs."
+prompt = "A naruto with green eyes and red legs."
 image = pipeline(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
-image.save("pokemon.png")
+image.save("naruto.png")
 ```
 
 </hfoption>
@@ -244,11 +244,11 @@ import torch_xla.core.xla_model as xm
 device = xm.xla_device()
 pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to(device)
 
-prompt = "A pokemon with green eyes and red legs."
+prompt = "A naruto with green eyes and red legs."
 start = time()
 image = pipeline(prompt, num_inference_steps=inference_steps).images[0]
 print(f'Compilation time is {time()-start} sec')
-image.save("pokemon.png")
+image.save("naruto.png")
 
 start = time()
 image = pipeline(prompt, num_inference_steps=inference_steps).images[0]

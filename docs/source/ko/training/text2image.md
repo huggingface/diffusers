@@ -93,7 +93,7 @@ accelerate launch train_text_to_image.py \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model" 
+  --output_dir="sd-naruto-model" 
 ```
 
 자체 데이터셋으로 파인튜닝하려면 🤗 [Datasets](https://huggingface.co/docs/datasets/index)에서 요구하는 형식에 따라 데이터셋을 준비하세요. [데이터셋을 허브에 업로드](https://huggingface.co/docs/datasets/image_dataset#upload-dataset-to-the-hub)하거나 [파일들이 있는 로컬 폴더를 준비](https ://huggingface.co/docs/datasets/image_dataset#imagefolder)할 수 있습니다.
@@ -146,7 +146,7 @@ python train_text_to_image_flax.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
-  --output_dir="sd-pokemon-model" 
+  --output_dir="sd-naruto-model" 
 ```
 
 자체 데이터셋으로 파인튜닝하려면 🤗 [Datasets](https://huggingface.co/docs/datasets/index)에서 요구하는 형식에 따라 데이터셋을 준비하세요. [데이터셋을 허브에 업로드](https://huggingface.co/docs/datasets/image_dataset#upload-dataset-to-the-hub)하거나 [파일들이 있는 로컬 폴더를 준비](https ://huggingface.co/docs/datasets/image_dataset#imagefolder)할 수 있습니다.
@@ -166,7 +166,7 @@ python train_text_to_image_flax.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
-  --output_dir="sd-pokemon-model"
+  --output_dir="sd-naruto-model"
 ```
 </jax>
 </frameworkcontent>
@@ -189,7 +189,7 @@ pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.flo
 pipe.to("cuda")
 
 image = pipe(prompt="yoda").images[0]
-image.save("yoda-pokemon.png")
+image.save("yoda-naruto.png")
 ```
 </pt>
 <jax>
@@ -203,7 +203,7 @@ from diffusers import FlaxStableDiffusionPipeline
 model_path = "path_to_saved_model"
 pipe, params = FlaxStableDiffusionPipeline.from_pretrained(model_path, dtype=jax.numpy.bfloat16)
 
-prompt = "yoda pokemon"
+prompt = "yoda naruto"
 prng_seed = jax.random.PRNGKey(0)
 num_inference_steps = 50
 
@@ -218,7 +218,7 @@ prompt_ids = shard(prompt_ids)
 
 images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-image.save("yoda-pokemon.png")
+image.save("yoda-naruto.png")
 ```
 </jax>
 </frameworkcontent>

@@ -183,7 +183,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --max_grad_norm=1 \
   --enable_xformers_memory_efficient_attention
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model" \
+  --output_dir="sd-naruto-model" \
   --push_to_hub
 ```
 
@@ -212,7 +212,7 @@ python train_text_to_image_flax.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
-  --output_dir="sd-pokemon-model" \
+  --output_dir="sd-naruto-model" \
   --push_to_hub
 ```
 
@@ -231,7 +231,7 @@ import torch
 pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 
 image = pipeline(prompt="yoda").images[0]
-image.save("yoda-pokemon.png")
+image.save("yoda-naruto.png")
 ```
 
 </hfoption>
@@ -246,7 +246,7 @@ from diffusers import FlaxStableDiffusionPipeline
 
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained("path/to/saved_model", dtype=jax.numpy.bfloat16)
 
-prompt = "yoda pokemon"
+prompt = "yoda naruto"
 prng_seed = jax.random.PRNGKey(0)
 num_inference_steps = 50
 
@@ -261,7 +261,7 @@ prompt_ids = shard(prompt_ids)
 
 images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-image.save("yoda-pokemon.png")
+image.save("yoda-naruto.png")
 ```
 
 </hfoption>

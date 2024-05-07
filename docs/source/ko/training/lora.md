@@ -55,8 +55,8 @@ huggingface-cli login
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export OUTPUT_DIR="/sddata/finetune/lora/pokemon"
-export HUB_MODEL_ID="pokemon-lora"
+export OUTPUT_DIR="/sddata/finetune/lora/naruto"
+export HUB_MODEL_ID="naruto-lora"
 export DATASET_NAME="lambdalabs/naruto-blip-captions"
 ```
 

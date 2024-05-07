@@ -156,10 +156,10 @@ accelerate launch  train_text_to_image_prior.py \
   --checkpoints_total_limit=3 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --validation_prompts="A robot pokemon, 4k photo" \
+  --validation_prompts="A robot naruto, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="wuerstchen-prior-pokemon-model"
+  --output_dir="wuerstchen-prior-naruto-model"
 ```
 
 Once training is complete, you can use your newly trained model for inference!
@@ -171,7 +171,7 @@ from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS
 
 pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", torch_dtype=torch.float16).to("cuda")
 
-caption = "A cute bird pokemon holding a shield"
+caption = "A cute bird naruto holding a shield"
 images = pipeline(
     caption,
     width=1024,
