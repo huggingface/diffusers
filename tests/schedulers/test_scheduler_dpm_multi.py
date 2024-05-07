@@ -119,7 +119,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
         return sample
 
-    def full_loop_custom_timesteps(self, generator=None, **config):
+    def full_loop_custom_timesteps(self, **config):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config(**config)
         scheduler = scheduler_class(**scheduler_config)
