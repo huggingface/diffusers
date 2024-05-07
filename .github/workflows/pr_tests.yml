@@ -79,32 +79,20 @@ jobs:
         config:
           - name: Fast PyTorch Pipeline CPU tests
             framework: pytorch_pipelines
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_pipelines
+            report: pytorch_pipelines
           - name: Fast PyTorch Models & Schedulers CPU tests
             framework: pytorch_models
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_models_schedulers
+            report: pytorch_models
           - name: Fast Flax CPU tests
             framework: flax
-            runner: docker-cpu
-            image: diffusers/diffusers-flax-cpu
-            report: flax_cpu
+            report: flax
           - name: PyTorch Example CPU tests
             framework: pytorch_examples
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_example_cpu
+            report: pytorch_examples
 
     name: ${{ matrix.config.name }}
 
     runs-on: github.actions/default
-
-    container:
-      image: ${{ matrix.config.image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
 
     defaults:
       run:
@@ -183,18 +171,12 @@ jobs:
         config:
           - name: Hub tests for models, schedulers, and pipelines
             framework: hub_tests_pytorch
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
             report: torch_hub
 
     name: ${{ matrix.config.name }}
 
     runs-on: github.actions/default
-
-    container:
-      image: ${{ matrix.config.image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
-
+    
     defaults:
       run:
         shell: bash
