@@ -191,15 +191,19 @@ class FromOriginalModelMixin:
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
-        if "config_mapping_fn" in mapping_functions:
-            config_mapping_fn = mapping_functions["config_mapping_fn"]
-        else:
-            config_mapping_fn = None
-
         if original_config:
+            if "config_mapping_fn" in mapping_functions:
+                config_mapping_fn = mapping_functions["config_mapping_fn"]
+            else:
+                config_mapping_fn = None
+
             if config_mapping_fn is None:
                 raise ValueError(
-                    f"`original_config` has been provided for {class_name} but no mapping function is available"
+                    (
+                        f"`original_config` has been provided for {class_name} but no mapping function"
+                        "was found to convert the original config to a Diffusers config in"
+                        "`diffusers.loaders.single_file_utils`"
+                    )
                 )
 
             if isinstance(original_config, str):
