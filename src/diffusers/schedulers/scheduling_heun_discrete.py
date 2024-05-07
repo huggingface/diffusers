@@ -224,7 +224,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: int = None,
+        num_inference_steps: Optional[int] = None,
         device: Union[str, torch.device] = None,
         num_train_timesteps: Optional[int] = None,
         timesteps: Optional[List[int]] = None,

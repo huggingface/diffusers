@@ -323,7 +323,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 must be `None`, and `timestep_spacing` attribute will be ignored.
         """
         if num_inference_steps is None and timesteps is None:
-            raise ValueError("Must pass exactly one of `num_inference_steps` or `custom_timesteps`.")
+            raise ValueError("Must pass exactly one of `num_inference_steps` or `timesteps`.")
         if num_inference_steps is not None and timesteps is not None:
             raise ValueError("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
         if timesteps is not None and self.config.use_karras_sigmas:
