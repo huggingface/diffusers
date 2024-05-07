@@ -314,6 +314,7 @@ class EllaFixedDiffusionPipeline(
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
 
+        attn = unet.attn_processors
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -326,6 +327,7 @@ class EllaFixedDiffusionPipeline(
             image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.unet.attn_processors = attn
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
@@ -976,7 +978,7 @@ class EllaFixedDiffusionPipeline(
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
             )
         # -1. pipe unet to ELLA
-
+    
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -1106,7 +1108,7 @@ class EllaFixedDiffusionPipeline(
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
-                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states=prompt_embeds.to(device,dtype=latents.dtype),
                     timestep_cond=timestep_cond,
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,

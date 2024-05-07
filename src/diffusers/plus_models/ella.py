@@ -6,7 +6,8 @@ import torch.nn as nn
 from ..models.modeling_utils import ModelMixin
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import TimestepEmbedding, Timesteps
-
+from ..loaders import PeftAdapterMixin, UNet2DConditionLoadersMixin
+from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
 class AdaLayerNorm(nn.Module):
     def __init__(self, embedding_dim: int, time_embedding_dim: Optional[int] = None):
         super().__init__()
@@ -179,7 +180,7 @@ class PerceiverResampler(nn.Module):
 
         return latents
 
-class ELLAProxyUNet(torch.nn.Module):
+class ELLAProxyUNet(torch.nn.Module, UNet2DConditionLoadersMixin):
     def __init__(self, ella, unet):
         super().__init__()
         # In order to still use the diffusers pipeline, including various workaround
@@ -238,5 +239,6 @@ class ELLAProxyUNet(torch.nn.Module):
             encoder_attention_mask=encoder_attention_mask,
             return_dict=return_dict,
         )
+
 
 

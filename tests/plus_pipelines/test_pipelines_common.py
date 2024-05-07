@@ -33,6 +33,7 @@ from diffusers.loaders import IPAdapterMixin
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
+from diffusers.plus_models import ELLAProxyUNet
 from diffusers.plus_pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
@@ -1427,7 +1428,7 @@ class PipelineTesterMixin:
         self.assertTrue(hasattr(pipe, "vae") and isinstance(pipe.vae, (AutoencoderKL, AutoencoderTiny)))
         self.assertTrue(
             hasattr(pipe, "unet")
-            and isinstance(pipe.unet, (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel))
+            and isinstance(pipe.unet, (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, ELLAProxyUNet))
         )
 
 
@@ -1718,3 +1719,4 @@ def assert_mean_pixel_difference(image, expected_image, expected_max_diff=10):
     expected_image = np.asarray(DiffusionPipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)
     avg_diff = np.abs(image - expected_image).mean()
     assert avg_diff < expected_max_diff, f"Error image deviates {avg_diff} pixels on average"
+
