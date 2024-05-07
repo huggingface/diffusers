@@ -131,7 +131,7 @@ If you want to learn more about how the training loop works, check out the [Unde
 
 Once you’ve made all your changes or you’re okay with the default configuration, you’re ready to launch the training script! 🚀
 
-Set the `DATASET_NAME` environment variable to the dataset name from the Hub. This guide uses the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset, but you can create and train on your own datasets as well (see the [Create a dataset for training](create_dataset) guide).
+Set the `DATASET_NAME` environment variable to the dataset name from the Hub. This guide uses the [Naruto BLIP captions](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) dataset, but you can create and train on your own datasets as well (see the [Create a dataset for training](create_dataset) guide).
 
 <Tip>
 
@@ -140,7 +140,7 @@ To monitor training progress with Weights & Biases, add the `--report_to=wandb` 
 </Tip>
 
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch  train_text_to_image_prior.py \
   --mixed_precision="fp16" \

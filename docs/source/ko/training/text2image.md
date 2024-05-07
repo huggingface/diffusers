@@ -73,12 +73,12 @@ xFormers는 Flax에 사용할 수 없습니다.
 
 <frameworkcontent>
 <pt>
-다음과 같이 [Pokémon BLIP 캡션](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) 데이터셋에서 파인튜닝 실행을 위해 [PyTorch 학습 스크립트](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py)를 실행합니다:
+다음과 같이 [Pokémon BLIP 캡션](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) 데이터셋에서 파인튜닝 실행을 위해 [PyTorch 학습 스크립트](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py)를 실행합니다:
 
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export dataset_name="lambdalabs/naruto-blip-captions"
 
 accelerate launch train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -136,7 +136,7 @@ pip install -U -r requirements_flax.txt
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export dataset_name="lambdalabs/naruto-blip-captions"
 
 python train_text_to_image_flax.py \
   --pretrained_model_name_or_path=$MODEL_NAME \

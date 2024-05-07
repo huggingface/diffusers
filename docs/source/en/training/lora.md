@@ -170,7 +170,7 @@ Aside from setting up the LoRA layers, the training script is more or less the s
 
 Once you've made all your changes or you're okay with the default configuration, you're ready to launch the training script! 🚀
 
-Let's train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate our own Pokémon. Set the environment variables `MODEL_NAME` and `DATASET_NAME` to the model and dataset respectively. You should also specify where to save the model in `OUTPUT_DIR`, and the name of the model to save to on the Hub with `HUB_MODEL_ID`. The script creates and saves the following files to your repository:
+Let's train on the [Naruto BLIP captions](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) dataset to generate our own Pokémon. Set the environment variables `MODEL_NAME` and `DATASET_NAME` to the model and dataset respectively. You should also specify where to save the model in `OUTPUT_DIR`, and the name of the model to save to on the Hub with `HUB_MODEL_ID`. The script creates and saves the following files to your repository:
 
 - saved model checkpoints
 - `pytorch_lora_weights.safetensors` (the trained LoRA weights)
@@ -187,7 +187,7 @@ A full training run takes ~5 hours on a 2080 Ti GPU with 11GB of VRAM.
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export OUTPUT_DIR="/sddata/finetune/lora/pokemon"
 export HUB_MODEL_ID="pokemon-lora"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image_lora.py \
   --pretrained_model_name_or_path=$MODEL_NAME \

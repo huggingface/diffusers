@@ -158,7 +158,7 @@ Once you've made all your changes or you're okay with the default configuration,
 <hfoptions id="training-inference">
 <hfoption id="PyTorch">
 
-Let's train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate your own Pokémon. Set the environment variables `MODEL_NAME` and `dataset_name` to the model and the dataset (either from the Hub or a local path). If you're training on more than one GPU, add the `--multi_gpu` parameter to the `accelerate launch` command.
+Let's train on the [Naruto BLIP captions](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) dataset to generate your own Pokémon. Set the environment variables `MODEL_NAME` and `dataset_name` to the model and the dataset (either from the Hub or a local path). If you're training on more than one GPU, add the `--multi_gpu` parameter to the `accelerate launch` command.
 
 <Tip>
 
@@ -168,7 +168,7 @@ To train on a local dataset, set the `TRAIN_DIR` and `OUTPUT_DIR` environment va
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export dataset_name="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -202,7 +202,7 @@ To train on a local dataset, set the `TRAIN_DIR` and `OUTPUT_DIR` environment va
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export dataset_name="lambdalabs/naruto-blip-captions"
 
 python train_text_to_image_flax.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
