@@ -4,7 +4,7 @@ LABEL repository="diffusers"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt update && apt-get install software-properties-common
+RUN apt update && apt-get install software-properties-common -y
 RUN apt add-apt-repository ppa:deadsnakes/ppa && apt update
 
 RUN apt install -y bash \
