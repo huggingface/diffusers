@@ -41,7 +41,7 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
     ckpt_path = (
         "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
     )
-    repo_id = "runwayml/stable-diffusion-v1-5"
+    repo_id = "stabilityai/sd-vae-ft-mse"
     main_input_name = "sample"
     base_precision = 1e-2
 
@@ -64,7 +64,7 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
         return image
 
     def test_single_file_inference_same_as_pretrained(self):
-        model_1 = self.model_class.from_pretrained(self.repo_id, subfolder="vae").to(torch_device)
+        model_1 = self.model_class.from_pretrained(self.repo_id).to(torch_device)
         model_2 = self.model_class.from_single_file(self.ckpt_path).to(torch_device)
 
         image = self.get_sd_image(33)
@@ -84,7 +84,7 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
 
     def test_single_file_components(self):
         model_single_file = self.model_class.from_single_file(self.ckpt_path)
-        model = self.model_class.from_pretrained(self.repo_id, subfolder="vae")
+        model = self.model_class.from_pretrained(self.repo_id)
 
         PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
         for param_name, param_value in model_single_file.config.items():
