@@ -219,8 +219,8 @@ class MarigoldNormalsOutput(BaseOutput):
         uncertainty (`None`, `np.ndarray`, `torch.FloatTensor`):
             Uncertainty maps computed from the ensemble. The shape is $numimages \times 1 \times height \times width$.
         latent (`None`, `torch.FloatTensor`):
-            Latent features corresponding to the predictions. The shape is
-            $numimages * numensemble \times 4 \times latentheight \times latentwidth$.
+            Latent features corresponding to the predictions. The shape is $numimages * numensemble \times 4 \times
+            latentheight \times latentwidth$.
     """
 
     prediction: Union[np.ndarray, torch.FloatTensor]
@@ -493,10 +493,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         dtype = self.dtype
 
         num_images = 1
-        is_input_batched = False
         if (isinstance(input_image, np.ndarray) or torch.is_tensor(input_image)) and input_image.ndim == 4:
             num_images = input_image.shape[0]
-            is_input_batched = True
 
         if denoising_steps is None:
             denoising_steps = self.default_denoising_steps
