@@ -12,10 +12,10 @@ RUN apt update && \
                    curl \
                    ca-certificates \
                    libsndfile1-dev \
-                   python3.8 \
+                   python3.10 \
                    python3-pip \
                    libgl1 \
-                   python3.8-venv && \
+                   python3.10-venv && \
     rm -rf /var/lib/apt/lists
 
 # make sure to use venv
