@@ -24,9 +24,9 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_hf_numpy,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
-    torch_all_close,
     torch_device,
 )
 
@@ -69,16 +69,18 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
 
         image = self.get_sd_image(33)
 
+        generator = torch.Generator(torch_device)
+
         with torch.no_grad():
-            sample_1 = model_1(image).sample
-            sample_2 = model_2(image).sample
+            sample_1 = model_1(image, generator=generator.manual_seed(0)).sample
+            sample_2 = model_2(image, generator=generator.manual_seed(0)).sample
 
         assert sample_1.shape == sample_2.shape
 
-        output_slice_1 = sample_1[-1, -2:, -2:, :2].flatten().float().cpu()
-        output_slice_2 = sample_2[-1, -2:, -2:, :2].flatten().float().cpu()
+        output_slice_1 = sample_1.flatten().float().cpu()
+        output_slice_2 = sample_2.flatten().float().cpu()
 
-        assert torch_all_close(output_slice_1, output_slice_2, atol=3e-3)
+        assert numpy_cosine_similarity_distance(output_slice_1, output_slice_2) < 1e-4
 
     def test_single_file_components(self):
         model_single_file = self.model_class.from_single_file(self.ckpt_path)
