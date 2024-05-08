@@ -4,7 +4,7 @@ LABEL repository="diffusers"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt update && \
+RUN apt update && apt upgrade && \
     apt install -y bash \
     build-essential \
     git \
