@@ -542,7 +542,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         resample_method_input: str = "bilinear",
         resample_method_output: str = "bilinear",
         batch_size: int = 0,
-        save_memory: bool = False,
         check_input: bool = True,
         ensembling_kwargs: Optional[Dict[str, Any]] = None,
         input_latent: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
@@ -593,8 +592,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 are `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
             batch_size (`int`, *optional*, defaults to `0`):
                 Inference batch size. Smaller values save memory. The default value `0` results in automatic selection.
-            save_memory (`bool`, defaults to `False`):
-                Extra steps to save memory at the cost of performance.
             check_input (`bool`, defaults to `False`):
                 Extra steps to validate compatibility of the inputs with the model.
             ensembling_kwargs (`dict`, *optional*, defaults to `None`)
@@ -681,15 +678,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             raise ValueError("`ensembling_kwargs` must be a dictionary.")
         if output_visualization_kwargs is not None and not isinstance(output_visualization_kwargs, dict):
             raise ValueError("`output_visualization_kwargs` must be a dictionary.")
-
-        # memory saving hints
-        if save_memory:
-            logger.warning(
-                f"`save_memory` is currently not implemented. Consider setting `batch_size` to the minimum (1), "
-                f"ensure that `processing_resolution` is set to the recommended default value "
-                f"({self.optimal_processing_resolution}). Further memory savings can be achieved with pipeline "
-                f"offloading. Refer to https://huggingface.co/docs/diffusers/optimization/memory for more information."
-            )
 
         def preset_override(new_denoising_steps: int, new_ensemble_size: int, new_processing_resolution: int):
             nonlocal denoising_steps, ensemble_size, processing_resolution
@@ -888,7 +876,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             resample_method_input=resample_method_input,
             resample_method_output=resample_method_output,
             batch_size=batch_size,
-            save_memory=save_memory,
             check_input=check_input,
             ensembling_kwargs=ensembling_kwargs,
             input_latent=None if input_latent is None else "provided",
