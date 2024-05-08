@@ -91,6 +91,20 @@ model = StableCascadeUNet.from_single_file(ckpt_path)
 
 ```
 
+## Using a Diffusers model repository to configure single file loading
+
+Under the hood, `from_single_file` will try to determine a model repository to use to configure the components of the pipeline. You can also pass in a repository id to the `config` argument of the `from_single_file` method to explicitly set the repository to use.
+
+```python
+from diffusers import StableDiffusionXLPipeline
+
+ckpt_path = "https://huggingface.co/segmind/SSD-1B/blob/main/SSD-1B.safetensors"
+repo_id = "segmind/SSD-1B"
+
+pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, config=repo_id)
+
+```
+
 ## Override configuration options when using single file loading
 
 Override the default model or pipeline configuration options when using `from_single_file` by passing in the relevant arguments directly to the `from_single_file` method. Any argument that is supported by the model or pipeline class can be configured in this way:
@@ -108,20 +122,6 @@ from diffusers import UNet2DConditionModel
 
 ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
 model = UNet2DConditionModel.from_single_file(ckpt_path, upcast_attention=True)
-
-```
-
-## Using a Diffusers model repository to configure single file loading
-
-Under the hood, `from_single_file` will try to determine a model repository to use to configure the components of the pipeline. You can also pass in a repository id to the `config` argument of the `from_single_file` method to explicitly set the repository to use.
-
-```python
-from diffusers import StableDiffusionXLPipeline
-
-ckpt_path = "https://huggingface.co/segmind/SSD-1B/blob/main/SSD-1B.safetensors"
-repo_id = "segmind/SSD-1B"
-
-pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, config=repo_id)
 
 ```
 
