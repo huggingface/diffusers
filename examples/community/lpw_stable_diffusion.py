@@ -199,6 +199,7 @@ def get_unweighted_text_embeddings(
     text_input: torch.Tensor,
     chunk_length: int,
     no_boseos_middle: Optional[bool] = True,
+    clip_skip: Optional[int] = None,
 ):
     """
     When the length of tokens is a multiple of the capacity of the text encoder,
@@ -214,7 +215,12 @@ def get_unweighted_text_embeddings(
             # cover the head and the tail by the starting and the ending tokens
             text_input_chunk[:, 0] = text_input[0, 0]
             text_input_chunk[:, -1] = text_input[0, -1]
-            text_embedding = pipe.text_encoder(text_input_chunk)[0]
+            if clip_skip is None:
+                text_embedding = pipe.text_encoder(text_input_chunk)[0]
+            else:
+                text_embedding = pipe.text_encoder(text_input_chunk, output_hidden_states=True)
+                text_embedding = text_embedding[-1][-(clip_skip + 1)]
+                text_embedding = pipe.text_encoder.text_model.final_layer_norm(text_embedding)
 
             if no_boseos_middle:
                 if i == 0:
@@ -228,9 +234,14 @@ def get_unweighted_text_embeddings(
                     text_embedding = text_embedding[:, 1:-1]
 
             text_embeddings.append(text_embedding)
-        text_embeddings = torch.concat(text_embeddings, axis=1)
+        text_embeddings = torch.concat(text_embeddings, dim=1)
     else:
-        text_embeddings = pipe.text_encoder(text_input)[0]
+        if clip_skip is None:
+            text_embeddings = pipe.text_encoder(text_input)[0]
+        else:
+            text_embeddings = pipe.text_encoder(text_input, output_hidden_states=True)
+            text_embeddings = text_embeddings[-1][-(clip_skip + 1)]
+            text_embeddings = pipe.text_encoder.text_model.final_layer_norm(text_embeddings)
     return text_embeddings
 
 
@@ -242,6 +253,7 @@ def get_weighted_text_embeddings(
     no_boseos_middle: Optional[bool] = False,
     skip_parsing: Optional[bool] = False,
     skip_weighting: Optional[bool] = False,
+    clip_skip: Optional[int] = None,
 ):
     r"""
     Prompts can be assigned with local weights using brackets. For example,
@@ -267,6 +279,7 @@ def get_weighted_text_embeddings(
             Skip the parsing of brackets.
         skip_weighting (`bool`, *optional*, defaults to `False`):
             Skip the weighting. When the parsing is skipped, it is forced True.
+        clip_skip (`int`, *optional*, defaults to `None`)
     """
     max_length = (pipe.tokenizer.model_max_length - 2) * max_embeddings_multiples + 2
     if isinstance(prompt, str):
@@ -338,6 +351,7 @@ def get_weighted_text_embeddings(
         prompt_tokens,
         pipe.tokenizer.model_max_length,
         no_boseos_middle=no_boseos_middle,
+        clip_skip=clip_skip,
     )
     prompt_weights = torch.tensor(prompt_weights, dtype=text_embeddings.dtype, device=text_embeddings.device)
     if uncond_prompt is not None:
@@ -346,6 +360,7 @@ def get_weighted_text_embeddings(
             uncond_tokens,
             pipe.tokenizer.model_max_length,
             no_boseos_middle=no_boseos_middle,
+            clip_skip=clip_skip,
         )
         uncond_weights = torch.tensor(uncond_weights, dtype=uncond_embeddings.dtype, device=uncond_embeddings.device)
 
@@ -545,6 +560,7 @@ class StableDiffusionLongPromptWeightingPipeline(
         max_embeddings_multiples=3,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -593,6 +609,7 @@ class StableDiffusionLongPromptWeightingPipeline(
                 prompt=prompt,
                 uncond_prompt=negative_prompt if do_classifier_free_guidance else None,
                 max_embeddings_multiples=max_embeddings_multiples,
+                clip_skip=clip_skip
             )
             if prompt_embeds is None:
                 prompt_embeds = prompt_embeds1
@@ -788,6 +805,7 @@ class StableDiffusionLongPromptWeightingPipeline(
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -868,6 +886,9 @@ class StableDiffusionLongPromptWeightingPipeline(
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
 
         Returns:
             `None` if cancelled by `is_cancelled_callback`,
@@ -910,6 +931,7 @@ class StableDiffusionLongPromptWeightingPipeline(
             max_embeddings_multiples,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            clip_skip=clip_skip
         )
         dtype = prompt_embeds.dtype
 
@@ -1042,6 +1064,7 @@ class StableDiffusionLongPromptWeightingPipeline(
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         Function for text-to-image generation.
@@ -1104,6 +1127,9 @@ class StableDiffusionLongPromptWeightingPipeline(
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
 
         Returns:
             `None` if cancelled by `is_cancelled_callback`,
@@ -1133,6 +1159,7 @@ class StableDiffusionLongPromptWeightingPipeline(
             is_cancelled_callback=is_cancelled_callback,
             callback_steps=callback_steps,
             cross_attention_kwargs=cross_attention_kwargs,
+            clip_skip=clip_skip,
         )
 
     def img2img(
@@ -1155,6 +1182,7 @@ class StableDiffusionLongPromptWeightingPipeline(
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         Function for image-to-image generation.
@@ -1245,6 +1273,7 @@ class StableDiffusionLongPromptWeightingPipeline(
             is_cancelled_callback=is_cancelled_callback,
             callback_steps=callback_steps,
             cross_attention_kwargs=cross_attention_kwargs,
+            clip_skip=clip_skip,
         )
 
     def inpaint(
@@ -1269,6 +1298,7 @@ class StableDiffusionLongPromptWeightingPipeline(
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         Function for inpaint.
@@ -1339,6 +1369,9 @@ class StableDiffusionLongPromptWeightingPipeline(
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
 
         Returns:
             `None` if cancelled by `is_cancelled_callback`,
@@ -1368,4 +1401,5 @@ class StableDiffusionLongPromptWeightingPipeline(
             is_cancelled_callback=is_cancelled_callback,
             callback_steps=callback_steps,
             cross_attention_kwargs=cross_attention_kwargs,
+            clip_skip=clip_skip,
         )
