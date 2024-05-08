@@ -80,7 +80,6 @@ class VaeImageProcessor(ConfigMixin):
                 " if you intended to convert the image into RGB format, please set `do_convert_grayscale = False`.",
                 " if you intended to convert the image into grayscale format, please set `do_convert_rgb = False`",
             )
-            self.config.do_convert_rgb = False
 
     @staticmethod
     def numpy_to_pil(images: np.ndarray) -> List[PIL.Image.Image]:
