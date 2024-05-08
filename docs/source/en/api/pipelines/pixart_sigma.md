@@ -12,9 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # PixArt-Σ
 
-![](https://raw.githubusercontent.com/PixArt-alpha/PixArt-sigma-project/master/static/images/samples/others_webp/4K_image.webp)
-
-[//]: # (![]&#40;https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/pixart/header_collage.png&#41;)
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/pixart/header_collage_sigma.jpg)
 
 [PixArt-Σ: Weak-to-Strong Training of Diffusion Transformer for 4K Text-to-Image Generation](https://huggingface.co/papers/2403.04692) is Junsong Chen, Jincheng Yu, Chongjian Ge, Lewei Yao, Enze Xie, Yue Wu, Zhongdao Wang, James Kwok, Ping Luo, Huchuan Lu, and Zhenguo Li.
 
