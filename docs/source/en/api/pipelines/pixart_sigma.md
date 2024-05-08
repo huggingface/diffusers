@@ -65,7 +65,7 @@ pipe = PixArtSigmaPipeline.from_pretrained(
     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
     text_encoder=text_encoder,
     transformer=None,
-    device_map="auto"
+    device_map="balanced"
 )
 ```
 
