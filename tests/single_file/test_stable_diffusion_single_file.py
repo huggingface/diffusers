@@ -1,16 +1,21 @@
 import gc
+import tempfile
 import unittest
 
 import torch
 
-from diffusers import DDIMScheduler, StableDiffusionPipeline
+from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     require_torch_gpu,
     slow,
 )
 
-from .single_file_testing_utils import SDSingleFileTesterMixin
+from .single_file_testing_utils import (
+    SDSingleFileTesterMixin,
+    download_original_config,
+    download_single_file_checkpoint,
+)
 
 
 enable_full_determinism()
@@ -52,11 +57,21 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
         super().test_single_file_format_inference_is_same_as_pretrained(expected_max_diff=1e-3)
 
     def test_single_file_legacy_scheduler_loading(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            local_original_config = download_original_config(self.original_config, tmpdir)
+
+            pipe = self.pipeline_class.from_single_file(
+                local_ckpt_path,
+                original_config=local_original_config,
+                cache_dir=tmpdir,
+                local_files_only=True,
+                scheduler_type="euler",
+            )
+
         # Default is PNDM for this checkpoint
-        pipe = self.pipeline_class.from_single_file(
-            self.ckpt_path, original_config=self.original_config, local_files_only=True, scheduler_type="ddim"
-        )
-        assert isinstance(pipe.scheduler, DDIMScheduler)
+        assert isinstance(pipe.scheduler, EulerDiscreteScheduler)
 
     def test_single_file_legacy_scaling_factor(self):
         new_scaling_factor = 10.0
