@@ -59,7 +59,7 @@ check_min_version("0.17.0.dev0")
 logger = get_logger(__name__, log_level="INFO")
 
 DATASET_NAME_MAPPING = {
-    "lambdalabs/pokemon-blip-captions": ("image", "text"),
+    "lambdalabs/naruto-blip-captions": ("image", "text"),
 }
 
 
