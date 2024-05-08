@@ -327,17 +327,18 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
 
         # 5. Prepare latent variable
         num_channels_latents = self.unet.config.in_channels
-        latents = self.prepare_latents(
-            image,
-            latent_timestep,
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            latents,
-        )
+        if latents is None:
+            latents = self.prepare_latents(
+                image,
+                latent_timestep,
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                prompt_embeds.dtype,
+                device,
+                latents,
+            )
         bs = batch_size * num_images_per_prompt
 
         # 6. Get Guidance Scale Embedding

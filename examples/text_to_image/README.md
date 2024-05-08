@@ -57,7 +57,7 @@ With `gradient_checkpointing` and `mixed_precision` it should be possible to fin
 <!-- accelerate_snippet_start -->
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -136,7 +136,7 @@ for running distributed training with `accelerate`. Here is an example command:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -170,6 +170,11 @@ For our small Pokemons dataset, the effects of Min-SNR weighting strategy might 
 
 Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds.
 
+#### Training with DREAM
+
+We support training epsilon (noise) prediction models using the [DREAM (Diffusion Rectification and Estimation-Adaptive Models) strategy](https://arxiv.org/abs/2312.00210). DREAM claims to increase model fidelity for the performance cost of an extra grad-less unet `forward` step in the training loop.  You can turn on DREAM training by using the `--dream_training` argument. The `--dream_detail_preservation` argument controls the detail preservation variable p and is the default of 1 from the paper.
+
+
 ## Training with LoRA
 
 Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
@@ -187,7 +192,7 @@ on consumer GPUs like Tesla T4, Tesla V100.
 
 ### Training
 
-First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).
+First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions).
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
@@ -195,7 +200,7 @@ First, you need to set up your development environment as is explained in the [i
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 ```
 
 For this example we want to directly store the trained LoRA embeddings on the Hub, so
@@ -277,7 +282,7 @@ pip install -U -r requirements_flax.txt
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 python train_text_to_image_flax.py \
   --pretrained_model_name_or_path=$MODEL_NAME \

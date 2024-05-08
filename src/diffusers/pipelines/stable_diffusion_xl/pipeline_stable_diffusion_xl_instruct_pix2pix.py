@@ -436,7 +436,6 @@ class StableDiffusionXLInstructPix2PixPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix.StableDiffusionInstructPix2PixPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -526,8 +525,8 @@ class StableDiffusionXLInstructPix2PixPipeline(
             # make sure the VAE is in float32 mode, as it overflows in float16
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
             if needs_upcasting:
+                image = image.float()
                 self.upcast_vae()
-                image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
             image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
 
