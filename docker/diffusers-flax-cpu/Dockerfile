@@ -4,6 +4,8 @@ LABEL repository="diffusers"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+RUN $APT software-properties-common && apt add-apt-repository ppa:deadsnakes/ppa
+
 RUN apt update && apt upgrade && \
     apt install -y bash \
                    build-essential \
