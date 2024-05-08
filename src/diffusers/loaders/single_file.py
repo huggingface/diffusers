@@ -405,7 +405,7 @@ class FromSingleFileMixin:
 
         if not os.path.isdir(default_pretrained_model_config_name):
             # Provided config is a repo_id
-            if config.count("/") > 1:
+            if default_pretrained_model_config_name.count("/") > 1:
                 raise ValueError(
                     f'The provided config "{config}"'
                     " is neither a valid local path nor a valid repo id. Please check the parameter."
