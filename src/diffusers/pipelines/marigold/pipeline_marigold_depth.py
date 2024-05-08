@@ -640,60 +640,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         device = self._execution_device
 
-        # deprecations
-        if "processing_res" in kwargs:
-            deprecation_message = (
-                "`processing_res` is deprecated and it will be removed in a future version. "
-                "Use `processing_resolution` instead."
-            )
-            deprecate("processing_res", "1.0.0", deprecation_message, standard_warn=False)
-            processing_resolution = kwargs["processing_res"]
-        if "match_input_res" in kwargs:
-            deprecation_message = (
-                "`match_input_res` is deprecated and it will be removed in a future version. "
-                "Use `match_input_resolution` instead."
-            )
-            deprecate("match_input_res", "1.0.0", deprecation_message, standard_warn=False)
-            match_input_resolution = kwargs["match_input_res"]
-        if "resample_method" in kwargs:
-            deprecation_message = (
-                "`resample_method` is deprecated and it will be removed in a future version. "
-                "Use `resample_method_input` and `resample_method_output` instead."
-            )
-            deprecate("resample_method", "1.0.0", deprecation_message, standard_warn=False)
-            resample_method_input = kwargs["resample_method"]
-            resample_method_output = kwargs["resample_method"]
-        if "seed" in kwargs:
-            deprecation_message = (
-                "`seed` is deprecated and it will be removed in a future version. Use `generator` instead."
-            )
-            deprecate("seed", "1.0.0", deprecation_message, standard_warn=False)
-            generator = torch.Generator(device=device)
-            generator.manual_seed(kwargs["seed"])
-        if "show_progress_bar" in kwargs:
-            deprecation_message = (
-                "`show_progress_bar` is deprecated and it will be removed in a future version. "
-                "Use `set_progress_bar_config` method instead."
-            )
-            deprecate("show_progress_bar", "1.0.0", deprecation_message, standard_warn=False)
-            self.set_progress_bar_config(disable=not kwargs["show_progress_bar"])
-        if "color_map" in kwargs:
-            deprecation_message = (
-                "`color_map` is deprecated and it will be removed in a future version. "
-                "Use it inside `output_visualization_kwargs` instead."
-            )
-            deprecate("color_map", "1.0.0", deprecation_message, standard_warn=False)
-            if output_visualization_kwargs is None:
-                output_visualization_kwargs = {}
-            output_visualization_kwargs["color_map"] = kwargs["color_map"]
-        if "ensemble_kwargs" in kwargs:
-            deprecation_message = (
-                "`ensemble_kwargs` is deprecated and it will be removed in a future version. "
-                "Use `ensembling_kwargs` instead."
-            )
-            deprecate("ensemble_kwargs", "1.0.0", deprecation_message, standard_warn=False)
-            ensembling_kwargs = kwargs["ensemble_kwargs"]
-
         # basic input checks
         if preset not in (None, "fast", "precise", "paper"):
             raise ValueError("`preset` can take only the following values: None, 'fast', 'precise', and 'paper'.")
