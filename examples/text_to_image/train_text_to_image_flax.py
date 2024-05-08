@@ -250,7 +250,7 @@ def parse_args():
 
 
 dataset_name_mapping = {
-    "lambdalabs/pokemon-blip-captions": ("image", "text"),
+    "lambdalabs/naruto-blip-captions": ("image", "text"),
 }
 
 
