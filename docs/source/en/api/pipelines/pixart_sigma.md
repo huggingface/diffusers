@@ -31,7 +31,7 @@ Some notes about this pipeline:
 * It is good at producing high-resolution images at different aspect ratios. To get the best results, the authors recommend some size brackets which can be found [here](https://github.com/PixArt-alpha/PixArt-sigma/blob/master/diffusion/data/datasets/utils.py).
 * It rivals the quality of state-of-the-art text-to-image generation systems (as of this writing) such as PixArt-α, Stable Diffusion XL, Playground V2.0 and DALL-E 3, while being more efficient than them.
 * It shows the ability of generating super high resolution images, such as 2048px or even 4K.
-* It shows that text-to-image models can grow from a weak model to a stronger one through several improvements(VAEs, datasets and so on.)
+* It shows that text-to-image models can grow from a weak model to a stronger one through several improvements (VAEs, datasets, and so on.)
 
 <Tip>
 
