@@ -177,7 +177,12 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
         latents=None,
         generator=None,
     ):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
 
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -330,17 +335,18 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
 
         # 5. Prepare latent variable
         num_channels_latents = self.unet.config.in_channels
-        latents = self.prepare_latents(
-            image,
-            latent_timestep,
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            latents,
-        )
+        if latents is None:
+            latents = self.prepare_latents(
+                image,
+                latent_timestep,
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                prompt_embeds.dtype,
+                device,
+                latents,
+            )
         bs = batch_size * num_images_per_prompt
 
         # 6. Get Guidance Scale Embedding

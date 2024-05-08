@@ -89,8 +89,8 @@ EXAMPLE_DOC_STRING = """
         ...     variant="fp16",
         ...     use_safetensors=True,
         ...     torch_dtype=torch.float16,
-        ... ).to("cuda")
-        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16).to("cuda")
+        ... )
+        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
         >>> pipe = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     controlnet=controlnet,
@@ -98,7 +98,7 @@ EXAMPLE_DOC_STRING = """
         ...     variant="fp16",
         ...     use_safetensors=True,
         ...     torch_dtype=torch.float16,
-        ... ).to("cuda")
+        ... )
         >>> pipe.enable_model_cpu_offload()
 
 
@@ -898,6 +898,12 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
 
+        latents_mean = latents_std = None
+        if hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None:
+            latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1)
+        if hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None:
+            latents_std = torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1)
+
         # Offload text encoder if `enable_model_cpu_offload` was enabled
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.text_encoder_2.to("cpu")
@@ -935,7 +941,12 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 self.vae.to(dtype)
 
             init_latents = init_latents.to(dtype)
-            init_latents = self.vae.config.scaling_factor * init_latents
+            if latents_mean is not None and latents_std is not None:
+                latents_mean = latents_mean.to(device=self.device, dtype=dtype)
+                latents_std = latents_std.to(device=self.device, dtype=dtype)
+                init_latents = (init_latents - latents_mean) * self.vae.config.scaling_factor / latents_std
+            else:
+                init_latents = self.vae.config.scaling_factor * init_latents
 
         if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
             # expand init_latents for batch_size
@@ -1418,16 +1429,17 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare latent variables
-        latents = self.prepare_latents(
-            image,
-            latent_timestep,
-            batch_size,
-            num_images_per_prompt,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            True,
-        )
+        if latents is None:
+            latents = self.prepare_latents(
+                image,
+                latent_timestep,
+                batch_size,
+                num_images_per_prompt,
+                prompt_embeds.dtype,
+                device,
+                generator,
+                True,
+            )
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
