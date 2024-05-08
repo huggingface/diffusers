@@ -544,7 +544,7 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
         if isinstance(image, list):
             image_batch_size = len(image)
             # Check that each image is the same size:
-            if not all([i.size == image[0].size for i in image]):
+            if not all(i.size == image[0].size for i in image):
                 raise ValueError("All images must be the same size")
             # Check that the size is divisible by 8:
             if (image[0].size[0] % 8 != 0 or image[0].size[1] % 8 != 0):
