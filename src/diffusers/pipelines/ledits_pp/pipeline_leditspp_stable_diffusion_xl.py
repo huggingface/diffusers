@@ -1419,7 +1419,6 @@ class LEditsPPPipelineStableDiffusionXL(
         if needs_upcasting:
             image = image.float()
             self.upcast_vae()
-            image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
         x0 = self.vae.encode(image).latent_dist.mode()
         x0 = x0.to(dtype)
