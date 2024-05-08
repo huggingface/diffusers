@@ -1375,7 +1375,7 @@ class PipelineTesterMixin:
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload()
-        assert pipe._execution_device.type == pipe._offload_device.type
+        assert pipe._execution_device.type == "cuda"
 
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
@@ -1440,7 +1440,7 @@ class PipelineTesterMixin:
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_model_cpu_offload()
-        assert pipe._execution_device.type == pipe._offload_device.type
+        assert pipe._execution_device.type == "cuda"
 
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
