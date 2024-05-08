@@ -81,20 +81,14 @@
     title: ControlNet
   - local: using-diffusers/t2i_adapter
     title: T2I-Adapter
+  - local: using-diffusers/inference_with_lcm
+    title: Latent Consistency Model
   - local: using-diffusers/textual_inversion_inference
     title: Textual inversion
   - local: using-diffusers/shap-e
     title: Shap-E
   - local: using-diffusers/diffedit
     title: DiffEdit
-  - local: using-diffusers/custom_pipeline_examples
-    title: Community pipelines
-  - local: using-diffusers/contribute_pipeline
-    title: Contribute a community pipeline
-  - local: using-diffusers/inference_with_lcm_lora
-    title: Latent Consistency Model-LoRA
-  - local: using-diffusers/inference_with_lcm
-    title: Latent Consistency Model
   - local: using-diffusers/inference_with_tcd_lora
     title: Trajectory Consistency Distillation-LoRA
   - local: using-diffusers/svd
@@ -145,8 +139,6 @@
 - sections:
   - local: optimization/fp16
     title: Speed up inference
-  - local: using-diffusers/distilled_sd
-    title: Distilled Stable Diffusion inference
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/torch2.0
