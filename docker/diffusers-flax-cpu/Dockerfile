@@ -4,20 +4,20 @@ LABEL repository="diffusers"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt add-apt-repository ppa:deadsnakes/ppa
+RUN apt update && apt-get install software-properties-common
+RUN apt add-apt-repository ppa:deadsnakes/ppa && apt update
 
-RUN apt update && apt upgrade && \
-    apt install -y bash \
-                   build-essential \
-                   git \
-                   git-lfs \
-                   curl \
-                   ca-certificates \
-                   libsndfile1-dev \
-                   libgl1 \
-                   python3.10 \
-                   python3-pip \
-                   python3.10-venv && \
+RUN apt install -y bash \
+        build-essential \
+        git \
+        git-lfs \
+        curl \
+        ca-certificates \
+        libsndfile1-dev \
+        libgl1 \
+        python3.10 \
+        python3-pip \
+        python3.10-venv && \
     rm -rf /var/lib/apt/lists
 
 # make sure to use venv
