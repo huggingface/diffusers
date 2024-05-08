@@ -376,7 +376,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
 
-            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
+            return hasattr(module, "_hf_hook") and (
+                isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
+                or hasattr(module._hf_hook, "hooks")
+                and isinstance(module._hf_hook.hooks[0], accelerate.hooks.AlignDevicesHook)
+            )
 
         def module_is_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
@@ -529,9 +533,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -621,7 +625,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```
         """
         cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
@@ -1005,8 +1009,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
         for _, model in self.components.items():
             if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
-                is_sequential_cpu_offload = isinstance(getattr(model, "_hf_hook"), accelerate.hooks.AlignDevicesHook)
-                accelerate.hooks.remove_hook_from_module(model, recurse=is_sequential_cpu_offload)
+                accelerate.hooks.remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
 
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
@@ -1213,9 +1216,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -1268,7 +1271,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         """
         cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)

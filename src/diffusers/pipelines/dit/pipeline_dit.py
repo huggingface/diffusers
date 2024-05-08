@@ -227,6 +227,9 @@ class DiTPipeline(DiffusionPipeline):
         if output_type == "pil":
             samples = self.numpy_to_pil(samples)
 
+        # Offload all models
+        self.maybe_free_model_hooks()
+
         if not return_dict:
             return (samples,)
 
