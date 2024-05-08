@@ -21,12 +21,22 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DiffusionPipeline
-from diffusers.image_processor import PipelineDepthInput, PipelineImageInput, VaeImageProcessorLDM3D
-from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.image_processor import (
+    PipelineDepthInput,
+    PipelineImageInput,
+    VaeImageProcessorLDM3D,
+)
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from diffusers.pipelines.stable_diffusion_ldm3d.pipeline_stable_diffusion_ldm3d import LDM3DPipelineOutput
+from diffusers.pipelines.stable_diffusion_ldm3d.pipeline_stable_diffusion_ldm3d import (
+    LDM3DPipelineOutput,
+)
 from diffusers.schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -285,7 +295,9 @@ class StableDiffusionUpscaleLDM3DPipeline(
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                    text_input_ids.to(device),
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -490,7 +502,17 @@ class StableDiffusionUpscaleLDM3DPipeline(
                 f" {type(callback_steps)}."
             )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
         shape = (batch_size, num_channels_latents, height, width)
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)

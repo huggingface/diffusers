@@ -22,8 +22,15 @@ from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
-from diffusers.schedulers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale import (
+    StableDiffusionUpscalePipeline,
+)
+from diffusers.schedulers import (
+    DDIMScheduler,
+    DDPMScheduler,
+    LMSDiscreteScheduler,
+    PNDMScheduler,
+)
 
 
 def make_transparency_mask(size, overlap_pixels, remove_borders=[]):
@@ -142,7 +149,17 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
             max_noise_level=max_noise_level,
         )
 
-    def _process_tile(self, original_image_slice, x, y, tile_size, tile_border, image, final_image, **kwargs):
+    def _process_tile(
+        self,
+        original_image_slice,
+        x,
+        y,
+        tile_size,
+        tile_border,
+        image,
+        final_image,
+        **kwargs,
+    ):
         torch.manual_seed(0)
         crop_rect = (
             min(image.size[0] - (tile_size + original_image_slice), x * tile_size),
@@ -173,12 +190,16 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
             remove_borders.append("b")
         transparency_mask = Image.fromarray(
             make_transparency_mask(
-                (upscaled_tile.size[0], upscaled_tile.size[1]), tile_border * 4, remove_borders=remove_borders
+                (upscaled_tile.size[0], upscaled_tile.size[1]),
+                tile_border * 4,
+                remove_borders=remove_borders,
             ),
             mode="L",
         )
         final_image.paste(
-            upscaled_tile, (crop_rect_with_overlap[0] * 4, crop_rect_with_overlap[1] * 4), transparency_mask
+            upscaled_tile,
+            (crop_rect_with_overlap[0] * 4, crop_rect_with_overlap[1] * 4),
+            transparency_mask,
         )
 
     @torch.no_grad()
@@ -275,7 +296,12 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
                 )
                 current_count += 1
                 if callback is not None:
-                    callback({"progress": current_count / total_tile_count, "image": final_image})
+                    callback(
+                        {
+                            "progress": current_count / total_tile_count,
+                            "image": final_image,
+                        }
+                    )
         return final_image
 
 
@@ -290,7 +316,12 @@ def main():
         print(f"progress: {obj['progress']:.4f}")
         obj["image"].save("diffusers_library_progress.jpg")
 
-    final_image = pipe(image=image, prompt="Black font, white background, vector", noise_level=40, callback=callback)
+    final_image = pipe(
+        image=image,
+        prompt="Black font, white background, vector",
+        noise_level=40,
+        callback=callback,
+    )
     final_image.save("diffusers_library.jpg")
 
 

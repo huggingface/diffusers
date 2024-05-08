@@ -163,7 +163,10 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
 
         else:
             batch_size = text_model_output[0].shape[0]
-            prompt_embeds, text_encoder_hidden_states = text_model_output[0], text_model_output[1]
+            prompt_embeds, text_encoder_hidden_states = (
+                text_model_output[0],
+                text_model_output[1],
+            )
             text_mask = text_attention_mask
 
         prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
@@ -306,9 +309,15 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
         batch_last_hidden_state = []
 
         for interp_val in torch.linspace(0, 1, steps):
-            text_embeds = slerp(interp_val, text_model_output.text_embeds[0], text_model_output.text_embeds[1])
+            text_embeds = slerp(
+                interp_val,
+                text_model_output.text_embeds[0],
+                text_model_output.text_embeds[1],
+            )
             last_hidden_state = slerp(
-                interp_val, text_model_output.last_hidden_state[0], text_model_output.last_hidden_state[1]
+                interp_val,
+                text_model_output.last_hidden_state[0],
+                text_model_output.last_hidden_state[1],
             )
             batch_text_embeds.append(text_embeds.unsqueeze(0))
             batch_last_hidden_state.append(last_hidden_state.unsqueeze(0))
@@ -362,7 +371,10 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
             ).predicted_image_embedding
 
             if do_classifier_free_guidance:
-                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
+                (
+                    predicted_image_embedding_uncond,
+                    predicted_image_embedding_text,
+                ) = predicted_image_embedding.chunk(2)
                 predicted_image_embedding = predicted_image_embedding_uncond + prior_guidance_scale * (
                     predicted_image_embedding_text - predicted_image_embedding_uncond
                 )
@@ -446,7 +458,11 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             decoder_latents = self.decoder_scheduler.step(
-                noise_pred, t, decoder_latents, prev_timestep=prev_timestep, generator=generator
+                noise_pred,
+                t,
+                decoder_latents,
+                prev_timestep=prev_timestep,
+                generator=generator,
             ).prev_sample
 
         decoder_latents = decoder_latents.clamp(-1, 1)
@@ -482,7 +498,11 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
                 interpolate_antialias["antialias"] = True
 
             image_upscaled = F.interpolate(
-                image_small, size=[height, width], mode="bicubic", align_corners=False, **interpolate_antialias
+                image_small,
+                size=[height, width],
+                mode="bicubic",
+                align_corners=False,
+                **interpolate_antialias,
             )
 
         for i, t in enumerate(self.progress_bar(super_res_timesteps_tensor)):
@@ -507,7 +527,11 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             super_res_latents = self.super_res_scheduler.step(
-                noise_pred, t, super_res_latents, prev_timestep=prev_timestep, generator=generator
+                noise_pred,
+                t,
+                super_res_latents,
+                prev_timestep=prev_timestep,
+                generator=generator,
             ).prev_sample
 
         image = super_res_latents

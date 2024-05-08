@@ -27,7 +27,13 @@ class MagicMixPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        self.register_modules(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
+        self.register_modules(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            scheduler=scheduler,
+        )
 
     # convert PIL image to latents
     def encode(self, img):

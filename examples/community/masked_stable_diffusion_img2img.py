@@ -112,7 +112,14 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
         # code adapted from parent class StableDiffusionImg2ImgPipeline
 
         # 0. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, strength, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
+        self.check_inputs(
+            prompt,
+            strength,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
+        )
 
         # 1. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -153,7 +160,13 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
         # 5. Prepare latent variables
         # it is sampled from the latent distribution of the VAE
         latents = self.prepare_latents(
-            image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
+            image,
+            latent_timestep,
+            batch_size,
+            num_images_per_prompt,
+            prompt_embeds.dtype,
+            device,
+            generator,
         )
 
         # mean of the latent distribution
@@ -192,7 +205,11 @@ class MaskedStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if latent_mask is not None:
-                    latents = torch.lerp(init_latents * self.vae.config.scaling_factor, latents, latent_mask)
+                    latents = torch.lerp(
+                        init_latents * self.vae.config.scaling_factor,
+                        latents,
+                        latent_mask,
+                    )
                     noise_pred = torch.lerp(torch.zeros_like(noise_pred), noise_pred, latent_mask)
 
                 # compute the previous noisy sample x_t -> x_t-1

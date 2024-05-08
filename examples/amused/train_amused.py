@@ -88,10 +88,16 @@ def parse_args():
         help="A folder containing the training data of instance images.",
     )
     parser.add_argument(
-        "--instance_data_image", type=str, default=None, required=False, help="A single training image"
+        "--instance_data_image",
+        type=str,
+        default=None,
+        required=False,
+        help="A single training image",
     )
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes.",
     )
     parser.add_argument(
         "--dataloader_num_workers",
@@ -112,10 +118,25 @@ def parse_args():
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument("--ema_decay", type=float, default=0.9999)
     parser.add_argument("--ema_update_after_step", type=int, default=0)
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
     parser.add_argument(
         "--output_dir",
         type=str,
@@ -175,7 +196,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size",
+        type=int,
+        default=16,
+        help="Batch size (per device) for the training dataloader.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -205,7 +229,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps",
+        type=int,
+        default=500,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
     parser.add_argument(
         "--validation_steps",
@@ -250,15 +277,30 @@ def parse_args():
     parser.add_argument("--split_vae_encode", type=int, required=False, default=None)
     parser.add_argument("--min_masking_rate", type=float, default=0.0)
     parser.add_argument("--cond_dropout_prob", type=float, default=0.0)
-    parser.add_argument("--max_grad_norm", default=None, type=float, help="Max gradient norm.", required=False)
+    parser.add_argument(
+        "--max_grad_norm",
+        default=None,
+        type=float,
+        help="Max gradient norm.",
+        required=False,
+    )
     parser.add_argument("--use_lora", action="store_true", help="Fine tune the model using LoRa")
-    parser.add_argument("--text_encoder_use_lora", action="store_true", help="Fine tune the model using LoRa")
+    parser.add_argument(
+        "--text_encoder_use_lora",
+        action="store_true",
+        help="Fine tune the model using LoRa",
+    )
     parser.add_argument("--lora_r", default=16, type=int)
     parser.add_argument("--lora_alpha", default=32, type=int)
     parser.add_argument("--lora_target_modules", default=["to_q", "to_k", "to_v"], type=str, nargs="+")
     parser.add_argument("--text_encoder_lora_r", default=16, type=int)
     parser.add_argument("--text_encoder_lora_alpha", default=32, type=int)
-    parser.add_argument("--text_encoder_lora_target_modules", default=["to_q", "to_k", "to_v"], type=str, nargs="+")
+    parser.add_argument(
+        "--text_encoder_lora_target_modules",
+        default=["to_q", "to_k", "to_v"],
+        type=str,
+        nargs="+",
+    )
     parser.add_argument("--train_text_encoder", action="store_true")
     parser.add_argument("--image_key", type=str, required=False)
     parser.add_argument("--prompt_key", type=str, required=False)
@@ -276,7 +318,14 @@ def parse_args():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
 
     num_datasources = sum(
-        [x is not None for x in [args.instance_data_dir, args.instance_data_image, args.instance_data_dataset]]
+        [
+            x is not None
+            for x in [
+                args.instance_data_dir,
+                args.instance_data_image,
+                args.instance_data_dataset,
+            ]
+        ]
     )
 
     if num_datasources != 1:
@@ -450,13 +499,22 @@ def main(args):
 
     # TODO - will have to fix loading if training text encoder
     text_encoder = CLIPTextModelWithProjection.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+        variant=args.variant,
     )
     tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
+        variant=args.variant,
     )
     vq_model = VQModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vqvae", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="vqvae",
+        revision=args.revision,
+        variant=args.variant,
     )
 
     if args.train_text_encoder:
@@ -565,7 +623,9 @@ def main(args):
         if transformer is not None or text_encoder_ is not None:
             lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
             LoraLoaderMixin.load_lora_into_text_encoder(
-                lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_
+                lora_state_dict,
+                network_alphas=network_alphas,
+                text_encoder=text_encoder_,
             )
             LoraLoaderMixin.load_lora_into_transformer(
                 lora_state_dict, network_alphas=network_alphas, transformer=transformer
@@ -611,7 +671,10 @@ def main(args):
 
     if args.train_text_encoder:
         optimizer_grouped_parameters.append(
-            {"params": text_encoder.parameters(), "weight_decay": args.adam_weight_decay}
+            {
+                "params": text_encoder.parameters(),
+                "weight_decay": args.adam_weight_decay,
+            }
         )
 
     optimizer = optimizer_cls(
@@ -669,9 +732,13 @@ def main(args):
     logger.info("Preparing model, optimizer and dataloaders")
 
     if args.train_text_encoder:
-        model, optimizer, lr_scheduler, train_dataloader, text_encoder = accelerator.prepare(
-            model, optimizer, lr_scheduler, train_dataloader, text_encoder
-        )
+        (
+            model,
+            optimizer,
+            lr_scheduler,
+            train_dataloader,
+            text_encoder,
+        ) = accelerator.prepare(model, optimizer, lr_scheduler, train_dataloader, text_encoder)
     else:
         model, optimizer, lr_scheduler, train_dataloader = accelerator.prepare(
             model, optimizer, lr_scheduler, train_dataloader
@@ -695,14 +762,16 @@ def main(args):
 
     with nullcontext() if args.train_text_encoder else torch.no_grad():
         empty_embeds, empty_clip_embeds = encode_prompt(
-            text_encoder, tokenize_prompt(tokenizer, "").to(text_encoder.device, non_blocking=True)
+            text_encoder,
+            tokenize_prompt(tokenizer, "").to(text_encoder.device, non_blocking=True),
         )
 
         # There is a single image, we can just pre-encode the single prompt
         if args.instance_data_image is not None:
             prompt = os.path.splitext(os.path.basename(args.instance_data_image))[0]
             encoder_hidden_states, cond_embeds = encode_prompt(
-                text_encoder, tokenize_prompt(tokenizer, prompt).to(text_encoder.device, non_blocking=True)
+                text_encoder,
+                tokenize_prompt(tokenizer, prompt).to(text_encoder.device, non_blocking=True),
             )
             encoder_hidden_states = encoder_hidden_states.repeat(args.train_batch_size, 1, 1)
             cond_embeds = cond_embeds.repeat(args.train_batch_size, 1)
@@ -798,11 +867,17 @@ def main(args):
 
                     empty_embeds_ = empty_embeds.expand(batch_size, -1, -1)
                     encoder_hidden_states = torch.where(
-                        (encoder_hidden_states * mask).bool(), encoder_hidden_states, empty_embeds_
+                        (encoder_hidden_states * mask).bool(),
+                        encoder_hidden_states,
+                        empty_embeds_,
                     )
 
                     empty_clip_embeds_ = empty_clip_embeds.expand(batch_size, -1)
-                    cond_embeds = torch.where((cond_embeds * mask.squeeze(-1)).bool(), cond_embeds, empty_clip_embeds_)
+                    cond_embeds = torch.where(
+                        (cond_embeds * mask.squeeze(-1)).bool(),
+                        cond_embeds,
+                        empty_clip_embeds_,
+                    )
 
                 bs = input_ids.shape[0]
                 vae_scale_factor = 2 ** (len(vq_model.config.block_out_channels) - 1)
@@ -812,7 +887,8 @@ def main(args):
             if "prompt_input_ids" in batch:
                 with nullcontext() if args.train_text_encoder else torch.no_grad():
                     encoder_hidden_states, cond_embeds = encode_prompt(
-                        text_encoder, batch["prompt_input_ids"].to(accelerator.device, non_blocking=True)
+                        text_encoder,
+                        batch["prompt_input_ids"].to(accelerator.device, non_blocking=True),
                     )
 
             # Train Step

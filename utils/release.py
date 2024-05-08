@@ -22,10 +22,22 @@ import packaging.version
 
 PATH_TO_EXAMPLES = "examples/"
 REPLACE_PATTERNS = {
-    "examples": (re.compile(r'^check_min_version\("[^"]+"\)\s*$', re.MULTILINE), 'check_min_version("VERSION")\n'),
-    "init": (re.compile(r'^__version__\s+=\s+"([^"]+)"\s*$', re.MULTILINE), '__version__ = "VERSION"\n'),
-    "setup": (re.compile(r'^(\s*)version\s*=\s*"[^"]+",', re.MULTILINE), r'\1version="VERSION",'),
-    "doc": (re.compile(r'^(\s*)release\s*=\s*"[^"]+"$', re.MULTILINE), 'release = "VERSION"\n'),
+    "examples": (
+        re.compile(r'^check_min_version\("[^"]+"\)\s*$', re.MULTILINE),
+        'check_min_version("VERSION")\n',
+    ),
+    "init": (
+        re.compile(r'^__version__\s+=\s+"([^"]+)"\s*$', re.MULTILINE),
+        '__version__ = "VERSION"\n',
+    ),
+    "setup": (
+        re.compile(r'^(\s*)version\s*=\s*"[^"]+",', re.MULTILINE),
+        r'\1version="VERSION",',
+    ),
+    "doc": (
+        re.compile(r'^(\s*)release\s*=\s*"[^"]+"$', re.MULTILINE),
+        'release = "VERSION"\n',
+    ),
 }
 REPLACE_FILES = {
     "init": "src/diffusers/__init__.py",
@@ -151,7 +163,11 @@ def post_release_work():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--post_release", action="store_true", help="Whether this is pre or post release.")
+    parser.add_argument(
+        "--post_release",
+        action="store_true",
+        help="Whether this is pre or post release.",
+    )
     parser.add_argument("--patch", action="store_true", help="Whether or not this is a patch release.")
     args = parser.parse_args()
     if not args.post_release:

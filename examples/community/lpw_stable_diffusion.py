@@ -11,10 +11,17 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion import (
+    StableDiffusionPipelineOutput,
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     PIL_INTERPOLATION,
@@ -347,7 +354,11 @@ def get_weighted_text_embeddings(
             pipe.tokenizer.model_max_length,
             no_boseos_middle=no_boseos_middle,
         )
-        uncond_weights = torch.tensor(uncond_weights, dtype=uncond_embeddings.dtype, device=uncond_embeddings.device)
+        uncond_weights = torch.tensor(
+            uncond_weights,
+            dtype=uncond_embeddings.dtype,
+            device=uncond_embeddings.device,
+        )
 
     # assign weights to the prompts and normalize in the sense of mean
     # TODO: should we normalize by chunk or in a whole (current implementation)?
@@ -382,7 +393,10 @@ def preprocess_mask(mask, batch_size, scale_factor=8):
         mask = mask.convert("L")
         w, h = mask.size
         w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
-        mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
+        mask = mask.resize(
+            (w // scale_factor, h // scale_factor),
+            resample=PIL_INTERPOLATION["nearest"],
+        )
         mask = np.array(mask).astype(np.float32) / 255.0
         mask = np.tile(mask, (4, 1, 1))
         mask = np.vstack([mask[None]] * batch_size)
@@ -409,7 +423,11 @@ def preprocess_mask(mask, batch_size, scale_factor=8):
 
 
 class StableDiffusionLongPromptWeightingPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    LoraLoaderMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion without tokens length limit, and support parsing
@@ -724,7 +742,12 @@ class StableDiffusionLongPromptWeightingPipeline(
     ):
         if image is None:
             batch_size = batch_size * num_images_per_prompt
-            shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            shape = (
+                batch_size,
+                num_channels_latents,
+                height // self.vae_scale_factor,
+                width // self.vae_scale_factor,
+            )
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -876,7 +899,14 @@ class StableDiffusionLongPromptWeightingPipeline(
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, strength, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            strength,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters

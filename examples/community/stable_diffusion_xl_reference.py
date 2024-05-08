@@ -151,7 +151,15 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
         return image
 
-    def prepare_ref_latents(self, refimage, batch_size, dtype, device, generator, do_classifier_free_guidance):
+    def prepare_ref_latents(
+        self,
+        refimage,
+        batch_size,
+        dtype,
+        device,
+        generator,
+        do_classifier_free_guidance,
+    ):
         refimage = refimage.to(device=device)
         if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
             self.upcast_vae()
@@ -346,8 +354,17 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
             if self.use_ada_layer_norm:
                 norm_hidden_states = self.norm1(hidden_states, timestep)
             elif self.use_ada_layer_norm_zero:
-                norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
-                    hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
+                (
+                    norm_hidden_states,
+                    gate_msa,
+                    shift_mlp,
+                    scale_mlp,
+                    gate_mlp,
+                ) = self.norm1(
+                    hidden_states,
+                    timestep,
+                    class_labels,
+                    hidden_dtype=hidden_states.dtype,
                 )
             else:
                 norm_hidden_states = self.norm1(hidden_states)
@@ -604,7 +621,12 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
             return hidden_states
 
         def hacked_UpBlock2D_forward(
-            self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, **kwargs
+            self,
+            hidden_states,
+            res_hidden_states_tuple,
+            temb=None,
+            upsample_size=None,
+            **kwargs,
         ):
             eps = 1e-6
             for i, resnet in enumerate(self.resnets):
@@ -729,11 +751,17 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs = {
+                    "text_embeds": add_text_embeds,
+                    "time_ids": add_time_ids,
+                }
 
                 # ref only part
                 noise = randn_tensor(
-                    ref_image_latents.shape, generator=generator, device=device, dtype=ref_image_latents.dtype
+                    ref_image_latents.shape,
+                    generator=generator,
+                    device=device,
+                    dtype=ref_image_latents.dtype,
                 )
                 ref_xt = self.scheduler.add_noise(
                     ref_image_latents,

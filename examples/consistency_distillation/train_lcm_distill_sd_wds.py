@@ -176,7 +176,11 @@ class SDText2ImageDataset:
 
         processing_pipeline = [
             wds.decode("pil", handler=wds.ignore_and_continue),
-            wds.rename(image="jpg;png;jpeg;webp", text="text;txt;caption", handler=wds.warn_and_continue),
+            wds.rename(
+                image="jpg;png;jpeg;webp",
+                text="text;txt;caption",
+                handler=wds.warn_and_continue,
+            ),
             wds.map(filter_keys({"image", "text"})),
             wds.map(transform),
             wds.to_tuple("image", "text"),
@@ -588,7 +592,10 @@ def parse_args():
     )
     # ----Batch Size and Training Steps----
     parser.add_argument(
-        "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size",
+        type=int,
+        default=16,
+        help="Batch size (per device) for the training dataloader.",
     )
     parser.add_argument("--num_train_epochs", type=int, default=100)
     parser.add_argument(
@@ -629,7 +636,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps",
+        type=int,
+        default=500,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -639,12 +649,29 @@ def parse_args():
     )
     # ----Optimizer (Adam)----
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes.",
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     # ----Diffusion Training Arguments----
     parser.add_argument(
@@ -759,7 +786,9 @@ def parse_args():
     )
     # ----Training Optimizations----
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+        "--enable_xformers_memory_efficient_attention",
+        action="store_true",
+        help="Whether or not to use xformers.",
     )
     parser.add_argument(
         "--gradient_checkpointing",
@@ -767,7 +796,12 @@ def parse_args():
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     # ----Distributed Training----
-    parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="For distributed training: local_rank",
+    )
     # ----------Validation Arguments----------
     parser.add_argument(
         "--validation_steps",
@@ -776,8 +810,17 @@ def parse_args():
         help="Run validation every X steps.",
     )
     # ----------Huggingface Hub Arguments-----------
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--push_to_hub",
+        action="store_true",
+        help="Whether or not to push the model to the Hub.",
+    )
+    parser.add_argument(
+        "--hub_token",
+        type=str,
+        default=None,
+        help="The token to use to push to the Model Hub.",
+    )
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -884,7 +927,9 @@ def main(args):
 
     # 1. Create the noise scheduler and the desired noise schedule.
     noise_scheduler = DDPMScheduler.from_pretrained(
-        args.pretrained_teacher_model, subfolder="scheduler", revision=args.teacher_revision
+        args.pretrained_teacher_model,
+        subfolder="scheduler",
+        revision=args.teacher_revision,
     )
 
     # DDPMScheduler calculates the alpha and sigma noise schedules (based on the alpha bars) for us
@@ -899,13 +944,18 @@ def main(args):
 
     # 2. Load tokenizers from SD 1.X/2.X checkpoint.
     tokenizer = AutoTokenizer.from_pretrained(
-        args.pretrained_teacher_model, subfolder="tokenizer", revision=args.teacher_revision, use_fast=False
+        args.pretrained_teacher_model,
+        subfolder="tokenizer",
+        revision=args.teacher_revision,
+        use_fast=False,
     )
 
     # 3. Load text encoders from SD 1.X/2.X checkpoint.
     # import correct text encoder classes
     text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_teacher_model, subfolder="text_encoder", revision=args.teacher_revision
+        args.pretrained_teacher_model,
+        subfolder="text_encoder",
+        revision=args.teacher_revision,
     )
 
     # 4. Load VAE from SD 1.X/2.X checkpoint
@@ -1123,7 +1173,10 @@ def main(args):
         accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
     uncond_input_ids = tokenizer(
-        [""] * args.train_batch_size, return_tensors="pt", padding="max_length", max_length=77
+        [""] * args.train_batch_size,
+        return_tensors="pt",
+        padding="max_length",
+        max_length=77,
     ).input_ids.to(accelerator.device)
     uncond_prompt_embeds = text_encoder(uncond_input_ids)[0]
 
@@ -1382,8 +1435,24 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
                     if global_step % args.validation_steps == 0:
-                        log_validation(vae, target_unet, args, accelerator, weight_dtype, global_step, "target")
-                        log_validation(vae, unet, args, accelerator, weight_dtype, global_step, "online")
+                        log_validation(
+                            vae,
+                            target_unet,
+                            args,
+                            accelerator,
+                            weight_dtype,
+                            global_step,
+                            "target",
+                        )
+                        log_validation(
+                            vae,
+                            unet,
+                            args,
+                            accelerator,
+                            weight_dtype,
+                            global_step,
+                            "online",
+                        )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)

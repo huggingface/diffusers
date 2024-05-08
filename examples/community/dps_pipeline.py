@@ -111,7 +111,11 @@ class DPSPipeline(DiffusionPipeline):
                 self.unet.config.sample_size,
             )
         else:
-            image_shape = (batch_size, self.unet.config.in_channels, *self.unet.config.sample_size)
+            image_shape = (
+                batch_size,
+                self.unet.config.in_channels,
+                *self.unet.config.sample_size,
+            )
 
         if self.device.type == "mps":
             # randn does not work reproducibly on mps
@@ -131,7 +135,10 @@ class DPSPipeline(DiffusionPipeline):
 
                 # 2. compute previous image x'_{t-1} and original prediction x0_{t}
                 scheduler_out = self.scheduler.step(model_output, t, image, generator=generator)
-                image_pred, origi_pred = scheduler_out.prev_sample, scheduler_out.pred_original_sample
+                image_pred, origi_pred = (
+                    scheduler_out.prev_sample,
+                    scheduler_out.pred_original_sample,
+                )
 
                 # 3. compute y'_t = f(x0_{t})
                 measurement_pred = operator(origi_pred)
@@ -170,7 +177,14 @@ if __name__ == "__main__":
 
             # Resizer local class, do not use outiside the SR operator class
             class Resizer(nn.Module):
-                def __init__(self, in_shape, scale_factor=None, output_shape=None, kernel=None, antialiasing=True):
+                def __init__(
+                    self,
+                    in_shape,
+                    scale_factor=None,
+                    output_shape=None,
+                    kernel=None,
+                    antialiasing=True,
+                ):
                     super(Resizer, self).__init__()
 
                     # First standardize values and fill missing arguments (if needed) by deriving scale from output shape or vice versa
@@ -226,7 +240,12 @@ if __name__ == "__main__":
                         # for each coordinate (along 1 dim), calculate which coordinates in the input image affect its result and the
                         # weights that multiply the values there to get its result.
                         weights, field_of_view = self.contributions(
-                            in_shape[dim], output_shape[dim], scale_factor[dim], method, kernel_width, antialiasing
+                            in_shape[dim],
+                            output_shape[dim],
+                            scale_factor[dim],
+                            method,
+                            kernel_width,
+                            antialiasing,
                         )
 
                         # convert to torch tensor
@@ -236,13 +255,17 @@ if __name__ == "__main__":
                         # tmp_im[field_of_view.T], (bsxfun style)
                         weights_list.append(
                             nn.Parameter(
-                                torch.reshape(weights, list(weights.shape) + (len(scale_factor) - 1) * [1]),
+                                torch.reshape(
+                                    weights,
+                                    list(weights.shape) + (len(scale_factor) - 1) * [1],
+                                ),
                                 requires_grad=False,
                             )
                         )
                         field_of_view_list.append(
                             nn.Parameter(
-                                torch.tensor(field_of_view.T.astype(np.int32), dtype=torch.long), requires_grad=False
+                                torch.tensor(field_of_view.T.astype(np.int32), dtype=torch.long),
+                                requires_grad=False,
                             )
                         )
 
@@ -298,7 +321,15 @@ if __name__ == "__main__":
 
                     return scale_factor, output_shape
 
-                def contributions(self, in_length, out_length, scale, kernel, kernel_width, antialiasing):
+                def contributions(
+                    self,
+                    in_length,
+                    out_length,
+                    scale,
+                    kernel,
+                    kernel_width,
+                    antialiasing,
+                ):
                     # This function calculates a set of 'filters' and a set of field_of_view that will later on be applied
                     # such that each position from the field_of_view will be multiplied with a matching filter from the
                     # 'weights' based on the interpolation method and the distance of the sub-pixel location from the pixel centers
@@ -353,7 +384,14 @@ if __name__ == "__main__":
                     weights = 1.0 * weights / np.expand_dims(sum_weights, axis=1)
 
                     # We use this mirror structure as a trick for reflection padding at the boundaries
-                    mirror = np.uint(np.concatenate((np.arange(in_length), np.arange(in_length - 1, -1, step=-1))))
+                    mirror = np.uint(
+                        np.concatenate(
+                            (
+                                np.arange(in_length),
+                                np.arange(in_length - 1, -1, step=-1),
+                            )
+                        )
+                    )
                     field_of_view = mirror[np.mod(field_of_view, mirror.shape[0])]
 
                     # Get rid of  weights and pixel positions that are of zero weight
@@ -384,7 +422,15 @@ if __name__ == "__main__":
                     self.std = std
                     self.seq = nn.Sequential(
                         nn.ReflectionPad2d(self.kernel_size // 2),
-                        nn.Conv2d(3, 3, self.kernel_size, stride=1, padding=0, bias=False, groups=3),
+                        nn.Conv2d(
+                            3,
+                            3,
+                            self.kernel_size,
+                            stride=1,
+                            padding=0,
+                            bias=False,
+                            groups=3,
+                        ),
                     )
                     self.weights_init()
 

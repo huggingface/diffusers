@@ -22,7 +22,12 @@ from transformers import (
 
 from diffusers import DiffusionPipeline, StableDiffusionXLPipeline
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    IPAdapterMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from diffusers.models.attention_processor import (
     AttnProcessor2_0,
@@ -31,7 +36,9 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from diffusers.pipelines.stable_diffusion_xl.pipeline_output import (
+    StableDiffusionXLPipelineOutput,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     deprecate,
@@ -45,7 +52,9 @@ from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_invisible_watermark_available():
-    from diffusers.pipelines.stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
+    from diffusers.pipelines.stable_diffusion_xl.watermark import (
+        StableDiffusionXLWatermarker,
+    )
 
 
 def parse_prompt_attention(text):
@@ -372,7 +381,10 @@ def get_weighted_text_embeddings_sdxl(
             prompt_embeds_1_hidden_states = prompt_embeds_1.hidden_states[-(clip_skip + 2)]
             prompt_embeds_2_hidden_states = prompt_embeds_2.hidden_states[-(clip_skip + 2)]
 
-        prompt_embeds_list = [prompt_embeds_1_hidden_states, prompt_embeds_2_hidden_states]
+        prompt_embeds_list = [
+            prompt_embeds_1_hidden_states,
+            prompt_embeds_2_hidden_states,
+        ]
         token_embedding = torch.concat(prompt_embeds_list, dim=-1).squeeze(0)
 
         for j in range(len(weight_tensor)):
@@ -398,7 +410,10 @@ def get_weighted_text_embeddings_sdxl(
         neg_prompt_embeds_2_hidden_states = neg_prompt_embeds_2.hidden_states[-2]
         negative_pooled_prompt_embeds = neg_prompt_embeds_2[0]
 
-        neg_prompt_embeds_list = [neg_prompt_embeds_1_hidden_states, neg_prompt_embeds_2_hidden_states]
+        neg_prompt_embeds_list = [
+            neg_prompt_embeds_1_hidden_states,
+            neg_prompt_embeds_2_hidden_states,
+        ]
         neg_token_embedding = torch.concat(neg_prompt_embeds_list, dim=-1).squeeze(0)
 
         for z in range(len(neg_weight_tensor)):
@@ -429,7 +444,12 @@ def get_weighted_text_embeddings_sdxl(
         bs_embed * num_images_per_prompt, -1
     )
 
-    return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+    return (
+        prompt_embeds,
+        negative_prompt_embeds,
+        pooled_prompt_embeds,
+        negative_pooled_prompt_embeds,
+    )
 
 
 # -------------------------------------------------------------------------------------------------------------------------------
@@ -487,7 +507,9 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor,
+    generator: Optional[torch.Generator] = None,
+    sample_mode: str = "sample",
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -643,7 +665,10 @@ class SDXLLongPromptWeightingPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.mask_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+            vae_scale_factor=self.vae_scale_factor,
+            do_normalize=False,
+            do_binarize=True,
+            do_convert_grayscale=True,
         )
         self.default_sample_size = self.unet.config.sample_size
 
@@ -874,7 +899,12 @@ class SDXLLongPromptWeightingPipeline(
                 bs_embed * num_images_per_prompt, -1
             )
 
-        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+        return (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
@@ -1060,7 +1090,12 @@ class SDXLLongPromptWeightingPipeline(
         batch_size *= num_images_per_prompt
 
         if image is None:
-            shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            shape = (
+                batch_size,
+                num_channels_latents,
+                height // self.vae_scale_factor,
+                width // self.vae_scale_factor,
+            )
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -1140,7 +1175,12 @@ class SDXLLongPromptWeightingPipeline(
             return latents
 
         else:
-            shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            shape = (
+                batch_size,
+                num_channels_latents,
+                height // self.vae_scale_factor,
+                width // self.vae_scale_factor,
+            )
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -1208,7 +1248,16 @@ class SDXLLongPromptWeightingPipeline(
         return image_latents
 
     def prepare_mask_latents(
-        self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
+        self,
+        mask,
+        masked_image,
+        batch_size,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        do_classifier_free_guidance,
     ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
@@ -2132,7 +2181,11 @@ class SDXLLongPromptWeightingPipeline(
         )
 
     # Override to properly handle the loading and unloading of the additional text encoder.
-    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        **kwargs,
+    ):
         # We could have accessed the unet config from `lora_state_dict()` too. We pass
         # it here explicitly to be able to tell that it's coming from an SDXL
         # pipeline.

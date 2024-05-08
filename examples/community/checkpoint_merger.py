@@ -59,7 +59,11 @@ class CheckpointMergerPipeline(DiffusionPipeline):
 
     @torch.no_grad()
     @validate_hf_hub_args
-    def merge(self, pretrained_model_name_or_path_list: List[Union[str, os.PathLike]], **kwargs):
+    def merge(
+        self,
+        pretrained_model_name_or_path_list: List[Union[str, os.PathLike]],
+        **kwargs,
+    ):
         """
         Returns a new pipeline object of the class 'DiffusionPipeline' with the merged checkpoints(weights) of the models passed
         in the argument 'pretrained_model_name_or_path_list' as a list.
@@ -153,7 +157,10 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                 DiffusionPipeline.config_name,
             ]
             requested_pipeline_class = config_dict.get("_class_name")
-            user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
+            user_agent = {
+                "diffusers": __version__,
+                "pipeline_class": requested_pipeline_class,
+            }
 
             cached_folder = (
                 pretrained_model_name_or_path

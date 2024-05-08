@@ -25,10 +25,18 @@ from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 # from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 # from . import StableDiffusionPipelineOutput
 # from .safety_checker import StableDiffusionSafetyChecker
-from diffusers import AutoencoderKL, DiffusionPipeline, StableDiffusionMixin, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    UNet2DConditionModel,
+)
 from diffusers.configuration_utils import ConfigMixin, FrozenDict
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion import (
+    StableDiffusionPipelineOutput,
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     deprecate,
@@ -332,12 +340,18 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             if x.min() < -1.0 or x.max() > 1.0:
                 raise ValueError("Expected input tensor to have values in the range [-1, 1]")
         x = kornia.geometry.resize(
-            x.to(torch.float32), (224, 224), interpolation="bicubic", align_corners=True, antialias=False
+            x.to(torch.float32),
+            (224, 224),
+            interpolation="bicubic",
+            align_corners=True,
+            antialias=False,
         ).to(dtype=dtype)
         x = (x + 1.0) / 2.0
         # renormalize according to clip
         x = kornia.enhance.normalize(
-            x, torch.Tensor([0.48145466, 0.4578275, 0.40821073]), torch.Tensor([0.26862954, 0.26130258, 0.27577711])
+            x,
+            torch.Tensor([0.48145466, 0.4578275, 0.40821073]),
+            torch.Tensor([0.26862954, 0.26130258, 0.27577711]),
         )
         return x
 
@@ -408,9 +422,21 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 pose = torch.Tensor(pose)
             else:
                 pose = torch.Tensor([pose])
-            x, y, z = pose[:, 0].unsqueeze(1), pose[:, 1].unsqueeze(1), pose[:, 2].unsqueeze(1)
+            x, y, z = (
+                pose[:, 0].unsqueeze(1),
+                pose[:, 1].unsqueeze(1),
+                pose[:, 2].unsqueeze(1),
+            )
             pose_embeddings = (
-                torch.cat([torch.deg2rad(x), torch.sin(torch.deg2rad(y)), torch.cos(torch.deg2rad(y)), z], dim=-1)
+                torch.cat(
+                    [
+                        torch.deg2rad(x),
+                        torch.sin(torch.deg2rad(y)),
+                        torch.cos(torch.deg2rad(y)),
+                        z,
+                    ],
+                    dim=-1,
+                )
                 .unsqueeze(1)
                 .to(device=device, dtype=dtype)
             )  # B, 1, 4
@@ -496,8 +522,23 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 f" {type(callback_steps)}."
             )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -513,7 +554,15 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def prepare_img_latents(self, image, batch_size, dtype, device, generator=None, do_classifier_free_guidance=False):
+    def prepare_img_latents(
+        self,
+        image,
+        batch_size,
+        dtype,
+        device,
+        generator=None,
+        do_classifier_free_guidance=False,
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -705,7 +754,11 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
 
         # 3. Encode input image with pose as prompt
         prompt_embeds = self._encode_image_with_pose(
-            prompt_imgs, poses, device, num_images_per_prompt, do_classifier_free_guidance
+            prompt_imgs,
+            poses,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
         )
 
         # 4. Prepare timesteps

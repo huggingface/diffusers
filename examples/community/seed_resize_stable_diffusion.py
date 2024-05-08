@@ -12,7 +12,9 @@ from diffusers import DiffusionPipeline
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import logging
 
@@ -237,23 +239,47 @@ class SeedResizeStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin)
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
-        latents_shape = (batch_size * num_images_per_prompt, self.unet.config.in_channels, height // 8, width // 8)
-        latents_shape_reference = (batch_size * num_images_per_prompt, self.unet.config.in_channels, 64, 64)
+        latents_shape = (
+            batch_size * num_images_per_prompt,
+            self.unet.config.in_channels,
+            height // 8,
+            width // 8,
+        )
+        latents_shape_reference = (
+            batch_size * num_images_per_prompt,
+            self.unet.config.in_channels,
+            64,
+            64,
+        )
         latents_dtype = text_embeddings.dtype
         if latents is None:
             if self.device.type == "mps":
                 # randn does not exist on mps
                 latents_reference = torch.randn(
-                    latents_shape_reference, generator=generator, device="cpu", dtype=latents_dtype
+                    latents_shape_reference,
+                    generator=generator,
+                    device="cpu",
+                    dtype=latents_dtype,
                 ).to(self.device)
-                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
-                    self.device
-                )
+                latents = torch.randn(
+                    latents_shape,
+                    generator=generator,
+                    device="cpu",
+                    dtype=latents_dtype,
+                ).to(self.device)
             else:
                 latents_reference = torch.randn(
-                    latents_shape_reference, generator=generator, device=self.device, dtype=latents_dtype
+                    latents_shape_reference,
+                    generator=generator,
+                    device=self.device,
+                    dtype=latents_dtype,
                 )
-                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+                latents = torch.randn(
+                    latents_shape,
+                    generator=generator,
+                    device=self.device,
+                    dtype=latents_dtype,
+                )
         else:
             if latents_reference.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
@@ -328,7 +354,8 @@ class SeedResizeStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin)
                 self.device
             )
             image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
+                images=image,
+                clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype),
             )
         else:
             has_nsfw_concept = None

@@ -11,7 +11,10 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, ControlNetModel, UNet2DConditionModel, logging
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion import (
+    StableDiffusionPipelineOutput,
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     PIL_INTERPOLATION,
@@ -142,7 +145,12 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
+        controlnet: Union[
+            ControlNetModel,
+            List[ControlNetModel],
+            Tuple[ControlNetModel],
+            MultiControlNetModel,
+        ],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
@@ -485,7 +493,12 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
                 image_batch_size = 1
                 image_channels, image_height, image_width = image.shape
             elif image.ndim == 4:
-                image_batch_size, image_channels, image_height, image_width = image.shape
+                (
+                    image_batch_size,
+                    image_channels,
+                    image_height,
+                    image_width,
+                ) = image.shape
             else:
                 assert False
 
@@ -530,7 +543,16 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+    def prepare_latents(
+        self,
+        image,
+        timestep,
+        batch_size,
+        num_images_per_prompt,
+        dtype,
+        device,
+        generator=None,
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -600,7 +622,10 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
         prompt: Union[str, List[str]] = None,
         image: Union[torch.Tensor, PIL.Image.Image] = None,
         controlnet_conditioning_image: Union[
-            torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]
+            torch.FloatTensor,
+            PIL.Image.Image,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
         ] = None,
         strength: float = 0.8,
         height: Optional[int] = None,

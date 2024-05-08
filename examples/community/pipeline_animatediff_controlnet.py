@@ -19,11 +19,26 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel, UNetMotionModel
+from diffusers.loaders import (
+    IPAdapterMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
+from diffusers.models import (
+    AutoencoderKL,
+    ControlNetModel,
+    ImageProjection,
+    UNet2DConditionModel,
+    UNetMotionModel,
+)
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.models.unets.unet_motion_model import MotionAdapter
 from diffusers.pipelines.animatediff.pipeline_output import AnimateDiffPipelineOutput
@@ -37,7 +52,13 @@ from diffusers.schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from diffusers.utils import (
+    USE_PEFT_BACKEND,
+    deprecate,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
 
 
@@ -114,7 +135,11 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
 
 
 class AnimateDiffControlNetPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    IPAdapterMixin,
+    LoraLoaderMixin,
 ):
     r"""
     Pipeline for text-to-video generation.
@@ -155,7 +180,12 @@ class AnimateDiffControlNetPipeline(
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         motion_adapter: MotionAdapter,
-        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
+        controlnet: Union[
+            ControlNetModel,
+            List[ControlNetModel],
+            Tuple[ControlNetModel],
+            MultiControlNetModel,
+        ],
         scheduler: Union[
             DDIMScheduler,
             PNDMScheduler,
@@ -187,7 +217,9 @@ class AnimateDiffControlNetPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.control_image_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
+            vae_scale_factor=self.vae_scale_factor,
+            do_convert_rgb=True,
+            do_normalize=False,
         )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
@@ -286,7 +318,9 @@ class AnimateDiffControlNetPipeline(
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                    text_input_ids.to(device),
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -650,7 +684,16 @@ class AnimateDiffControlNetPipeline(
 
     # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
     def prepare_latents(
-        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
+        self,
+        batch_size,
+        num_channels_latents,
+        num_frames,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
     ):
         shape = (
             batch_size,
@@ -950,7 +993,10 @@ class AnimateDiffControlNetPipeline(
 
         if ip_adapter_image is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
-                ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_videos_per_prompt
+                ip_adapter_image,
+                ip_adapter_image_embeds,
+                device,
+                batch_size * num_videos_per_prompt,
             )
 
         if isinstance(controlnet, ControlNetModel):
@@ -1050,7 +1096,12 @@ class AnimateDiffControlNetPipeline(
 
                 control_model_input = torch.transpose(control_model_input, 1, 2)
                 control_model_input = control_model_input.reshape(
-                    (-1, control_model_input.shape[2], control_model_input.shape[3], control_model_input.shape[4])
+                    (
+                        -1,
+                        control_model_input.shape[2],
+                        control_model_input.shape[3],
+                        control_model_input.shape[4],
+                    )
                 )
 
                 down_block_res_samples, mid_block_res_sample = self.controlnet(

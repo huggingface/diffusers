@@ -209,7 +209,15 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            self.betas = (
+                torch.linspace(
+                    beta_start**0.5,
+                    beta_end**0.5,
+                    num_train_timesteps,
+                    dtype=torch.float32,
+                )
+                ** 2
+            )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -444,7 +452,12 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
             # TODO: is this correct?
             # Sample prev sample x_{t - 1} ~ q(x_{t - 1} | x_0 =  G(x_t, t))
             device = model_output.device
-            noise = randn_tensor(model_output.shape, generator=generator, device=device, dtype=model_output.dtype)
+            noise = randn_tensor(
+                model_output.shape,
+                generator=generator,
+                device=device,
+                dtype=model_output.dtype,
+            )
             sqrt_alpha_prod_t_prev = alpha_prod_t_prev**0.5
             sqrt_one_minus_alpha_prod_t_prev = (1 - alpha_prod_t_prev) ** 0.5
             pred_prev_sample = sqrt_alpha_prod_t_prev * pred_original_sample + sqrt_one_minus_alpha_prod_t_prev * noise
@@ -484,7 +497,10 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
     def get_velocity(
-        self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
+        self,
+        sample: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
         alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)

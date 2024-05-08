@@ -190,7 +190,13 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline._encode_image
-    def _encode_image(self, image, device, num_images_per_prompt, image_embeddings: Optional[torch.Tensor] = None):
+    def _encode_image(
+        self,
+        image,
+        device,
+        num_images_per_prompt,
+        image_embeddings: Optional[torch.Tensor] = None,
+    ):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if image_embeddings is None:
@@ -288,7 +294,10 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
             )
 
         original_image_embeddings = self._encode_image(
-            image=image, device=device, num_images_per_prompt=1, image_embeddings=image_embeddings
+            image=image,
+            device=device,
+            num_images_per_prompt=1,
+            image_embeddings=image_embeddings,
         )
 
         image_embeddings = []
@@ -370,7 +379,11 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             decoder_latents = self.decoder_scheduler.step(
-                noise_pred, t, decoder_latents, prev_timestep=prev_timestep, generator=generator
+                noise_pred,
+                t,
+                decoder_latents,
+                prev_timestep=prev_timestep,
+                generator=generator,
             ).prev_sample
 
         decoder_latents = decoder_latents.clamp(-1, 1)
@@ -406,7 +419,11 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
                 interpolate_antialias["antialias"] = True
 
             image_upscaled = F.interpolate(
-                image_small, size=[height, width], mode="bicubic", align_corners=False, **interpolate_antialias
+                image_small,
+                size=[height, width],
+                mode="bicubic",
+                align_corners=False,
+                **interpolate_antialias,
             )
 
         for i, t in enumerate(self.progress_bar(super_res_timesteps_tensor)):
@@ -431,7 +448,11 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             super_res_latents = self.super_res_scheduler.step(
-                noise_pred, t, super_res_latents, prev_timestep=prev_timestep, generator=generator
+                noise_pred,
+                t,
+                super_res_latents,
+                prev_timestep=prev_timestep,
+                generator=generator,
             ).prev_sample
 
         image = super_res_latents

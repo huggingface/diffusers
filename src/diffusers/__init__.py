@@ -29,6 +29,8 @@ _import_structure = {
     "configuration_utils": ["ConfigMixin"],
     "models": [],
     "pipelines": [],
+    "plus_models": [],
+    "plus_pipelines": [],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -130,6 +132,12 @@ else:
             "RePaintPipeline",
             "ScoreSdeVePipeline",
             "StableDiffusionMixin",
+        ]
+    )
+    _import_structure["plus_models"].extend(
+        [
+            "ELLA",
+            "EllaELLAProxyUNet",
         ]
     )
     _import_structure["schedulers"].extend(
@@ -319,6 +327,12 @@ else:
             "WuerstchenPriorPipeline",
         ]
     )
+    _import_structure["plus_pipelines"].extend(
+        [
+            "EllaFixedDiffusionPipeline",
+            "EllaFlexDiffusionPipeline",
+        ]
+    )
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
@@ -467,6 +481,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
+        from plus_models import (
+            ELLA,
+            ELLAProxyUNet,
+        )
+
         from .models import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
@@ -581,6 +600,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
+        from plus_pipelines import (
+            EllaFixedDiffusionPipeline,
+            EllaFlexDiffusionPipeline,
+        )
+
         from .pipelines import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,

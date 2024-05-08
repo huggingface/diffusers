@@ -15,7 +15,9 @@ from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import deprecate, logging
 
@@ -94,7 +96,12 @@ class TextInpainting(DiffusionPipeline, StableDiffusionMixin):
                 " Hub, it would be very nice if you could open a Pull request for the"
                 " `scheduler/scheduler_config.json` file"
             )
-            deprecate("skip_prk_steps not set", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "skip_prk_steps not set",
+                "1.0.0",
+                deprecation_message,
+                standard_warn=False,
+            )
             new_config = dict(scheduler.config)
             new_config["skip_prk_steps"] = True
             scheduler._internal_dict = FrozenDict(new_config)

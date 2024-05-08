@@ -18,7 +18,9 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import (
+    StableDiffusionPipelineOutput,
+)
 from diffusers.utils import PIL_INTERPOLATION, deprecate
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -138,7 +140,12 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         clip_model: CLIPModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler, DPMSolverMultistepScheduler],
+        scheduler: Union[
+            PNDMScheduler,
+            LMSDiscreteScheduler,
+            DDIMScheduler,
+            DPMSolverMultistepScheduler,
+        ],
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
@@ -184,7 +191,16 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+    def prepare_latents(
+        self,
+        image,
+        timestep,
+        batch_size,
+        num_images_per_prompt,
+        dtype,
+        device,
+        generator=None,
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -217,7 +233,12 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
                 " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
                 " your script to pass as many initial images as text prompts to suppress this warning."
             )
-            deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "len(prompt) != len(image)",
+                "1.0.0",
+                deprecation_message,
+                standard_warn=False,
+            )
             additional_image_per_prompt = batch_size // init_latents.shape[0]
             init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
         elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
@@ -360,7 +381,13 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         # Preprocess image
         image = preprocess(image, width, height)
         latents = self.prepare_latents(
-            image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, self.device, generator
+            image,
+            latent_timestep,
+            batch_size,
+            num_images_per_prompt,
+            text_embeddings.dtype,
+            self.device,
+            generator,
         )
 
         if clip_guidance_scale > 0:
@@ -401,16 +428,29 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
-        latents_shape = (batch_size * num_images_per_prompt, self.unet.config.in_channels, height // 8, width // 8)
+        latents_shape = (
+            batch_size * num_images_per_prompt,
+            self.unet.config.in_channels,
+            height // 8,
+            width // 8,
+        )
         latents_dtype = text_embeddings.dtype
         if latents is None:
             if self.device.type == "mps":
                 # randn does not work reproducibly on mps
-                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
-                    self.device
-                )
+                latents = torch.randn(
+                    latents_shape,
+                    generator=generator,
+                    device="cpu",
+                    dtype=latents_dtype,
+                ).to(self.device)
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+                latents = torch.randn(
+                    latents_shape,
+                    generator=generator,
+                    device=self.device,
+                    dtype=latents_dtype,
+                )
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")

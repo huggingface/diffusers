@@ -5,7 +5,12 @@ from PIL import Image
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    DiffusionPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import (
     deprecate,
@@ -39,7 +44,10 @@ class EDICTPipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def _encode_prompt(
-        self, prompt: str, negative_prompt: Optional[str] = None, do_classifier_free_guidance: bool = False
+        self,
+        prompt: str,
+        negative_prompt: Optional[str] = None,
+        do_classifier_free_guidance: bool = False,
     ):
         text_inputs = self.tokenizer(
             prompt,
@@ -252,7 +260,12 @@ class EDICTPipeline(DiffusionPipeline):
                 f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
                 "`pil`, `np`, `pt`, `latent`"
             )
-            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "Unsupported output_type",
+                "1.0.0",
+                deprecation_message,
+                standard_warn=False,
+            )
             output_type = "np"
 
         if output_type == "latent":

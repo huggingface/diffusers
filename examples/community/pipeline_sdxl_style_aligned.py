@@ -52,7 +52,9 @@ from diffusers.models.attention_processor import (
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from diffusers.pipelines.stable_diffusion_xl.pipeline_output import (
+    StableDiffusionXLPipelineOutput,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -68,7 +70,9 @@ from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_invisible_watermark_available():
-    from diffusers.pipelines.stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
+    from diffusers.pipelines.stable_diffusion_xl.watermark import (
+        StableDiffusionXLWatermarker,
+    )
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -205,7 +209,11 @@ class SharedAttentionProcessor(AttnProcessor2_0):
         self.shared_score_shift = shared_score_shift
 
     def shifted_scaled_dot_product_attention(
-        self, attn: Attention, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
+        self,
+        attn: Attention,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
     ) -> torch.Tensor:
         logits = torch.einsum("bhqd,bhkd->bhqk", query, key) * attn.scale
         logits[:, :, :, query.shape[2] :] += self.shared_score_shift
@@ -261,11 +269,21 @@ class SharedAttentionProcessor(AttnProcessor2_0):
                 hidden_states = self.shifted_scaled_dot_product_attention(attn, query, key, value)
             else:
                 hidden_states = F.scaled_dot_product_attention(
-                    query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                    query,
+                    key,
+                    value,
+                    attn_mask=attention_mask,
+                    dropout_p=0.0,
+                    is_causal=False,
                 )
         else:
             hidden_states = F.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
             )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -375,7 +393,9 @@ def retrieve_timesteps(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor,
+    generator: Optional[torch.Generator] = None,
+    sample_mode: str = "sample",
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -493,7 +513,10 @@ class StyleAlignedSDXLPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.mask_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+            vae_scale_factor=self.vae_scale_factor,
+            do_normalize=False,
+            do_binarize=True,
+            do_convert_grayscale=True,
         )
 
         self.default_sample_size = self.unet.config.sample_size
@@ -737,7 +760,12 @@ class StyleAlignedSDXLPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+        return (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
@@ -919,7 +947,12 @@ class StyleAlignedSDXLPipeline(
         batch_size *= num_images_per_prompt
 
         if image is None:
-            shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            shape = (
+                batch_size,
+                num_channels_latents,
+                height // self.vae_scale_factor,
+                width // self.vae_scale_factor,
+            )
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -999,7 +1032,12 @@ class StyleAlignedSDXLPipeline(
             return latents
 
         else:
-            shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            shape = (
+                batch_size,
+                num_channels_latents,
+                height // self.vae_scale_factor,
+                width // self.vae_scale_factor,
+            )
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -1044,7 +1082,16 @@ class StyleAlignedSDXLPipeline(
             return outputs
 
     def prepare_mask_latents(
-        self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
+        self,
+        mask,
+        masked_image,
+        batch_size,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        do_classifier_free_guidance,
     ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
@@ -1807,7 +1854,10 @@ class StyleAlignedSDXLPipeline(
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs = {
+                    "text_embeds": add_text_embeds,
+                    "time_ids": add_time_ids,
+                }
                 if ip_adapter_image is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
 
@@ -1828,7 +1878,11 @@ class StyleAlignedSDXLPipeline(
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
+                    noise_pred = rescale_noise_cfg(
+                        noise_pred,
+                        noise_pred_text,
+                        guidance_rescale=self.guidance_rescale,
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]

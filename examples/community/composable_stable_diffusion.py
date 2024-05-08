@@ -23,8 +23,12 @@ from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import (
+    StableDiffusionPipelineOutput,
+)
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -165,7 +169,14 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
+    def _encode_prompt(
+        self,
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt,
+    ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -320,8 +331,23 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin)
                 f" {type(callback_steps)}."
             )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if latents is None:
             if device.type == "mps":
                 # randn does not work reproducibly on mps
@@ -449,7 +475,11 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin)
 
         # 3. Encode input prompt
         text_embeddings = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt,
         )
 
         # 4. Prepare timesteps
@@ -490,7 +520,11 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin)
                 noise_pred = []
                 for j in range(text_embeddings.shape[0]):
                     noise_pred.append(
-                        self.unet(latent_model_input[:1], t, encoder_hidden_states=text_embeddings[j : j + 1]).sample
+                        self.unet(
+                            latent_model_input[:1],
+                            t,
+                            encoder_hidden_states=text_embeddings[j : j + 1],
+                        ).sample
                     )
                 noise_pred = torch.cat(noise_pred, dim=0)
 

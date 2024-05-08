@@ -77,7 +77,16 @@ def image_grid(imgs, rows, cols):
 
 
 def log_validation(
-    vae, text_encoder, tokenizer, unet, controlnet, args, accelerator, weight_dtype, step, is_final_validation=False
+    vae,
+    text_encoder,
+    tokenizer,
+    unet,
+    controlnet,
+    args,
+    accelerator,
+    weight_dtype,
+    step,
+    is_final_validation=False,
 ):
     logger.info("Running validation... ")
 
@@ -135,13 +144,20 @@ def log_validation(
         for _ in range(args.num_validation_images):
             with inference_ctx:
                 image = pipeline(
-                    validation_prompt, validation_image, num_inference_steps=20, generator=generator
+                    validation_prompt,
+                    validation_image,
+                    num_inference_steps=20,
+                    generator=generator,
                 ).images[0]
 
             images.append(image)
 
         image_logs.append(
-            {"validation_image": validation_image, "images": images, "validation_prompt": validation_prompt}
+            {
+                "validation_image": validation_image,
+                "images": images,
+                "validation_prompt": validation_prompt,
+            }
         )
 
     tracker_key = "test" if is_final_validation else "validation"
@@ -200,7 +216,9 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 
         return CLIPTextModel
     elif model_class == "RobertaSeriesModelWithTransformation":
-        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
+        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
+            RobertaSeriesModelWithTransformation,
+        )
 
         return RobertaSeriesModelWithTransformation
     else:
@@ -307,7 +325,10 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size",
+        type=int,
+        default=4,
+        help="Batch size (per device) for the training dataloader.",
     )
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument(
@@ -376,7 +397,10 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps",
+        type=int,
+        default=500,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
     parser.add_argument(
         "--lr_num_cycles",
@@ -384,9 +408,16 @@ def parse_args(input_args=None):
         default=1,
         help="Number of hard resets of the lr in cosine_with_restarts scheduler.",
     )
-    parser.add_argument("--lr_power", type=float, default=1.0, help="Power factor of the polynomial scheduler.")
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--lr_power",
+        type=float,
+        default=1.0,
+        help="Power factor of the polynomial scheduler.",
+    )
+    parser.add_argument(
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes.",
     )
     parser.add_argument(
         "--dataloader_num_workers",
@@ -396,13 +427,37 @@ def parse_args(input_args=None):
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--push_to_hub",
+        action="store_true",
+        help="Whether or not to push the model to the Hub.",
+    )
+    parser.add_argument(
+        "--hub_token",
+        type=str,
+        default=None,
+        help="The token to use to push to the Model Hub.",
+    )
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -447,7 +502,9 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+        "--enable_xformers_memory_efficient_attention",
+        action="store_true",
+        help="Whether or not to use xformers.",
     )
     parser.add_argument(
         "--set_grads_to_none",
@@ -485,7 +542,10 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--image_column", type=str, default="image", help="The column of the dataset containing the target image."
+        "--image_column",
+        type=str,
+        default="image",
+        help="The column of the dataset containing the target image.",
     )
     parser.add_argument(
         "--conditioning_image_column",
@@ -675,7 +735,11 @@ def make_train_dataset(args, tokenizer, accelerator):
                     f"Caption column `{caption_column}` should contain either strings or lists of strings."
                 )
         inputs = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+            captions,
+            max_length=tokenizer.model_max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
         )
         return inputs.input_ids
 
@@ -777,7 +841,9 @@ def main(args):
 
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+                repo_id=args.hub_model_id or Path(args.output_dir).name,
+                exist_ok=True,
+                token=args.hub_token,
             ).repo_id
 
     # Load the tokenizer
@@ -797,13 +863,22 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder = text_encoder_cls.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+        variant=args.variant,
     )
     vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
+        variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        revision=args.revision,
+        variant=args.variant,
     )
 
     if args.controlnet_model_name_or_path:
@@ -1039,7 +1114,12 @@ def main(args):
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = torch.randint(
+                    0,
+                    noise_scheduler.config.num_train_timesteps,
+                    (bsz,),
+                    device=latents.device,
+                )
                 timesteps = timesteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep

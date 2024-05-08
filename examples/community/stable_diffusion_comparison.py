@@ -14,7 +14,9 @@ from diffusers import (
 )
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 
 
 pipe1_model_id = "CompVis/stable-diffusion-v1-1"
@@ -78,7 +80,12 @@ class StableDiffusionComparisonPipeline(DiffusionPipeline, StableDiffusionMixin)
             requires_safety_checker=requires_safety_checker,
         )
 
-        self.register_modules(pipeline1=self.pipe1, pipeline2=self.pipe2, pipeline3=self.pipe3, pipeline4=self.pipe4)
+        self.register_modules(
+            pipeline1=self.pipe1,
+            pipeline2=self.pipe2,
+            pipeline3=self.pipe3,
+            pipeline4=self.pipe4,
+        )
 
     @property
     def layers(self) -> Dict[str, Any]:

@@ -94,7 +94,11 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 
 class DemoFusionSDXLPipeline(
-    DiffusionPipeline, StableDiffusionMixin, FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    FromSingleFileMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
@@ -371,7 +375,12 @@ class DemoFusionSDXLPipeline(
                 bs_embed * num_images_per_prompt, -1
             )
 
-        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+        return (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -476,8 +485,23 @@ class DemoFusionSDXLPipeline(
             num_images_per_prompt = 1
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -576,7 +600,12 @@ class DemoFusionSDXLPipeline(
                 len(batch_view)
                 latents_for_view = torch.cat(
                     [
-                        latents_[:, :, h_start : h_end + pad_size * 2, w_start : w_end + pad_size * 2]
+                        latents_[
+                            :,
+                            :,
+                            h_start : h_end + pad_size * 2,
+                            w_start : w_end + pad_size * 2,
+                        ]
                         for h_start, h_end, w_start, w_end in batch_view
                     ]
                 )
@@ -955,7 +984,10 @@ class DemoFusionSDXLPipeline(
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs = {
+                    "text_embeds": add_text_embeds,
+                    "time_ids": add_time_ids,
+                }
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
@@ -967,7 +999,10 @@ class DemoFusionSDXLPipeline(
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred[::2], noise_pred[1::2]
+                    noise_pred_uncond, noise_pred_text = (
+                        noise_pred[::2],
+                        noise_pred[1::2],
+                    )
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
@@ -1020,7 +1055,10 @@ class DemoFusionSDXLPipeline(
 
             latents = F.interpolate(
                 latents,
-                size=(int(current_height / self.vae_scale_factor), int(current_width / self.vae_scale_factor)),
+                size=(
+                    int(current_height / self.vae_scale_factor),
+                    int(current_width / self.vae_scale_factor),
+                ),
                 mode="bicubic",
             )
 
@@ -1062,7 +1100,12 @@ class DemoFusionSDXLPipeline(
                     views_batch = [views[i : i + view_batch_size] for i in range(0, len(views), view_batch_size)]
 
                     jitter_range = (self.unet.config.sample_size - stride) // 4
-                    latents_ = F.pad(latents, (jitter_range, jitter_range, jitter_range, jitter_range), "constant", 0)
+                    latents_ = F.pad(
+                        latents,
+                        (jitter_range, jitter_range, jitter_range, jitter_range),
+                        "constant",
+                        0,
+                    )
 
                     count_local = torch.zeros_like(latents_)
                     value_local = torch.zeros_like(latents_)
@@ -1098,7 +1141,10 @@ class DemoFusionSDXLPipeline(
                         add_time_ids_input = torch.cat(add_time_ids_input)
 
                         # predict the noise residual
-                        added_cond_kwargs = {"text_embeds": add_text_embeds_input, "time_ids": add_time_ids_input}
+                        added_cond_kwargs = {
+                            "text_embeds": add_text_embeds_input,
+                            "time_ids": add_time_ids_input,
+                        }
                         noise_pred = self.unet(
                             latent_model_input,
                             t,
@@ -1109,25 +1155,37 @@ class DemoFusionSDXLPipeline(
                         )[0]
 
                         if do_classifier_free_guidance:
-                            noise_pred_uncond, noise_pred_text = noise_pred[::2], noise_pred[1::2]
+                            noise_pred_uncond, noise_pred_text = (
+                                noise_pred[::2],
+                                noise_pred[1::2],
+                            )
                             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                         if do_classifier_free_guidance and guidance_rescale > 0.0:
                             # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
                             noise_pred = rescale_noise_cfg(
-                                noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
+                                noise_pred,
+                                noise_pred_text,
+                                guidance_rescale=guidance_rescale,
                             )
 
                         # compute the previous noisy sample x_t -> x_t-1
                         self.scheduler._init_step_index(t)
                         latents_denoised_batch = self.scheduler.step(
-                            noise_pred, t, latents_for_view, **extra_step_kwargs, return_dict=False
+                            noise_pred,
+                            t,
+                            latents_for_view,
+                            **extra_step_kwargs,
+                            return_dict=False,
                         )[0]
 
                         # extract value from batch
-                        for latents_view_denoised, (h_start, h_end, w_start, w_end) in zip(
-                            latents_denoised_batch.chunk(vb_size), batch_view
-                        ):
+                        for latents_view_denoised, (
+                            h_start,
+                            h_end,
+                            w_start,
+                            w_end,
+                        ) in zip(latents_denoised_batch.chunk(vb_size), batch_view):
                             value_local[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
                             count_local[:, :, h_start:h_end, w_start:w_end] += 1
 
@@ -1164,7 +1222,9 @@ class DemoFusionSDXLPipeline(
                     c3 = 0.99 * cosine_factor**cosine_scale_3 + 1e-2
                     std_, mean_ = latents_.std(), latents_.mean()
                     latents_gaussian = gaussian_filter(
-                        latents_, kernel_size=(2 * current_scale_num - 1), sigma=sigma * c3
+                        latents_,
+                        kernel_size=(2 * current_scale_num - 1),
+                        sigma=sigma * c3,
                     )
                     latents_gaussian = (
                         latents_gaussian - latents_gaussian.mean()
@@ -1194,7 +1254,10 @@ class DemoFusionSDXLPipeline(
                         add_time_ids_input = torch.cat([add_time_ids] * vb_size)
 
                         # predict the noise residual
-                        added_cond_kwargs = {"text_embeds": add_text_embeds_input, "time_ids": add_time_ids_input}
+                        added_cond_kwargs = {
+                            "text_embeds": add_text_embeds_input,
+                            "time_ids": add_time_ids_input,
+                        }
                         noise_pred = self.unet(
                             latent_model_input,
                             t,
@@ -1205,19 +1268,28 @@ class DemoFusionSDXLPipeline(
                         )[0]
 
                         if do_classifier_free_guidance:
-                            noise_pred_uncond, noise_pred_text = noise_pred[::2], noise_pred[1::2]
+                            noise_pred_uncond, noise_pred_text = (
+                                noise_pred[::2],
+                                noise_pred[1::2],
+                            )
                             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                         if do_classifier_free_guidance and guidance_rescale > 0.0:
                             # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
                             noise_pred = rescale_noise_cfg(
-                                noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
+                                noise_pred,
+                                noise_pred_text,
+                                guidance_rescale=guidance_rescale,
                             )
 
                         # compute the previous noisy sample x_t -> x_t-1
                         self.scheduler._init_step_index(t)
                         latents_denoised_batch = self.scheduler.step(
-                            noise_pred, t, latents_for_view, **extra_step_kwargs, return_dict=False
+                            noise_pred,
+                            t,
+                            latents_for_view,
+                            **extra_step_kwargs,
+                            return_dict=False,
                         )[0]
 
                         # extract value from batch
@@ -1281,14 +1353,22 @@ class DemoFusionSDXLPipeline(
         return output_images
 
     # Override to properly handle the loading and unloading of the additional text encoder.
-    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        **kwargs,
+    ):
         # We could have accessed the unet config from `lora_state_dict()` too. We pass
         # it here explicitly to be able to tell that it's coming from an SDXL
         # pipeline.
 
         # Remove any existing hooks.
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
+            from accelerate.hooks import (
+                AlignDevicesHook,
+                CpuOffload,
+                remove_hook_from_module,
+            )
         else:
             raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")
 

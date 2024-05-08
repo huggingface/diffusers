@@ -12,7 +12,10 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, ControlNetModel, UNet2DConditionModel, logging
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion import (
+    StableDiffusionPipelineOutput,
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     PIL_INTERPOLATION,
@@ -240,7 +243,12 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusio
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
+        controlnet: Union[
+            ControlNetModel,
+            List[ControlNetModel],
+            Tuple[ControlNetModel],
+            MultiControlNetModel,
+        ],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
@@ -587,7 +595,12 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusio
                 image_batch_size = 1
                 image_channels, image_height, image_width = image.shape
             elif image.ndim == 4:
-                image_batch_size, image_channels, image_height, image_width = image.shape
+                (
+                    image_batch_size,
+                    image_channels,
+                    image_height,
+                    image_width,
+                ) = image.shape
             else:
                 assert False
 
@@ -597,9 +610,18 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusio
                 mask_image_height, mask_image_width = mask_image.shape
             elif mask_image.ndim == 3:
                 mask_image_channels = 1
-                mask_image_batch_size, mask_image_height, mask_image_width = mask_image.shape
+                (
+                    mask_image_batch_size,
+                    mask_image_height,
+                    mask_image_width,
+                ) = mask_image.shape
             elif mask_image.ndim == 4:
-                mask_image_batch_size, mask_image_channels, mask_image_height, mask_image_width = mask_image.shape
+                (
+                    mask_image_batch_size,
+                    mask_image_channels,
+                    mask_image_height,
+                    mask_image_width,
+                ) = mask_image.shape
 
             if image_channels != 3:
                 raise ValueError("`image` must have 3 channels")
@@ -634,8 +656,23 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusio
                 f" Please verify the config of `pipeline.unet` and the `mask_image` and `image` inputs."
             )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -652,11 +689,23 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusio
 
         return latents
 
-    def prepare_mask_latents(self, mask_image, batch_size, height, width, dtype, device, do_classifier_free_guidance):
+    def prepare_mask_latents(
+        self,
+        mask_image,
+        batch_size,
+        height,
+        width,
+        dtype,
+        device,
+        do_classifier_free_guidance,
+    ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
         # and half precision
-        mask_image = F.interpolate(mask_image, size=(height // self.vae_scale_factor, width // self.vae_scale_factor))
+        mask_image = F.interpolate(
+            mask_image,
+            size=(height // self.vae_scale_factor, width // self.vae_scale_factor),
+        )
         mask_image = mask_image.to(device=device, dtype=dtype)
 
         # duplicate mask for each generation per prompt, using mps friendly method
@@ -676,7 +725,15 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusio
         return mask_image_latents
 
     def prepare_masked_image_latents(
-        self, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
+        self,
+        masked_image,
+        batch_size,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        do_classifier_free_guidance,
     ):
         masked_image = masked_image.to(device=device, dtype=dtype)
 
@@ -739,7 +796,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusio
         image: Union[torch.Tensor, PIL.Image.Image] = None,
         mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
         controlnet_conditioning_image: Union[
-            torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]
+            torch.FloatTensor,
+            PIL.Image.Image,
+            List[torch.FloatTensor],
+            List[PIL.Image.Image],
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -982,7 +1042,12 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusio
                 )
 
                 inpainting_latent_model_input = torch.cat(
-                    [non_inpainting_latent_model_input, mask_image_latents, masked_image_latents], dim=1
+                    [
+                        non_inpainting_latent_model_input,
+                        mask_image_latents,
+                        masked_image_latents,
+                    ],
+                    dim=1,
                 )
 
                 down_block_res_samples, mid_block_res_sample = self.controlnet(

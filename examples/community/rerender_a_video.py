@@ -27,8 +27,12 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from diffusers.models.attention_processor import Attention, AttnProcessor
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
-from diffusers.pipelines.controlnet.pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.controlnet.pipeline_controlnet_img2img import (
+    StableDiffusionControlNetImg2ImgPipeline,
+)
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate, logging
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
@@ -118,7 +122,12 @@ def get_warped_and_mask(flow_model, image1, image2, image3=None, pixel_consisten
     padder = InputPadder(image1.shape, padding_factor=8)
     image1, image2 = padder.pad(image1[None].to(device), image2[None].to(device))
     results_dict = flow_model(
-        image1, image2, attn_splits_list=[2], corr_radius_list=[-1], prop_radius_list=[-1], pred_bidir_flow=True
+        image1,
+        image2,
+        attn_splits_list=[2],
+        corr_radius_list=[-1],
+        prop_radius_list=[-1],
+        pred_bidir_flow=True,
     )
     flow_pr = results_dict["flow_preds"][-1]  # [B, 2, H, W]
     fwd_flow = padder.unpad(flow_pr[0]).unsqueeze(0)  # [1, 2, H, W]
@@ -127,7 +136,9 @@ def get_warped_and_mask(flow_model, image1, image2, image3=None, pixel_consisten
     if pixel_consistency:
         warped_image1 = flow_warp(image1, bwd_flow)
         bwd_occ = torch.clamp(
-            bwd_occ + (abs(image2 - warped_image1).mean(dim=1) > 255 * 0.25).float(), 0, 1
+            bwd_occ + (abs(image2 - warped_image1).mean(dim=1) > 255 * 0.25).float(),
+            0,
+            1,
         ).unsqueeze(0)
     warped_results = flow_warp(image3, bwd_flow)
     return warped_results, bwd_occ, bwd_flow
@@ -206,7 +217,14 @@ class CrossFrameAttnProcessor(AttnProcessor):
         self.first_maps = {}
         self.prev_maps = {}
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, temb=None):
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
         # Is self attention
         if encoder_hidden_states is None:
             t = self.attn_state.timestep
@@ -294,7 +312,12 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
+        controlnet: Union[
+            ControlNetModel,
+            List[ControlNetModel],
+            Tuple[ControlNetModel],
+            MultiControlNetModel,
+        ],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
@@ -348,7 +371,9 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
+            vae_scale_factor=self.vae_scale_factor,
+            do_convert_rgb=True,
+            do_normalize=False,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
         self.attn_state = AttnState()
@@ -528,7 +553,16 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
         return timesteps, num_inference_steps - t_start
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.prepare_latents
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+    def prepare_latents(
+        self,
+        image,
+        timestep,
+        batch_size,
+        num_images_per_prompt,
+        dtype,
+        device,
+        generator=None,
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -566,7 +600,12 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                 " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
                 " your script to pass as many initial images as text prompts to suppress this warning."
             )
-            deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "len(prompt) != len(image)",
+                "1.0.0",
+                deprecation_message,
+                standard_warn=False,
+            )
             additional_image_per_prompt = batch_size // init_latents.shape[0]
             init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
         elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
@@ -929,7 +968,12 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             blend_mask_0 = torch.clamp(blend_mask_0 + bwd_occ_0, 0, 1)
 
             warped_pre, bwd_occ_pre, bwd_flow_pre = get_warped_and_mask(
-                self.flow_model, prev_image[0], image[0], prev_result, False, self.device
+                self.flow_model,
+                prev_image[0],
+                image[0],
+                prev_result,
+                False,
+                self.device,
             )
             blend_mask_pre = blur(F.max_pool2d(bwd_occ_pre, kernel_size=9, stride=1, padding=4))
             blend_mask_pre = torch.clamp(blend_mask_pre + bwd_occ_pre, 0, 1)
@@ -1001,7 +1045,12 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                             rescale = torch.maximum(1.0 - mask, (1 - mask**2) ** 0.5 * inner_strength)
                             if noise_rescale is not None:
                                 rescale = (1.0 - mask) * (1 - noise_rescale) + rescale * noise_rescale
-                            noise = randn_tensor(xtrg.shape, generator=generator, device=device, dtype=xtrg.dtype)
+                            noise = randn_tensor(
+                                xtrg.shape,
+                                generator=generator,
+                                device=device,
+                                dtype=xtrg.dtype,
+                            )
                             latents_ref = self.scheduler.add_noise(xtrg, noise, t)
                             latents = latents_ref * mask + (1.0 - mask) * (latents - dir_xt) + rescale * dir_xt
                             latents = latents.to(latents_dtype)
@@ -1045,7 +1094,10 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                                 torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples
                             ]
                             mid_block_res_sample = torch.cat(
-                                [torch.zeros_like(mid_block_res_sample), mid_block_res_sample]
+                                [
+                                    torch.zeros_like(mid_block_res_sample),
+                                    mid_block_res_sample,
+                                ]
                             )
 
                         # predict the noise residual
@@ -1088,9 +1140,13 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                         dir_xt = (1.0 - alpha_t_prev) ** 0.5 * noise_pred
 
                         # compute the previous noisy sample x_t -> x_t-1
-                        latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[
-                            0
-                        ]
+                        latents = self.scheduler.step(
+                            noise_pred,
+                            t,
+                            latents,
+                            **extra_step_kwargs,
+                            return_dict=False,
+                        )[0]
 
                         # call the callback, if provided
                         if i == len(timesteps) - 1 or (
@@ -1181,7 +1237,12 @@ class InputPadder:
         pad_ht = (((self.ht // padding_factor) + 1) * padding_factor - self.ht) % padding_factor
         pad_wd = (((self.wd // padding_factor) + 1) * padding_factor - self.wd) % padding_factor
         if mode == "sintel":
-            self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
+            self._pad = [
+                pad_wd // 2,
+                pad_wd - pad_wd // 2,
+                pad_ht // 2,
+                pad_ht - pad_ht // 2,
+            ]
         else:
             self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, 0, pad_ht]
 

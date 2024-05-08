@@ -53,7 +53,9 @@ from diffusers.models.attention_processor import (
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from diffusers.pipelines.stable_diffusion_xl.pipeline_output import (
+    StableDiffusionXLPipelineOutput,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     PIL_INTERPOLATION,
@@ -382,7 +384,9 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.control_image_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
+            vae_scale_factor=self.vae_scale_factor,
+            do_convert_rgb=True,
+            do_normalize=False,
         )
         self.default_sample_size = self.unet.config.sample_size
 
@@ -619,7 +623,12 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+        return (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):

@@ -10,7 +10,12 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKL, DiffusionPipeline, DPMSolverMultistepScheduler, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DiffusionPipeline,
+    DPMSolverMultistepScheduler,
+    UNet2DConditionModel,
+)
 from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
 from diffusers.models.attention_processor import (
     AttnAddedKVProcessor,
@@ -57,7 +62,13 @@ class SdeDragPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        self.register_modules(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
+        self.register_modules(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            scheduler=scheduler,
+        )
 
     @torch.no_grad()
     def __call__(
@@ -188,7 +199,16 @@ class SdeDragPipeline(DiffusionPipeline):
                 generator,
             )
             latent = self._backward(
-                latent, mask, steps, t0, noises, hook_latents, lora_scales, cfg_scales, text_embeddings, generator
+                latent,
+                mask,
+                steps,
+                t0,
+                noises,
+                hook_latents,
+                lora_scales,
+                cfg_scales,
+                text_embeddings,
+                generator,
             )
 
             latents.append(latent)
@@ -225,7 +245,14 @@ class SdeDragPipeline(DiffusionPipeline):
             else:
                 raise NotImplementedError("name must start with up_blocks, mid_blocks, or down_blocks")
 
-            if isinstance(attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)):
+            if isinstance(
+                attn_processor,
+                (
+                    AttnAddedKVProcessor,
+                    SlicedAttnAddedKVProcessor,
+                    AttnAddedKVProcessor2_0,
+                ),
+            ):
                 lora_attn_processor_class = LoRAAttnAddedKVProcessor
             else:
                 lora_attn_processor_class = (
@@ -234,7 +261,9 @@ class SdeDragPipeline(DiffusionPipeline):
                     else LoRAAttnProcessor
                 )
             unet_lora_attn_procs[name] = lora_attn_processor_class(
-                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=lora_rank
+                hidden_size=hidden_size,
+                cross_attention_dim=cross_attention_dim,
+                rank=lora_rank,
             )
 
         self.unet.set_attn_processor(unet_lora_attn_procs)
@@ -265,7 +294,9 @@ class SdeDragPipeline(DiffusionPipeline):
         with torch.no_grad():
             text_inputs = self._tokenize_prompt(prompt, tokenizer_max_length=None)
             text_embedding = self._encode_prompt(
-                text_inputs.input_ids, text_inputs.attention_mask, text_encoder_use_attention_mask=False
+                text_inputs.input_ids,
+                text_inputs.attention_mask,
+                text_encoder_use_attention_mask=False,
             )
 
         image_transforms = transforms.Compose(
@@ -295,7 +326,11 @@ class SdeDragPipeline(DiffusionPipeline):
 
             # Sample a random timestep for each image
             timesteps = torch.randint(
-                0, self.scheduler.config.num_train_timesteps, (bsz,), device=model_input.device, generator=generator
+                0,
+                self.scheduler.config.num_train_timesteps,
+                (bsz,),
+                device=model_input.device,
+                generator=generator,
             )
             timesteps = timesteps.long()
 
@@ -374,7 +409,16 @@ class SdeDragPipeline(DiffusionPipeline):
         return text_embeddings
 
     def _copy_and_paste(
-        self, latent, source_new, target_new, adapt_radius, max_height, max_width, image_scale, noise_scale, generator
+        self,
+        latent,
+        source_new,
+        target_new,
+        adapt_radius,
+        max_height,
+        max_width,
+        image_scale,
+        noise_scale,
+        generator,
     ):
         def adaption_r(source, target, adapt_radius, max_height, max_width):
             r_x_lower = min(adapt_radius, source[0], target[0])
@@ -389,11 +433,17 @@ class SdeDragPipeline(DiffusionPipeline):
             )
 
             source_feature = latent[
-                :, :, source_[1] - r_y_lower : source_[1] + r_y_upper, source_[0] - r_x_lower : source_[0] + r_x_upper
+                :,
+                :,
+                source_[1] - r_y_lower : source_[1] + r_y_upper,
+                source_[0] - r_x_lower : source_[0] + r_x_upper,
             ].clone()
 
             latent[
-                :, :, source_[1] - r_y_lower : source_[1] + r_y_upper, source_[0] - r_x_lower : source_[0] + r_x_upper
+                :,
+                :,
+                source_[1] - r_y_lower : source_[1] + r_y_upper,
+                source_[0] - r_x_lower : source_[0] + r_x_upper,
             ] = image_scale * source_feature + noise_scale * torch.randn(
                 latent.shape[0],
                 4,
@@ -404,7 +454,10 @@ class SdeDragPipeline(DiffusionPipeline):
             )
 
             latent[
-                :, :, target_[1] - r_y_lower : target_[1] + r_y_upper, target_[0] - r_x_lower : target_[0] + r_x_upper
+                :,
+                :,
+                target_[1] - r_y_lower : target_[1] + r_y_upper,
+                target_[0] - r_x_lower : target_[0] + r_x_upper,
             ] = source_feature * 1.1
         return latent
 
@@ -448,7 +501,15 @@ class SdeDragPipeline(DiffusionPipeline):
         return noise_pred
 
     def _forward_sde(
-        self, timestep, sample, guidance_scale, text_embeddings, steps, eta=1.0, lora_scale=None, generator=None
+        self,
+        timestep,
+        sample,
+        guidance_scale,
+        text_embeddings,
+        steps,
+        eta=1.0,
+        lora_scale=None,
+        generator=None,
     ):
         num_train_timesteps = len(self.scheduler)
         alphas_cumprod = self.scheduler.alphas_cumprod
@@ -464,7 +525,11 @@ class SdeDragPipeline(DiffusionPipeline):
         x_prev = (alpha_prod_t_prev / alpha_prod_t) ** (0.5) * sample + (1 - alpha_prod_t_prev / alpha_prod_t) ** (
             0.5
         ) * torch.randn(
-            sample.size(), dtype=sample.dtype, layout=sample.layout, device=self.device, generator=generator
+            sample.size(),
+            dtype=sample.dtype,
+            layout=sample.layout,
+            device=self.device,
+            generator=generator,
         )
         eps = self._get_eps(x_prev, prev_timestep, guidance_scale, text_embeddings, lora_scale)
 
@@ -522,7 +587,11 @@ class SdeDragPipeline(DiffusionPipeline):
 
         noise = (
             torch.randn(
-                sample.size(), dtype=sample.dtype, layout=sample.layout, device=self.device, generator=generator
+                sample.size(),
+                dtype=sample.dtype,
+                layout=sample.layout,
+                device=self.device,
+                generator=generator,
             )
             if noise is None
             else noise
@@ -559,7 +628,13 @@ class SdeDragPipeline(DiffusionPipeline):
             lora_scale = scale_schedule(1, lora_scale_min, index, length, type="cos")
             cfg_scale = scale_schedule(1, 3.0, index, length, type="linear")
             latent, noise = self._forward_sde(
-                t, latent, cfg_scale, text_embeddings, steps, lora_scale=lora_scale, generator=generator
+                t,
+                latent,
+                cfg_scale,
+                text_embeddings,
+                steps,
+                lora_scale=lora_scale,
+                generator=generator,
             )
 
             noises.append(noise)
@@ -570,7 +645,17 @@ class SdeDragPipeline(DiffusionPipeline):
         return latent, noises, latents, lora_scales, cfg_scales
 
     def _backward(
-        self, latent, mask, steps, t0, noises, hook_latents, lora_scales, cfg_scales, text_embeddings, generator
+        self,
+        latent,
+        mask,
+        steps,
+        t0,
+        noises,
+        hook_latents,
+        lora_scales,
+        cfg_scales,
+        text_embeddings,
+        generator,
     ):
         t0 = int(t0 * steps)
         t_begin = steps - t0

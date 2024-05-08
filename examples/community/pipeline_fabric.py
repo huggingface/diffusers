@@ -26,7 +26,10 @@ from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.schedulers import EulerAncestralDiscreteScheduler, KarrasDiffusionSchedulers
+from diffusers.schedulers import (
+    EulerAncestralDiscreteScheduler,
+    KarrasDiffusionSchedulers,
+)
 from diffusers.utils import (
     deprecate,
     logging,
@@ -681,7 +684,10 @@ class FabricPipeline(DiffusionPipeline):
                     weight_factor = min_weight
 
                 pos_ws = (weight_factor, weight_factor * pos_bottleneck_scale)
-                neg_ws = (weight_factor * neg_scale, weight_factor * neg_scale * neg_bottleneck_scale)
+                neg_ws = (
+                    weight_factor * neg_scale,
+                    weight_factor * neg_scale * neg_bottleneck_scale,
+                )
 
                 if z_ref.size(0) > 0 and weight_factor > 0:
                     noise = torch.randn_like(z_ref)
@@ -691,7 +697,8 @@ class FabricPipeline(DiffusionPipeline):
                         z_ref_noised = self.scheduler.add_noise(z_ref, noise, t)
 
                     ref_prompt_embd = torch.cat(
-                        [null_prompt_emb] * (len(positive_latents) + len(negative_latents)), dim=0
+                        [null_prompt_emb] * (len(positive_latents) + len(negative_latents)),
+                        dim=0,
                     )
                     cached_hidden_states = self.get_unet_hidden_states(z_ref_noised, t, ref_prompt_embd)
 

@@ -386,7 +386,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--image_column", type=str, default="image", help="The column of the dataset containing an image."
+        "--image_column",
+        type=str,
+        default="image",
+        help="The column of the dataset containing an image.",
     )
     parser.add_argument(
         "--caption_column",
@@ -443,7 +446,10 @@ def parse_args():
     )
     # ----Batch Size and Training Steps----
     parser.add_argument(
-        "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size",
+        type=int,
+        default=16,
+        help="Batch size (per device) for the training dataloader.",
     )
     parser.add_argument("--num_train_epochs", type=int, default=100)
     parser.add_argument(
@@ -484,7 +490,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps",
+        type=int,
+        default=500,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -494,12 +503,29 @@ def parse_args():
     )
     # ----Optimizer (Adam)----
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes.",
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     # ----Diffusion Training Arguments----
     # ----Latent Consistency Distillation (LCD) Specific Arguments----
@@ -616,7 +642,9 @@ def parse_args():
     )
     # ----Training Optimizations----
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+        "--enable_xformers_memory_efficient_attention",
+        action="store_true",
+        help="Whether or not to use xformers.",
     )
     parser.add_argument(
         "--gradient_checkpointing",
@@ -624,7 +652,12 @@ def parse_args():
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     # ----Distributed Training----
-    parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="For distributed training: local_rank",
+    )
     # ----------Validation Arguments----------
     parser.add_argument(
         "--validation_steps",
@@ -633,8 +666,17 @@ def parse_args():
         help="Run validation every X steps.",
     )
     # ----------Huggingface Hub Arguments-----------
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--push_to_hub",
+        action="store_true",
+        help="Whether or not to push the model to the Hub.",
+    )
+    parser.add_argument(
+        "--hub_token",
+        type=str,
+        default=None,
+        help="The token to use to push to the Model Hub.",
+    )
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -751,7 +793,9 @@ def main(args):
 
     # 1. Create the noise scheduler and the desired noise schedule.
     noise_scheduler = DDPMScheduler.from_pretrained(
-        args.pretrained_teacher_model, subfolder="scheduler", revision=args.teacher_revision
+        args.pretrained_teacher_model,
+        subfolder="scheduler",
+        revision=args.teacher_revision,
     )
 
     # DDPMScheduler calculates the alpha and sigma noise schedules (based on the alpha bars) for us
@@ -766,10 +810,16 @@ def main(args):
 
     # 2. Load tokenizers from SDXL checkpoint.
     tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_teacher_model, subfolder="tokenizer", revision=args.teacher_revision, use_fast=False
+        args.pretrained_teacher_model,
+        subfolder="tokenizer",
+        revision=args.teacher_revision,
+        use_fast=False,
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_teacher_model, subfolder="tokenizer_2", revision=args.teacher_revision, use_fast=False
+        args.pretrained_teacher_model,
+        subfolder="tokenizer_2",
+        revision=args.teacher_revision,
+        use_fast=False,
     )
 
     # 3. Load text encoders from SDXL checkpoint.
@@ -782,10 +832,14 @@ def main(args):
     )
 
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_teacher_model, subfolder="text_encoder", revision=args.teacher_revision
+        args.pretrained_teacher_model,
+        subfolder="text_encoder",
+        revision=args.teacher_revision,
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_teacher_model, subfolder="text_encoder_2", revision=args.teacher_revision
+        args.pretrained_teacher_model,
+        subfolder="text_encoder_2",
+        revision=args.teacher_revision,
     )
 
     # 4. Load VAE from SDXL checkpoint (or more stable VAE)
@@ -1079,7 +1133,14 @@ def main(args):
 
     # 14. Embeddings for the UNet.
     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-    def compute_embeddings(prompt_batch, original_sizes, crop_coords, text_encoders, tokenizers, is_train=True):
+    def compute_embeddings(
+        prompt_batch,
+        original_sizes,
+        crop_coords,
+        text_encoders,
+        tokenizers,
+        is_train=True,
+    ):
         def compute_time_ids(original_size, crops_coords_top_left):
             target_size = (args.resolution, args.resolution)
             add_time_ids = list(original_size + crops_coords_top_left + target_size)
@@ -1094,7 +1155,10 @@ def main(args):
 
         prompt_embeds = prompt_embeds.to(accelerator.device)
         add_text_embeds = add_text_embeds.to(accelerator.device)
-        unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+        unet_added_cond_kwargs = {
+            "text_embeds": add_text_embeds,
+            "time_ids": add_time_ids,
+        }
 
         return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
 
@@ -1410,7 +1474,13 @@ def main(args):
 
                     if global_step % args.validation_steps == 0:
                         log_validation(
-                            vae, args, accelerator, weight_dtype, global_step, unet=unet, is_final_validation=False
+                            vae,
+                            args,
+                            accelerator,
+                            weight_dtype,
+                            global_step,
+                            unet=unet,
+                            is_final_validation=False,
                         )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1440,7 +1510,15 @@ def main(args):
 
         # Final inference.
         if args.validation_steps is not None:
-            log_validation(vae, args, accelerator, weight_dtype, step=global_step, unet=None, is_final_validation=True)
+            log_validation(
+                vae,
+                args,
+                accelerator,
+                weight_dtype,
+                step=global_step,
+                unet=None,
+                is_final_validation=True,
+            )
 
     accelerator.end_training()
 

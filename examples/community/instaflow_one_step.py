@@ -21,12 +21,18 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     deprecate,
@@ -53,7 +59,11 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 
 class InstaFlowPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    LoraLoaderMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Rectified Flow and Euler discretization.
@@ -467,8 +477,23 @@ class InstaFlowPipeline(
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -577,7 +602,13 @@ class InstaFlowPipeline(
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters

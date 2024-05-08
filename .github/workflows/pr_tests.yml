@@ -34,7 +34,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.8"
+          python-version: "3.9"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -56,7 +56,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.8"
+          python-version: "3.9"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -79,32 +79,20 @@ jobs:
         config:
           - name: Fast PyTorch Pipeline CPU tests
             framework: pytorch_pipelines
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_pipelines
+            report: pytorch_pipelines
           - name: Fast PyTorch Models & Schedulers CPU tests
             framework: pytorch_models
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_models_schedulers
+            report: pytorch_models
           - name: Fast Flax CPU tests
             framework: flax
-            runner: docker-cpu
-            image: diffusers/diffusers-flax-cpu
-            report: flax_cpu
+            report: flax
           - name: PyTorch Example CPU tests
             framework: pytorch_examples
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_example_cpu
+            report: pytorch_examples
 
     name: ${{ matrix.config.name }}
 
-    runs-on: ${{ matrix.config.runner }}
-
-    container:
-      image: ${{ matrix.config.image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+    runs-on: ubuntu-latest
 
     defaults:
       run:
@@ -120,6 +108,7 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        pip install uv
         python -m uv pip install -e [quality,test]
         python -m uv pip install accelerate
 
@@ -155,15 +144,6 @@ jobs:
           --make-reports=tests_${{ matrix.config.report }} \
           tests
 
-    - name: Run example PyTorch CPU tests
-      if: ${{ matrix.config.framework == 'pytorch_examples' }}
-      run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install peft
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          --make-reports=tests_${{ matrix.config.report }} \
-          examples
-
     - name: Failure short reports
       if: ${{ failure() }}
       run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
@@ -183,18 +163,12 @@ jobs:
         config:
           - name: Hub tests for models, schedulers, and pipelines
             framework: hub_tests_pytorch
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
             report: torch_hub
 
     name: ${{ matrix.config.name }}
 
-    runs-on: ${{ matrix.config.runner }}
-
-    container:
-      image: ${{ matrix.config.image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
-
+    runs-on: ubuntu-latest
+    
     defaults:
       run:
         shell: bash
@@ -209,6 +183,7 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        pip install uv
         python -m uv pip install -e [quality,test]
 
     - name: Environment

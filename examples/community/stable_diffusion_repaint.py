@@ -140,7 +140,10 @@ def prepare_mask_and_masked_image(image, mask):
 
 
 class StableDiffusionRepaintPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    LoraLoaderMixin,
 ):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.

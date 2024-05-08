@@ -54,7 +54,9 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
                 {"checkpoint-4", "checkpoint-6"},
             )
 
-    def test_instruct_pix2pix_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
+    def test_instruct_pix2pix_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/instruct_pix2pix/train_instruct_pix2pix.py

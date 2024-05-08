@@ -412,7 +412,11 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def draw_kps(image_pil, kps, color_list=[(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255)]):
+def draw_kps(
+    image_pil,
+    kps,
+    color_list=[(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255)],
+):
     stickwidth = 4
     limbSeq = np.array([[0, 2], [1, 2], [3, 2], [4, 2]])
     kps = np.array(kps)
@@ -429,7 +433,12 @@ def draw_kps(image_pil, kps, color_list=[(255, 0, 0), (0, 255, 0), (0, 0, 255), 
         length = ((x[0] - x[1]) ** 2 + (y[0] - y[1]) ** 2) ** 0.5
         angle = math.degrees(math.atan2(y[0] - y[1], x[0] - x[1]))
         polygon = cv2.ellipse2Poly(
-            (int(np.mean(x)), int(np.mean(y))), (int(length / 2), stickwidth), int(angle), 0, 360, 1
+            (int(np.mean(x)), int(np.mean(y))),
+            (int(length / 2), stickwidth),
+            int(angle),
+            0,
+            360,
+            1,
         )
         out_img = cv2.fillConvexPoly(out_img.copy(), polygon, color)
     out_img = (out_img * 0.6).astype(np.uint8)
@@ -965,7 +974,10 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2I
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs = {
+                    "text_embeds": add_text_embeds,
+                    "time_ids": add_time_ids,
+                }
 
                 # controlnet(s) inference
                 if guess_mode and self.do_classifier_free_guidance:

@@ -54,7 +54,10 @@ from diffusers import (
 )
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params
+from diffusers.training_utils import (
+    _set_state_dict_into_text_encoder,
+    cast_training_params,
+)
 from diffusers.utils import (
     check_min_version,
     convert_state_dict_to_diffusers,
@@ -194,7 +197,9 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 
         return CLIPTextModel
     elif model_class == "RobertaSeriesModelWithTransformation":
-        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
+        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
+            RobertaSeriesModelWithTransformation,
+        )
 
         return RobertaSeriesModelWithTransformation
     elif model_class == "T5EncoderModel":
@@ -287,7 +292,12 @@ def parse_args(input_args=None):
         action="store_true",
         help="Flag to add prior preservation loss.",
     )
-    parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="The weight of prior preservation loss.")
+    parser.add_argument(
+        "--prior_loss_weight",
+        type=float,
+        default=1.0,
+        help="The weight of prior preservation loss.",
+    )
     parser.add_argument(
         "--num_class_images",
         type=int,
@@ -328,10 +338,16 @@ def parse_args(input_args=None):
         help="Whether to train the text encoder. If set, the text encoder should be float32 precision.",
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size",
+        type=int,
+        default=4,
+        help="Batch size (per device) for the training dataloader.",
     )
     parser.add_argument(
-        "--sample_batch_size", type=int, default=4, help="Batch size (per device) for sampling images."
+        "--sample_batch_size",
+        type=int,
+        default=4,
+        help="Batch size (per device) for sampling images.",
     )
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument(
@@ -398,7 +414,10 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps",
+        type=int,
+        default=500,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
     parser.add_argument(
         "--lr_num_cycles",
@@ -406,7 +425,12 @@ def parse_args(input_args=None):
         default=1,
         help="Number of hard resets of the lr in cosine_with_restarts scheduler.",
     )
-    parser.add_argument("--lr_power", type=float, default=1.0, help="Power factor of the polynomial scheduler.")
+    parser.add_argument(
+        "--lr_power",
+        type=float,
+        default=1.0,
+        help="Power factor of the polynomial scheduler.",
+    )
     parser.add_argument(
         "--dataloader_num_workers",
         type=int,
@@ -416,15 +440,41 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes.",
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--push_to_hub",
+        action="store_true",
+        help="Whether or not to push the model to the Hub.",
+    )
+    parser.add_argument(
+        "--hub_token",
+        type=str,
+        default=None,
+        help="The token to use to push to the Model Hub.",
+    )
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -478,9 +528,16 @@ def parse_args(input_args=None):
             " 1.10.and an Nvidia Ampere GPU.  Default to  fp16 if a GPU is available else fp32."
         ),
     )
-    parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="For distributed training: local_rank",
+    )
+    parser.add_argument(
+        "--enable_xformers_memory_efficient_attention",
+        action="store_true",
+        help="Whether or not to use xformers.",
     )
     parser.add_argument(
         "--pre_compute_text_embeddings",
@@ -621,7 +678,9 @@ class DreamBoothDataset(Dataset):
             example["instance_prompt_ids"] = self.encoder_hidden_states
         else:
             text_inputs = tokenize_prompt(
-                self.tokenizer, self.instance_prompt, tokenizer_max_length=self.tokenizer_max_length
+                self.tokenizer,
+                self.instance_prompt,
+                tokenizer_max_length=self.tokenizer_max_length,
             )
             example["instance_prompt_ids"] = text_inputs.input_ids
             example["instance_attention_mask"] = text_inputs.attention_mask
@@ -638,7 +697,9 @@ class DreamBoothDataset(Dataset):
                 example["class_prompt_ids"] = self.class_prompt_encoder_hidden_states
             else:
                 class_text_inputs = tokenize_prompt(
-                    self.tokenizer, self.class_prompt, tokenizer_max_length=self.tokenizer_max_length
+                    self.tokenizer,
+                    self.class_prompt,
+                    tokenizer_max_length=self.tokenizer_max_length,
                 )
                 example["class_prompt_ids"] = class_text_inputs.input_ids
                 example["class_attention_mask"] = class_text_inputs.attention_mask
@@ -814,7 +875,9 @@ def main(args):
             pipeline.to(accelerator.device)
 
             for example in tqdm(
-                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                sample_dataloader,
+                desc="Generating class images",
+                disable=not accelerator.is_local_main_process,
             ):
                 images = pipeline(example["prompt"]).images
 
@@ -834,7 +897,9 @@ def main(args):
 
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+                repo_id=args.hub_model_id or Path(args.output_dir).name,
+                exist_ok=True,
+                token=args.hub_token,
             ).repo_id
 
     # Load the tokenizer
@@ -854,11 +919,17 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder = text_encoder_cls.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+        variant=args.variant,
     )
     try:
         vae = AutoencoderKL.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+            args.pretrained_model_name_or_path,
+            subfolder="vae",
+            revision=args.revision,
+            variant=args.variant,
         )
     except OSError:
         # IF does not have a VAE so let's just set it to None
@@ -866,7 +937,10 @@ def main(args):
         vae = None
 
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        revision=args.revision,
+        variant=args.variant,
     )
 
     # We only train the additional adapter LoRA layers
@@ -1128,9 +1202,13 @@ def main(args):
 
     # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
-        unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
-        )
+        (
+            unet,
+            text_encoder,
+            optimizer,
+            train_dataloader,
+            lr_scheduler,
+        ) = accelerator.prepare(unet, text_encoder, optimizer, train_dataloader, lr_scheduler)
     else:
         unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
             unet, optimizer, train_dataloader, lr_scheduler
@@ -1219,7 +1297,10 @@ def main(args):
                 bsz, channels, height, width = model_input.shape
                 # Sample a random timestep for each image
                 timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
+                    0,
+                    noise_scheduler.config.num_train_timesteps,
+                    (bsz,),
+                    device=model_input.device,
                 )
                 timesteps = timesteps.long()
 
@@ -1381,7 +1462,10 @@ def main(args):
         # Final inference
         # Load previous pipeline
         pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, revision=args.revision, variant=args.variant, torch_dtype=weight_dtype
+            args.pretrained_model_name_or_path,
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
         )
 
         # load attention processors
@@ -1390,7 +1474,10 @@ def main(args):
         # run inference
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
-            pipeline_args = {"prompt": args.validation_prompt, "num_inference_steps": 25}
+            pipeline_args = {
+                "prompt": args.validation_prompt,
+                "num_inference_steps": 25,
+            }
             images = log_validation(
                 pipeline,
                 args,

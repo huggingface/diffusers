@@ -3,7 +3,13 @@ from typing import Optional, Tuple, Union
 import torch
 from einops import rearrange, reduce
 
-from diffusers import DDIMScheduler, DDPMScheduler, DiffusionPipeline, ImagePipelineOutput, UNet2DConditionModel
+from diffusers import (
+    DDIMScheduler,
+    DDPMScheduler,
+    DiffusionPipeline,
+    ImagePipelineOutput,
+    UNet2DConditionModel,
+)
 from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput
 from diffusers.schedulers.scheduling_ddpm import DDPMSchedulerOutput
 
@@ -160,7 +166,10 @@ def ddpm_bit_scheduler_step(
     """
     t = timestep
 
-    if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
+    if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in [
+        "learned",
+        "learned_range",
+    ]:
         model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
     else:
         predicted_variance = None
@@ -198,7 +207,10 @@ def ddpm_bit_scheduler_step(
     variance = 0
     if t > 0:
         noise = torch.randn(
-            model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
+            model_output.size(),
+            dtype=model_output.dtype,
+            layout=model_output.layout,
+            generator=generator,
         ).to(model_output.device)
         variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
 

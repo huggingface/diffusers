@@ -62,7 +62,10 @@ def main():
                 run_command(command.split())
 
         elif file == "benchmark_sd_img.py":
-            for ckpt in ["stabilityai/stable-diffusion-xl-refiner-1.0", "stabilityai/sdxl-turbo"]:
+            for ckpt in [
+                "stabilityai/stable-diffusion-xl-refiner-1.0",
+                "stabilityai/sdxl-turbo",
+            ]:
                 command = f"python {file} --ckpt {ckpt}"
 
                 if ckpt == "stabilityai/sdxl-turbo":

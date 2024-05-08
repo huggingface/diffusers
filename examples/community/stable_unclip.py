@@ -101,7 +101,10 @@ class StableUnCLIPPipeline(DiffusionPipeline):
 
         else:
             batch_size = text_model_output[0].shape[0]
-            text_embeddings, text_encoder_hidden_states = text_model_output[0], text_model_output[1]
+            text_embeddings, text_encoder_hidden_states = (
+                text_model_output[0],
+                text_model_output[1],
+            )
             text_mask = text_attention_mask
 
         text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
@@ -219,7 +222,12 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         do_classifier_free_guidance = prior_guidance_scale > 1.0 or decoder_guidance_scale > 1.0
 
         text_embeddings, text_encoder_hidden_states, text_mask = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, text_model_output, text_attention_mask
+            prompt,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            text_model_output,
+            text_attention_mask,
         )
 
         # prior
@@ -251,7 +259,10 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             ).predicted_image_embedding
 
             if do_classifier_free_guidance:
-                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
+                (
+                    predicted_image_embedding_uncond,
+                    predicted_image_embedding_text,
+                ) = predicted_image_embedding.chunk(2)
                 predicted_image_embedding = predicted_image_embedding_uncond + prior_guidance_scale * (
                     predicted_image_embedding_text - predicted_image_embedding_uncond
                 )

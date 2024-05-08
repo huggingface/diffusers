@@ -6,11 +6,18 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion import (
+    StableDiffusionPipelineOutput,
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import LCMScheduler
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -190,7 +197,11 @@ def slerp(
 
 
 class LatentConsistencyModelWalkPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    LoraLoaderMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for text-to-image generation using a latent consistency model.
@@ -369,7 +380,9 @@ class LatentConsistencyModelWalkPipeline(
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                    text_input_ids.to(device),
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -471,8 +484,23 @@ class LatentConsistencyModelWalkPipeline(
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -766,7 +794,14 @@ class LatentConsistencyModelWalkPipeline(
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, height, width, callback_steps, prompt_embeds, callback_on_step_end_tensor_inputs)
+        self.check_inputs(
+            prompt,
+            height,
+            width,
+            callback_steps,
+            prompt_embeds,
+            callback_on_step_end_tensor_inputs,
+        )
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
@@ -794,7 +829,11 @@ class LatentConsistencyModelWalkPipeline(
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
 
-        self.scheduler.set_timesteps(num_inference_steps, device, original_inference_steps=original_inference_steps)
+        self.scheduler.set_timesteps(
+            num_inference_steps,
+            device,
+            original_inference_steps=original_inference_steps,
+        )
         timesteps = self.scheduler.timesteps
         num_channels_latents = self.unet.config.in_channels
         # bs = batch_size * num_images_per_prompt
@@ -888,7 +927,9 @@ class LatentConsistencyModelWalkPipeline(
                         ]
 
                         self.scheduler.set_timesteps(
-                            num_inference_steps, device, original_inference_steps=original_inference_steps
+                            num_inference_steps,
+                            device,
+                            original_inference_steps=original_inference_steps,
                         )
                         timesteps = self.scheduler.timesteps
 
@@ -915,7 +956,11 @@ class LatentConsistencyModelWalkPipeline(
 
                                 # compute the previous noisy sample x_t -> x_t-1
                                 batch_inference_latents, denoised = self.scheduler.step(
-                                    model_pred, t, batch_inference_latents, **extra_step_kwargs, return_dict=False
+                                    model_pred,
+                                    t,
+                                    batch_inference_latents,
+                                    **extra_step_kwargs,
+                                    return_dict=False,
                                 )
                                 if callback_on_step_end is not None:
                                     callback_kwargs = {}
@@ -960,7 +1005,9 @@ class LatentConsistencyModelWalkPipeline(
                         has_nsfw_concept = None
 
                         image = self.image_processor.postprocess(
-                            image, output_type=output_type, do_denormalize=do_denormalize
+                            image,
+                            output_type=output_type,
+                            do_denormalize=do_denormalize,
                         )
                         images.append(image)
 

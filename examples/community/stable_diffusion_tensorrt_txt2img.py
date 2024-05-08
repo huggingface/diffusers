@@ -41,7 +41,12 @@ from polygraphy.backend.trt import (
     save_engine,
 )
 from polygraphy.backend.trt import util as trt_util
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPFeatureExtractor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import (
@@ -210,7 +215,15 @@ class Optimizer:
 
 
 class BaseModel:
-    def __init__(self, model, fp16=False, device="cuda", max_batch_size=16, embedding_dim=768, text_maxlen=77):
+    def __init__(
+        self,
+        model,
+        fp16=False,
+        device="cuda",
+        max_batch_size=16,
+        embedding_dim=768,
+        text_maxlen=77,
+    ):
         self.model = model
         self.name = "SD Model"
         self.fp16 = fp16
@@ -400,7 +413,10 @@ def runEngine(engine, feed_dict, stream):
 class CLIP(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
         super(CLIP, self).__init__(
-            model=model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
+            model=model,
+            device=device,
+            max_batch_size=max_batch_size,
+            embedding_dim=embedding_dim,
         )
         self.name = "CLIP"
 
@@ -419,7 +435,11 @@ class CLIP(BaseModel):
             batch_size, image_height, image_width, static_batch, static_shape
         )
         return {
-            "input_ids": [(min_batch, self.text_maxlen), (batch_size, self.text_maxlen), (max_batch, self.text_maxlen)]
+            "input_ids": [
+                (min_batch, self.text_maxlen),
+                (batch_size, self.text_maxlen),
+                (max_batch, self.text_maxlen),
+            ]
         }
 
     def get_shape_dict(self, batch_size, image_height, image_width):
@@ -450,7 +470,14 @@ def make_CLIP(model, device, max_batch_size, embedding_dim, inpaint=False):
 
 class UNet(BaseModel):
     def __init__(
-        self, model, fp16=False, device="cuda", max_batch_size=16, embedding_dim=768, text_maxlen=77, unet_dim=4
+        self,
+        model,
+        fp16=False,
+        device="cuda",
+        max_batch_size=16,
+        embedding_dim=768,
+        text_maxlen=77,
+        unet_dim=4,
     ):
         super(UNet, self).__init__(
             model=model,
@@ -507,7 +534,11 @@ class UNet(BaseModel):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
         return {
             "sample": (2 * batch_size, self.unet_dim, latent_height, latent_width),
-            "encoder_hidden_states": (2 * batch_size, self.text_maxlen, self.embedding_dim),
+            "encoder_hidden_states": (
+                2 * batch_size,
+                self.text_maxlen,
+                self.embedding_dim,
+            ),
             "latent": (2 * batch_size, 4, latent_height, latent_width),
         }
 
@@ -516,10 +547,21 @@ class UNet(BaseModel):
         dtype = torch.float16 if self.fp16 else torch.float32
         return (
             torch.randn(
-                2 * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
+                2 * batch_size,
+                self.unet_dim,
+                latent_height,
+                latent_width,
+                dtype=torch.float32,
+                device=self.device,
             ),
             torch.tensor([1.0], dtype=torch.float32, device=self.device),
-            torch.randn(2 * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
+            torch.randn(
+                2 * batch_size,
+                self.text_maxlen,
+                self.embedding_dim,
+                dtype=dtype,
+                device=self.device,
+            ),
         )
 
 
@@ -537,7 +579,10 @@ def make_UNet(model, device, max_batch_size, embedding_dim, inpaint=False):
 class VAE(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
         super(VAE, self).__init__(
-            model=model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
+            model=model,
+            device=device,
+            max_batch_size=max_batch_size,
+            embedding_dim=embedding_dim,
         )
         self.name = "VAE decoder"
 
@@ -548,7 +593,10 @@ class VAE(BaseModel):
         return ["images"]
 
     def get_dynamic_axes(self):
-        return {"latent": {0: "B", 2: "H", 3: "W"}, "images": {0: "B", 2: "8H", 3: "8W"}}
+        return {
+            "latent": {0: "B", 2: "H", 3: "W"},
+            "images": {0: "B", 2: "8H", 3: "8W"},
+        }
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_shape):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
@@ -581,7 +629,14 @@ class VAE(BaseModel):
 
     def get_sample_input(self, batch_size, image_height, image_width):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        return torch.randn(batch_size, 4, latent_height, latent_width, dtype=torch.float32, device=self.device)
+        return torch.randn(
+            batch_size,
+            4,
+            latent_height,
+            latent_width,
+            dtype=torch.float32,
+            device=self.device,
+        )
 
 
 def make_VAE(model, device, max_batch_size, embedding_dim, inpaint=False):
@@ -715,7 +770,11 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
             )
         )
 
-    def to(self, torch_device: Optional[Union[str, torch.device]] = None, silence_dtype_warnings: bool = False):
+    def to(
+        self,
+        torch_device: Optional[Union[str, torch.device]] = None,
+        silence_dtype_warnings: bool = False,
+    ):
         super().to(torch_device, silence_dtype_warnings=silence_dtype_warnings)
 
         self.onnx_dir = os.path.join(self.cached_folder, self.onnx_dir)
@@ -800,7 +859,13 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         return text_embeddings
 
     def __denoise_latent(
-        self, latents, text_embeddings, timesteps=None, step_offset=0, mask=None, masked_image_latents=None
+        self,
+        latents,
+        text_embeddings,
+        timesteps=None,
+        step_offset=0,
+        mask=None,
+        masked_image_latents=None,
     ):
         if not isinstance(timesteps, torch.Tensor):
             timesteps = self.scheduler.timesteps
@@ -819,7 +884,11 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
             embeddings_inp = device_view(text_embeddings)
             noise_pred = runEngine(
                 self.engine["unet"],
-                {"sample": sample_inp, "timestep": timestep_inp, "encoder_hidden_states": embeddings_inp},
+                {
+                    "sample": sample_inp,
+                    "timestep": timestep_inp,
+                    "encoder_hidden_states": embeddings_inp,
+                },
                 self.stream,
             )["latent"]
 
@@ -843,7 +912,8 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         # Allocate buffers for TensorRT engine bindings
         for model_name, obj in self.models.items():
             self.engine[model_name].allocate_buffers(
-                shape_dict=obj.get_shape_dict(batch_size, image_height, image_width), device=self.torch_device
+                shape_dict=obj.get_shape_dict(batch_size, image_height, image_width),
+                device=self.torch_device,
             )
 
     @torch.no_grad()

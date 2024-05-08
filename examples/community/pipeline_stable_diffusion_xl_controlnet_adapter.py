@@ -23,8 +23,18 @@ import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models import AutoencoderKL, ControlNetModel, MultiAdapter, T2IAdapter, UNet2DConditionModel
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    StableDiffusionXLLoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
+from diffusers.models import (
+    AutoencoderKL,
+    ControlNetModel,
+    MultiAdapter,
+    T2IAdapter,
+    UNet2DConditionModel,
+)
 from diffusers.models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
@@ -34,7 +44,9 @@ from diffusers.models.attention_processor import (
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from diffusers.pipelines.stable_diffusion_xl.pipeline_output import (
+    StableDiffusionXLPipelineOutput,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     PIL_INTERPOLATION,
@@ -199,7 +211,12 @@ class StableDiffusionXLControlNetAdapterPipeline(
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
-    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
+    _optional_components = [
+        "tokenizer",
+        "tokenizer_2",
+        "text_encoder",
+        "text_encoder_2",
+    ]
 
     def __init__(
         self,
@@ -234,7 +251,9 @@ class StableDiffusionXLControlNetAdapterPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.control_image_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
+            vae_scale_factor=self.vae_scale_factor,
+            do_convert_rgb=True,
+            do_normalize=False,
         )
         self.default_sample_size = self.unet.config.sample_size
 
@@ -471,7 +490,12 @@ class StableDiffusionXLControlNetAdapterPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+        return (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -750,8 +774,23 @@ class StableDiffusionXLControlNetAdapterPipeline(
             assert False
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -769,7 +808,12 @@ class StableDiffusionXLControlNetAdapterPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
     def _get_add_time_ids(
-        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
+        self,
+        original_size,
+        crops_coords_top_left,
+        target_size,
+        dtype,
+        text_encoder_projection_dim=None,
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
@@ -1299,7 +1343,10 @@ class StableDiffusionXLControlNetAdapterPipeline(
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs = {
+                    "text_embeds": add_text_embeds,
+                    "time_ids": add_time_ids,
+                }
 
                 if i < int(num_inference_steps * adapter_conditioning_factor):
                     down_intrablock_additional_residuals = [state.clone() for state in adapter_state]

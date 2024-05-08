@@ -8,7 +8,10 @@ from base_classes import IPAdapterTextToImageBenchmark  # noqa: E402
 
 IP_ADAPTER_CKPTS = {
     "runwayml/stable-diffusion-v1-5": ("h94/IP-Adapter", "ip-adapter_sd15.bin"),
-    "stabilityai/stable-diffusion-xl-base-1.0": ("h94/IP-Adapter", "ip-adapter_sdxl.bin"),
+    "stabilityai/stable-diffusion-xl-base-1.0": (
+        "h94/IP-Adapter",
+        "ip-adapter_sdxl.bin",
+    ),
 }
 
 

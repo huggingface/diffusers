@@ -55,7 +55,9 @@ from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_invisible_watermark_available():
-    from diffusers.pipelines.stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
+    from diffusers.pipelines.stable_diffusion_xl.watermark import (
+        StableDiffusionXLWatermarker,
+    )
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -499,7 +501,12 @@ class StableDiffusionXLPipelineIpex(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+        return (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
@@ -613,8 +620,23 @@ class StableDiffusionXLPipelineIpex(
             )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -631,7 +653,12 @@ class StableDiffusionXLPipelineIpex(
         return latents
 
     def _get_add_time_ids(
-        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
+        self,
+        original_size,
+        crops_coords_top_left,
+        target_size,
+        dtype,
+        text_encoder_projection_dim=None,
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
@@ -1078,7 +1105,10 @@ class StableDiffusionXLPipelineIpex(
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs = {
+                    "text_embeds": add_text_embeds,
+                    "time_ids": add_time_ids,
+                }
                 if ip_adapter_image is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
 
@@ -1106,7 +1136,11 @@ class StableDiffusionXLPipelineIpex(
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
+                    noise_pred = rescale_noise_cfg(
+                        noise_pred,
+                        noise_pred_text,
+                        guidance_rescale=self.guidance_rescale,
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
@@ -1415,7 +1449,10 @@ class StableDiffusionXLPipelineIpex(
         # trace unet model to get better performance on IPEX
         with torch.cpu.amp.autocast(enabled=dtype == torch.bfloat16), torch.no_grad():
             unet_trace_model = torch.jit.trace(
-                self.unet, example_kwarg_inputs=unet_input_example, check_trace=False, strict=False
+                self.unet,
+                example_kwarg_inputs=unet_input_example,
+                check_trace=False,
+                strict=False,
             )
             unet_trace_model = torch.jit.freeze(unet_trace_model)
             self.unet.forward = unet_trace_model.forward
@@ -1423,7 +1460,10 @@ class StableDiffusionXLPipelineIpex(
         # trace vae.decoder model to get better performance on IPEX
         with torch.cpu.amp.autocast(enabled=dtype == torch.bfloat16), torch.no_grad():
             vae_decoder_trace_model = torch.jit.trace(
-                self.vae.decoder, vae_decoder_input_example, check_trace=False, strict=False
+                self.vae.decoder,
+                vae_decoder_input_example,
+                check_trace=False,
+                strict=False,
             )
             vae_decoder_trace_model = torch.jit.freeze(vae_decoder_trace_model)
             self.vae.decoder.forward = vae_decoder_trace_model.forward

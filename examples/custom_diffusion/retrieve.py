@@ -26,7 +26,10 @@ def retrieve(class_prompt, class_data_dir, num_class_images):
     factor = 1.5
     num_images = int(factor * num_class_images)
     client = ClipClient(
-        url="https://knn.laion.ai/knn-service", indice_name="laion_400m", num_images=num_images, aesthetic_weight=0.1
+        url="https://knn.laion.ai/knn-service",
+        indice_name="laion_400m",
+        num_images=num_images,
+        aesthetic_weight=0.1,
     )
 
     os.makedirs(f"{class_data_dir}/images", exist_ok=True)

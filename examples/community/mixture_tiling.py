@@ -85,7 +85,14 @@ def _tile2latent_indices(tile_row, tile_col, tile_width, tile_height, tile_row_o
 
 
 def _tile2latent_exclusive_indices(
-    tile_row, tile_col, tile_width, tile_height, tile_row_overlap, tile_col_overlap, rows, columns
+    tile_row,
+    tile_col,
+    tile_width,
+    tile_height,
+    tile_row_overlap,
+    tile_col_overlap,
+    rows,
+    columns,
 ):
     """Given a tile row and column numbers returns the range of latents affected only by that tile in the overall image
 
@@ -104,8 +111,18 @@ def _tile2latent_exclusive_indices(
     for row in range(rows):
         for column in range(columns):
             if row != tile_row and column != tile_col:
-                clip_row_init, clip_row_end, clip_col_init, clip_col_end = _tile2latent_indices(
-                    row, column, tile_width, tile_height, tile_row_overlap, tile_col_overlap
+                (
+                    clip_row_init,
+                    clip_row_end,
+                    clip_col_init,
+                    clip_col_end,
+                ) = _tile2latent_indices(
+                    row,
+                    column,
+                    tile_width,
+                    tile_height,
+                    tile_row_overlap,
+                    tile_col_overlap,
                 )
                 row_segment = row_segment - segment(clip_row_init, clip_row_end)
                 col_segment = col_segment - segment(clip_col_init, clip_col_end)
@@ -229,7 +246,12 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
         # create original noisy latents using the timesteps
         height = tile_height + (grid_rows - 1) * (tile_height - tile_row_overlap)
         width = tile_width + (grid_cols - 1) * (tile_width - tile_col_overlap)
-        latents_shape = (batch_size, self.unet.config.in_channels, height // 8, width // 8)
+        latents_shape = (
+            batch_size,
+            self.unet.config.in_channels,
+            height // 8,
+            width // 8,
+        )
         generator = torch.Generator("cuda").manual_seed(seed)
         latents = torch.randn(latents_shape, generator=generator, device=self.device)
 
@@ -241,10 +263,20 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
                         mode = seed_tiles_mode[row][col]
                         if mode == self.SeedTilesMode.FULL.value:
                             row_init, row_end, col_init, col_end = _tile2latent_indices(
-                                row, col, tile_width, tile_height, tile_row_overlap, tile_col_overlap
+                                row,
+                                col,
+                                tile_width,
+                                tile_height,
+                                tile_row_overlap,
+                                tile_col_overlap,
                             )
                         else:
-                            row_init, row_end, col_init, col_end = _tile2latent_exclusive_indices(
+                            (
+                                row_init,
+                                row_end,
+                                col_init,
+                                col_end,
+                            ) = _tile2latent_exclusive_indices(
                                 row,
                                 col,
                                 tile_width,
@@ -255,7 +287,12 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
                                 grid_cols,
                             )
                         tile_generator = torch.Generator("cuda").manual_seed(seed_tile)
-                        tile_shape = (latents_shape[0], latents_shape[1], row_end - row_init, col_end - col_init)
+                        tile_shape = (
+                            latents_shape[0],
+                            latents_shape[1],
+                            row_end - row_init,
+                            col_end - col_init,
+                        )
                         latents[:, :, row_init:row_end, col_init:col_end] = torch.randn(
                             tile_shape, generator=tile_generator, device=self.device
                         )
@@ -266,7 +303,12 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
                 row_init, row_end, col_init, col_end
             )  # to latent space coordinates
             reroll_generator = torch.Generator("cuda").manual_seed(seed_reroll)
-            region_shape = (latents_shape[0], latents_shape[1], row_end - row_init, col_end - col_init)
+            region_shape = (
+                latents_shape[0],
+                latents_shape[1],
+                row_end - row_init,
+                col_end - col_init,
+            )
             latents[:, :, row_init:row_end, col_init:col_end] = torch.randn(
                 region_shape, generator=reroll_generator, device=self.device
             )
@@ -307,7 +349,10 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
                 for j in range(grid_cols):
                     max_length = text_input[i][j].input_ids.shape[-1]
                     uncond_input = self.tokenizer(
-                        [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+                        [""] * batch_size,
+                        padding="max_length",
+                        max_length=max_length,
+                        return_tensors="pt",
                     )
                     uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
@@ -335,17 +380,29 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
             for row in range(grid_rows):
                 noise_preds_row = []
                 for col in range(grid_cols):
-                    px_row_init, px_row_end, px_col_init, px_col_end = _tile2latent_indices(
-                        row, col, tile_width, tile_height, tile_row_overlap, tile_col_overlap
+                    (
+                        px_row_init,
+                        px_row_end,
+                        px_col_init,
+                        px_col_end,
+                    ) = _tile2latent_indices(
+                        row,
+                        col,
+                        tile_width,
+                        tile_height,
+                        tile_row_overlap,
+                        tile_col_overlap,
                     )
                     tile_latents = latents[:, :, px_row_init:px_row_end, px_col_init:px_col_end]
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([tile_latents] * 2) if do_classifier_free_guidance else tile_latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                     # predict the noise residual
-                    noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings[row][col])[
-                        "sample"
-                    ]
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=text_embeddings[row][col],
+                    )["sample"]
                     # perform guidance
                     if do_classifier_free_guidance:
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -363,8 +420,18 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
             # Add each tile contribution to overall latents
             for row in range(grid_rows):
                 for col in range(grid_cols):
-                    px_row_init, px_row_end, px_col_init, px_col_end = _tile2latent_indices(
-                        row, col, tile_width, tile_height, tile_row_overlap, tile_col_overlap
+                    (
+                        px_row_init,
+                        px_row_end,
+                        px_col_init,
+                        px_col_end,
+                    ) = _tile2latent_indices(
+                        row,
+                        col,
+                        tile_width,
+                        tile_height,
+                        tile_row_overlap,
+                        tile_col_overlap,
                     )
                     noise_pred[:, :, px_row_init:px_row_end, px_col_init:px_col_end] += (
                         noise_preds[row][col] * tile_weights
@@ -402,4 +469,7 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
         ]
 
         weights = np.outer(y_probs, x_probs)
-        return torch.tile(torch.tensor(weights, device=self.device), (nbatches, self.unet.config.in_channels, 1, 1))
+        return torch.tile(
+            torch.tensor(weights, device=self.device),
+            (nbatches, self.unet.config.in_channels, 1, 1),
+        )

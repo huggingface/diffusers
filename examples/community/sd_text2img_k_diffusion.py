@@ -120,7 +120,14 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         sampling = getattr(library, "sampling")
         self.sampler = getattr(sampling, scheduler_type)
 
-    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
+    def _encode_prompt(
+        self,
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt,
+    ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -258,7 +265,17 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 f" {type(callback_steps)}."
             )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
         shape = (batch_size, num_channels_latents, height // 8, width // 8)
         if latents is None:
             if device.type == "mps":
@@ -363,7 +380,11 @@ class StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
 
         # 3. Encode input prompt
         text_embeddings = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt,
         )
 
         # 4. Prepare timesteps

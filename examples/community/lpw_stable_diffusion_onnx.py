@@ -788,7 +788,8 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
         timestep_dtype = next(
-            (input.type for input in self.unet.model.get_inputs() if input.name == "timestep"), "tensor(float)"
+            (input.type for input in self.unet.model.get_inputs() if input.name == "timestep"),
+            "tensor(float)",
         )
         timestep_dtype = ORT_TO_NP_TYPE[timestep_dtype]
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, image is None)
@@ -831,7 +832,10 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
 
             # compute the previous noisy sample x_t -> x_t-1
             scheduler_output = self.scheduler.step(
-                torch.from_numpy(noise_pred), t, torch.from_numpy(latents), **extra_step_kwargs
+                torch.from_numpy(noise_pred),
+                t,
+                torch.from_numpy(latents),
+                **extra_step_kwargs,
             )
             latents = scheduler_output.prev_sample.numpy()
 

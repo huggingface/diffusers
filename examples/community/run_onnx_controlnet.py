@@ -11,7 +11,11 @@ import torch
 from PIL import Image
 from transformers import CLIPTokenizer
 
-from diffusers import OnnxRuntimeModel, StableDiffusionImg2ImgPipeline, UniPCMultistepScheduler
+from diffusers import (
+    OnnxRuntimeModel,
+    StableDiffusionImg2ImgPipeline,
+    UniPCMultistepScheduler,
+)
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
@@ -128,7 +132,9 @@ class OnnxStableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (4 - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
+            vae_scale_factor=self.vae_scale_factor,
+            do_convert_rgb=True,
+            do_normalize=False,
         )
 
     def _encode_prompt(
@@ -453,7 +459,16 @@ class OnnxStableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline):
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+    def prepare_latents(
+        self,
+        image,
+        timestep,
+        batch_size,
+        num_images_per_prompt,
+        dtype,
+        device,
+        generator=None,
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -480,7 +495,12 @@ class OnnxStableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline):
                 " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
                 " your script to pass as many initial images as text prompts to suppress this warning."
             )
-            deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "len(prompt) != len(image)",
+                "1.0.0",
+                deprecation_message,
+                standard_warn=False,
+            )
             additional_image_per_prompt = batch_size // init_latents.shape[0]
             init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
         elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:

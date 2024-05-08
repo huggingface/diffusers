@@ -17,7 +17,9 @@ from diffusers import (
 )
 from diffusers.configuration_utils import FrozenDict
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.utils import deprecate, logging
 
 

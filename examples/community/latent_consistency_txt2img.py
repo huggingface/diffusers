@@ -23,11 +23,20 @@ import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKL, ConfigMixin, DiffusionPipeline, SchedulerMixin, UNet2DConditionModel, logging
+from diffusers import (
+    AutoencoderKL,
+    ConfigMixin,
+    DiffusionPipeline,
+    SchedulerMixin,
+    UNet2DConditionModel,
+    logging,
+)
 from diffusers.configuration_utils import register_to_config
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.utils import BaseOutput
 
 
@@ -54,7 +63,10 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
             scheduler
             if scheduler is not None
             else LCMScheduler(
-                beta_start=0.00085, beta_end=0.0120, beta_schedule="scaled_linear", prediction_type="epsilon"
+                beta_start=0.00085,
+                beta_end=0.0120,
+                beta_schedule="scaled_linear",
+                prediction_type="epsilon",
             )
         )
 
@@ -162,8 +174,22 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
             )
         return image, has_nsfw_concept
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if latents is None:
             latents = torch.randn(shape, dtype=dtype).to(device)
         else:
@@ -467,7 +493,15 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            self.betas = (
+                torch.linspace(
+                    beta_start**0.5,
+                    beta_end**0.5,
+                    num_train_timesteps,
+                    dtype=torch.float32,
+                )
+                ** 2
+            )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -553,7 +587,12 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, lcm_origin_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        lcm_origin_steps: int,
+        device: Union[str, torch.device] = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
         Args:
@@ -703,7 +742,10 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
     def get_velocity(
-        self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
+        self,
+        sample: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
         alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)

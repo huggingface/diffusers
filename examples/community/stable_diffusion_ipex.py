@@ -25,7 +25,9 @@ from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     deprecate,
@@ -61,7 +63,10 @@ EXAMPLE_DOC_STRING = """
 
 
 class StableDiffusionIPEXPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    LoraLoaderMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion on IPEX.
@@ -181,7 +186,14 @@ class StableDiffusionIPEXPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    def get_input_example(self, prompt, height=None, width=None, guidance_scale=7.5, num_images_per_prompt=1):
+    def get_input_example(
+        self,
+        prompt,
+        height=None,
+        width=None,
+        guidance_scale=7.5,
+        num_images_per_prompt=1,
+    ):
         prompt_embeds = None
         negative_prompt_embeds = None
         negative_prompt = None
@@ -195,7 +207,13 @@ class StableDiffusionIPEXPipeline(
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters
@@ -299,7 +317,10 @@ class StableDiffusionIPEXPipeline(
         # trace vae.decoder model to get better performance on IPEX
         with torch.cpu.amp.autocast(enabled=dtype == torch.bfloat16), torch.no_grad():
             ave_decoder_trace_model = torch.jit.trace(
-                self.vae.decoder, vae_decoder_input_example, check_trace=False, strict=False
+                self.vae.decoder,
+                vae_decoder_input_example,
+                check_trace=False,
+                strict=False,
             )
             ave_decoder_trace_model = torch.jit.freeze(ave_decoder_trace_model)
         self.vae.decoder.forward = ave_decoder_trace_model.forward
@@ -532,8 +553,23 @@ class StableDiffusionIPEXPipeline(
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -646,7 +682,13 @@ class StableDiffusionIPEXPipeline(
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters

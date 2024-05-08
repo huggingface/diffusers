@@ -5,9 +5,16 @@ import pandas as pd
 from huggingface_hub import hf_hub_download, upload_file
 from huggingface_hub.utils._errors import EntryNotFoundError
 
+from utils import (
+    BASE_PATH,
+    FINAL_CSV_FILE,
+    GITHUB_SHA,
+    REPO_ID,
+    collate_csv,
+)
+
 
 sys.path.append(".")
-from utils import BASE_PATH, FINAL_CSV_FILE, GITHUB_SHA, REPO_ID, collate_csv  # noqa: E402
 
 
 def has_previous_benchmark() -> str:

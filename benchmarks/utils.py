@@ -25,7 +25,12 @@ BENCHMARK_FIELDS = [
 
 PROMPT = "ghibli style, a fantasy landscape with castles"
 BASE_PATH = os.getenv("BASE_PATH", ".")
-TOTAL_GPU_MEMORY = float(os.getenv("TOTAL_GPU_MEMORY", torch.cuda.get_device_properties(0).total_memory / (1024**3)))
+TOTAL_GPU_MEMORY = float(
+    os.getenv(
+        "TOTAL_GPU_MEMORY",
+        torch.cuda.get_device_properties(0).total_memory / (1024**3),
+    )
+)
 
 REPO_ID = "diffusers/benchmarks"
 FINAL_CSV_FILE = "collated_results.csv"
@@ -59,7 +64,10 @@ def benchmark_fn(f, *args, **kwargs):
 
 
 def generate_csv_dict(
-    pipeline_cls: str, ckpt: str, args: argparse.Namespace, benchmark_info: BenchmarkInfo
+    pipeline_cls: str,
+    ckpt: str,
+    args: argparse.Namespace,
+    benchmark_info: BenchmarkInfo,
 ) -> Dict[str, Union[str, bool, float]]:
     """Packs benchmarking data into a dictionary for latter serialization."""
     data_dict = {

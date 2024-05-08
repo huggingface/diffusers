@@ -6,17 +6,35 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 import torch.nn.functional as F
 from packaging import version
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    IPAdapterMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
-from diffusers.models.attention_processor import Attention, AttnProcessor2_0, FusedAttnProcessor2_0
+from diffusers.models.attention_processor import (
+    Attention,
+    AttnProcessor2_0,
+    FusedAttnProcessor2_0,
+)
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.pipeline_output import (
+    StableDiffusionPipelineOutput,
+)
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -191,7 +209,11 @@ class PAGCFGIdentitySelfAttnProcessor:
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
         # chunk
-        hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
+        (
+            hidden_states_uncond,
+            hidden_states_org,
+            hidden_states_ptb,
+        ) = hidden_states.chunk(3)
         hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
 
         # original path
@@ -327,7 +349,11 @@ def retrieve_timesteps(
 
 
 class StableDiffusionPAGPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    TextualInversionLoaderMixin,
+    LoraLoaderMixin,
+    IPAdapterMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
@@ -611,7 +637,9 @@ class StableDiffusionPAGPipeline(
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                    text_input_ids.to(device),
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -856,8 +884,23 @@ class StableDiffusionPAGPipeline(
                 "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
             )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -997,7 +1040,11 @@ class StableDiffusionPAGPipeline(
 
     def pred_x0(self, latents, noise_pred, t, generator, device, prompt_embeds, output_type):
         pred_z0 = self.pred_z0(latents, noise_pred, t)
-        pred_x0 = self.vae.decode(pred_z0 / self.vae.config.scaling_factor, return_dict=False, generator=generator)[0]
+        pred_x0 = self.vae.decode(
+            pred_z0 / self.vae.config.scaling_factor,
+            return_dict=False,
+            generator=generator,
+        )[0]
         pred_x0, ____ = self.run_safety_checker(pred_x0, device, prompt_embeds.dtype)
         do_denormalize = [True] * pred_x0.shape[0]
         pred_x0 = self.image_processor.postprocess(pred_x0, output_type=output_type, do_denormalize=do_denormalize)
@@ -1263,7 +1310,10 @@ class StableDiffusionPAGPipeline(
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
-                ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_images_per_prompt
+                ip_adapter_image,
+                ip_adapter_image_embeds,
+                device,
+                batch_size * num_images_per_prompt,
             )
 
         # 4. Prepare timesteps
@@ -1396,7 +1446,11 @@ class StableDiffusionPAGPipeline(
 
                 # both
                 elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
-                    noise_pred_uncond, noise_pred_text, noise_pred_text_perturb = noise_pred.chunk(3)
+                    (
+                        noise_pred_uncond,
+                        noise_pred_text,
+                        noise_pred_text_perturb,
+                    ) = noise_pred.chunk(3)
 
                     signal_scale = self.pag_scale
                     if self.do_pag_adaptive_scaling:
@@ -1412,7 +1466,11 @@ class StableDiffusionPAGPipeline(
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
+                    noise_pred = rescale_noise_cfg(
+                        noise_pred,
+                        noise_pred_text,
+                        guidance_rescale=self.guidance_rescale,
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
@@ -1435,9 +1493,11 @@ class StableDiffusionPAGPipeline(
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
-                0
-            ]
+            image = self.vae.decode(
+                latents / self.vae.config.scaling_factor,
+                return_dict=False,
+                generator=generator,
+            )[0]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents

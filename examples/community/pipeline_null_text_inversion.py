@@ -100,7 +100,10 @@ class NullTextPipeline(StableDiffusionPipeline):
 
     def next_step(self, model_output, timestep, sample):
         timestep, next_timestep = (
-            min(timestep - self.scheduler.config.num_train_timesteps // self.num_inference_steps, 999),
+            min(
+                timestep - self.scheduler.config.num_train_timesteps // self.num_inference_steps,
+                999,
+            ),
             timestep,
         )
         alpha_prod_t = self.scheduler.alphas_cumprod[timestep] if timestep >= 0 else self.scheduler.final_alpha_cumprod
@@ -161,7 +164,10 @@ class NullTextPipeline(StableDiffusionPipeline):
 
     def get_context(self, prompt):
         uncond_input = self.tokenizer(
-            [""], padding="max_length", max_length=self.tokenizer.model_max_length, return_tensors="pt"
+            [""],
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            return_tensors="pt",
         )
         uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
         text_input = self.tokenizer(
@@ -176,7 +182,12 @@ class NullTextPipeline(StableDiffusionPipeline):
         return context
 
     def invert(
-        self, image_path: str, prompt: str, num_inner_steps=10, early_stop_epsilon=1e-6, num_inference_steps=50
+        self,
+        image_path: str,
+        prompt: str,
+        num_inner_steps=10,
+        early_stop_epsilon=1e-6,
+        num_inference_steps=50,
     ):
         self.num_inference_steps = num_inference_steps
         context = self.get_context(prompt)
@@ -247,9 +258,11 @@ class NullTextPipeline(StableDiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
                 progress_bar.update()
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
-                0
-            ]
+            image = self.vae.decode(
+                latents / self.vae.config.scaling_factor,
+                return_dict=False,
+                generator=generator,
+            )[0]
         else:
             image = latents
         image = self.image_processor.postprocess(

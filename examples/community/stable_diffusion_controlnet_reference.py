@@ -8,7 +8,12 @@ import torch
 from diffusers import StableDiffusionControlNetPipeline
 from diffusers.models import ControlNetModel
 from diffusers.models.attention import BasicTransformerBlock
-from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
+from diffusers.models.unets.unet_2d_blocks import (
+    CrossAttnDownBlock2D,
+    CrossAttnUpBlock2D,
+    DownBlock2D,
+    UpBlock2D,
+)
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import logging
@@ -65,7 +70,15 @@ def torch_dfs(model: torch.nn.Module):
 
 
 class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeline):
-    def prepare_ref_latents(self, refimage, batch_size, dtype, device, generator, do_classifier_free_guidance):
+    def prepare_ref_latents(
+        self,
+        refimage,
+        batch_size,
+        dtype,
+        device,
+        generator,
+        do_classifier_free_guidance,
+    ):
         refimage = refimage.to(device=device, dtype=dtype)
 
         # encode the mask image into latents space so we can concatenate it to the latents
@@ -385,8 +398,17 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
             if self.use_ada_layer_norm:
                 norm_hidden_states = self.norm1(hidden_states, timestep)
             elif self.use_ada_layer_norm_zero:
-                norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
-                    hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
+                (
+                    norm_hidden_states,
+                    gate_msa,
+                    shift_mlp,
+                    scale_mlp,
+                    gate_mlp,
+                ) = self.norm1(
+                    hidden_states,
+                    timestep,
+                    class_labels,
+                    hidden_dtype=hidden_states.dtype,
                 )
             else:
                 norm_hidden_states = self.norm1(hidden_states)
@@ -643,7 +665,13 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
             return hidden_states
 
         def hacked_UpBlock2D_forward(
-            self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, *args, **kwargs
+            self,
+            hidden_states,
+            res_hidden_states_tuple,
+            temb=None,
+            upsample_size=None,
+            *args,
+            **kwargs,
         ):
             eps = 1e-6
             for i, resnet in enumerate(self.resnets):
@@ -760,7 +788,10 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
 
                 # ref only part
                 noise = randn_tensor(
-                    ref_image_latents.shape, generator=generator, device=device, dtype=ref_image_latents.dtype
+                    ref_image_latents.shape,
+                    generator=generator,
+                    device=device,
+                    dtype=ref_image_latents.dtype,
                 )
                 ref_xt = self.scheduler.add_noise(
                     ref_image_latents,

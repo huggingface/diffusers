@@ -11,13 +11,27 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, DiffusionPipeline, UNet2DConditionModel
 from diffusers.configuration_utils import FrozenDict, deprecate
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    IPAdapterMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
+from diffusers.models.unets.unet_2d_blocks import (
+    CrossAttnDownBlock2D,
+    CrossAttnUpBlock2D,
+    DownBlock2D,
+    UpBlock2D,
+)
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import (
+    rescale_noise_cfg,
+)
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     PIL_INTERPOLATION,
@@ -76,7 +90,11 @@ def torch_dfs(model: torch.nn.Module):
 
 
 class StableDiffusionReferencePipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    TextualInversionLoaderMixin,
+    LoraLoaderMixin,
+    IPAdapterMixin,
+    FromSingleFileMixin,
 ):
     r""" "
     Pipeline for Stable Diffusion Reference.
@@ -495,7 +513,9 @@ class StableDiffusionReferencePipeline(
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                    text_input_ids.to(device),
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -609,7 +629,12 @@ class StableDiffusionReferencePipeline(
         Returns:
             torch.Tensor: The prepared latent vectors.
         """
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -777,7 +802,10 @@ class StableDiffusionReferencePipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(
-        self, image: Union[torch.Tensor, PIL.Image.Image], device: torch.device, dtype: torch.dtype
+        self,
+        image: Union[torch.Tensor, PIL.Image.Image],
+        device: torch.device,
+        dtype: torch.dtype,
     ) -> Tuple[Union[torch.Tensor, PIL.Image.Image], Optional[bool]]:
         r"""
         Runs the safety checker on the given image.
@@ -929,7 +957,13 @@ class StableDiffusionReferencePipeline(
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters
@@ -1023,8 +1057,17 @@ class StableDiffusionReferencePipeline(
             if self.use_ada_layer_norm:
                 norm_hidden_states = self.norm1(hidden_states, timestep)
             elif self.use_ada_layer_norm_zero:
-                norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
-                    hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
+                (
+                    norm_hidden_states,
+                    gate_msa,
+                    shift_mlp,
+                    scale_mlp,
+                    gate_mlp,
+                ) = self.norm1(
+                    hidden_states,
+                    timestep,
+                    class_labels,
+                    hidden_dtype=hidden_states.dtype,
                 )
             else:
                 norm_hidden_states = self.norm1(hidden_states)
@@ -1381,7 +1424,10 @@ class StableDiffusionReferencePipeline(
 
                 # ref only part
                 noise = randn_tensor(
-                    ref_image_latents.shape, generator=generator, device=device, dtype=ref_image_latents.dtype
+                    ref_image_latents.shape,
+                    generator=generator,
+                    device=device,
+                    dtype=ref_image_latents.dtype,
                 )
                 ref_xt = self.scheduler.add_noise(
                     ref_image_latents,

@@ -772,7 +772,10 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
     # all the modules impacted by that init.
     for m in [f for f in all_modules if f.endswith("__init__.py")]:
         direct_deps = get_module_dependencies(m, cache=cache)
-        deps = sum([reverse_map[d] for d in direct_deps if not d.endswith("__init__.py")], direct_deps)
+        deps = sum(
+            [reverse_map[d] for d in direct_deps if not d.endswith("__init__.py")],
+            direct_deps,
+        )
         reverse_map[m] = list(set(deps) - {m})
 
     return reverse_map
@@ -1052,7 +1055,10 @@ def parse_commit_message(commit_message: str) -> Dict[str, bool]:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--output_file", type=str, default="test_list.txt", help="Where to store the list of tests to run"
+        "--output_file",
+        type=str,
+        default="test_list.txt",
+        help="Where to store the list of tests to run",
     )
     parser.add_argument(
         "--json_output_file",

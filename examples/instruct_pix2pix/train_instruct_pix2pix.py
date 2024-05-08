@@ -44,7 +44,12 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInstructPix2PixPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    StableDiffusionInstructPix2PixPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
@@ -58,7 +63,11 @@ check_min_version("0.28.0.dev0")
 logger = get_logger(__name__, log_level="INFO")
 
 DATASET_NAME_MAPPING = {
-    "fusing/instructpix2pix-1000-samples": ("input_image", "edit_prompt", "edited_image"),
+    "fusing/instructpix2pix-1000-samples": (
+        "input_image",
+        "edit_prompt",
+        "edited_image",
+    ),
 }
 WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
 
@@ -136,7 +145,10 @@ def parse_args():
         help="URL to the original image that you would like to edit (used during inference for debugging purposes).",
     )
     parser.add_argument(
-        "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
+        "--validation_prompt",
+        type=str,
+        default=None,
+        help="A prompt that is sampled during training for inference.",
     )
     parser.add_argument(
         "--num_validation_images",
@@ -199,7 +211,10 @@ def parse_args():
         help="whether to randomly flip images horizontally",
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size",
+        type=int,
+        default=16,
+        help="Batch size (per device) for the training dataloader.",
     )
     parser.add_argument("--num_train_epochs", type=int, default=100)
     parser.add_argument(
@@ -241,7 +256,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps",
+        type=int,
+        default=500,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
     parser.add_argument(
         "--conditioning_dropout_prob",
@@ -250,7 +268,9 @@ def parse_args():
         help="Conditioning dropout probability. Drops out the conditionings (image and edit prompt) used in training InstructPix2Pix. See section 3.2.1 in the paper: https://arxiv.org/abs/2211.09800.",
     )
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes.",
     )
     parser.add_argument(
         "--allow_tf32",
@@ -279,13 +299,37 @@ def parse_args():
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--push_to_hub",
+        action="store_true",
+        help="Whether or not to push the model to the Hub.",
+    )
+    parser.add_argument(
+        "--hub_token",
+        type=str,
+        default=None,
+        help="The token to use to push to the Model Hub.",
+    )
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -321,7 +365,12 @@ def parse_args():
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
         ),
     )
-    parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="For distributed training: local_rank",
+    )
     parser.add_argument(
         "--checkpointing_steps",
         type=int,
@@ -347,7 +396,9 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+        "--enable_xformers_memory_efficient_attention",
+        action="store_true",
+        help="Whether or not to use xformers.",
     )
 
     args = parser.parse_args()
@@ -438,22 +489,34 @@ def main():
 
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+                repo_id=args.hub_model_id or Path(args.output_dir).name,
+                exist_ok=True,
+                token=args.hub_token,
             ).repo_id
 
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
     )
     text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+        variant=args.variant,
     )
     vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
+        variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        revision=args.non_ema_revision,
     )
 
     # InstructPix2Pix uses an additional image for conditioning. To accommodate that,
@@ -468,7 +531,11 @@ def main():
 
     with torch.no_grad():
         new_conv_in = nn.Conv2d(
-            in_channels, out_channels, unet.conv_in.kernel_size, unet.conv_in.stride, unet.conv_in.padding
+            in_channels,
+            out_channels,
+            unet.conv_in.kernel_size,
+            unet.conv_in.stride,
+            unet.conv_in.padding,
         )
         new_conv_in.weight.zero_()
         new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
@@ -628,7 +695,11 @@ def main():
     # We need to tokenize input captions and transform the images.
     def tokenize_captions(captions):
         inputs = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+            captions,
+            max_length=tokenizer.model_max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
         )
         return inputs.input_ids
 
@@ -785,7 +856,10 @@ def main():
             resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar = tqdm(
+        range(global_step, args.max_train_steps),
+        disable=not accelerator.is_local_main_process,
+    )
     progress_bar.set_description("Steps")
 
     for epoch in range(first_epoch, args.num_train_epochs):
@@ -809,7 +883,12 @@ def main():
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = torch.randint(
+                    0,
+                    noise_scheduler.config.num_train_timesteps,
+                    (bsz,),
+                    device=latents.device,
+                )
                 timesteps = timesteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
@@ -856,7 +935,12 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
-                model_pred = unet(concatenated_noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
+                model_pred = unet(
+                    concatenated_noisy_latents,
+                    timesteps,
+                    encoder_hidden_states,
+                    return_dict=False,
+                )[0]
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
@@ -906,7 +990,10 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {
+                "step_loss": loss.detach().item(),
+                "lr": lr_scheduler.get_last_lr()[0],
+            }
             progress_bar.set_postfix(**logs)
 
             if global_step >= args.max_train_steps:
@@ -944,7 +1031,8 @@ def main():
                 original_image = download_image(args.val_image_url)
                 edited_images = []
                 with torch.autocast(
-                    str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
+                    str(accelerator.device).replace(":0", ""),
+                    enabled=accelerator.mixed_precision == "fp16",
                 ):
                     for _ in range(args.num_validation_images):
                         edited_images.append(
@@ -963,7 +1051,9 @@ def main():
                         wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
                         for edited_image in edited_images:
                             wandb_table.add_data(
-                                wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt
+                                wandb.Image(original_image),
+                                wandb.Image(edited_image),
+                                args.validation_prompt,
                             )
                         tracker.log({"validation": wandb_table})
                 if args.use_ema:
@@ -1019,7 +1109,9 @@ def main():
                     wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
                     for edited_image in edited_images:
                         wandb_table.add_data(
-                            wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt
+                            wandb.Image(original_image),
+                            wandb.Image(edited_image),
+                            args.validation_prompt,
                         )
                     tracker.log({"test": wandb_table})
 

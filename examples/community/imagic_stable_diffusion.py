@@ -22,7 +22,9 @@ from diffusers import DiffusionPipeline
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import logging
 
@@ -206,7 +208,8 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             return_tensors="pt",
         )
         text_embeddings = torch.nn.Parameter(
-            self.text_encoder(text_input.input_ids.to(self.device))[0], requires_grad=True
+            self.text_encoder(text_input.input_ids.to(self.device))[0],
+            requires_grad=True,
         )
         text_embeddings = text_embeddings.detach()
         text_embeddings.requires_grad_()
@@ -227,7 +230,10 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         image_latents = init_latent_image_dist.sample(generator=generator)
         image_latents = 0.18215 * image_latents
 
-        progress_bar = tqdm(range(text_embedding_optimization_steps), disable=not accelerator.is_local_main_process)
+        progress_bar = tqdm(
+            range(text_embedding_optimization_steps),
+            disable=not accelerator.is_local_main_process,
+        )
         progress_bar.set_description("Steps")
 
         global_step = 0
@@ -272,7 +278,10 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             self.unet.parameters(),  # only optimize unet
             lr=diffusion_model_learning_rate,
         )
-        progress_bar = tqdm(range(model_fine_tuning_optimization_steps), disable=not accelerator.is_local_main_process)
+        progress_bar = tqdm(
+            range(model_fine_tuning_optimization_steps),
+            disable=not accelerator.is_local_main_process,
+        )
 
         logger.info("Next fine tuning the entire model to better reconstruct the init image")
         for _ in range(model_fine_tuning_optimization_steps):
@@ -406,7 +415,12 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 self.device
             )
         else:
-            latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+            latents = torch.randn(
+                latents_shape,
+                generator=generator,
+                device=self.device,
+                dtype=latents_dtype,
+            )
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
@@ -456,7 +470,8 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                 self.device
             )
             image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
+                images=image,
+                clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype),
             )
         else:
             has_nsfw_concept = None

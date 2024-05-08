@@ -185,7 +185,11 @@ class Image2ImageRegion(DiffusionRegion):
         # Get all basic fields from parent class
         super_fields = {key: getattr(self, key) for key in DiffusionRegion.__dataclass_fields__.keys()}
         # Pack other fields
-        return {**super_fields, "reference_image": self.reference_image.cpu().tolist(), "strength": self.strength}
+        return {
+            **super_fields,
+            "reference_image": self.reference_image.cpu().tolist(),
+            "strength": self.strength,
+        }
 
 
 class RerollModes(Enum):
@@ -313,7 +317,10 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
         init_timestep = int(num_inference_steps * (1 - strength)) + offset
         init_timestep = min(init_timestep, num_inference_steps)
 
-        t_start = min(max(num_inference_steps - init_timestep + offset, 0), num_inference_steps - 1)
+        t_start = min(
+            max(num_inference_steps - init_timestep + offset, 0),
+            num_inference_steps - 1,
+        )
         latest_timestep = self.scheduler.timesteps[t_start]
 
         return latest_timestep
@@ -350,7 +357,12 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
             region.encode_prompt(self.text_encoder, self.device)
 
         # Create original noisy latents using the timesteps
-        latents_shape = (batch_size, self.unet.config.in_channels, canvas_height // 8, canvas_width // 8)
+        latents_shape = (
+            batch_size,
+            self.unet.config.in_channels,
+            canvas_height // 8,
+            canvas_width // 8,
+        )
         generator = torch.Generator(self.device).manual_seed(seed)
         init_noise = torch.randn(latents_shape, generator=generator, device=self.device)
 
@@ -368,7 +380,11 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
                     :,
                     region.latent_row_init : region.latent_row_end,
                     region.latent_col_init : region.latent_col_end,
-                ] = torch.randn(region_shape, generator=region.get_region_generator(self.device), device=self.device)
+                ] = torch.randn(
+                    region_shape,
+                    generator=region.get_region_generator(self.device),
+                    device=self.device,
+                )
 
         # Apply epsilon noise to regions: first diffusion regions, then reroll regions
         all_eps_rerolls = regions + [r for r in reroll_regions if r.reroll_mode == RerollModes.EPSILON.value]
@@ -382,7 +398,9 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
                 ]
                 eps_noise = (
                     torch.randn(
-                        region_noise.shape, generator=region.get_region_generator(self.device), device=self.device
+                        region_noise.shape,
+                        generator=region.get_region_generator(self.device),
+                        device=self.device,
                     )
                     * region.noise_eps
                 )
@@ -400,7 +418,10 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
         for region in text2image_regions:
             max_length = region.tokenized_prompt.input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+                [""] * batch_size,
+                padding="max_length",
+                max_length=max_length,
+                return_tensors="pt",
             )
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 

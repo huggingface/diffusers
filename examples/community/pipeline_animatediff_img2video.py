@@ -24,11 +24,25 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
+from diffusers.loaders import (
+    IPAdapterMixin,
+    LoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
+from diffusers.models import (
+    AutoencoderKL,
+    ImageProjection,
+    UNet2DConditionModel,
+    UNetMotionModel,
+)
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.models.unet_motion_model import MotionAdapter
 from diffusers.pipelines.animatediff.pipeline_output import AnimateDiffPipelineOutput
@@ -41,7 +55,12 @@ from diffusers.schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from diffusers.utils import (
+    USE_PEFT_BACKEND,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from diffusers.utils.torch_utils import randn_tensor
 
 
@@ -182,7 +201,9 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor,
+    generator: Optional[torch.Generator] = None,
+    sample_mode: str = "sample",
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -240,7 +261,11 @@ def retrieve_timesteps(
 
 
 class AnimateDiffImgToVideoPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    IPAdapterMixin,
+    LoraLoaderMixin,
 ):
     r"""
     Pipeline for image-to-video generation.
@@ -403,7 +428,9 @@ class AnimateDiffImgToVideoPipeline(
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                    text_input_ids.to(device),
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -713,10 +740,12 @@ class AnimateDiffImgToVideoPipeline(
 
                     def latent_cls(v0, v1, index):
                         return lerp(v0, v1, index / num_frames * (1 - strength))
+
                 elif latent_interpolation_method == "slerp":
 
                     def latent_cls(v0, v1, index):
                         return slerp(v0, v1, index / num_frames * (1 - strength))
+
                 else:
                     latent_cls = latent_interpolation_method
 
@@ -894,7 +923,10 @@ class AnimateDiffImgToVideoPipeline(
 
         if ip_adapter_image is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
-                ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_videos_per_prompt
+                ip_adapter_image,
+                ip_adapter_image_embeds,
+                device,
+                batch_size * num_videos_per_prompt,
             )
 
         # 4. Preprocess image
