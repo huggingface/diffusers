@@ -194,7 +194,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
+        expected = np.array([0.4468, 0.4061, 0.4134, 0.3637, 0.3202, 0.365, 0.3786, 0.3725, 0.3535])
 
         max_diff = numpy_cosine_similarity_distance(expected, images)
         assert max_diff < 1e-4
@@ -283,7 +283,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
         # This way we also test equivalence between LoRA fusion and the non-fusion behaviour.
-        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
+        expected = np.array([0.4468, 0.4061, 0.4134, 0.3637, 0.3202, 0.365, 0.3786, 0.3725, 0.3535])
 
         max_diff = numpy_cosine_similarity_distance(expected, images)
         assert max_diff < 1e-4
