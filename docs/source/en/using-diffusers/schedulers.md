@@ -167,7 +167,7 @@ Most images look very similar and are comparable in quality. Again, it often com
 
 ### Custom Timestep Schedules
 
-Our schedulers allow you to choose one of the popular timestep schedules using configurations such as `timestep_spacing`, `interpolation_type`, and `use_karras_sigmas`; you can also use custom timestep schedules. For example, researchers from Navidia shared a set of 10-step optimized timestep schedules that can achieve significantly better quality compared with the preset timestep schedules. You can read more about their research [here](https://research.nvidia.com/labs/toronto-ai/AlignYourSteps/). These optimized timestep schedules are called AYS schedules, and they are available in diffusers. For example, we can get the SDXL AYS schedule with the code below:
+With all our scheduler, you can choose one of the popular timestep schedules using configurations such as `timestep_spacing`, `interpolation_type`, and `use_karras_sigmas`; Some schedulers also provide the flexibility to use a custom timestep schedule. You can use any list of arbitrary timesteps, we will use the AYS timestep schedule here as example. It is a set of 10-step optimized timestep schedules, released by researchers from Nvidia, that can achieve significantly better quality compared to the preset timestep schedules. You can read more about their research [here](https://research.nvidia.com/labs/toronto-ai/AlignYourSteps/). 
 
 ```python
 from diffusers.schedulers import AysSchedules
@@ -216,6 +216,10 @@ The generated image has better quality than the default linear timestep schedule
     <figcaption class="mt-2 text-center text-sm text-gray-500">Linearly-spaced timestep schedule 25 steps</figcaption>
   </div>
 </div>
+
+> [!TIP]
+> 🤗 Diffusers currently only supports `timesteps` and `sigmas` for a selected list of schedulers and pipelines, but feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) if you want to extend feature to a scheduler and pipeline that does not currently support it!
+
 
 ### Flax schedulers
 
