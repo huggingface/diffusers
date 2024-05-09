@@ -18,14 +18,10 @@ MODEL = "base_with_context"
 
 def load_notes_encoder(weights, model):
     model.token_embedder.weight = nn.Parameter(torch.Tensor(weights["token_embedder"]["embedding"]))
-    model.position_encoding.weight = nn.Parameter(
-        torch.Tensor(weights["Embed_0"]["embedding"]), requires_grad=False
-    )
+    model.position_encoding.weight = nn.Parameter(torch.Tensor(weights["Embed_0"]["embedding"]), requires_grad=False)
     for lyr_num, lyr in enumerate(model.encoders):
         ly_weight = weights[f"layers_{lyr_num}"]
-        lyr.layer[0].layer_norm.weight = nn.Parameter(
-            torch.Tensor(ly_weight["pre_attention_layer_norm"]["scale"])
-        )
+        lyr.layer[0].layer_norm.weight = nn.Parameter(torch.Tensor(ly_weight["pre_attention_layer_norm"]["scale"]))
 
         attention_weights = ly_weight["attention"]
         lyr.layer[0].SelfAttention.q.weight = nn.Parameter(torch.Tensor(attention_weights["query"]["kernel"].T))
@@ -46,9 +42,7 @@ def load_notes_encoder(weights, model):
 def load_continuous_encoder(weights, model):
     model.input_proj.weight = nn.Parameter(torch.Tensor(weights["input_proj"]["kernel"].T))
 
-    model.position_encoding.weight = nn.Parameter(
-        torch.Tensor(weights["Embed_0"]["embedding"]), requires_grad=False
-    )
+    model.position_encoding.weight = nn.Parameter(torch.Tensor(weights["Embed_0"]["embedding"]), requires_grad=False)
 
     for lyr_num, lyr in enumerate(model.encoders):
         ly_weight = weights[f"layers_{lyr_num}"]
@@ -58,9 +52,7 @@ def load_continuous_encoder(weights, model):
         lyr.layer[0].SelfAttention.k.weight = nn.Parameter(torch.Tensor(attention_weights["key"]["kernel"].T))
         lyr.layer[0].SelfAttention.v.weight = nn.Parameter(torch.Tensor(attention_weights["value"]["kernel"].T))
         lyr.layer[0].SelfAttention.o.weight = nn.Parameter(torch.Tensor(attention_weights["out"]["kernel"].T))
-        lyr.layer[0].layer_norm.weight = nn.Parameter(
-            torch.Tensor(ly_weight["pre_attention_layer_norm"]["scale"])
-        )
+        lyr.layer[0].layer_norm.weight = nn.Parameter(torch.Tensor(ly_weight["pre_attention_layer_norm"]["scale"]))
 
         lyr.layer[1].DenseReluDense.wi_0.weight = nn.Parameter(torch.Tensor(ly_weight["mlp"]["wi_0"]["kernel"].T))
         lyr.layer[1].DenseReluDense.wi_1.weight = nn.Parameter(torch.Tensor(ly_weight["mlp"]["wi_1"]["kernel"].T))
@@ -76,9 +68,7 @@ def load_decoder(weights, model):
     model.conditioning_emb[0].weight = nn.Parameter(torch.Tensor(weights["time_emb_dense0"]["kernel"].T))
     model.conditioning_emb[2].weight = nn.Parameter(torch.Tensor(weights["time_emb_dense1"]["kernel"].T))
 
-    model.position_encoding.weight = nn.Parameter(
-        torch.Tensor(weights["Embed_0"]["embedding"]), requires_grad=False
-    )
+    model.position_encoding.weight = nn.Parameter(torch.Tensor(weights["Embed_0"]["embedding"]), requires_grad=False)
 
     model.continuous_inputs_projection.weight = nn.Parameter(
         torch.Tensor(weights["continuous_inputs_projection"]["kernel"].T)
