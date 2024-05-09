@@ -248,7 +248,6 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         image = pipe(
             "masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5
         ).images[0]
-        image.save("/root/diffusers/sdxl_lcm_lora.png")
 
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
@@ -256,6 +255,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
         image_np = pipe.image_processor.pil_to_numpy(image)
         expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
+        expected_image_np = expected_image_np[:, :, :, ::-1]
 
         max_diff = numpy_cosine_similarity_distance(image_np.flatten(), expected_image_np.flatten())
         assert max_diff < 1e-4
