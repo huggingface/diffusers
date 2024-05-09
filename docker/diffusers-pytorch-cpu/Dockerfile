@@ -4,8 +4,11 @@ LABEL repository="diffusers"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt update && apt upgrade && \
-    apt install -y bash \
+RUN apt-get -y update \
+    && apt-get install -y software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa
+
+RUN apt install -y bash \
                    build-essential \
                    git \
                    git-lfs \
@@ -15,6 +18,7 @@ RUN apt update && apt upgrade && \
                    python3.10 \
                    python3-pip \
                    libgl1 \
+                   python3-virtualenv \
                    python3.10-venv && \
     rm -rf /var/lib/apt/lists
 
