@@ -1,10 +1,20 @@
-from typing import List
+from typing import Any, List
 
 from .configuration_utils import ConfigMixin, register_to_config
 from .utils import CONFIG_NAME
 
 
 class PipelineCallback(ConfigMixin):
+    """
+    Base class for all the official callbacks used in a pipeline. This class provides a structure for implementing
+    custom callbacks and ensures that all callbacks have a consistent interface.
+
+    Please implement the following:
+        `tensor_inputs`: This should return a list of tensor inputs specific to your callback. You will only be able to include
+            variables listed in the `._callback_tensor_inputs` attribute of your pipeline class.
+        `callback_fn`: This method defines the core functionality of your callback.
+    """
+
     config_name = CONFIG_NAME
 
     @register_to_config
@@ -22,17 +32,22 @@ class PipelineCallback(ConfigMixin):
             raise ValueError("cutoff_step_ratio must be a float between 0.0 and 1.0.")
 
     @property
-    def tensor_inputs(self) -> List:
+    def tensor_inputs(self) -> List[str]:
         raise NotImplementedError(f"You need to set the attribute `tensor_inputs` for {self.__class__}")
 
-    def callback_fn(self, pipeline, step_index, timesteps, callback_kwargs):
+    def callback_fn(self, pipeline, step_index, timesteps, callback_kwargs) -> dict[str, Any]:
         raise NotImplementedError(f"You need to implement the method `callback_fn` for {self.__class__}")
 
-    def __call__(self, pipeline, step_index, timestep, callback_kwargs):
+    def __call__(self, pipeline, step_index, timestep, callback_kwargs) -> dict[str, Any]:
         return self.callback_fn(pipeline, step_index, timestep, callback_kwargs)
 
 
 class MultiPipelineCallbacks:
+    """
+    This class is designed to handle multiple pipeline callbacks. It accepts a list of PipelineCallback objects
+    and provides a unified interface for calling all of them.
+    """
+
     def __init__(self, callbacks: List[PipelineCallback]):
         self.callbacks = callbacks
 
@@ -40,7 +55,10 @@ class MultiPipelineCallbacks:
     def tensor_inputs(self) -> List[str]:
         return [input for callback in self.callbacks for input in callback.tensor_inputs]
 
-    def __call__(self, pipeline, step_index, timestep, callback_kwargs):
+    def __call__(self, pipeline, step_index, timestep, callback_kwargs) -> dict[str, Any]:
+        """
+        Calls all the callbacks in order with the given arguments and returns the final callback_kwargs.
+        """
         for callback in self.callbacks:
             callback_kwargs = callback(pipeline, step_index, timestep, callback_kwargs)
 
@@ -48,9 +66,16 @@ class MultiPipelineCallbacks:
 
 
 class SDCFGCutoffCallback(PipelineCallback):
+    """
+    Callback function for Stable Diffusion Pipelines. After certain number of steps
+    (set by `cutoff_step_ratio` or `cutoff_step_index`), this callback will disable the CFG.
+
+    Note: This callback mutates the pipeline by changing the `_guidance_scale` attribute to 0.0 after the cutoff step.
+    """
+
     tensor_inputs = ["prompt_embeds"]
 
-    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs):
+    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs) -> dict[str, Any]:
         cutoff_step_ratio = self.config.cutoff_step_ratio
         cutoff_step_index = self.config.cutoff_step_index
 
@@ -70,9 +95,16 @@ class SDCFGCutoffCallback(PipelineCallback):
 
 
 class SDXLCFGCutoffCallback(PipelineCallback):
+    """
+    Callback function for Stable Diffusion XL Pipelines. After certain number of steps
+    (set by `cutoff_step_ratio` or `cutoff_step_index`), this callback will disable the CFG.
+
+    Note: This callback mutates the pipeline by changing the `_guidance_scale` attribute to 0.0 after the cutoff step.
+    """
+
     tensor_inputs = ["prompt_embeds", "add_text_embeds", "add_time_ids"]
 
-    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs):
+    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs) -> dict[str, Any]:
         cutoff_step_ratio = self.config.cutoff_step_ratio
         cutoff_step_index = self.config.cutoff_step_index
 
@@ -100,9 +132,16 @@ class SDXLCFGCutoffCallback(PipelineCallback):
 
 
 class IPAdapterScaleCutoffCallback(PipelineCallback):
+    """
+    Callback function for any pipeline that inherits `IPAdapterMixin`. After certain number of steps
+    (set by `cutoff_step_ratio` or `cutoff_step_index`), this callback will set the IP Adapter scale to `0.0`.
+
+    Note: This callback mutates the IP Adapter attention processors by setting the scale to 0.0 after the cutoff step.
+    """
+
     tensor_inputs = []
 
-    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs):
+    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs) -> dict[str, Any]:
         cutoff_step_ratio = self.config.cutoff_step_ratio
         cutoff_step_index = self.config.cutoff_step_index
 
