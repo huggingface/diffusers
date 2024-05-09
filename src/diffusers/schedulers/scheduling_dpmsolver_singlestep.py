@@ -274,7 +274,12 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int = None,
+        device: Union[str, torch.device] = None,
+        timesteps: Optional[List[int]] = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -283,17 +288,33 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
+                timestep spacing strategy of equal spacing between timesteps schedule is used. If `timesteps` is
+                passed, `num_inference_steps` must be `None`.
         """
+        if num_inference_steps is None and timesteps is None:
+            raise ValueError("Must pass exactly one of  `num_inference_steps` or `timesteps`.")
+        if num_inference_steps is not None and timesteps is not None:
+            raise ValueError("Must pass exactly one of  `num_inference_steps` or `timesteps`.")
+        if timesteps is not None and self.config.use_karras_sigmas:
+            raise ValueError("Cannot use `timesteps` when `config.use_karras_sigmas=True`.")
+
+        num_inference_steps = num_inference_steps or len(timesteps)
         self.num_inference_steps = num_inference_steps
-        # Clipping the minimum of all lambda(t) for numerical stability.
-        # This is critical for cosine (squaredcos_cap_v2) noise schedule.
-        clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
-        timesteps = (
-            np.linspace(0, self.config.num_train_timesteps - 1 - clipped_idx, num_inference_steps + 1)
-            .round()[::-1][:-1]
-            .copy()
-            .astype(np.int64)
-        )
+
+        if timesteps is not None:
+            timesteps = np.array(timesteps).astype(np.int64)
+        else:
+            # Clipping the minimum of all lambda(t) for numerical stability.
+            # This is critical for cosine (squaredcos_cap_v2) noise schedule.
+            clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
+            timesteps = (
+                np.linspace(0, self.config.num_train_timesteps - 1 - clipped_idx, num_inference_steps + 1)
+                .round()[::-1][:-1]
+                .copy()
+                .astype(np.int64)
+            )
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         if self.config.use_karras_sigmas:
