@@ -22,6 +22,7 @@ from packaging import version
 
 from ..utils import deprecate, is_transformers_available, logging
 from .single_file_utils import (
+    SingleFileComponentError,
     _is_model_weights_in_cached_folder,
     _legacy_load_clip_tokenizer,
     _legacy_load_safety_checker,
@@ -53,7 +54,6 @@ def load_single_file_sub_model(
     pipelines,
     is_pipeline_module,
     cached_model_config_path,
-    default_pretrained_model_config_name=None,
     original_config=None,
     local_files_only=False,
     torch_dtype=None,
@@ -153,26 +153,8 @@ def load_single_file_sub_model(
 
         if is_diffusers_model or is_transformers_model:
             if not _is_model_weights_in_cached_folder(cached_model_config_path, name):
-                if os.isdir(default_pretrained_model_config_name):
-                    pretrained_model_name_or_path = fetch_diffusers_config(checkpoint)["pretrained_model_name_or_path"]
-                else:
-                    pretrained_model_name_or_path = default_pretrained_model_config_name
-
-                logger.warning(
-                    (
-                        f"Pipeline component {name}'s weights do not appear to be included in the checkpoint "
-                        f"or {class_obj.__name__} does not currently support single file loading.\n"
-                        "Attempting to load the component using `from_pretrained` and inferred model repository:\n"
-                        f"{pretrained_model_name_or_path}."
-                    )
-                )
-
-                # download the model weights if they are not in the cached path
-                loading_kwargs.update(
-                    {
-                        "pretrained_model_name_or_path": pretrained_model_name_or_path,
-                        "local_files_only": False,
-                    }
+                raise SingleFileComponentError(
+                    f"Failed to load {class_name}. Weights for this component appear to be missing in the checkpoint."
                 )
 
         load_method = getattr(class_obj, "from_pretrained")
@@ -505,21 +487,32 @@ class FromSingleFileMixin:
                 loaded_sub_model = passed_class_obj[name]
 
             else:
-                loaded_sub_model = load_single_file_sub_model(
-                    library_name=library_name,
-                    class_name=class_name,
-                    name=name,
-                    checkpoint=checkpoint,
-                    is_pipeline_module=is_pipeline_module,
-                    cached_model_config_path=cached_model_config_path,
-                    default_pretrained_model_config_name=default_pretrained_model_config_name,
-                    pipelines=pipelines,
-                    torch_dtype=torch_dtype,
-                    original_config=original_config,
-                    local_files_only=local_files_only,
-                    is_legacy_loading=is_legacy_loading,
-                    **kwargs,
-                )
+                try:
+                    loaded_sub_model = load_single_file_sub_model(
+                        library_name=library_name,
+                        class_name=class_name,
+                        name=name,
+                        checkpoint=checkpoint,
+                        is_pipeline_module=is_pipeline_module,
+                        cached_model_config_path=cached_model_config_path,
+                        pipelines=pipelines,
+                        torch_dtype=torch_dtype,
+                        original_config=original_config,
+                        local_files_only=local_files_only,
+                        is_legacy_loading=is_legacy_loading,
+                        **kwargs,
+                    )
+                except SingleFileComponentError as e:
+                    raise SingleFileComponentError(
+                        (
+                            f"{e.message}\n"
+                            f"Please load the component before passing it in as an argument to `from_single_file`.\n"
+                            f"\n"
+                            f"{name} = {class_name}.from_pretrained('...')\n"
+                            f"pipe = {pipeline_class.__name__}.from_single_file(<checkpoint path>, {name}={name})\n"
+                            f"\n"
+                        )
+                    )
 
             init_kwargs[name] = loaded_sub_model
 

@@ -20,6 +20,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
+    SingleFileComponentError,
     convert_controlnet_checkpoint,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
@@ -258,6 +259,10 @@ class FromOriginalModelMixin:
         diffusers_format_checkpoint = checkpoint_mapping_fn(
             config=diffusers_model_config, checkpoint=checkpoint, **checkpoint_mapping_kwargs
         )
+        if not diffusers_format_checkpoint:
+            raise SingleFileComponentError(
+                f"Failed to load {class_name}. Weights for this component appear to be missing in the checkpoint."
+            )
 
         ctx = init_empty_weights if is_accelerate_available() else nullcontext
         with ctx():

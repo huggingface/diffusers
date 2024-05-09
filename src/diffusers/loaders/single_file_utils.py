@@ -249,6 +249,12 @@ LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
 VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
 
 
+class SingleFileComponentError(Exception):
+    def __init__(self, message=None):
+        self.message = message
+        super().__init__(self.message)
+
+
 def is_valid_url(url):
     result = urlparse(url)
     if result.scheme and result.netloc:
