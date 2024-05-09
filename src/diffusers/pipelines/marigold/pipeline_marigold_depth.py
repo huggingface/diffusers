@@ -737,7 +737,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return out
 
-    @torch.no_grad()
     def process_image(
         self,
         input_image: Union[torch.Tensor, np.ndarray, Image.Image],
@@ -832,7 +831,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return out
 
-    @torch.no_grad()
     def prepare_latent(
         self,
         image_latent: torch.FloatTensor,
@@ -867,7 +865,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return latent
 
-    @torch.no_grad()
     def denoise_prediction_batched(
         self,
         image_latent: torch.FloatTensor,
@@ -892,7 +889,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return out  # [E,4,h,w]
 
-    @torch.no_grad()
     def denoise_prediction(
         self,
         image_latent: torch.FloatTensor,
@@ -922,7 +918,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return pred_latent  # [B,4,h,w]
 
-    @torch.no_grad()
     def decode_prediction_batched(
         self,
         pred_latent: torch.FloatTensor,
@@ -942,7 +937,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return out  # [E,1,H,W]
 
-    @torch.no_grad()
     def decode_prediction(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
         assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.latent_space_size  # [B,4,h,w]
 
@@ -954,7 +948,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return prediction  # [B,1,H,W]
 
-    @torch.no_grad()
     def decode_image(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
         assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.latent_space_size  # [B,4,h,w]
 
@@ -964,7 +957,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return prediction  # [B,3,H,W]
 
-    @torch.no_grad()
     def encode_prediction(self, prediction: torch.FloatTensor, check_input: bool = True) -> torch.FloatTensor:
         assert torch.is_tensor(prediction) and torch.is_floating_point(prediction)
         assert prediction.dim() == 4 and prediction.shape[1] == 1  # [B,1,H,W]
@@ -984,7 +976,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return latent  # [B,4,h,w]
 
-    @torch.no_grad()
     def encode_image(self, image: torch.FloatTensor) -> torch.FloatTensor:
         assert image.dim() == 4 and image.shape[1] == 3  # [B,3,H,W]
 
@@ -995,7 +986,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return latent  # [B,4,h,w]
 
-    @torch.no_grad()
     def encode_empty_text(self) -> None:
         prompt = ""
         text_inputs = self.tokenizer(
