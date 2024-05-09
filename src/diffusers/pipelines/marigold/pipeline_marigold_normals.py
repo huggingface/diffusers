@@ -170,15 +170,6 @@ def check_image_values_range(image: torch.FloatTensor) -> None:
         )
 
 
-def validate_vae(vae: torch.nn.Module) -> None:
-    if len(vae.config.down_block_types) != 4 or len(vae.config.up_block_types) != 4:
-        raise ValueError(f"Unexpected VAE down_block_types or up_block_types; {vae.config}")
-    if vae.config.in_channels != 3 or vae.config.out_channels != 3:
-        raise ValueError(f"Unexpected VAE input-output space size; {vae.config}")
-    if vae.config.latent_channels != 4:
-        raise ValueError(f"Unexpected VAE latent space size; {vae.config}")
-
-
 def find_batch_size(ensemble_size: int, resolution: int, dtype: torch.dtype) -> int:
     bs_search_table = [
         # tested on A100-PCIE-80GB
@@ -368,8 +359,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         use_full_z_range: bool = True,
     ):
         super().__init__()
-
-        validate_vae(vae)
 
         self.register_modules(
             unet=unet,
@@ -723,29 +712,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             out = MarigoldNormalsOutput(
                 prediction=prediction, visualization=visualization, uncertainty=uncertainty, latent=latent
             )
-
-        config = dict(  # noqa: C408
-            scheduler=scheduler,
-            preset=preset,
-            denoising_steps=denoising_steps,
-            ensemble_size=ensemble_size,
-            processing_resolution=processing_resolution,
-            match_input_resolution=match_input_resolution,
-            resample_method_input=resample_method_input,
-            resample_method_output=resample_method_output,
-            batch_size=batch_size,
-            check_input=check_input,
-            ensembling_kwargs=ensembling_kwargs,
-            input_latent=None if input_latent is None else "provided",
-            generator=None if generator is None else "provided",
-            output_prediction_format=output_prediction_format,
-            output_visualization=output_visualization,
-            output_visualization_kwargs=output_visualization_kwargs,
-            output_uncertainty=output_uncertainty,
-            output_latent=output_latent,
-        )
-        out.config = config
-        logger.info(json.dumps(config, indent=2))
 
         return out
 
