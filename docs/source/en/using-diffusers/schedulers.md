@@ -178,7 +178,7 @@ print(sampling_schedule)
 [999, 845, 730, 587, 443, 310, 193, 116, 53, 13]
 ```
 
-You can then use the custom timestep schedule to generate images.
+You can then create a pipeline and pass this custom timestep schedule to it as `timesteps`.
 
 ```python
 pipe = StableDiffusionXLPipeline.from_pretrained(
@@ -196,13 +196,11 @@ generator = torch.Generator(device="cpu").manual_seed(2487854446)
 image = pipe(
     prompt=prompt,
     negative_prompt="",
-    guidance_scale=7.5,
-    num_inference_steps=10,
     generator=generator,
     timesteps=sampling_schedule,
 ).images[0]
 ```
-The quality is better than the default linear timestep schedule for the same number of steps and is similar to the default timestep scheduler when running for 25 steps.
+The generated image has better quality than the default linear timestep schedule for the same number of steps, and it is similar to the default timestep scheduler when running for 25 steps.
 
 <div class="flex gap-4">
   <div>
