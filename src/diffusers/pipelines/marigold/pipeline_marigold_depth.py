@@ -16,7 +16,6 @@
 # More information and citation instructions are available on the
 # Marigold project website: https://marigoldmonodepth.github.io
 # --------------------------------------------------------------------------
-import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -39,7 +38,6 @@ from ...schedulers import (
 )
 from ...utils import (
     BaseOutput,
-    deprecate,
     logging,
     replace_example_docstring,
 )
@@ -61,7 +59,7 @@ Examples:
 >>> pipe = pipe.to("cuda")
 
 >>> image = Image.open(requests.get("https://marigoldmonodepth.github.io/images/einstein.jpg", stream=True).raw)
->>> depth = pipe(image, preset="fast", output_visualization=True)
+>>> depth = pipe(image, output_visualization=True)
 
 >>> depth.visualization.save("einstein_depth.png")
 ```
@@ -432,7 +430,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         vae (`AutoencoderKL`):
             Variational Auto-Encoder (VAE) Model to encode and decode images and predictions to and from latent
             representations.
-        scheduler (`DDIMScheduler`):
+        scheduler (`DDIMScheduler` or `LCMScheduler`):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
         text_encoder (`CLIPTextModel`):
             Text-encoder, for empty text embedding.
@@ -444,9 +442,11 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         self,
         unet: UNet2DConditionModel,
         vae: AutoencoderKL,
-        scheduler: DDIMScheduler,
+        scheduler: Union[DDIMScheduler, LCMScheduler],
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
+        default_denoising_steps: Optional[int] = None,
+        default_processing_resolution: Optional[int] = None,
     ):
         super().__init__()
 
@@ -457,11 +457,16 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             text_encoder=text_encoder,
             tokenizer=tokenizer,
         )
+        self.register_to_config(
+            default_denoising_steps=default_denoising_steps,
+            default_processing_resolution=default_processing_resolution,
+        )
 
         self.latent_size_scale = 8
         self.latent_space_size = self.vae.config.latent_channels
         self.latent_scaling_factor = self.vae.config.scaling_factor
-        self.optimal_processing_resolution = 768
+        self.default_denoising_steps = default_denoising_steps
+        self.default_processing_resolution = default_processing_resolution
 
         self.empty_text_embedding = None
 
@@ -470,9 +475,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     def __call__(
         self,
         input_image: PipelineImageInput,
-        preset: Optional[str] = None,
         denoising_steps: Optional[int] = None,
-        ensemble_size: Optional[int] = None,
+        ensemble_size: int = 1,
         processing_resolution: Optional[int] = None,
         match_input_resolution: bool = True,
         resample_method_input: str = "bilinear",
@@ -496,27 +500,17 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             input_image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`,
                     or `List[torch.Tensor]`):
                 Input image or images.
-            preset (`str`, *optional*, defaults to `None`):
-                A preset string, overriding subsets of the other parameters: `denoising_steps`, `ensemble_size`, or
-                `processing_resolution`. The default value `None` results in no preset applied.
-                - `"fast"`: This setting should be used for fast inference, which may not be the most accurate. Example
-                  usage scenario: content creation, conditioning of other generative models and pipelines.
-                - `"precise"`: This setting should be used to get the most precise results. Example usage scenario: 3D
-                  reconstruction, or when `"fast"` didn't produce desired results.
-                - `"paper"`: This setting should be used to obtain results for numerical comparisons with other
-                  methods. Example usage scenario: benchmarking, quantitative comparisons, report or paper preparation.
-                  NB: Ensure reproducibility by seeding inference using the `generator` parameter.
             denoising_steps (`int`, *optional*, defaults to `None`):
                 Number of denoising diffusion steps during inference. The default value `None` results in automatic
                 selection. The number of steps should be at least 10 with the full Marigold models, and between 1 and 4
                 for Marigold-LCM models.
-            ensemble_size (`int`, *optional*, defaults to `None`):
-                Number of ensemble predictions. The default value `None` results in automatic selection. Recommended
-                values are 5 and higher for better precision, or 1 for faster inference.
+            ensemble_size (`int`, defaults to `1`):
+                Number of ensemble predictions. Recommended values are 5 and higher for better precision, or 1 for
+                faster inference.
             processing_resolution (`int`, *optional*, defaults to None):
                 Effective processing resolution. When set to `0`, matches the larger input image dimension. This
                 produces crisper predictions, but may also lead to the overall loss of global context. The default
-                value `None` results in automatic selection.
+                value `None` resolves to the optimal value from the model config.
             match_input_resolution (`bool`, *optional*, defaults to `True`):
                 When enabled, the output prediction is resized to match the input dimensions. When disabled, the longer
                 side of the output will equal to `processing_resolution`.
@@ -574,27 +568,36 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         device = self._execution_device
 
+        if denoising_steps is None:
+            denoising_steps = self.default_denoising_steps
+        if processing_resolution is None:
+            processing_resolution = self.default_processing_resolution
+        if batch_size == 0:
+            batch_size = ensemble_size
+
         # basic input checks
-        if preset not in (None, "fast", "precise", "paper"):
-            raise ValueError("`preset` can take only the following values: None, 'fast', 'precise', and 'paper'.")
-        if denoising_steps is not None and denoising_steps < 1:
+        if denoising_steps is None:
+            raise ValueError("`denoising_steps` is not specified and could not be resolved from the model config.")
+        if denoising_steps < 1:
             raise ValueError("`denoising_steps` must be positive.")
-        if ensemble_size is not None:
-            if ensemble_size < 1:
-                raise ValueError("`ensemble_size` must be positive.")
-            if ensemble_size == 2:
-                logger.warning(
-                    "`ensemble_size` == 2 results are similar to no ensembling (1); "
-                    "consider increasing the value to at least 3."
-                )
-        if processing_resolution is not None:
-            if processing_resolution < 0:
-                raise ValueError(
-                    "`processing_resolution` must be non-negative: 0 for native resolution, "
-                    "or any positive value for downsampled processing."
-                )
-            if processing_resolution % self.latent_size_scale != 0:
-                raise ValueError(f"`processing_resolution` must be a multiple of {self.latent_size_scale}.")
+        if ensemble_size < 1:
+            raise ValueError("`ensemble_size` must be positive.")
+        if ensemble_size == 2:
+            logger.warning(
+                "`ensemble_size` == 2 results are similar to no ensembling (1); "
+                "consider increasing the value to at least 3."
+            )
+        if processing_resolution is None:
+            raise ValueError(
+                "`processing_resolution` is not specified and could not be resolved from the model config."
+            )
+        if processing_resolution < 0:
+            raise ValueError(
+                "`processing_resolution` must be non-negative: 0 for native resolution, or any positive value for "
+                "downsampled processing."
+            )
+        if processing_resolution % self.latent_size_scale != 0:
+            raise ValueError(f"`processing_resolution` must be a multiple of {self.latent_size_scale}.")
         if resample_method_input not in ("nearest", "nearest-exact", "bilinear", "bicubic", "area"):
             raise ValueError(
                 "`resample_method_input` takes string values compatible with PIL library: "
@@ -615,77 +618,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             raise ValueError("`ensembling_kwargs` must be a dictionary.")
         if output_visualization_kwargs is not None and not isinstance(output_visualization_kwargs, dict):
             raise ValueError("`output_visualization_kwargs` must be a dictionary.")
-
-        def preset_override(new_denoising_steps: int, new_ensemble_size: int, new_processing_resolution: int):
-            nonlocal denoising_steps, ensemble_size, processing_resolution
-            if denoising_steps is not None:
-                logger.warning(
-                    f"Overriding `denoising_steps`={denoising_steps} due to preset {preset} with "
-                    f"value {new_denoising_steps}."
-                )
-            if ensemble_size is not None:
-                logger.warning(
-                    f"Overriding `ensemble_size`={ensemble_size} due to preset {preset} with value {new_ensemble_size}."
-                )
-            if processing_resolution is not None:
-                logger.warning(
-                    f"Overriding `processing_resolution`={processing_resolution} due to preset {preset} with "
-                    f"value {new_processing_resolution}."
-                )
-            denoising_steps = new_denoising_steps
-            ensemble_size = new_ensemble_size
-            processing_resolution = new_processing_resolution
-
-        def maybe_override(new_denoising_steps: int, new_ensemble_size: int, new_processing_resolution: int):
-            nonlocal denoising_steps, ensemble_size, processing_resolution
-            if denoising_steps is None:
-                denoising_steps = new_denoising_steps
-            if ensemble_size is None:
-                ensemble_size = new_ensemble_size
-            if processing_resolution is None:
-                processing_resolution = new_processing_resolution
-
-        # presets logic
-        if preset == "paper" and generator is None:
-            raise ValueError('`preset` value `"paper"` requires `generator` to be set to ensure reproducibility.')
-        if isinstance(self.scheduler, DDIMScheduler):
-            scheduler = "DDIMScheduler"
-            if preset == "fast":
-                preset_override(10, 1, self.optimal_processing_resolution)
-            elif preset == "precise":
-                preset_override(10, 10, self.optimal_processing_resolution)
-            elif preset == "paper":
-                preset_override(50, 10, self.optimal_processing_resolution)
-            else:
-                # closest to fast
-                maybe_override(10, 1, self.optimal_processing_resolution)
-            assert denoising_steps is not None and denoising_steps > 0
-            if denoising_steps < 10:
-                logger.warning(
-                    f"Detected `denoising_steps`={denoising_steps} with DDIMScheduler; at least 10 is recommended. "
-                    f"Consider using the LCM checkpoint for few-step inference."
-                )
-        elif isinstance(self.scheduler, LCMScheduler):
-            scheduler = "LCMScheduler"
-            if preset == "fast":
-                preset_override(1, 1, self.optimal_processing_resolution)
-            elif preset == "precise":
-                preset_override(4, 5, self.optimal_processing_resolution)
-            elif preset == "paper":
-                preset_override(4, 10, self.optimal_processing_resolution)
-            else:
-                # closest to fast
-                maybe_override(1, 1, self.optimal_processing_resolution)
-            assert denoising_steps is not None and denoising_steps > 0
-            if not (1 <= denoising_steps <= 4):
-                logger.warning(
-                    f"Detected `denoising_steps`={denoising_steps} with LCMScheduler; "
-                    f"recommended value is between 1 and 4."
-                )
-        else:
-            raise RuntimeError(f"Unsupported scheduler type: {type(self.scheduler)}.")
-        assert ensemble_size > 0
-        assert processing_resolution >= 0  # 0 for native
 
         # input checks
         input_image_stacked = False
@@ -750,9 +682,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                     )
             else:
                 raise ValueError(f"Unsupported generator type: {type(generator)}.")
-
-        if batch_size == 0:
-            batch_size = ensemble_size
 
         # Prepare the empty text embedding. In the future, remove text modules completely
         if self.empty_text_embedding is None:
