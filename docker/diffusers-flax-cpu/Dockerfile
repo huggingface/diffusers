@@ -4,11 +4,10 @@ LABEL repository="diffusers"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# RUN apt-get -y update \
-#     && apt-get install -y software-properties-common \
-#     && add-apt-repository ppa:deadsnakes/ppa
+RUN apt-get -y update \
+    && apt-get install -y software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa
 
-RUN apt-get -y update
 RUN apt install -y bash \
         build-essential \
         git \
@@ -17,7 +16,7 @@ RUN apt install -y bash \
         ca-certificates \
         libsndfile1-dev \
         libgl1 \
-        python3.8 \
+        python3.10 \
         python3-pip \
         python3.8-venv && \
     rm -rf /var/lib/apt/lists
