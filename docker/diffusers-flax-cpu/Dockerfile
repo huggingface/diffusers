@@ -16,9 +16,9 @@ RUN apt install -y bash \
         ca-certificates \
         libsndfile1-dev \
         libgl1 \
-        python3.10-full \
+        python3.10 \
         python3-pip \
-        python3.10-venv && \
+        python3-venv && \
     rm -rf /var/lib/apt/lists
 
 # make sure to use venv
