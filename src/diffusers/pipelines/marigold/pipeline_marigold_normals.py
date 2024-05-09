@@ -40,6 +40,7 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
+from ...utils.export_utils import visualize_normals
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
@@ -47,14 +48,16 @@ from ..pipeline_utils import DiffusionPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-EXAMPLE_DOC_STRING = f"""
+EXAMPLE_DOC_STRING = """
 Examples:
 ```py
 >>> import requests
 >>> from diffusers import MarigoldNormalsPipeline
 >>> from PIL import Image
 
->>> pipe = MarigoldNormalsPipeline.from_pretrained("prs-eth/marigold-normals-lcm-v0-1", variant="fp16", torch_dtype=torch.float16)
+>>> pipe = MarigoldNormalsPipeline.from_pretrained(
+...     "prs-eth/marigold-normals-lcm-v0-1", variant="fp16", torch_dtype=torch.float16
+... )
 >>> pipe = pipe.to("cuda")
 
 >>> image = Image.open(requests.get("https://marigoldmonodepth.github.io/images/einstein.jpg", stream=True).raw)
@@ -203,32 +206,6 @@ def ensemble_normals(
     closest_normals = torch.gather(normals, 0, closest_indices)
 
     return closest_normals, uncertainty  # [1,3,H,W], [1,1,H,W]
-
-
-def visualize_normals(
-    normals: torch.FloatTensor,
-    flip_x: bool = False,
-    flip_y: bool = False,
-    flip_z: bool = False,
-) -> Image.Image:
-    assert normals.dim() == 4 and normals.shape[:2] == (1, 3)
-
-    visualization = normals.squeeze(0)  # [3,H,W]
-    visualization = visualization.permute(1, 2, 0)  # [H,W,3]
-
-    if any((flip_x, flip_y, flip_z)):
-        flip_vec = [
-            (-1) ** flip_x,
-            (-1) ** flip_y,
-            (-1) ** flip_z,
-        ]
-        visualization *= torch.tensor(flip_vec, dtype=normals.dtype, device=normals.device)
-
-    visualization = (visualization + 1.0) * 0.5
-    visualization = (visualization * 255).to(dtype=torch.uint8, device="cpu").numpy()
-    visualization = Image.fromarray(visualization)
-
-    return visualization
 
 
 @dataclass
@@ -420,8 +397,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         Returns:
             `MarigoldNormalsOutput`: Output class instance for Marigold monocular normals prediction pipeline.
         """
-
-        device = self._execution_device
 
         if denoising_steps is None:
             denoising_steps = self.default_denoising_steps
@@ -670,7 +645,9 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         visualization = None
         if output_visualization:
-            visualization = visualize_normals(prediction, **(output_visualization_kwargs or {}))  # PIL.Image
+            visualization = visualize_normals(
+                prediction.squeeze(0).permute(1, 2, 0), **(output_visualization_kwargs or {})
+            )  # PIL.Image
 
         if output_prediction_format != "pt":
             assert output_prediction_format == "np"
