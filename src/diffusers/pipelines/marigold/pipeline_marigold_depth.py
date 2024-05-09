@@ -23,7 +23,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from scipy.optimize import minimize
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -41,6 +40,7 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
+from ...utils.import_utils import is_matplotlib_available, is_scipy_available
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
@@ -178,6 +178,12 @@ def ensemble_depth(
     max_res: int = 1024,
 ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
     assert depth.dim() == 4 and depth.shape[1] == 1
+
+    if is_scipy_available():
+        import scipy
+    else:
+        raise ImportError("Make sure to install scipy if you want to use ensembling.")
+
     E = depth.shape[0]
 
     if reduction not in ("mean", "median"):
@@ -233,7 +239,7 @@ def ensemble_depth(
     init_t = -init_s * init_min
     init_st = torch.cat((init_s, init_t)).cpu().numpy()
 
-    res = minimize(
+    res = scipy.optimize.minimize(
         cost_fn,
         init_st,
         method="BFGS",
@@ -266,9 +272,9 @@ def colormap(
         raise ValueError("Argument must be a numpy array or torch tensor.")
 
     def method_matplotlib(image, cmap, bytes=False):
-        try:
+        if is_matplotlib_available():
             import matplotlib
-        except ImportError:
+        else:
             return None
 
         arg_is_pt, device = torch.is_tensor(image), None
@@ -344,7 +350,7 @@ def colormap(
         out = method_matplotlib(image, cmap, bytes)
 
     if force_method == "matplotlib" and out is None:
-        raise ImportError("matplotlib is not installed")
+        raise ImportError("Make sure to install matplotlib if you want to use a color map other than 'Spectral'.")
 
     if out is None:
         out = method_custom(image, cmap, bytes)

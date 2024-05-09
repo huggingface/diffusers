@@ -295,6 +295,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
+_matplotlib_available = importlib.util.find_spec("matplotlib") is not None
+try:
+    _matplotlib_version = importlib_metadata.version("matplotlib")
+    logger.debug(f"Successfully imported matplotlib version {_matplotlib_version}")
+except importlib_metadata.PackageNotFoundError:
+    _matplotlib_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -390,6 +397,10 @@ def is_peft_available():
 
 def is_torchvision_available():
     return _torchvision_available
+
+
+def is_matplotlib_available():
+    return _matplotlib_available
 
 
 # docstyle-ignore
