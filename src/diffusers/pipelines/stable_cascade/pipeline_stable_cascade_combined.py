@@ -71,6 +71,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
     """
 
     _load_connected_pipes = True
+    _optional_components = ["prior_feature_extractor", "prior_image_encoder"]
 
     def __init__(
         self,
