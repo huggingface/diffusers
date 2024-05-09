@@ -83,8 +83,8 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
         assert numpy_cosine_similarity_distance(output_slice_1, output_slice_2) < 1e-4
 
     def test_single_file_components(self):
-        model_single_file = self.model_class.from_single_file(self.ckpt_path)
         model = self.model_class.from_pretrained(self.repo_id)
+        model_single_file = self.model_class.from_single_file(self.ckpt_path, config=self.repo_id)
 
         PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
         for param_name, param_value in model_single_file.config.items():
@@ -92,7 +92,7 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
                 continue
             assert (
                 model.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            ), f"{param_name} differs between pretrained loading and single file loading"
 
     def test_single_file_arguments(self):
         model_default = self.model_class.from_single_file(self.ckpt_path)

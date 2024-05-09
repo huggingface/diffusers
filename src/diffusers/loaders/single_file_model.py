@@ -50,7 +50,6 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "UNet2DConditionModel": {
         "checkpoint_mapping_fn": convert_ldm_unet_checkpoint,
         "config_mapping_fn": create_unet_diffusers_config_from_ldm,
-        "default_subfolder": "unet",
         "legacy_kwargs": {
             "num_in_channels": "in_channels",  # Legacy kwargs supported by `from_single_file` mapped to new args
         },
@@ -58,7 +57,6 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "AutoencoderKL": {
         "checkpoint_mapping_fn": convert_ldm_vae_checkpoint,
         "config_mapping_fn": create_vae_diffusers_config_from_ldm,
-        "default_subfolder": "vae",
     },
     "ControlNetModel": {
         "checkpoint_mapping_fn": convert_controlnet_checkpoint,
@@ -234,9 +232,6 @@ class FromOriginalModelMixin:
             subfolder = subfolder or config.pop(
                 "subfolder", None
             )  # some configs contain a subfolder key, e.g. StableCascadeUNet
-
-            if "default_subfolder" in mapping_functions and subfolder is None:
-                subfolder = mapping_functions["default_subfolder"]
 
             diffusers_model_config = cls.load_config(
                 **config,
