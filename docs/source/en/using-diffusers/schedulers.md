@@ -165,7 +165,54 @@ image
 
 Most images look very similar and are comparable in quality. Again, it often comes down to your specific use case so a good approach is to run multiple different schedulers and compare the results.
 
-### Custom Timestep Schedules
+### Flax schedulers
+
+To compare Flax schedulers, you need to additionally load the scheduler state into the model parameters. For example, let's change the default scheduler in [`FlaxStableDiffusionPipeline`] to use the super fast [`FlaxDPMSolverMultistepScheduler`].
+
+> [!WARNING]
+> The [`FlaxLMSDiscreteScheduler`] and [`FlaxDDPMScheduler`] are not compatible with the [`FlaxStableDiffusionPipeline`] yet.
+
+```py
+import jax
+import numpy as np
+from flax.jax_utils import replicate
+from flax.training.common_utils import shard
+from diffusers import FlaxStableDiffusionPipeline, FlaxDPMSolverMultistepScheduler
+
+scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    subfolder="scheduler"
+)
+pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    scheduler=scheduler,
+    revision="bf16",
+    dtype=jax.numpy.bfloat16,
+)
+params["scheduler"] = scheduler_state
+```
+
+Then you can take advantage of Flax's compatibility with TPUs to generate a number of images in parallel. You'll need to make a copy of the model parameters for each available device and then split the inputs across them to generate your desired number of images.
+
+```py
+# Generate 1 image per parallel device (8 on TPUv2-8 or TPUv3-8)
+prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
+num_samples = jax.device_count()
+prompt_ids = pipeline.prepare_inputs([prompt] * num_samples)
+
+prng_seed = jax.random.PRNGKey(0)
+num_inference_steps = 25
+
+# shard inputs and rng
+params = replicate(params)
+prng_seed = jax.random.split(prng_seed, jax.device_count())
+prompt_ids = shard(prompt_ids)
+
+images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
+images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
+```
+
+## Custom Timestep Schedules
 
 With all our schedulers, you can choose one of the popular timestep schedules using configurations such as `timestep_spacing`, `interpolation_type`, and `use_karras_sigmas`; Some schedulers also provide the flexibility to use a custom timestep schedule. You can use any list of arbitrary timesteps, we will use the AYS timestep schedule here as example. It is a set of 10-step optimized timestep schedules, released by researchers from Nvidia, that can achieve significantly better quality compared to the preset timestep schedules. You can read more about their research [here](https://research.nvidia.com/labs/toronto-ai/AlignYourSteps/). 
 
@@ -220,53 +267,6 @@ The generated image has better quality than the default linear timestep schedule
 > [!TIP]
 > 🤗 Diffusers currently only supports `timesteps` and `sigmas` for a selected list of schedulers and pipelines, but feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) if you want to extend feature to a scheduler and pipeline that does not currently support it!
 
-
-### Flax schedulers
-
-To compare Flax schedulers, you need to additionally load the scheduler state into the model parameters. For example, let's change the default scheduler in [`FlaxStableDiffusionPipeline`] to use the super fast [`FlaxDPMSolverMultistepScheduler`].
-
-> [!WARNING]
-> The [`FlaxLMSDiscreteScheduler`] and [`FlaxDDPMScheduler`] are not compatible with the [`FlaxStableDiffusionPipeline`] yet.
-
-```py
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline, FlaxDPMSolverMultistepScheduler
-
-scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
-    subfolder="scheduler"
-)
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
-    scheduler=scheduler,
-    revision="bf16",
-    dtype=jax.numpy.bfloat16,
-)
-params["scheduler"] = scheduler_state
-```
-
-Then you can take advantage of Flax's compatibility with TPUs to generate a number of images in parallel. You'll need to make a copy of the model parameters for each available device and then split the inputs across them to generate your desired number of images.
-
-```py
-# Generate 1 image per parallel device (8 on TPUv2-8 or TPUv3-8)
-prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
-num_samples = jax.device_count()
-prompt_ids = pipeline.prepare_inputs([prompt] * num_samples)
-
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 25
-
-# shard inputs and rng
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-```
 
 ## Models
 
