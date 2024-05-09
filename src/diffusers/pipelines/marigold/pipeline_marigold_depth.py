@@ -55,7 +55,7 @@ Examples:
 >>> from diffusers import MarigoldDepthPipeline
 >>> from PIL import Image
 
->>> pipe = MarigoldDepthPipeline.from_pretrained("prs-eth/marigold-depth-lcm-v1-0")
+>>> pipe = MarigoldDepthPipeline.from_pretrained("prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16)
 >>> pipe = pipe.to("cuda")
 
 >>> image = Image.open(requests.get("https://marigoldmonodepth.github.io/images/einstein.jpg", stream=True).raw)
