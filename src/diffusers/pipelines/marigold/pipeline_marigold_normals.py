@@ -297,9 +297,6 @@ class MarigoldNormalsOutput(BaseOutput):
             Uncertainty map computed from the ensemble.
         latent (`None`, `torch.FloatTensor`, or `List[torch.FloatTensor]`):
             Latent features corresponding to the ensemble predictions.
-        config (`None` or `dict`):
-            A set of configuration parameters used for this prediction. This can be useful for bookkeeping and
-            understanding the values resolved automatically, such as batch_size.
     """
 
     prediction: Union[
@@ -325,7 +322,6 @@ class MarigoldNormalsOutput(BaseOutput):
         torch.FloatTensor,
         List[torch.FloatTensor],
     ]
-    config: Dict[str, Any] = None
 
 
 class MarigoldNormalsPipeline(DiffusionPipeline):

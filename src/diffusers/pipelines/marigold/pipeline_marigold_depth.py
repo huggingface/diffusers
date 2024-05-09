@@ -439,9 +439,6 @@ class MarigoldDepthOutput(BaseOutput):
             Uncertainty map computed from the ensemble.
         latent (`None`, `torch.FloatTensor`, or `List[torch.FloatTensor]`):
             Latent features corresponding to the ensemble predictions.
-        config (`None` or `dict`):
-            A set of configuration parameters used for this prediction. This can be useful for bookkeeping and
-            understanding the values resolved automatically, such as batch_size.
     """
 
     prediction: Union[
@@ -469,7 +466,6 @@ class MarigoldDepthOutput(BaseOutput):
         torch.FloatTensor,
         List[torch.FloatTensor],
     ]
-    config: Dict[str, Any] = None
 
 
 class MarigoldDepthPipeline(DiffusionPipeline):
@@ -854,29 +850,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             out = MarigoldDepthOutput(
                 prediction=prediction, visualization=visualization, uncertainty=uncertainty, latent=latent
             )
-
-        config = dict(  # noqa: C408
-            scheduler=scheduler,
-            preset=preset,
-            denoising_steps=denoising_steps,
-            ensemble_size=ensemble_size,
-            processing_resolution=processing_resolution,
-            match_input_resolution=match_input_resolution,
-            resample_method_input=resample_method_input,
-            resample_method_output=resample_method_output,
-            batch_size=batch_size,
-            check_input=check_input,
-            ensembling_kwargs=ensembling_kwargs,
-            input_latent=None if input_latent is None else "provided",
-            generator=None if generator is None else "provided",
-            output_prediction_format=output_prediction_format,
-            output_visualization=output_visualization,
-            output_visualization_kwargs=output_visualization_kwargs,
-            output_uncertainty=output_uncertainty,
-            output_latent=output_latent,
-        )
-        out.config = config
-        logger.info(json.dumps(config, indent=2))
 
         return out
 
