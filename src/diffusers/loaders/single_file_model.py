@@ -50,6 +50,7 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "UNet2DConditionModel": {
         "checkpoint_mapping_fn": convert_ldm_unet_checkpoint,
         "config_mapping_fn": create_unet_diffusers_config_from_ldm,
+        "default_subfolder": "unet",
         "legacy_kwargs": {
             "num_in_channels": "in_channels",  # Legacy kwargs supported by `from_single_file` mapped to new args
         },
@@ -57,6 +58,7 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "AutoencoderKL": {
         "checkpoint_mapping_fn": convert_ldm_vae_checkpoint,
         "config_mapping_fn": create_vae_diffusers_config_from_ldm,
+        "default_subfolder": "vae",
     },
     "ControlNetModel": {
         "checkpoint_mapping_fn": convert_controlnet_checkpoint,
@@ -217,7 +219,7 @@ class FromOriginalModelMixin:
         else:
             if config:
                 if isinstance(config, str):
-                    config = {"pretrained_model_name_or_path": config}
+                    default_pretrained_model_config_name = config
                 else:
                     raise ValueError(
                         (
@@ -228,13 +230,17 @@ class FromOriginalModelMixin:
 
             else:
                 config = fetch_diffusers_config(checkpoint)
+                default_pretrained_model_config_name = config["pretrained_model_name_or_path"]
 
-            subfolder = subfolder or config.pop(
-                "subfolder", None
-            )  # some configs contain a subfolder key, e.g. StableCascadeUNet
+                if "default_subfolder" in mapping_functions:
+                    subfolder = mapping_functions["default_subfolder"]
+
+                subfolder = subfolder or config.pop(
+                    "subfolder", None
+                )  # some configs contain a subfolder key, e.g. StableCascadeUNet
 
             diffusers_model_config = cls.load_config(
-                **config,
+                pretrained_model_name_or_path=default_pretrained_model_config_name,
                 subfolder=subfolder,
                 local_files_only=local_files_only,
             )

@@ -65,7 +65,7 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
 
     def test_single_file_inference_same_as_pretrained(self):
         model_1 = self.model_class.from_pretrained(self.repo_id).to(torch_device)
-        model_2 = self.model_class.from_single_file(self.ckpt_path).to(torch_device)
+        model_2 = self.model_class.from_single_file(self.ckpt_path, config=self.repo_id).to(torch_device)
 
         image = self.get_sd_image(33)
 
@@ -95,18 +95,19 @@ class AutoencoderKLSingleFileTests(unittest.TestCase):
             ), f"{param_name} differs between pretrained loading and single file loading"
 
     def test_single_file_arguments(self):
-        model_default = self.model_class.from_single_file(self.ckpt_path)
+        model_default = self.model_class.from_single_file(self.ckpt_path, config=self.repo_id)
 
         assert model_default.config.scaling_factor == 0.18215
-        assert model_default.config.sample_size == 512
+        assert model_default.config.sample_size == 256
         assert model_default.dtype == torch.float32
 
         scaling_factor = 2.0
-        sample_size = 256
+        sample_size = 512
         torch_dtype = torch.float16
 
         model = self.model_class.from_single_file(
             self.ckpt_path,
+            config=self.repo_id,
             sample_size=sample_size,
             scaling_factor=scaling_factor,
             torch_dtype=torch_dtype,
