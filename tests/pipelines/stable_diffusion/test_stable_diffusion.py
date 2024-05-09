@@ -1295,8 +1295,8 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
 
     def test_download_from_hub(self):
         ckpt_paths = [
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
-            "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix_base.ckpt",
+            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
+            "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix.safetensors",
         ]
 
         for ckpt_path in ckpt_paths:
@@ -1309,7 +1309,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         assert image_out.shape == (512, 512, 3)
 
     def test_download_local(self):
-        ckpt_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.ckpt")
+        ckpt_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.safetensors")
         config_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-inference.yaml")
 
         pipe = StableDiffusionPipeline.from_single_file(
@@ -1323,7 +1323,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         assert image_out.shape == (512, 512, 3)
 
     def test_download_ckpt_diff_format_is_same(self):
-        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
+        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
 
         sf_pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
         sf_pipe.scheduler = DDIMScheduler.from_config(sf_pipe.scheduler.config)
@@ -1348,7 +1348,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
     def test_single_file_component_configs(self):
         pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 
-        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
+        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
         single_file_pipe = StableDiffusionPipeline.from_single_file(ckpt_path, load_safety_checker=True)
 
         for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():

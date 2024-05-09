@@ -55,3 +55,6 @@ An attention processor is a class for applying different types of attention mech
 
 ## XFormersAttnProcessor
 [[autodoc]] models.attention_processor.XFormersAttnProcessor
+
+## AttnProcessorNPU
+[[autodoc]] models.attention_processor.AttnProcessorNPU
