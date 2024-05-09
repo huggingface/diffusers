@@ -165,6 +165,60 @@ image
 
 Most images look very similar and are comparable in quality. Again, it often comes down to your specific use case so a good approach is to run multiple different schedulers and compare the results.
 
+### Custom Timestep Schedules
+
+Our schedulers allow you to choose one of the popular timestep schedules using configurations such as `timestep_spacing`, `interpolation_type`, and `use_karras_sigmas`; you can also use custom timestep schedules. For example, researchers from Navidia shared a set of 10-step optimized timestep schedules that can achieve significantly better quality compared with the preset timestep schedules. You can read more about their research [here](https://research.nvidia.com/labs/toronto-ai/AlignYourSteps/). These optimized timestep schedules are called AYS schedules, and they are available in diffusers. For example, we can get the SDXL AYS schedule with the code below:
+
+```python
+from diffusers.schedulers import AysSchedules
+sampling_schedule = AysSchedules["StableDiffusionXLTimesteps"]
+print(sampling_schedule)
+```
+```
+[999, 845, 730, 587, 443, 310, 193, 116, 53, 13]
+```
+
+You can then use the custom timestep schedule to generate images.
+
+```python
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "SG161222/RealVisXL_V4.0",
+    torch_dtype=torch.float16,
+    variant="fp16",
+).to("cuda")
+
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, algorithm_type="sde-dpmsolver++")
+
+prompt = "A cinematic shot of a cute little rabbit wearing a jacket and doing a thumbs up"
+
+generator = torch.Generator(device="cpu").manual_seed(2487854446)
+
+image = pipe(
+    prompt=prompt,
+    negative_prompt="",
+    guidance_scale=7.5,
+    num_inference_steps=10,
+    generator=generator,
+    timesteps=sampling_schedule,
+).images[0]
+```
+The quality is better than the default linear timestep schedule for the same number of steps and is similar to the default timestep scheduler when running for 25 steps.
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/10.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">AYS timestep schedule 10 steps</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/10.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Linearly-spaced timestep schedule 10 steps</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/10.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Linearly-spaced timestep schedule 25 steps</figcaption>
+  </div>
+</div>
+
 ### Flax schedulers
 
 To compare Flax schedulers, you need to additionally load the scheduler state into the model parameters. For example, let's change the default scheduler in [`FlaxStableDiffusionPipeline`] to use the super fast [`FlaxDPMSolverMultistepScheduler`].
