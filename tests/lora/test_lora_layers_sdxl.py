@@ -248,6 +248,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         image = pipe(
             "masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5
         ).images[0]
+        image.save("/root/diffusers/sdxl_lcm_lora.png")
 
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
