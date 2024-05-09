@@ -92,7 +92,6 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio_slice = audio[0, -3:, -3:]
 
         assert audio.shape == (1, 2, components["unet"].sample_size)
-        print(", ".join([str(round(x, 4)) for x in audio_slice.flatten().tolist()]))
 
         expected_slice = np.array([-0.0137, 0.9542, 1.0000, 1.0000, -1.0000, -1.0000])
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2
