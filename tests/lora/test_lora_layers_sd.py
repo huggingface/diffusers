@@ -192,7 +192,6 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
         for name, param in pipe.unet.named_parameters():
             if "lora_" in name:
-                print(f"{param.device=}")
                 self.assertNotEqual(param.device, torch.device("cpu"))
 
         for name, param in pipe.text_encoder.named_parameters():
