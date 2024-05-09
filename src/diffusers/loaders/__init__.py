@@ -54,9 +54,7 @@ if is_transformers_available():
 _import_structure = {}
 
 if is_torch_available():
-    _import_structure["autoencoder"] = ["FromOriginalVAEMixin"]
-
-    _import_structure["controlnet"] = ["FromOriginalControlNetMixin"]
+    _import_structure["single_file_model"] = ["FromOriginalModelMixin"]
     _import_structure["unet"] = ["UNet2DConditionLoadersMixin"]
     _import_structure["utils"] = ["AttnProcsLayers"]
     if is_transformers_available():
@@ -70,8 +68,7 @@ _import_structure["peft"] = ["PeftAdapterMixin"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
-        from .autoencoder import FromOriginalVAEMixin
-        from .controlnet import FromOriginalControlNetMixin
+        from .single_file_model import FromOriginalModelMixin
         from .unet import UNet2DConditionLoadersMixin
         from .utils import AttnProcsLayers
 

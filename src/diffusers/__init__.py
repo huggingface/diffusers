@@ -27,6 +27,7 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
+    "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
     "schedulers": [],

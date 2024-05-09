@@ -340,6 +340,8 @@ class ConfigMixin:
 
         """
         cache_dir = kwargs.pop("cache_dir", None)
+        local_dir = kwargs.pop("local_dir", None)
+        local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
@@ -364,13 +366,13 @@ class ConfigMixin:
         if os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
         elif os.path.isdir(pretrained_model_name_or_path):
-            if os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
-                # Load from a PyTorch checkpoint
-                config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
-            elif subfolder is not None and os.path.isfile(
+            if subfolder is not None and os.path.isfile(
                 os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
             ):
                 config_file = os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
+            elif os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
+                # Load from a PyTorch checkpoint
+                config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
             else:
                 raise EnvironmentError(
                     f"Error no file named {cls.config_name} found in directory {pretrained_model_name_or_path}."
@@ -390,6 +392,8 @@ class ConfigMixin:
                     user_agent=user_agent,
                     subfolder=subfolder,
                     revision=revision,
+                    local_dir=local_dir,
+                    local_dir_use_symlinks=local_dir_use_symlinks,
                 )
             except RepositoryNotFoundError:
                 raise EnvironmentError(
