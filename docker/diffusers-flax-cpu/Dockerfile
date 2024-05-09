@@ -18,6 +18,7 @@ RUN apt install -y bash \
         libgl1 \
         python3.10 \
         python3-pip \
+        python3-virtualenv \
         python3.10-venv && \
     rm -rf /var/lib/apt/lists
 
