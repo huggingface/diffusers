@@ -170,55 +170,6 @@ def check_image_values_range(image: torch.FloatTensor) -> None:
         )
 
 
-def find_batch_size(ensemble_size: int, resolution: int, dtype: torch.dtype) -> int:
-    bs_search_table = [
-        # tested on A100-PCIE-80GB
-        {"res": 768, "total_vram": 79, "bs": 36, "dtype": torch.float32},
-        {"res": 1024, "total_vram": 79, "bs": 20, "dtype": torch.float32},
-        # tested on A100-PCIE-40GB
-        {"res": 768, "total_vram": 39, "bs": 18, "dtype": torch.float32},
-        {"res": 1024, "total_vram": 39, "bs": 10, "dtype": torch.float32},
-        {"res": 768, "total_vram": 39, "bs": 30, "dtype": torch.float16},
-        {"res": 1024, "total_vram": 39, "bs": 15, "dtype": torch.float16},
-        # tested on RTX3090, RTX4090
-        {"res": 512, "total_vram": 23, "bs": 22, "dtype": torch.float32},
-        {"res": 768, "total_vram": 23, "bs": 9, "dtype": torch.float32},
-        {"res": 1024, "total_vram": 23, "bs": 5, "dtype": torch.float32},
-        {"res": 512, "total_vram": 23, "bs": 40, "dtype": torch.float16},
-        {"res": 768, "total_vram": 23, "bs": 18, "dtype": torch.float16},
-        {"res": 1024, "total_vram": 23, "bs": 10, "dtype": torch.float16},
-        # tested on GTX1080Ti
-        {"res": 512, "total_vram": 10, "bs": 6, "dtype": torch.float32},
-        {"res": 768, "total_vram": 10, "bs": 2, "dtype": torch.float32},
-        {"res": 1024, "total_vram": 10, "bs": 1, "dtype": torch.float32},
-        {"res": 512, "total_vram": 10, "bs": 10, "dtype": torch.float16},
-        {"res": 768, "total_vram": 10, "bs": 5, "dtype": torch.float16},
-        {"res": 1024, "total_vram": 10, "bs": 3, "dtype": torch.float16},
-    ]
-
-    if not torch.cuda.is_available():
-        logger.info("No GPU available, using batch_size=1")
-        return 1
-
-    total_vram = torch.cuda.mem_get_info()[1] / 1024.0**3
-    filtered_bs_search_table = [s for s in bs_search_table if s["dtype"] == dtype]
-    for settings in sorted(
-        filtered_bs_search_table,
-        key=lambda k: (k["res"], -k["total_vram"]),
-    ):
-        if resolution <= settings["res"] and total_vram >= settings["total_vram"]:
-            bs = settings["bs"]
-            if bs > ensemble_size:
-                bs = ensemble_size
-            elif (ensemble_size + 1) // 2 < bs < ensemble_size:
-                bs = (ensemble_size + 1) // 2
-            return bs
-
-    logger.info("Falling back to batch_size=1; feel free to set it manually to a higher value.")
-
-    return 1
-
-
 def ensemble_depth(
     depth: torch.FloatTensor,
     output_uncertainty: bool,
@@ -576,7 +527,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 Resampling method used to resize output predictions to match the input resolution. The accepted values
                 are `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
             batch_size (`int`, *optional*, defaults to `0`):
-                Inference batch size. Smaller values save memory. The default value `0` results in automatic selection.
+                Inference batch size. Smaller values save memory. The default value `0` sets it to the value of
+                `ensemble_size`.
             check_input (`bool`, defaults to `False`):
                 Extra steps to validate compatibility of the inputs with the model.
             ensembling_kwargs (`dict`, *optional*, defaults to `None`)
@@ -654,7 +606,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 "nearest, nearest-exact, bilinear, bicubic, area."
             )
         if batch_size < 0:
-            raise ValueError("`batch_size` must be non-negative: 0 for auto-detection or any positive value.")
+            raise ValueError("`batch_size` must be non-negative: 0 sets it equal to `ensemble_size`.")
         if output_prediction_format not in ["pt", "np", "pil"]:
             raise ValueError("`output_prediction_format` must be one of `pt`, `np`, or `pil`.")
         if input_latent is not None and generator is not None:
@@ -799,6 +751,9 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             else:
                 raise ValueError(f"Unsupported generator type: {type(generator)}.")
 
+        if batch_size == 0:
+            batch_size = ensemble_size
+
         # Prepare the empty text embedding. In the future, remove text modules completely
         if self.empty_text_embedding is None:
             self.encode_empty_text()
@@ -898,9 +853,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             image = resize_to_max_edge(image, processing_resolution, resample_method_input)  # [1,3,PH,PW]
 
         image, padding = pad_image(image, self.latent_size_scale)  # [1,3,PPH,PPW]
-
-        if batch_size == 0:
-            batch_size = find_batch_size(ensemble_size, max(image.shape[-2:]), self.dtype)
 
         # Model invocation: self.vae.encoder, self.vae.quant_conv
         image_latent = self.encode_image(image)  # [1,4,h,w]
