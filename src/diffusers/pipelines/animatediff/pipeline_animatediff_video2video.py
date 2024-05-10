@@ -912,11 +912,6 @@ class AnimateDiffVideoToVideoPipeline(
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
 
         # 5. Prepare latent variables
-        # video must be a list of list of images
-        # the outer list denotes having multiple videos as input, whereas inner list means the frames of the video
-        # as a list of images
-        if video and not isinstance(video[0], list):
-            video = [video]
         if latents is None:
             video = self.video_processor.preprocess_video(video, height=height, width=width)
             # Move the number of frames before the number of channels.
