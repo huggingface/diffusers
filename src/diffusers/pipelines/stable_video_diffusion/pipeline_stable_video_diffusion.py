@@ -121,6 +121,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
+
 @dataclass
 class StableVideoDiffusionPipelineOutput(BaseOutput):
     r"""
