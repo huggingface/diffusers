@@ -10,7 +10,8 @@ class PipelineCallback(ConfigMixin):
     custom callbacks and ensures that all callbacks have a consistent interface.
 
     Please implement the following:
-        `tensor_inputs`: This should return a list of tensor inputs specific to your callback. You will only be able to include
+        `tensor_inputs`: This should return a list of tensor inputs specific to your callback. You will only be able to
+        include
             variables listed in the `._callback_tensor_inputs` attribute of your pipeline class.
         `callback_fn`: This method defines the core functionality of your callback.
     """
@@ -44,8 +45,8 @@ class PipelineCallback(ConfigMixin):
 
 class MultiPipelineCallbacks:
     """
-    This class is designed to handle multiple pipeline callbacks. It accepts a list of PipelineCallback objects
-    and provides a unified interface for calling all of them.
+    This class is designed to handle multiple pipeline callbacks. It accepts a list of PipelineCallback objects and
+    provides a unified interface for calling all of them.
     """
 
     def __init__(self, callbacks: List[PipelineCallback]):
@@ -67,8 +68,8 @@ class MultiPipelineCallbacks:
 
 class SDCFGCutoffCallback(PipelineCallback):
     """
-    Callback function for Stable Diffusion Pipelines. After certain number of steps
-    (set by `cutoff_step_ratio` or `cutoff_step_index`), this callback will disable the CFG.
+    Callback function for Stable Diffusion Pipelines. After certain number of steps (set by `cutoff_step_ratio` or
+    `cutoff_step_index`), this callback will disable the CFG.
 
     Note: This callback mutates the pipeline by changing the `_guidance_scale` attribute to 0.0 after the cutoff step.
     """
@@ -96,8 +97,8 @@ class SDCFGCutoffCallback(PipelineCallback):
 
 class SDXLCFGCutoffCallback(PipelineCallback):
     """
-    Callback function for Stable Diffusion XL Pipelines. After certain number of steps
-    (set by `cutoff_step_ratio` or `cutoff_step_index`), this callback will disable the CFG.
+    Callback function for Stable Diffusion XL Pipelines. After certain number of steps (set by `cutoff_step_ratio` or
+    `cutoff_step_index`), this callback will disable the CFG.
 
     Note: This callback mutates the pipeline by changing the `_guidance_scale` attribute to 0.0 after the cutoff step.
     """
@@ -133,8 +134,8 @@ class SDXLCFGCutoffCallback(PipelineCallback):
 
 class IPAdapterScaleCutoffCallback(PipelineCallback):
     """
-    Callback function for any pipeline that inherits `IPAdapterMixin`. After certain number of steps
-    (set by `cutoff_step_ratio` or `cutoff_step_index`), this callback will set the IP Adapter scale to `0.0`.
+    Callback function for any pipeline that inherits `IPAdapterMixin`. After certain number of steps (set by
+    `cutoff_step_ratio` or `cutoff_step_index`), this callback will set the IP Adapter scale to `0.0`.
 
     Note: This callback mutates the IP Adapter attention processors by setting the scale to 0.0 after the cutoff step.
     """
