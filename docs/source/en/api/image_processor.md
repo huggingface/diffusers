@@ -25,3 +25,11 @@ All pipelines with [`VaeImageProcessor`] accept PIL Image, PyTorch tensor, or Nu
 The [`VaeImageProcessorLDM3D`] accepts RGB and depth inputs and returns RGB and depth outputs.
 
 [[autodoc]] image_processor.VaeImageProcessorLDM3D
+
+## PixArtImageProcessor
+
+[[autodoc]] image_processor.PixArtImageProcessor
+
+## IPAdapterMaskProcessor
+
+[[autodoc]] image_processor.IPAdapterMaskProcessor
