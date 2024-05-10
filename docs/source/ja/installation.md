@@ -106,7 +106,7 @@ pip install -e ".[flax]"
 
 これらのコマンドは、リポジトリをクローンしたフォルダと Python のライブラリパスをリンクします。
 Python は通常のライブラリパスに加えて、クローンしたフォルダの中を探すようになります。
-例えば、Python パッケージが通常 `~/anaconda3/envs/main/lib/python3.8/site-packages/` にインストールされている場合、Python はクローンした `~/diffusers/` フォルダも同様に参照します。
+例えば、Python パッケージが通常 `~/anaconda3/envs/main/lib/python3.10/site-packages/` にインストールされている場合、Python はクローンした `~/diffusers/` フォルダも同様に参照します。
 
 <Tip warning={true}>
 

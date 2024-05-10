@@ -30,8 +30,7 @@ import re
 REPO_PATH = "."
 
 
-def check_attention_processor_classes():
-    print(os.path.join(REPO_PATH, "docs/source/en/api/attnprocessor.md"))
+def check_attention_processors():
     with open(os.path.join(REPO_PATH, "docs/source/en/api/attnprocessor.md"), "r") as f:
         doctext = f.read()
         matches = re.findall(r"\[\[autodoc\]\]\s([^\n]+)", doctext)
@@ -48,6 +47,21 @@ def check_attention_processor_classes():
                 f"{processor} should be in listed in the attention processor documentation but is not. Please update the documentation."
             )
 
+def check_image_processors():
+    with open(os.path.join(REPO_PATH, "docs/source/en/api/image_processor.md"), "r") as f:
+        doctext = f.read()
+        matches = re.findall(r"\[\[autodoc\]\]\s([^\n]+)", doctext)
+        documented_image_processors = [match.split(".")[-1] for match in matches]
+
+    with open(os.path.join(REPO_PATH, "src/diffusers/image_processor.py"), "r") as f:
+        doctext = f.read()
+        processor_classes = re.findall(r"class\s+(\w+Processor(?:\d*_?\d*))[(:]", doctext)
+
+    for processor in processor_classes:
+        if processor not in documented_image_processors:
+            raise ValueError(
+                f"{processor} should be in listed in the image processor documentation but is not. Please update the documentation."
+            )
 
 def check_activations():
     with open(os.path.join(REPO_PATH, "docs/source/en/api/activations.md"), "r") as f:
@@ -67,7 +81,6 @@ def check_activations():
 
 
 def check_normalizations():
-    print(os.path.join(REPO_PATH, "docs/source/en/api/normalization.md"))
     with open(os.path.join(REPO_PATH, "docs/source/en/api/normalization.md"), "r") as f:
         doctext = f.read()
         matches = re.findall(r"\[\[autodoc\]\]\s([^\n]+)", doctext)
@@ -85,6 +98,7 @@ def check_normalizations():
 
 
 if __name__ == "__main__":
-    check_attention_processor_classes()
+    check_attention_processors()
+    # check_image_processors()
     check_activations()
     check_normalizations()
