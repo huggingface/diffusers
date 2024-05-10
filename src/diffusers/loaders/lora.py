@@ -1294,7 +1294,7 @@ class LoraLoaderMixin:
                         text_encoder_module.lora_B[adapter_name].to(device)
                         # this is a param, not a module, so device placement is not in-place -> re-assign
                         if (
-                            hasattr(text_encoder, "lora_magnitude_vector")
+                            hasattr(text_encoder_module, "lora_magnitude_vector")
                             and text_encoder_module.lora_magnitude_vector is not None
                         ):
                             text_encoder_module.lora_magnitude_vector[
