@@ -31,9 +31,14 @@ from huggingface_hub.utils import is_jinja_available
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
-from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0, XFormersAttnProcessor
+from diffusers.models.attention_processor import (
+    AttnProcessor,
+    AttnProcessor2_0,
+    AttnProcessorNPU,
+    XFormersAttnProcessor,
+)
 from diffusers.training_utils import EMAModel
-from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, is_xformers_available, logging
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, is_torch_npu_available, is_xformers_available, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     get_python_version,
@@ -139,7 +144,6 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             cache_requests = [r.method for r in m.request_history]
-            print(f"{cache_requests=}")
             assert (
                 "HEAD" == cache_requests[0] and len(cache_requests) == 2
             ), "We should call only `model_info` to check for commit hash and  knowing if shard index is present."
@@ -303,6 +307,53 @@ class ModelTesterMixin:
             model.does_not_exist
 
         assert str(error.exception) == f"'{type(model).__name__}' object has no attribute 'does_not_exist'"
+
+    @unittest.skipIf(
+        torch_device != "npu" or not is_torch_npu_available(),
+        reason="torch npu flash attention is only available with NPU and `torch_npu` installed",
+    )
+    def test_set_torch_npu_flash_attn_processor_determinism(self):
+        torch.use_deterministic_algorithms(False)
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        if not hasattr(model, "set_attn_processor"):
+            # If not has `set_attn_processor`, skip test
+            return
+
+        model.set_default_attn_processor()
+        assert all(type(proc) == AttnProcessorNPU for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output = model(**self.inputs_dict(0))[0]
+            else:
+                output = model(**inputs_dict)[0]
+
+        model.enable_npu_flash_attention()
+        assert all(type(proc) == AttnProcessorNPU for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_2 = model(**self.inputs_dict(0))[0]
+            else:
+                output_2 = model(**inputs_dict)[0]
+
+        model.set_attn_processor(AttnProcessorNPU())
+        assert all(type(proc) == AttnProcessorNPU for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_3 = model(**self.inputs_dict(0))[0]
+            else:
+                output_3 = model(**inputs_dict)[0]
+
+        torch.use_deterministic_algorithms(True)
+
+        assert torch.allclose(output, output_2, atol=self.base_precision)
+        assert torch.allclose(output, output_3, atol=self.base_precision)
+        assert torch.allclose(output_2, output_3, atol=self.base_precision)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -695,6 +746,9 @@ class ModelTesterMixin:
     def test_cpu_offload(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
+        if model._no_split_modules is None:
+            return
+
         model = model.to(torch_device)
 
         torch.manual_seed(0)
@@ -722,6 +776,9 @@ class ModelTesterMixin:
     def test_disk_offload_without_safetensors(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
+        if model._no_split_modules is None:
+            return
+
         model = model.to(torch_device)
 
         torch.manual_seed(0)
@@ -732,12 +789,12 @@ class ModelTesterMixin:
             model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
 
             with self.assertRaises(ValueError):
-                max_size = int(self.model_split_percents[1] * model_size)
+                max_size = int(self.model_split_percents[0] * model_size)
                 max_memory = {0: max_size, "cpu": max_size}
                 # This errors out because it's missing an offload folder
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
 
-            max_size = int(self.model_split_percents[1] * model_size)
+            max_size = int(self.model_split_percents[0] * model_size)
             max_memory = {0: max_size, "cpu": max_size}
             new_model = self.model_class.from_pretrained(
                 tmp_dir, device_map="auto", max_memory=max_memory, offload_folder=tmp_dir
@@ -753,6 +810,9 @@ class ModelTesterMixin:
     def test_disk_offload_with_safetensors(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
+        if model._no_split_modules is None:
+            return
+
         model = model.to(torch_device)
 
         torch.manual_seed(0)
@@ -762,7 +822,7 @@ class ModelTesterMixin:
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
-            max_size = int(self.model_split_percents[1] * model_size)
+            max_size = int(self.model_split_percents[0] * model_size)
             max_memory = {0: max_size, "cpu": max_size}
             new_model = self.model_class.from_pretrained(
                 tmp_dir, device_map="auto", offload_folder=tmp_dir, max_memory=max_memory
@@ -778,6 +838,9 @@ class ModelTesterMixin:
     def test_model_parallelism(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
+        if model._no_split_modules is None:
+            return
+
         model = model.to(torch_device)
 
         torch.manual_seed(0)
