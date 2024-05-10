@@ -63,12 +63,12 @@ class SchedulerOutput(BaseOutput):
     Base class for the output of a scheduler's `step` function.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
     """
 
-    prev_sample: torch.FloatTensor
+    prev_sample: torch.Tensor
 
 
 class SchedulerMixin(PushToHubMixin):
