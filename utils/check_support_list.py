@@ -99,6 +99,6 @@ def check_normalizations():
 
 if __name__ == "__main__":
     check_attention_processors()
-    # check_image_processors()
+    check_image_processors()
     check_activations()
     check_normalizations()
