@@ -102,7 +102,7 @@ pip install -e ".[flax]"
 
 Esses comandos irá linkar a pasta que você clonou o repositório e os caminhos das suas bibliotecas Python.
 Python então irá procurar dentro da pasta que você clonou além dos caminhos normais das bibliotecas.
-Por exemplo, se o pacote python for tipicamente instalado no `~/anaconda3/envs/main/lib/python3.8/site-packages/`, o Python também irá procurar na pasta `~/diffusers/` que você clonou.
+Por exemplo, se o pacote python for tipicamente instalado no `~/anaconda3/envs/main/lib/python3.10/site-packages/`, o Python também irá procurar na pasta `~/diffusers/` que você clonou.
 
 <Tip warning={true}>
 
