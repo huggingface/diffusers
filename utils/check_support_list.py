@@ -47,6 +47,7 @@ def check_attention_processors():
                 f"{processor} should be in listed in the attention processor documentation but is not. Please update the documentation."
             )
 
+
 def check_image_processors():
     with open(os.path.join(REPO_PATH, "docs/source/en/api/image_processor.md"), "r") as f:
         doctext = f.read()
@@ -62,6 +63,7 @@ def check_image_processors():
             raise ValueError(
                 f"{processor} should be in listed in the image processor documentation but is not. Please update the documentation."
             )
+
 
 def check_activations():
     with open(os.path.join(REPO_PATH, "docs/source/en/api/activations.md"), "r") as f:
