@@ -439,6 +439,8 @@
       title: Utilities
     - local: api/image_processor
       title: VAE Image Processor
+    - local: api/video_processor
+      title: Video Processor
     title: Internal classes
     isExpanded: false
   title: API
