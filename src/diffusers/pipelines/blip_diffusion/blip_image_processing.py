@@ -298,7 +298,7 @@ class BlipImageProcessor(BaseImageProcessor):
         return encoded_outputs
 
     # Follows diffusers.VaeImageProcessor.postprocess
-    def postprocess(self, sample: torch.FloatTensor, output_type: str = "pil"):
+    def postprocess(self, sample: torch.Tensor, output_type: str = "pil"):
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(
                 f"output_type={output_type} is not supported. Make sure to choose one of ['pt', 'np', or 'pil']"

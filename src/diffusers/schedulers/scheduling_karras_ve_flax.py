@@ -176,10 +176,10 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         Args:
             state (`KarrasVeSchedulerState`): the `FlaxKarrasVeScheduler` state data class.
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            model_output (`torch.Tensor` or `np.ndarray`): direct output from learned diffusion model.
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
-            sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
+            sample_hat (`torch.Tensor` or `np.ndarray`): TODO
             return_dict (`bool`): option for returning tuple rather than FlaxKarrasVeOutput class
 
         Returns:
@@ -213,12 +213,12 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         Args:
             state (`KarrasVeSchedulerState`): the `FlaxKarrasVeScheduler` state data class.
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            model_output (`torch.Tensor` or `np.ndarray`): direct output from learned diffusion model.
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
-            sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
-            sample_prev (`torch.FloatTensor` or `np.ndarray`): TODO
-            derivative (`torch.FloatTensor` or `np.ndarray`): TODO
+            sample_hat (`torch.Tensor` or `np.ndarray`): TODO
+            sample_prev (`torch.Tensor` or `np.ndarray`): TODO
+            derivative (`torch.Tensor` or `np.ndarray`): TODO
             return_dict (`bool`): option for returning tuple rather than FlaxKarrasVeOutput class
 
         Returns:

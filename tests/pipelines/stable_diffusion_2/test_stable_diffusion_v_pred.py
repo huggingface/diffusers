@@ -475,7 +475,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_text2img_intermediate_state_v_pred(self):
         number_of_steps = 0
 
-        def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+        def test_callback_fn(step: int, timestep: int, latents: torch.Tensor) -> None:
             test_callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1

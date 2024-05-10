@@ -424,7 +424,7 @@ class TextImageProjection(nn.Module):
         self.image_embeds = nn.Linear(image_embed_dim, self.num_image_text_embeds * cross_attention_dim)
         self.text_proj = nn.Linear(text_embed_dim, cross_attention_dim)
 
-    def forward(self, text_embeds: torch.FloatTensor, image_embeds: torch.FloatTensor):
+    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
         batch_size = text_embeds.shape[0]
 
         # image
@@ -450,7 +450,7 @@ class ImageProjection(nn.Module):
         self.image_embeds = nn.Linear(image_embed_dim, self.num_image_text_embeds * cross_attention_dim)
         self.norm = nn.LayerNorm(cross_attention_dim)
 
-    def forward(self, image_embeds: torch.FloatTensor):
+    def forward(self, image_embeds: torch.Tensor):
         batch_size = image_embeds.shape[0]
 
         # image
@@ -468,7 +468,7 @@ class IPAdapterFullImageProjection(nn.Module):
         self.ff = FeedForward(image_embed_dim, cross_attention_dim, mult=1, activation_fn="gelu")
         self.norm = nn.LayerNorm(cross_attention_dim)
 
-    def forward(self, image_embeds: torch.FloatTensor):
+    def forward(self, image_embeds: torch.Tensor):
         return self.norm(self.ff(image_embeds))
 
 
@@ -482,7 +482,7 @@ class IPAdapterFaceIDImageProjection(nn.Module):
         self.ff = FeedForward(image_embed_dim, cross_attention_dim * num_tokens, mult=mult, activation_fn="gelu")
         self.norm = nn.LayerNorm(cross_attention_dim)
 
-    def forward(self, image_embeds: torch.FloatTensor):
+    def forward(self, image_embeds: torch.Tensor):
         x = self.ff(image_embeds)
         x = x.reshape(-1, self.num_tokens, self.cross_attention_dim)
         return self.norm(x)
@@ -530,7 +530,7 @@ class TextImageTimeEmbedding(nn.Module):
         self.text_norm = nn.LayerNorm(time_embed_dim)
         self.image_proj = nn.Linear(image_embed_dim, time_embed_dim)
 
-    def forward(self, text_embeds: torch.FloatTensor, image_embeds: torch.FloatTensor):
+    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
         # text
         time_text_embeds = self.text_proj(text_embeds)
         time_text_embeds = self.text_norm(time_text_embeds)
@@ -547,7 +547,7 @@ class ImageTimeEmbedding(nn.Module):
         self.image_proj = nn.Linear(image_embed_dim, time_embed_dim)
         self.image_norm = nn.LayerNorm(time_embed_dim)
 
-    def forward(self, image_embeds: torch.FloatTensor):
+    def forward(self, image_embeds: torch.Tensor):
         # image
         time_image_embeds = self.image_proj(image_embeds)
         time_image_embeds = self.image_norm(time_image_embeds)
@@ -577,7 +577,7 @@ class ImageHintTimeEmbedding(nn.Module):
             nn.Conv2d(256, 4, 3, padding=1),
         )
 
-    def forward(self, image_embeds: torch.FloatTensor, hint: torch.FloatTensor):
+    def forward(self, image_embeds: torch.Tensor, hint: torch.Tensor):
         # image
         time_image_embeds = self.image_proj(image_embeds)
         time_image_embeds = self.image_norm(time_image_embeds)
@@ -1007,7 +1007,7 @@ class MultiIPAdapterImageProjection(nn.Module):
         super().__init__()
         self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
 
-    def forward(self, image_embeds: List[torch.FloatTensor]):
+    def forward(self, image_embeds: List[torch.Tensor]):
         projected_image_embeds = []
 
         # currently, we accept `image_embeds` as

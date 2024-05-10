@@ -131,7 +131,7 @@ class UpDownBlock2d(nn.Module):
 
 @dataclass
 class StableCascadeUNetOutput(BaseOutput):
-    sample: torch.FloatTensor = None
+    sample: torch.Tensor = None
 
 
 class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):

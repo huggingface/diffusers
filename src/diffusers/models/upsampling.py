@@ -138,9 +138,7 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
-    def forward(
-        self, hidden_states: torch.FloatTensor, output_size: Optional[int] = None, *args, **kwargs
-    ) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, output_size: Optional[int] = None, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -217,12 +215,12 @@ class FirUpsample2D(nn.Module):
 
     def _upsample_2d(
         self,
-        hidden_states: torch.FloatTensor,
-        weight: Optional[torch.FloatTensor] = None,
-        kernel: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        weight: Optional[torch.Tensor] = None,
+        kernel: Optional[torch.Tensor] = None,
         factor: int = 2,
         gain: float = 1,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """Fused `upsample_2d()` followed by `Conv2d()`.
 
         Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
@@ -230,19 +228,19 @@ class FirUpsample2D(nn.Module):
         arbitrary order.
 
         Args:
-            hidden_states (`torch.FloatTensor`):
+            hidden_states (`torch.Tensor`):
                 Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-            weight (`torch.FloatTensor`, *optional*):
+            weight (`torch.Tensor`, *optional*):
                 Weight tensor of the shape `[filterH, filterW, inChannels, outChannels]`. Grouped convolution can be
                 performed by `inChannels = x.shape[0] // numGroups`.
-            kernel (`torch.FloatTensor`, *optional*):
+            kernel (`torch.Tensor`, *optional*):
                 FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
                 corresponds to nearest-neighbor upsampling.
             factor (`int`, *optional*): Integer upsampling factor (default: 2).
             gain (`float`, *optional*): Scaling factor for signal magnitude (default: 1.0).
 
         Returns:
-            output (`torch.FloatTensor`):
+            output (`torch.Tensor`):
                 Tensor of the shape `[N, C, H * factor, W * factor]` or `[N, H * factor, W * factor, C]`, and same
                 datatype as `hidden_states`.
         """
@@ -310,7 +308,7 @@ class FirUpsample2D(nn.Module):
 
         return output
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.use_conv:
             height = self._upsample_2d(hidden_states, self.Conv2d_0.weight, kernel=self.fir_kernel)
             height = height + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
@@ -401,11 +399,11 @@ def upfirdn2d_native(
 
 
 def upsample_2d(
-    hidden_states: torch.FloatTensor,
-    kernel: Optional[torch.FloatTensor] = None,
+    hidden_states: torch.Tensor,
+    kernel: Optional[torch.Tensor] = None,
     factor: int = 2,
     gain: float = 1,
-) -> torch.FloatTensor:
+) -> torch.Tensor:
     r"""Upsample2D a batch of 2D images with the given filter.
     Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and upsamples each image with the given
     filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the specified
@@ -413,9 +411,9 @@ def upsample_2d(
     a: multiple of the upsampling factor.
 
     Args:
-        hidden_states (`torch.FloatTensor`):
+        hidden_states (`torch.Tensor`):
             Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-        kernel (`torch.FloatTensor`, *optional*):
+        kernel (`torch.Tensor`, *optional*):
             FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
             corresponds to nearest-neighbor upsampling.
         factor (`int`, *optional*, default to `2`):
@@ -424,7 +422,7 @@ def upsample_2d(
             Scaling factor for signal magnitude (default: 1.0).
 
     Returns:
-        output (`torch.FloatTensor`):
+        output (`torch.Tensor`):
             Tensor of the shape `[N, C, H * factor, W * factor]`
     """
     assert isinstance(factor, int) and factor >= 1

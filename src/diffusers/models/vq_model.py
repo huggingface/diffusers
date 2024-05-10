@@ -30,11 +30,11 @@ class VQEncoderOutput(BaseOutput):
     Output of VQModel encoding method.
 
     Args:
-        latents (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        latents (`torch.Tensor` of shape `(batch_size, num_channels, height, width)`):
             The encoded output sample from the last layer of the model.
     """
 
-    latents: torch.FloatTensor
+    latents: torch.Tensor
 
 
 class VQModel(ModelMixin, ConfigMixin):
@@ -127,7 +127,7 @@ class VQModel(ModelMixin, ConfigMixin):
         )
 
     @apply_forward_hook
-    def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> VQEncoderOutput:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> VQEncoderOutput:
         h = self.encoder(x)
         h = self.quant_conv(h)
 
@@ -138,8 +138,8 @@ class VQModel(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def decode(
-        self, h: torch.FloatTensor, force_not_quantize: bool = False, return_dict: bool = True, shape=None
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+        self, h: torch.Tensor, force_not_quantize: bool = False, return_dict: bool = True, shape=None
+    ) -> Union[DecoderOutput, torch.Tensor]:
         # also go through quantization layer
         if not force_not_quantize:
             quant, _, _ = self.quantize(h)
@@ -156,13 +156,13 @@ class VQModel(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     def forward(
-        self, sample: torch.FloatTensor, return_dict: bool = True
-    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor, ...]]:
+        self, sample: torch.Tensor, return_dict: bool = True
+    ) -> Union[DecoderOutput, Tuple[torch.Tensor, ...]]:
         r"""
         The [`VQModel`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`): Input sample.
+            sample (`torch.Tensor`): Input sample.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.vq_model.VQEncoderOutput`] instead of a plain tuple.
 

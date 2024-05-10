@@ -406,7 +406,7 @@ def guidance_scale_embedding(w, embedding_dim=512, dtype=torch.float32):
             data type of the generated embeddings
 
     Returns:
-        `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
+        `torch.Tensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
     """
     assert len(w.shape) == 1
     w = w * 1000.0
