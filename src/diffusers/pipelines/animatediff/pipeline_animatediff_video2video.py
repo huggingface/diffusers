@@ -15,11 +15,10 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...image_processor import PipelineImageInput
 from ...loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -34,6 +33,7 @@ from ...schedulers import (
 )
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..free_init_utils import FreeInitMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
@@ -93,28 +93,6 @@ EXAMPLE_DOC_STRING = """
         >>> export_to_gif(frames, "animation.gif")
         ```
 """
-
-
-# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
-def tensor2vid(video: torch.Tensor, processor, output_type="np"):
-    batch_size, channels, num_frames, height, width = video.shape
-    outputs = []
-    for batch_idx in range(batch_size):
-        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-        batch_output = processor.postprocess(batch_vid, output_type)
-
-        outputs.append(batch_output)
-
-    if output_type == "np":
-        outputs = np.stack(outputs)
-
-    elif output_type == "pt":
-        outputs = torch.stack(outputs)
-
-    elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
-
-    return outputs
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -264,7 +242,7 @@ class AnimateDiffVideoToVideoPipeline(
             image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
     def encode_prompt(
@@ -650,16 +628,7 @@ class AnimateDiffVideoToVideoPipeline(
         generator,
         latents=None,
     ):
-        # video must be a list of list of images
-        # the outer list denotes having multiple videos as input, whereas inner list means the frames of the video
-        # as a list of images
-        if video and not isinstance(video[0], list):
-            video = [video]
         if latents is None:
-            video = torch.cat(
-                [self.image_processor.preprocess(vid, height=height, width=width).unsqueeze(0) for vid in video], dim=0
-            )
-            video = video.to(device=device, dtype=dtype)
             num_frames = video.shape[1]
         else:
             num_frames = latents.shape[2]
@@ -943,6 +912,11 @@ class AnimateDiffVideoToVideoPipeline(
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
 
         # 5. Prepare latent variables
+        if latents is None:
+            video = self.video_processor.preprocess_video(video, height=height, width=width)
+            # Move the number of frames before the number of channels.
+            video = video.permute(0, 2, 1, 3, 4)
+            video = video.to(device=device, dtype=prompt_embeds.dtype)
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             video=video,
@@ -1023,7 +997,7 @@ class AnimateDiffVideoToVideoPipeline(
             video = latents
         else:
             video_tensor = self.decode_latents(latents)
-            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+            video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 10. Offload all models
         self.maybe_free_model_hooks()

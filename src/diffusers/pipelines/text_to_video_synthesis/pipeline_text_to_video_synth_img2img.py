@@ -16,11 +16,9 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL.Image
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet3DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -34,6 +32,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from . import TextToVideoSDPipelineOutput
 
@@ -94,69 +93,6 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
-def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
-    batch_size, channels, num_frames, height, width = video.shape
-    outputs = []
-    for batch_idx in range(batch_size):
-        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-        batch_output = processor.postprocess(batch_vid, output_type)
-
-        outputs.append(batch_output)
-
-    if output_type == "np":
-        outputs = np.stack(outputs)
-
-    elif output_type == "pt":
-        outputs = torch.stack(outputs)
-
-    elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
-
-    return outputs
-
-
-def preprocess_video(video):
-    supported_formats = (np.ndarray, torch.Tensor, PIL.Image.Image)
-
-    if isinstance(video, supported_formats):
-        video = [video]
-    elif not (isinstance(video, list) and all(isinstance(i, supported_formats) for i in video)):
-        raise ValueError(
-            f"Input is in incorrect format: {[type(i) for i in video]}. Currently, we only support {', '.join(supported_formats)}"
-        )
-
-    if isinstance(video[0], PIL.Image.Image):
-        video = [np.array(frame) for frame in video]
-
-    if isinstance(video[0], np.ndarray):
-        video = np.concatenate(video, axis=0) if video[0].ndim == 5 else np.stack(video, axis=0)
-
-        if video.dtype == np.uint8:
-            video = np.array(video).astype(np.float32) / 255.0
-
-        if video.ndim == 4:
-            video = video[None, ...]
-
-        video = torch.from_numpy(video.transpose(0, 4, 1, 2, 3))
-
-    elif isinstance(video[0], torch.Tensor):
-        video = torch.cat(video, axis=0) if video[0].ndim == 5 else torch.stack(video, axis=0)
-
-        # don't need any preprocess if the video is latents
-        channel = video.shape[1]
-        if channel == 4:
-            return video
-
-        # move channels before num_frames
-        video = video.permute(0, 2, 1, 3, 4)
-
-    # normalize video
-    video = 2.0 * video - 1.0
-
-    return video
-
-
 class VideoToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-guided video-to-video generation.
@@ -203,7 +139,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInv
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.video_processor = VideoProcessor(do_resize=False, vae_scale_factor=self.vae_scale_factor)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -687,7 +623,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInv
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Preprocess video
-        video = preprocess_video(video)
+        video = self.video_processor.preprocess_video(video)
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -749,7 +685,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInv
             video = latents
         else:
             video_tensor = self.decode_latents(latents)
-            video = tensor2vid(video_tensor, self.image_processor, output_type)
+            video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 10. Offload all models
         self.maybe_free_model_hooks()
