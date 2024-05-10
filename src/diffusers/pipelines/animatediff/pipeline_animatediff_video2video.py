@@ -918,7 +918,9 @@ class AnimateDiffVideoToVideoPipeline(
         if video and not isinstance(video[0], list):
             video = [video]
         if latents is None:
-            video = self.video_processor.preprocess_video(video, height=height, width=width, preceed_with_frames=True)
+            video = self.video_processor.preprocess_video(video, height=height, width=width)
+            # Move the number of frames before the number of channels.
+            video = video.permute(0, 2, 1, 3, 4)
             video = video.to(device=device, dtype=prompt_embeds.dtype)
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(

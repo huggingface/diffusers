@@ -25,9 +25,7 @@ from .image_processor import VaeImageProcessor, is_valid_image, is_valid_image_i
 class VideoProcessor(VaeImageProcessor):
     r"""Simple video processor."""
 
-    def preprocess_video(
-        self, video, height: Optional[int] = None, width: Optional[int] = None, preceed_with_frames: bool = False
-    ) -> torch.Tensor:
+    def preprocess_video(self, video, height: Optional[int] = None, width: Optional[int] = None) -> torch.Tensor:
         r"""
         Preprocesses input video(s).
 
@@ -49,10 +47,6 @@ class VideoProcessor(VaeImageProcessor):
             width (`int`, *optional*`, defaults to `None`):
                 The width in preprocessed frames of the video. If `None`, will use get_default_height_width()` to get
                 the default width.
-            preceed_with_frames (`bool`, defaults to False):
-                Some pipelines keep the number of channels _before_ the number of frames in terms dimensions.
-                `(batch_size, num_channels, num_frames, height, width)`, for example. Some pipelines don't. This flag
-                helps to control that behaviour.
         """
         if isinstance(video, list) and isinstance(video[0], np.ndarray) and video[0].ndim == 5:
             warnings.warn(
@@ -84,8 +78,9 @@ class VideoProcessor(VaeImageProcessor):
             )
 
         video = torch.stack([self.preprocess(img, height=height, width=width) for img in video], dim=0)
-        if not preceed_with_frames:
-            video = video.permute(0, 2, 1, 3, 4)
+
+        # move the number of channels before the number of frames.
+        video = video.permute(0, 2, 1, 3, 4)
 
         return video
 
