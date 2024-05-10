@@ -27,6 +27,7 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
+    "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
     "schedulers": [],
@@ -216,6 +217,7 @@ else:
             "AmusedInpaintPipeline",
             "AmusedPipeline",
             "AnimateDiffPipeline",
+            "AnimateDiffSDXLPipeline",
             "AnimateDiffVideoToVideoPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
@@ -595,6 +597,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AmusedInpaintPipeline,
             AmusedPipeline,
             AnimateDiffPipeline,
+            AnimateDiffSDXLPipeline,
             AnimateDiffVideoToVideoPipeline,
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
