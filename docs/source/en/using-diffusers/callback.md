@@ -19,13 +19,50 @@ The denoising loop of a pipeline can be modified with custom defined functions u
 
 This guide will demonstrate how callbacks work by a few features you can implement with them.
 
+## Official callbacks
+
+There are a few official callbacks that you can use without the need to make them yourself. These callbacks can use these mutually exlusive arguments:
+
+- `cutoff_step_ratio`: Float number with the ratio of the steps.
+- `cutoff_step_index`: Integer number with the exact number of the step.
+
+This is the current list of official callbacks:
+
+- `SDCFGCutoffCallback`: Disables the CFG after certain number of steps for SD 1.5 pipelines.
+- `SDXLCFGCutoffCallback`: Disables the CFG after certain number of steps for SDXL pipelines.
+- `IPAdapterScaleCutoffCallback`: Disables the IP Adapter after a certain number of steps.
+
+```python
+import torch
+from diffusers import StableDiffusionPipeline
+from diffusers.callbacks import SDCFGCutoffCallback
+
+callback = SDCFGCutoutCallback(cutoff_step_ratio=0.4)
+# can also be used with cutoff_step_index
+# callback = SDCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=10)
+
+pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipeline = pipeline.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+
+generator = torch.Generator(device="cuda").manual_seed(1)
+out = pipeline(
+    prompt,
+    generator=generator,
+    callback_on_step_end=callback,
+)
+
+out.images[0].save("official_callback.png")
+```
+
 ## Dynamic classifier-free guidance
 
 Dynamic classifier-free guidance (CFG) is a feature that allows you to disable CFG after a certain number of inference steps which can help you save compute with minimal cost to performance. The callback function for this should have the following arguments:
 
-* `pipeline` (or the pipeline instance) provides access to important properties such as `num_timesteps` and `guidance_scale`. You can modify these properties by updating the underlying attributes. For this example, you'll disable CFG by setting `pipeline._guidance_scale=0.0`.
-* `step_index` and `timestep` tell you where you are in the denoising loop. Use `step_index` to turn off CFG after reaching 40% of `num_timesteps`.
-* `callback_kwargs` is a dict that contains tensor variables you can modify during the denoising loop. It only includes variables specified in the `callback_on_step_end_tensor_inputs` argument, which is passed to the pipeline's `__call__` method. Different pipelines may use different sets of variables, so please check a pipeline's `_callback_tensor_inputs` attribute for the list of variables you can modify. Some common variables include `latents` and `prompt_embeds`. For this function, change the batch size of `prompt_embeds` after setting `guidance_scale=0.0` in order for it to work properly.
+- `pipeline` (or the pipeline instance) provides access to important properties such as `num_timesteps` and `guidance_scale`. You can modify these properties by updating the underlying attributes. For this example, you'll disable CFG by setting `pipeline._guidance_scale=0.0`.
+- `step_index` and `timestep` tell you where you are in the denoising loop. Use `step_index` to turn off CFG after reaching 40% of `num_timesteps`.
+- `callback_kwargs` is a dict that contains tensor variables you can modify during the denoising loop. It only includes variables specified in the `callback_on_step_end_tensor_inputs` argument, which is passed to the pipeline's `__call__` method. Different pipelines may use different sets of variables, so please check a pipeline's `_callback_tensor_inputs` attribute for the list of variables you can modify. Some common variables include `latents` and `prompt_embeds`. For this function, change the batch size of `prompt_embeds` after setting `guidance_scale=0.0` in order for it to work properly.
 
 Your callback function should look something like this:
 
