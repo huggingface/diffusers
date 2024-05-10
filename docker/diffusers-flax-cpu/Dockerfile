@@ -18,11 +18,11 @@ RUN apt install -y bash \
         libgl1 \
         python3.10 \
         python3-pip \
-        python3.8-venv && \
+        python3.10-venv && \
     rm -rf /var/lib/apt/lists
 
 # make sure to use venv
-RUN python3 -m venv /opt/venv
+RUN python3.10 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
