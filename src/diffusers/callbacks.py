@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, Dict, List
 
 from .configuration_utils import ConfigMixin, register_to_config
 from .utils import CONFIG_NAME
@@ -76,7 +76,7 @@ class SDCFGCutoffCallback(PipelineCallback):
 
     tensor_inputs = ["prompt_embeds"]
 
-    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs) -> dict[str, Any]:
+    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs) -> Dict[str, Any]:
         cutoff_step_ratio = self.config.cutoff_step_ratio
         cutoff_step_index = self.config.cutoff_step_index
 
@@ -105,7 +105,7 @@ class SDXLCFGCutoffCallback(PipelineCallback):
 
     tensor_inputs = ["prompt_embeds", "add_text_embeds", "add_time_ids"]
 
-    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs) -> dict[str, Any]:
+    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs) -> Dict[str, Any]:
         cutoff_step_ratio = self.config.cutoff_step_ratio
         cutoff_step_index = self.config.cutoff_step_index
 
@@ -142,7 +142,7 @@ class IPAdapterScaleCutoffCallback(PipelineCallback):
 
     tensor_inputs = []
 
-    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs) -> dict[str, Any]:
+    def callback_fn(self, pipeline, step_index, timestep, callback_kwargs) -> Dict[str, Any]:
         cutoff_step_ratio = self.config.cutoff_step_ratio
         cutoff_step_index = self.config.cutoff_step_index
 

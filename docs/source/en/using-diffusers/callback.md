@@ -21,16 +21,16 @@ This guide will demonstrate how callbacks work by a few features you can impleme
 
 ## Official callbacks
 
-There are a few official callbacks that you can use without the need to make them yourself. These callbacks can use these mutually exlusive arguments:
+We provide a list of callbacks you can plug into an existing pipeline and modify the denoising loop. This is the current list of official callbacks:
+
+- `SDCFGCutoffCallback`: Disables the CFG after a certain number of steps for SD 1.5 pipelines.
+- `SDXLCFGCutoffCallback`: Disables the CFG after a certain number of steps for SDXL pipelines.
+- `IPAdapterScaleCutoffCallback`: Disables the IP Adapter after a certain number of steps.
+
+To set up a callback, you need to specify the number of steps after which the callback comes into effect. You can do so by using either one of these two arguments
 
 - `cutoff_step_ratio`: Float number with the ratio of the steps.
 - `cutoff_step_index`: Integer number with the exact number of the step.
-
-This is the current list of official callbacks:
-
-- `SDCFGCutoffCallback`: Disables the CFG after certain number of steps for SD 1.5 pipelines.
-- `SDXLCFGCutoffCallback`: Disables the CFG after certain number of steps for SDXL pipelines.
-- `IPAdapterScaleCutoffCallback`: Disables the IP Adapter after a certain number of steps.
 
 ```python
 import torch
