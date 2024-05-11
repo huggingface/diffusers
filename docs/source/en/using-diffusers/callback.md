@@ -27,7 +27,9 @@ We provide a list of callbacks you can plug into an existing pipeline and modify
 - `SDXLCFGCutoffCallback`: Disables the CFG after a certain number of steps for SDXL pipelines.
 - `IPAdapterScaleCutoffCallback`: Disables the IP Adapter after a certain number of steps.
 
-To set up a callback, you need to specify the number of steps after which the callback comes into effect. You can do so by using either one of these two arguments
+> These callbacks also work with the `ControlNet` pipelines of the corresponding model architecture.
+
+To set up a callback, you need to specify the number of denoising steps after which the callback comes into effect. You can do so by using either one of these two arguments
 
 - `cutoff_step_ratio`: Float number with the ratio of the steps.
 - `cutoff_step_index`: Integer number with the exact number of the step.
