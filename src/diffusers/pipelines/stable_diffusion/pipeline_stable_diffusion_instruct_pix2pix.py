@@ -230,11 +230,11 @@ class StableDiffusionInstructPix2PixPipeline(
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
+                A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
+                each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
+                DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`. `callback_kwargs` will include a
+                list of all tensors as specified by `callback_on_step_end_tensor_inputs`.
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
