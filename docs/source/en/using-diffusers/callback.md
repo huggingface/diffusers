@@ -36,27 +36,48 @@ To set up a callback, you need to specify the number of denoising steps after wh
 
 ```python
 import torch
-from diffusers import StableDiffusionPipeline
-from diffusers.callbacks import SDCFGCutoffCallback
 
-callback = SDCFGCutoutCallback(cutoff_step_ratio=0.4)
+from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
+from diffusers.callbacks import SDXLCFGCutoffCallback
+
+
+callback = SDXLCFGCutoffCallback(cutoff_step_ratio=0.4)
 # can also be used with cutoff_step_index
-# callback = SDCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=10)
+# callback = SDXLCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=10)
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-pipeline = pipeline.to("cuda")
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    variant="fp16",
+).to("cuda")
+pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, use_karras_sigmas=True)
 
-prompt = "a photo of an astronaut riding a horse on mars"
+prompt = "a sports car at the road, best quality, high quality, high detail, 8k resolution"
 
-generator = torch.Generator(device="cuda").manual_seed(1)
+generator = torch.Generator(device="cpu").manual_seed(2628670641)
+
 out = pipeline(
-    prompt,
+    prompt=prompt,
+    negative_prompt="",
+    guidance_scale=6.5,
+    num_inference_steps=25,
     generator=generator,
     callback_on_step_end=callback,
 )
 
 out.images[0].save("official_callback.png")
 ```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/without_cfg_callback.png" alt="generated image of a sports car at the road" />
+    <figcaption class="mt-2 text-center text-sm text-gray-500">without SDXLCFGCutoffCallback</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/with_cfg_callback.png" alt="generated image of a a sports car at the road with cfg callback" />
+    <figcaption class="mt-2 text-center text-sm text-gray-500">with SDXLCFGCutoffCallback</figcaption>
+  </div>
+</div>
 
 ## Dynamic classifier-free guidance
 
