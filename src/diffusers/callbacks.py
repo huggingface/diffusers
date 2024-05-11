@@ -87,7 +87,7 @@ class SDCFGCutoffCallback(PipelineCallback):
 
         if step_index == cutoff_step:
             prompt_embeds = callback_kwargs[self.tensor_inputs[0]]
-            prompt_embeds = prompt_embeds[-1:]
+            prompt_embeds = prompt_embeds[-1:]  # "-1" denotes the embeddings for conditional text tokens.
 
             pipeline._guidance_scale = 0.0
 
@@ -116,13 +116,13 @@ class SDXLCFGCutoffCallback(PipelineCallback):
 
         if step_index == cutoff_step:
             prompt_embeds = callback_kwargs[self.tensor_inputs[0]]
-            prompt_embeds = prompt_embeds[-1:]
+            prompt_embeds = prompt_embeds[-1:]  # "-1" denotes the embeddings for conditional text tokens.
 
             add_text_embeds = callback_kwargs[self.tensor_inputs[1]]
-            add_text_embeds = add_text_embeds[-1:]
+            add_text_embeds = add_text_embeds[-1:]  # "-1" denotes the embeddings for conditional pooled text tokens
 
             add_time_ids = callback_kwargs[self.tensor_inputs[2]]
-            add_time_ids = add_time_ids[-1:]
+            add_time_ids = add_time_ids[-1:]  # "-1" denotes the embeddings for conditional added time vector
 
             pipeline._guidance_scale = 0.0
 
