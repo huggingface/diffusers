@@ -36,10 +36,10 @@ class PipelineCallback(ConfigMixin):
     def tensor_inputs(self) -> List[str]:
         raise NotImplementedError(f"You need to set the attribute `tensor_inputs` for {self.__class__}")
 
-    def callback_fn(self, pipeline, step_index, timesteps, callback_kwargs) -> dict[str, Any]:
+    def callback_fn(self, pipeline, step_index, timesteps, callback_kwargs) -> Dict[str, Any]:
         raise NotImplementedError(f"You need to implement the method `callback_fn` for {self.__class__}")
 
-    def __call__(self, pipeline, step_index, timestep, callback_kwargs) -> dict[str, Any]:
+    def __call__(self, pipeline, step_index, timestep, callback_kwargs) -> Dict[str, Any]:
         return self.callback_fn(pipeline, step_index, timestep, callback_kwargs)
 
 
@@ -56,7 +56,7 @@ class MultiPipelineCallbacks:
     def tensor_inputs(self) -> List[str]:
         return [input for callback in self.callbacks for input in callback.tensor_inputs]
 
-    def __call__(self, pipeline, step_index, timestep, callback_kwargs) -> dict[str, Any]:
+    def __call__(self, pipeline, step_index, timestep, callback_kwargs) -> Dict[str, Any]:
         """
         Calls all the callbacks in order with the given arguments and returns the final callback_kwargs.
         """
