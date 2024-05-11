@@ -1228,7 +1228,6 @@ class XFormersAttnProcessor:
 
 
 class AttnProcessorNPU:
-
     r"""
     Processor for implementing flash attention using torch_npu. Torch_npu supports only fp16 and bf16 data types. If
     fp32 is used, F.scaled_dot_product_attention will be used for computation, but the acceleration effect on NPU is

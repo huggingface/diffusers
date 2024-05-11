@@ -547,22 +547,22 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             if not all(i.size == image[0].size for i in image):
                 raise ValueError("All images must be the same size")
             # Check that the size is divisible by 8:
-            if (image[0].size[0] % 8 != 0 or image[0].size[1] % 8 != 0):
+            if image[0].size[0] % 8 != 0 or image[0].size[1] % 8 != 0:
                 raise ValueError("Image size must be divisible by 8")
         elif isinstance(image, torch.Tensor):
             image_batch_size = image.shape[0]
             # Check that the size is divisible by 8:
-            if (image.shape[2] % 8 != 0 or image.shape[3] % 8 != 0):
+            if image.shape[2] % 8 != 0 or image.shape[3] % 8 != 0:
                 raise ValueError("Image size must be divisible by 8")
         elif isinstance(image, PIL.Image.Image):
             image_batch_size = 1
             # Check that the size is divisible by 8:
-            if (image.size[0] % 8 != 0 or image.size[1] % 8 != 0):
+            if image.size[0] % 8 != 0 or image.size[1] % 8 != 0:
                 raise ValueError("Image size must be divisible by 8")
         elif isinstance(image, np.ndarray):
             image_batch_size = image.shape[0]
             # Check that the size is divisible by 8:
-            if (image.shape[1] % 8 != 0 or image.shape[2] % 8 != 0):
+            if image.shape[1] % 8 != 0 or image.shape[2] % 8 != 0:
                 raise ValueError("Image size must be divisible by 8")
         else:
             assert False
