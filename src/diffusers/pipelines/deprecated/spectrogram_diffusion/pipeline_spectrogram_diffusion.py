@@ -134,7 +134,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         num_inference_steps: int = 100,
         return_dict: bool = True,
         output_type: str = "np",
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
     ) -> Union[AudioPipelineOutput, Tuple]:
         if (callback_steps is None) or (
@@ -161,7 +161,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 The output format of the generated audio.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.

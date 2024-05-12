@@ -23,154 +23,134 @@
     title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
 - sections:
-  - sections:
-    - local: using-diffusers/loading_overview
-      title: Overview
-    - local: using-diffusers/loading
-      title: Load pipelines, models, and schedulers
-    - local: using-diffusers/schedulers
-      title: Load and compare different schedulers
-    - local: using-diffusers/custom_pipeline_overview
-      title: Load community pipelines and components
-    - local: using-diffusers/using_safetensors
-      title: Load safetensors
-    - local: using-diffusers/other-formats
-      title: Load different Stable Diffusion formats
-    - local: using-diffusers/loading_adapters
-      title: Load adapters
-    - local: using-diffusers/push_to_hub
-      title: Push files to the Hub
-    title: Loading & Hub
-  - sections:
-    - local: using-diffusers/pipeline_overview
-      title: Overview
-    - local: using-diffusers/unconditional_image_generation
-      title: Unconditional image generation
-    - local: using-diffusers/conditional_image_generation
-      title: Text-to-image
-    - local: using-diffusers/img2img
-      title: Image-to-image
-    - local: using-diffusers/inpaint
-      title: Inpainting
-    - local: using-diffusers/text-img2vid
-      title: Text or image-to-video
-    - local: using-diffusers/depth2img
-      title: Depth-to-image
-    title: Tasks
-  - sections:
-    - local: using-diffusers/textual_inversion_inference
-      title: Textual inversion
-    - local: using-diffusers/ip_adapter
-      title: IP-Adapter
-    - local: using-diffusers/merge_loras
-      title: Merge LoRAs
-    - local: training/distributed_inference
-      title: Distributed inference with multiple GPUs
-    - local: using-diffusers/reusing_seeds
-      title: Improve image quality with deterministic generation
-    - local: using-diffusers/control_brightness
-      title: Control image brightness
-    - local: using-diffusers/weighted_prompts
-      title: Prompt weighting
-    - local: using-diffusers/freeu
-      title: Improve generation quality with FreeU
-    title: Techniques
-  - sections:
-    - local: using-diffusers/pipeline_overview
-      title: Overview
-    - local: using-diffusers/sdxl
-      title: Stable Diffusion XL
-    - local: using-diffusers/sdxl_turbo
-      title: SDXL Turbo
-    - local: using-diffusers/kandinsky
-      title: Kandinsky
-    - local: using-diffusers/controlnet
-      title: ControlNet
-    - local: using-diffusers/shap-e
-      title: Shap-E
-    - local: using-diffusers/diffedit
-      title: DiffEdit
-    - local: using-diffusers/distilled_sd
-      title: Distilled Stable Diffusion inference
-    - local: using-diffusers/callback
-      title: Pipeline callbacks
-    - local: using-diffusers/reproducibility
-      title: Create reproducible pipelines
-    - local: using-diffusers/custom_pipeline_examples
-      title: Community pipelines
-    - local: using-diffusers/contribute_pipeline
-      title: Contribute a community pipeline
-    - local: using-diffusers/inference_with_lcm_lora
-      title: Latent Consistency Model-LoRA
-    - local: using-diffusers/inference_with_lcm
-      title: Latent Consistency Model
-    - local: using-diffusers/inference_with_tcd_lora
-      title: Trajectory Consistency Distillation-LoRA
-    - local: using-diffusers/svd
-      title: Stable Video Diffusion
-    title: Specific pipeline examples
-  - sections:
-    - local: training/overview
-      title: Overview
-    - local: training/create_dataset
-      title: Create a dataset for training
-    - local: training/adapt_a_model
-      title: Adapt a model to a new task
-    - sections:
-      - local: training/unconditional_training
-        title: Unconditional image generation
-      - local: training/text2image
-        title: Text-to-image
-      - local: training/sdxl
-        title: Stable Diffusion XL
-      - local: training/kandinsky
-        title: Kandinsky 2.2
-      - local: training/wuerstchen
-        title: Wuerstchen
-      - local: training/controlnet
-        title: ControlNet
-      - local: training/t2i_adapters
-        title: T2I-Adapters
-      - local: training/instructpix2pix
-        title: InstructPix2Pix
-      title: Models
-    - sections:
-      - local: training/text_inversion
-        title: Textual Inversion
-      - local: training/dreambooth
-        title: DreamBooth
-      - local: training/lora
-        title: LoRA
-      - local: training/custom_diffusion
-        title: Custom Diffusion
-      - local: training/lcm_distill
-        title: Latent Consistency Distillation
-      - local: training/ddpo
-        title: Reinforcement learning training with DDPO
-      title: Methods
-    title: Training
-  - sections:
-    - local: using-diffusers/other-modalities
-      title: Other Modalities
-    title: Taking Diffusers Beyond Images
-  title: Using Diffusers
+  - local: using-diffusers/loading
+    title: Load pipelines
+  - local: using-diffusers/custom_pipeline_overview
+    title: Load community pipelines and components
+  - local: using-diffusers/schedulers
+    title: Load schedulers and models
+  - local: using-diffusers/using_safetensors
+    title: Load safetensors
+  - local: using-diffusers/other-formats
+    title: Load different Stable Diffusion formats
+  - local: using-diffusers/loading_adapters
+    title: Load adapters
+  - local: using-diffusers/push_to_hub
+    title: Push files to the Hub
+  title: Load pipelines and adapters
 - sections:
-  - local: optimization/opt_overview
+  - local: using-diffusers/unconditional_image_generation
+    title: Unconditional image generation
+  - local: using-diffusers/conditional_image_generation
+    title: Text-to-image
+  - local: using-diffusers/img2img
+    title: Image-to-image
+  - local: using-diffusers/inpaint
+    title: Inpainting
+  - local: using-diffusers/text-img2vid
+    title: Text or image-to-video
+  - local: using-diffusers/depth2img
+    title: Depth-to-image
+  title: Generative tasks
+- sections:
+  - local: using-diffusers/overview_techniques
     title: Overview
+  - local: training/distributed_inference
+    title: Distributed inference with multiple GPUs
+  - local: using-diffusers/merge_loras
+    title: Merge LoRAs
+  - local: using-diffusers/callback
+    title: Pipeline callbacks
+  - local: using-diffusers/reusing_seeds
+    title: Reproducible pipelines
+  - local: using-diffusers/image_quality
+    title: Controlling image quality
+  - local: using-diffusers/weighted_prompts
+    title: Prompt techniques
+  title: Inference techniques
+- sections:
+  - local: using-diffusers/sdxl
+    title: Stable Diffusion XL
+  - local: using-diffusers/sdxl_turbo
+    title: SDXL Turbo
+  - local: using-diffusers/kandinsky
+    title: Kandinsky
+  - local: using-diffusers/ip_adapter
+    title: IP-Adapter
+  - local: using-diffusers/controlnet
+    title: ControlNet
+  - local: using-diffusers/t2i_adapter
+    title: T2I-Adapter
+  - local: using-diffusers/inference_with_lcm
+    title: Latent Consistency Model
+  - local: using-diffusers/textual_inversion_inference
+    title: Textual inversion
+  - local: using-diffusers/shap-e
+    title: Shap-E
+  - local: using-diffusers/diffedit
+    title: DiffEdit
+  - local: using-diffusers/inference_with_tcd_lora
+    title: Trajectory Consistency Distillation-LoRA
+  - local: using-diffusers/svd
+    title: Stable Video Diffusion
+  title: Specific pipeline examples
+- sections:
+  - local: training/overview
+    title: Overview
+  - local: training/create_dataset
+    title: Create a dataset for training
+  - local: training/adapt_a_model
+    title: Adapt a model to a new task
   - sections:
-    - local: optimization/fp16
-      title: Speed up inference
-    - local: optimization/memory
-      title: Reduce memory usage
-    - local: optimization/torch2.0
-      title: PyTorch 2.0
-    - local: optimization/xformers
-      title: xFormers
-    - local: optimization/tome
-      title: Token merging
-    - local: optimization/deepcache
-      title: DeepCache
-    title: General optimizations
+    - local: training/unconditional_training
+      title: Unconditional image generation
+    - local: training/text2image
+      title: Text-to-image
+    - local: training/sdxl
+      title: Stable Diffusion XL
+    - local: training/kandinsky
+      title: Kandinsky 2.2
+    - local: training/wuerstchen
+      title: Wuerstchen
+    - local: training/controlnet
+      title: ControlNet
+    - local: training/t2i_adapters
+      title: T2I-Adapters
+    - local: training/instructpix2pix
+      title: InstructPix2Pix
+    title: Models
+    isExpanded: false
+  - sections:
+    - local: training/text_inversion
+      title: Textual Inversion
+    - local: training/dreambooth
+      title: DreamBooth
+    - local: training/lora
+      title: LoRA
+    - local: training/custom_diffusion
+      title: Custom Diffusion
+    - local: training/lcm_distill
+      title: Latent Consistency Distillation
+    - local: training/ddpo
+      title: Reinforcement learning training with DDPO
+    title: Methods
+    isExpanded: false
+  title: Training
+- sections:
+  - local: optimization/fp16
+    title: Speed up inference
+  - local: optimization/memory
+    title: Reduce memory usage
+  - local: optimization/torch2.0
+    title: PyTorch 2.0
+  - local: optimization/xformers
+    title: xFormers
+  - local: optimization/tome
+    title: Token merging
+  - local: optimization/deepcache
+    title: DeepCache
+  - local: optimization/tgate
+    title: TGATE
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
@@ -180,14 +160,14 @@
       title: OpenVINO
     - local: optimization/coreml
       title: Core ML
-    title: Optimized model types
+    title: Optimized model formats
   - sections:
     - local: optimization/mps
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
       title: Habana Gaudi
     title: Optimized hardware
-  title: Optimization
+  title: Accelerate inference and reduce memory
 - sections:
   - local: conceptual/philosophy
     title: Philosophy
@@ -209,6 +189,7 @@
     - local: api/outputs
       title: Outputs
     title: Main Classes
+    isExpanded: false
   - sections:
     - local: api/loaders/ip_adapter
       title: IP-Adapter
@@ -223,6 +204,7 @@
     - local: api/loaders/peft
       title: PEFT
     title: Loaders
+    isExpanded: false
   - sections:
     - local: api/models/overview
       title: Overview
@@ -257,6 +239,7 @@
     - local: api/models/controlnet
       title: ControlNet
     title: Models
+    isExpanded: false
   - sections:
     - local: api/pipelines/overview
       title: Overview
@@ -280,6 +263,10 @@
       title: ControlNet
     - local: api/pipelines/controlnet_sdxl
       title: ControlNet with Stable Diffusion XL
+    - local: api/pipelines/controlnetxs
+      title: ControlNet-XS
+    - local: api/pipelines/controlnetxs_sdxl
+      title: ControlNet-XS with Stable Diffusion XL
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -358,7 +345,7 @@
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
       - local: api/pipelines/stable_diffusion/adapter
-        title: Stable Diffusion T2I-Adapter
+        title: T2I-Adapter
       - local: api/pipelines/stable_diffusion/gligen
         title: GLIGEN (Grounded Language-to-Image Generation)
       title: Stable Diffusion
@@ -377,6 +364,7 @@
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
     title: Pipelines
+    isExpanded: false
   - sections:
     - local: api/schedulers/overview
       title: Overview
@@ -437,6 +425,7 @@
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
     title: Schedulers
+    isExpanded: false
   - sections:
     - local: api/internal_classes_overview
       title: Overview
@@ -450,5 +439,8 @@
       title: Utilities
     - local: api/image_processor
       title: VAE Image Processor
+    - local: api/video_processor
+      title: Video Processor
     title: Internal classes
+    isExpanded: false
   title: API

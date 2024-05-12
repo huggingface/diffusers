@@ -176,9 +176,9 @@ class LoraLoaderMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -208,7 +208,7 @@ class LoraLoaderMixin:
         # UNet and text encoder or both.
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
@@ -369,7 +369,11 @@ class LoraLoaderMixin:
                     if not is_model_cpu_offload:
                         is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
                     if not is_sequential_cpu_offload:
-                        is_sequential_cpu_offload = isinstance(component._hf_hook, AlignDevicesHook)
+                        is_sequential_cpu_offload = (
+                            isinstance(component._hf_hook, AlignDevicesHook)
+                            or hasattr(component._hf_hook, "hooks")
+                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+                        )
 
                     logger.info(
                         "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
@@ -1267,6 +1271,11 @@ class LoraLoaderMixin:
                 for adapter_name in adapter_names:
                     unet_module.lora_A[adapter_name].to(device)
                     unet_module.lora_B[adapter_name].to(device)
+                    # this is a param, not a module, so device placement is not in-place -> re-assign
+                    if hasattr(unet_module, "lora_magnitude_vector") and unet_module.lora_magnitude_vector is not None:
+                        unet_module.lora_magnitude_vector[adapter_name] = unet_module.lora_magnitude_vector[
+                            adapter_name
+                        ].to(device)
 
         # Handle the text encoder
         modules_to_process = []
@@ -1283,6 +1292,14 @@ class LoraLoaderMixin:
                     for adapter_name in adapter_names:
                         text_encoder_module.lora_A[adapter_name].to(device)
                         text_encoder_module.lora_B[adapter_name].to(device)
+                        # this is a param, not a module, so device placement is not in-place -> re-assign
+                        if (
+                            hasattr(text_encoder_module, "lora_magnitude_vector")
+                            and text_encoder_module.lora_magnitude_vector is not None
+                        ):
+                            text_encoder_module.lora_magnitude_vector[
+                                adapter_name
+                            ] = text_encoder_module.lora_magnitude_vector[adapter_name].to(device)
 
 
 class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
@@ -1389,6 +1406,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
+            text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+                State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
+                encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1415,8 +1435,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         if unet_lora_layers:
             state_dict.update(pack_weights(unet_lora_layers, "unet"))
 
-        if text_encoder_lora_layers and text_encoder_2_lora_layers:
+        if text_encoder_lora_layers:
             state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+
+        if text_encoder_2_lora_layers:
             state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
         cls.write_lora_layers(

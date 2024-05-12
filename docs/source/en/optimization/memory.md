@@ -261,7 +261,7 @@ from dataclasses import dataclass
 
 @dataclass
 class UNet2DConditionOutput:
-    sample: torch.FloatTensor
+    sample: torch.Tensor
 
 
 pipe = StableDiffusionPipeline.from_pretrained(
