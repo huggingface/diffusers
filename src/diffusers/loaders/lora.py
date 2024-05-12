@@ -363,7 +363,7 @@ class LoraLoaderMixin:
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
-        if _pipeline is not None:
+        if _pipeline is not None and _pipeline.hf_device_map is None:
             for _, component in _pipeline.components.items():
                 if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
                     if not is_model_cpu_offload:
