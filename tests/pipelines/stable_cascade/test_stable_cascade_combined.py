@@ -153,6 +153,8 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
             "prior_tokenizer": prior_tokenizer,
             "prior_prior": prior,
             "prior_scheduler": scheduler,
+            "prior_feature_extractor": None,
+            "prior_image_encoder": None,
         }
 
         return components

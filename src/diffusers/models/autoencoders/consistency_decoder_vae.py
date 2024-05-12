@@ -276,13 +276,13 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def encode(
-        self, x: torch.FloatTensor, return_dict: bool = True
+        self, x: torch.Tensor, return_dict: bool = True
     ) -> Union[ConsistencyDecoderVAEOutput, Tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 
         Args:
-            x (`torch.FloatTensor`): Input batch of images.
+            x (`torch.Tensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.consistency_decoder_vae.ConsistencyDecoderVAEOutput`] instead of a plain
                 tuple.
@@ -312,22 +312,22 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self,
-        z: torch.FloatTensor,
+        z: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
         num_inference_steps: int = 2,
-    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
+    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
         """
         Decodes the input latent vector `z` using the consistency decoder VAE model.
 
         Args:
-            z (torch.FloatTensor): The input latent vector.
+            z (torch.Tensor): The input latent vector.
             generator (Optional[torch.Generator]): The random number generator. Default is None.
             return_dict (bool): Whether to return the output as a dictionary. Default is True.
             num_inference_steps (int): The number of inference steps. Default is 2.
 
         Returns:
-            Union[DecoderOutput, Tuple[torch.FloatTensor]]: The decoded output.
+            Union[DecoderOutput, Tuple[torch.Tensor]]: The decoded output.
 
         """
         z = (z * self.config.scaling_factor - self.means) / self.stds
@@ -370,9 +370,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
-    def tiled_encode(
-        self, x: torch.FloatTensor, return_dict: bool = True
-    ) -> Union[ConsistencyDecoderVAEOutput, Tuple]:
+    def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[ConsistencyDecoderVAEOutput, Tuple]:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
@@ -382,7 +380,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         output, but they should be much less noticeable.
 
         Args:
-            x (`torch.FloatTensor`): Input batch of images.
+            x (`torch.Tensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.consistency_decoder_vae.ConsistencyDecoderVAEOutput`] instead of a
                 plain tuple.
@@ -429,14 +427,14 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
+    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
         r"""
         Args:
-            sample (`torch.FloatTensor`): Input sample.
+            sample (`torch.Tensor`): Input sample.
             sample_posterior (`bool`, *optional*, defaults to `False`):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):
