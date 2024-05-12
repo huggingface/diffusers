@@ -23,10 +23,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import PipelineImageInput
 from ...models import (
     AutoencoderKL,
     UNet2DConditionModel,
@@ -69,7 +67,7 @@ Examples:
 """
 
 
-def resize_maybe_antialias(image: torch.Tensor, size: Tuple[int, int], mode: str, is_aa: bool = None) -> torch.Tensor:
+def resize_antialias(image: torch.Tensor, size: Tuple[int, int], mode: str, is_aa: bool = None) -> torch.Tensor:
     assert image.dim() == 4 and isinstance(is_aa, bool)
 
     antialias = is_aa and mode in ("bilinear", "bicubic")
@@ -89,7 +87,7 @@ def resize_to_max_edge(image: torch.Tensor, max_edge_sz: int, mode: str) -> torc
     if new_h == 0 or new_w == 0:
         raise ValueError(f"Extreme aspect ratio of the input image: [{w} x {h}]")
 
-    image = resize_maybe_antialias(image, (new_h, new_w), mode, is_aa=True)
+    image = resize_antialias(image, (new_h, new_w), mode, is_aa=True)
 
     return image
 
@@ -140,7 +138,7 @@ def load_image_canonical(image: Union[torch.Tensor, np.ndarray, Image.Image]) ->
         input_dtype_max = 255
 
     if image.dim() == 2:
-        image = image.unsqueeze(0).repeat(3, 1, 1)  # [3,H,W]
+        image = image.unsqueeze(0).unsqueeze(0).repeat(1, 3, 1, 1)  # [1,3,H,W]
     elif image.dim() == 3:
         if image.shape[2] in (1, 3):
             image = image.permute(2, 0, 1)  # [1|3,H,W]
@@ -148,10 +146,9 @@ def load_image_canonical(image: Union[torch.Tensor, np.ndarray, Image.Image]) ->
             image = image.repeat(3, 1, 1)  # [3,H,W]
         if image.shape[0] != 3:
             raise ValueError(f"Input image is not 1- or 3-channel: {image.shape}.")
-    else:
-        raise ValueError("Input image is not a 2- or 3-dimensional tensor.")
-
-    image = image.unsqueeze(0)  # [1,3,H,W]
+        image = image.unsqueeze(0)  # [1,3,H,W]
+    elif image.dim() != 4:
+        raise ValueError("Input image is not a 2-, 3-, or 4-dimensional tensor.")
 
     return image, input_dtype_max
 
@@ -270,42 +267,22 @@ class MarigoldDepthOutput(BaseOutput):
     Output class for Marigold monocular depth prediction pipeline.
 
     Args:
-        prediction (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`,
-                or `List[torch.FloatTensor]`):
-            Predicted depth, with values in the range of [0, 1].
-        visualization (`None`, `PIL.Image.Image`, or List[PIL.Image.Image]):
-            Colorized prediction for visualization.
-        uncertainty (`None`, `np.ndarray`, torch.FloatTensor, or a `List` of them):
-            Uncertainty map computed from the ensemble.
-        latent (`None`, `torch.FloatTensor`, or `List[torch.FloatTensor]`):
-            Latent features corresponding to the ensemble predictions.
+        prediction (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`):
+            Predicted depth, with values in the range [0, 65535] (`PIL.Image.Image`) or [0, 1] otherwise. For types
+            `np.ndarray` or `torch.FloatTensor`, the shape is always $numimages \times 1 \times height \times width$.
+        visualization (`None` or List[PIL.Image.Image]):
+            Colorized predictions for visualization.
+        uncertainty (`None`, `np.ndarray`, `torch.FloatTensor`):
+            Uncertainty maps computed from the ensemble. The shape is $numimages \times 1 \times height \times width$.
+        latent (`None`, `torch.FloatTensor`):
+            Latent features corresponding to the predictions. The shape is
+            $numimages * numensemble \times 4 \times latentheight \times latentwidth$.
     """
 
-    prediction: Union[
-        Image.Image,
-        np.ndarray,
-        torch.FloatTensor,
-        List[Image.Image],
-        List[np.ndarray],
-        List[torch.FloatTensor],
-    ]
-    visualization: Union[
-        None,
-        Image.Image,
-        List[Image.Image],
-    ]
-    uncertainty: Union[
-        None,
-        np.ndarray,
-        torch.FloatTensor,
-        List[np.ndarray],
-        List[torch.FloatTensor],
-    ]
-    latent: Union[
-        None,
-        torch.FloatTensor,
-        List[torch.FloatTensor],
-    ]
+    prediction: Union[Image.Image, np.ndarray, torch.FloatTensor]
+    visualization: Union[None, Image.Image, List[Image.Image]]
+    uncertainty: Union[None, np.ndarray, torch.FloatTensor]
+    latent: Union[None, torch.FloatTensor]
 
 
 class MarigoldDepthPipeline(DiffusionPipeline):
@@ -328,6 +305,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         tokenizer (`CLIPTokenizer`):
             CLIP tokenizer.
     """
+
+    model_cpu_offload_seq = "text_encoder->vae.encoder->unet->vae.decoder"
 
     def __init__(
         self,
@@ -361,110 +340,21 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         self.empty_text_embedding = None
 
-    @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
-    def __call__(
+    def check_inputs(
         self,
-        input_image: PipelineImageInput,
-        denoising_steps: Optional[int] = None,
-        ensemble_size: int = 1,
-        processing_resolution: Optional[int] = None,
-        match_input_resolution: bool = True,
-        resample_method_input: str = "bilinear",
-        resample_method_output: str = "bilinear",
-        batch_size: int = 0,
-        check_input: bool = True,
-        ensembling_kwargs: Optional[Dict[str, Any]] = None,
-        input_latent: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        output_prediction_format: str = "np",
-        output_visualization: bool = True,
-        output_visualization_kwargs: Optional[Dict[str, Any]] = None,
-        output_uncertainty: bool = True,
-        output_latent: bool = False,
-        **kwargs,
-    ) -> MarigoldDepthOutput:
-        """
-        Function invoked when calling the pipeline.
-
-        Args:
-            input_image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`,
-                    or `List[torch.Tensor]`):
-                Input image or images.
-            denoising_steps (`int`, *optional*, defaults to `None`):
-                Number of denoising diffusion steps during inference. The default value `None` results in automatic
-                selection. The number of steps should be at least 10 with the full Marigold models, and between 1 and 4
-                for Marigold-LCM models.
-            ensemble_size (`int`, defaults to `1`):
-                Number of ensemble predictions. Recommended values are 5 and higher for better precision, or 1 for
-                faster inference.
-            processing_resolution (`int`, *optional*, defaults to None):
-                Effective processing resolution. When set to `0`, matches the larger input image dimension. This
-                produces crisper predictions, but may also lead to the overall loss of global context. The default
-                value `None` resolves to the optimal value from the model config.
-            match_input_resolution (`bool`, *optional*, defaults to `True`):
-                When enabled, the output prediction is resized to match the input dimensions. When disabled, the longer
-                side of the output will equal to `processing_resolution`.
-            resample_method_input: (`str`, *optional*, defaults to `"bilinear"`):
-                Resampling method used to resize input images to `processing_resolution`. The accepted values are:
-                `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
-            resample_method_output: (`str`, *optional*, defaults to `"bilinear"`):
-                Resampling method used to resize output predictions to match the input resolution. The accepted values
-                are `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
-            batch_size (`int`, *optional*, defaults to `0`):
-                Inference batch size. Smaller values save memory. The default value `0` sets it to the value of
-                `ensemble_size`.
-            check_input (`bool`, defaults to `False`):
-                Extra steps to validate compatibility of the inputs with the model.
-            ensembling_kwargs (`dict`, *optional*, defaults to `None`)
-                Extra dictionary with arguments for precise ensembling control. The following options are available: -
-                - reduction (`str`, *optional*, defaults to `"median"`): Defines the ensembling function applied in
-                  every pixel location, can be either "median" or "mean".
-                - regularizer_strength (`float`, *optional*, defaults to `0.02`): Strength of the regularizer term that
-                  pulls the solution to the unit range.
-                - max_iter (`int`, *optional*, defaults to `2`): Number of numerical optimizer function evaluations.
-                - tol (`float`, *optional*, defaults to `1e-3`): Numerical tolerance of the optimizer.
-                - max_res (`int`, *optional*, defaults to `None`): Resolution at which the search of scale and shift
-                  parameters is performed; `None` matches the `processing_resolution`.
-            input_latent (`torch.Tensor`, or `List[torch.Tensor]`, *optional*, defaults to `None`):
-                Latent noise tensors to replace the random initialization. These can be taken from the previous
-                function call's output.
-            generator (`torch.Generator`, or `List[torch.Generator]`, *optional*, defaults to `None`):
-                Random number generator object to ensure reproducibility.
-            output_prediction_format (`str`, *optional*, defaults to `"np"`):
-                Preferred format of the output's `prediction` and the optional `uncertainty` fields. The accepted
-                values are: `"np"` (numpy array) or `"pt"` (torch tensor).
-            output_visualization (`bool`, *optional*, defaults to `True`):
-                When enabled, the output's `visualization` field contains a PIL.Image that can be used for visual
-                quality inspection.
-            output_visualization_kwargs (`dict`, *optional*, defaults to `None`):
-                Extra dictionary with arguments for precise visualization control. The following options are available:
-                - color_map (`str`, *optional*, defaults to `"Spectral"`): Color map used to convert a single-channel
-                  depth prediction into colored representation.
-                - vis_min (`float`, *optional*, defaults to `0.0`): Minimum value of the visualized depth range.
-                - vis_max (`float`, *optional*, defaults to `1.0`): Maximum value of the visualized depth range.
-            output_uncertainty (`bool`, *optional*, defaults to `True`):
-                When enabled, the output's `uncertainty` field contains the predictive uncertainty map, provided that
-                the `ensemble_size` argument is set to a value above 2.
-            output_latent (`bool`, *optional*, defaults to `False`):
-                When enabled, the output's `latent` field contains the latent codes corresponding to the predictions
-                within the ensemble. These codes can be saved, modified, and used for subsequent calls with the
-                `input_latent` argument.
-
-        Examples:
-
-        Returns:
-            `MarigoldDepthOutput`: Output class instance for Marigold monocular depth prediction pipeline.
-        """
-
-        if denoising_steps is None:
-            denoising_steps = self.default_denoising_steps
-        if processing_resolution is None:
-            processing_resolution = self.default_processing_resolution
-        if batch_size == 0:
-            batch_size = ensemble_size
-
-        # basic input checks
+        input_image: Union[Image.Image, np.ndarray, torch.FloatTensor],
+        denoising_steps: int,
+        ensemble_size: int,
+        processing_resolution: int,
+        resample_method_input: str,
+        resample_method_output: str,
+        batch_size: int,
+        ensembling_kwargs: Optional[Dict[str, Any]],
+        input_latent: Optional[torch.FloatTensor],
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]],
+        output_prediction_format: str,
+        output_visualization_kwargs: Optional[Dict[str, Any]],
+    ) -> None:
         if denoising_steps is None:
             raise ValueError("`denoising_steps` is not specified and could not be resolved from the model config.")
         if denoising_steps < 1:
@@ -497,166 +387,204 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 "`resample_method_output` takes string values compatible with PIL library: "
                 "nearest, nearest-exact, bilinear, bicubic, area."
             )
-        if batch_size < 0:
-            raise ValueError("`batch_size` must be non-negative: 0 sets it equal to `ensemble_size`.")
+        if batch_size < 1:
+            raise ValueError("`batch_size` must be positive.")
         if output_prediction_format not in ["pt", "np", "pil"]:
             raise ValueError("`output_prediction_format` must be one of `pt`, `np`, or `pil`.")
         if input_latent is not None and generator is not None:
-            raise ValueError("`input_latent` and `generator` are cannot be used together.")
+            raise ValueError("`input_latent` and `generator` cannot be used together.")
         if ensembling_kwargs is not None and not isinstance(ensembling_kwargs, dict):
             raise ValueError("`ensembling_kwargs` must be a dictionary.")
         if output_visualization_kwargs is not None and not isinstance(output_visualization_kwargs, dict):
             raise ValueError("`output_visualization_kwargs` must be a dictionary.")
 
-        # input checks
-        input_image_stacked = False
+        # input_image checks
+        num_images = 1
         if isinstance(input_image, np.ndarray) or torch.is_tensor(input_image):
-            if input_image.ndim < 2 or input_image.ndim > 4:
-                raise ValueError(f"Unsupported number of dimension in the input image: {input_image.ndim}.")
+            H, W = input_image.shape[-2:]
+            if input_image.ndim not in (2, 3, 4):
+                raise ValueError(f"`input_image` has unsupported dimension or shape: {input_image.shape}.")
             if input_image.ndim == 4:
-                input_image = [input_image[i] for i in range(input_image.shape[0])]
-                input_image_stacked = True
-            elif input_image.ndim in (2, 3):
-                input_image = [input_image]
-            else:
-                assert False
-        if isinstance(input_image, Image.Image):
-            input_image = [input_image]
-        if not isinstance(input_image, list) and not isinstance(input_image, tuple):
+                num_images = input_image.shape[0]
+        elif isinstance(input_image, Image.Image):
+            W, H = input_image.size
+        else:
             raise ValueError(f"Unsupported input image type: {type(input_image)}.")
-        num_images = len(input_image)
 
-        # latent checks
-        input_latent_stacked = False
+        if num_images > 1 and output_prediction_format == "pil":
+            raise ValueError("`output_prediction_format='pil'` is not supported when passing multiple input images.")
+
+        # input_latent checks
         if input_latent is not None:
-            if torch.is_tensor(input_latent):
-                if input_latent.ndim == 5:
-                    input_latent = [input_latent[i] for i in range(input_latent.shape[0])]
-                    input_latent_stacked = True
-                elif input_latent.ndim == 4:
-                    input_latent = [input_latent]
-                else:
-                    raise ValueError(f"Unsupported number of dimension in the input latent: {input_latent.ndim}.")
-            if isinstance(input_latent, list) and not isinstance(input_latent, tuple):
-                if not all(torch.is_tensor(k) for k in input_latent):
-                    raise ValueError("Input latent must be a torch.FloatTensor.")
-                if not all(
-                    k.dim() == 4 and k.shape[0] == ensemble_size and k.shape[1] == self.latent_space_size
-                    for k in input_latent
-                ):
-                    raise ValueError(
-                        f"Input latent must be 4-dimensional with shape [E,{self.latent_space_size},h,w], "
-                        f"where E is the requested ensemble_size."
-                    )
-                if len(input_latent) != num_images:
-                    raise ValueError(
-                        f"The numbers of input images ({num_images}) and latents ({len(input_latent)}) "
-                        f"are not compatible."
-                    )
-            else:
-                raise ValueError(f"Unsupported latent type: {type(input_latent)}.")
-        if input_image_stacked ^ input_latent_stacked:
-            logger.warning("Different stacking of input images and latents might be a sign of undesired behavior.")
+            if not torch.is_tensor(input_latent):
+                raise ValueError("`input_latent` must be a torch.FloatTensor.")
+            if not input_latent.dim() != 4:
+                raise ValueError(f"`input_latent` has unsupported dimensions or shape: {input_latent.shape}.")
 
+            if processing_resolution > 0:
+                max_orig = max(H, W)
+                new_H = H * processing_resolution // max_orig
+                new_W = W * processing_resolution // max_orig
+                if new_H == 0 or new_W == 0:
+                    raise ValueError(f"Extreme aspect ratio of the input image: [{W} x {H}]")
+                W, H = new_W, new_H
+            w = (W + self.latent_size_scale - 1) // self.latent_size_scale
+            h = (H + self.latent_size_scale - 1) // self.latent_size_scale
+            shape_expected = (num_images * ensemble_size, self.latent_space_size, h, w)
+
+            if input_latent.shape != shape_expected:
+                raise ValueError(
+                    f"`input_latent` has unexpected shape={input_latent.shape} expected={shape_expected}."
+                )
+
+        # generator checks
         if generator is not None:
+            device = self._execution_device
             if isinstance(generator, torch.Generator):
-                generator = [generator]
-            if isinstance(generator, list) and not isinstance(generator, tuple):
-                if len(generator) == 1 and num_images > 1:
-                    generator = generator * num_images
-                if len(generator) != num_images:
+                if generator.device != device:
+                    raise ValueError("`generator` device differs from the pipeline's device.")
+            elif isinstance(generator, list):
+                if len(generator) != num_images * ensemble_size:
                     raise ValueError(
-                        f"The numbers of input images ({num_images}) and generators ({len(generator)}) "
-                        f"are not compatible."
+                        "The number generators must match the total number of ensemble members for all input images."
                     )
+                if not all(g.device == device for g in generator):
+                    raise ValueError("At least one of the `generator` devices differs from the pipeline's device.")
             else:
                 raise ValueError(f"Unsupported generator type: {type(generator)}.")
 
-        # Prepare the empty text embedding. In the future, remove text modules completely
-        if self.empty_text_embedding is None:
-            self.encode_empty_text()
-
-        out = []
-        with self.progress_bar(total=num_images * ensemble_size * denoising_steps) as progress_bar:
-            for i in range(num_images):
-                out.append(
-                    self.process_image(
-                        input_image[i],
-                        input_latent[i] if input_latent is not None else None,
-                        generator[i] if generator is not None else None,
-                        denoising_steps,
-                        ensemble_size,
-                        processing_resolution,
-                        match_input_resolution,
-                        resample_method_input,
-                        resample_method_output,
-                        batch_size,
-                        check_input,
-                        ensembling_kwargs,
-                        output_prediction_format,
-                        output_visualization,
-                        output_visualization_kwargs,
-                        output_uncertainty,
-                        output_latent,
-                        progress_bar,
-                    )
-                )
-
-        if len(out) == 1:
-            out = out[0]
-        else:
-            prediction = [o.prediction for o in out]
-            visualization = [o.visualization for o in out] if output_visualization else None
-            uncertainty = [o.uncertainty for o in out] if output_uncertainty else None
-            latent = [o.latent for o in out] if output_latent else None
-            if input_image_stacked:
-                if output_prediction_format == "np":
-                    prediction = np.stack(prediction)
-                    if uncertainty is not None:
-                        uncertainty = np.stack(uncertainty)
-                elif output_prediction_format == "pt":
-                    prediction = torch.stack(prediction)
-                    if uncertainty is not None:
-                        uncertainty = torch.stack(uncertainty)
-                if latent is not None:
-                    latent = torch.stack(latent)
-            out = MarigoldDepthOutput(
-                prediction=prediction, visualization=visualization, uncertainty=uncertainty, latent=latent
-            )
-
-        return out
-
-    def process_image(
+    @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
+    def __call__(
         self,
-        input_image: Union[torch.Tensor, np.ndarray, Image.Image],
-        input_latent: Optional[torch.FloatTensor],
-        generator: Optional[torch.Generator],
-        denoising_steps: Optional[int],
-        ensemble_size: Optional[int],
-        processing_resolution: Optional[int],
-        match_input_resolution: bool,
-        resample_method_input: str,
-        resample_method_output: str,
-        batch_size: int,
-        check_input: bool,
-        ensembling_kwargs: Optional[Dict[str, Any]],
-        output_prediction_format: str,
-        output_visualization: bool,
-        output_visualization_kwargs: Optional[Dict[str, Any]],
-        output_uncertainty: bool,
-        output_latent: bool,
-        progress_bar: tqdm,
+        input_image: Union[Image.Image, np.ndarray, torch.FloatTensor],
+        denoising_steps: Optional[int] = None,
+        ensemble_size: int = 1,
+        processing_resolution: Optional[int] = None,
+        match_input_resolution: bool = True,
+        resample_method_input: str = "bilinear",
+        resample_method_output: str = "bilinear",
+        batch_size: int = 1,
+        check_input: bool = True,
+        ensembling_kwargs: Optional[Dict[str, Any]] = None,
+        input_latent: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        output_prediction_format: str = "np",
+        output_visualization: bool = True,
+        output_visualization_kwargs: Optional[Dict[str, Any]] = None,
+        output_uncertainty: bool = True,
+        output_latent: bool = False,
+        **kwargs,
     ) -> MarigoldDepthOutput:
-        assert (
-            input_latent is None
-            or input_latent.dim() == 4
-            and input_latent.shape[:2] == (ensemble_size, self.latent_space_size)
-        )
+        """
+        Function invoked when calling the pipeline.
 
+        Args:
+            input_image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`):
+                Input image or stacked images.
+            denoising_steps (`int`, *optional*, defaults to `None`):
+                Number of denoising diffusion steps during inference. The default value `None` results in automatic
+                selection. The number of steps should be at least 10 with the full Marigold models, and between 1 and 4
+                for Marigold-LCM models.
+            ensemble_size (`int`, defaults to `1`):
+                Number of ensemble predictions. Recommended values are 5 and higher for better precision, or 1 for
+                faster inference.
+            processing_resolution (`int`, *optional*, defaults to None):
+                Effective processing resolution. When set to `0`, matches the larger input image dimension. This
+                produces crisper predictions, but may also lead to the overall loss of global context. The default
+                value `None` resolves to the optimal value from the model config.
+            match_input_resolution (`bool`, *optional*, defaults to `True`):
+                When enabled, the output prediction is resized to match the input dimensions. When disabled, the longer
+                side of the output will equal to `processing_resolution`.
+            resample_method_input: (`str`, *optional*, defaults to `"bilinear"`):
+                Resampling method used to resize input images to `processing_resolution`. The accepted values are:
+                `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
+            resample_method_output: (`str`, *optional*, defaults to `"bilinear"`):
+                Resampling method used to resize output predictions to match the input resolution. The accepted values
+                are `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
+            batch_size (`int`, *optional*, defaults to `1`):
+                Batch size; only matters when setting `ensemble_size` or passing a tensor of images.
+            check_input (`bool`, defaults to `False`):
+                Extra steps to validate compatibility of the inputs with the model.
+            ensembling_kwargs (`dict`, *optional*, defaults to `None`)
+                Extra dictionary with arguments for precise ensembling control. The following options are available:
+                - reduction (`str`, *optional*, defaults to `"median"`): Defines the ensembling function applied in
+                  every pixel location, can be either `"median"` or `"mean"`.
+                - regularizer_strength (`float`, *optional*, defaults to `0.02`): Strength of the regularizer term that
+                  pulls the solution to the unit range.
+                - max_iter (`int`, *optional*, defaults to `2`): Number of numerical optimizer function evaluations.
+                - tol (`float`, *optional*, defaults to `1e-3`): Numerical tolerance of the optimizer.
+                - max_res (`int`, *optional*, defaults to `None`): Resolution at which the search of scale and shift
+                  parameters is performed; `None` matches the `processing_resolution`.
+            input_latent (`torch.Tensor`, or `List[torch.Tensor]`, *optional*, defaults to `None`):
+                Latent noise tensors to replace the random initialization. These can be taken from the previous
+                function call's output.
+            generator (`torch.Generator`, or `List[torch.Generator]`, *optional*, defaults to `None`):
+                Random number generator object to ensure reproducibility.
+            output_prediction_format (`str`, *optional*, defaults to `"np"`):
+                Preferred format of the output's `prediction` and the optional `uncertainty` fields. The accepted
+                values are: `"pil'` (`PIL.Image.Image`), `"np"` (numpy array) or `"pt"` (torch tensor).
+            output_visualization (`bool`, *optional*, defaults to `True`):
+                When enabled, the output's `visualization` field contains a PIL.Image that can be used for visual
+                quality inspection.
+            output_visualization_kwargs (`dict`, *optional*, defaults to `None`):
+                Extra dictionary with arguments for precise visualization control. The following options are available:
+                - color_map (`str`, *optional*, defaults to `"Spectral"`): Color map used to convert a single-channel
+                  depth prediction into colored representation.
+                - vis_min (`float`, *optional*, defaults to `0.0`): Minimum value of the visualized depth range.
+                - vis_max (`float`, *optional*, defaults to `1.0`): Maximum value of the visualized depth range.
+            output_uncertainty (`bool`, *optional*, defaults to `True`):
+                When enabled, the output's `uncertainty` field contains the predictive uncertainty map, provided that
+                the `ensemble_size` argument is set to a value above 2.
+            output_latent (`bool`, *optional*, defaults to `False`):
+                When enabled, the output's `latent` field contains the latent codes corresponding to the predictions
+                within the ensemble. These codes can be saved, modified, and used for subsequent calls with the
+                `input_latent` argument.
+
+        Examples:
+
+        Returns:
+            `MarigoldDepthOutput`: Output class instance for Marigold monocular depth prediction pipeline.
+        """
+
+        # 0. Resolving variables
         device = self._execution_device
         dtype = self.dtype
 
-        image, input_dtype_max = load_image_canonical(input_image)  # [1,3,H,W]
+        num_images = 1
+        is_input_batched = False
+        if (isinstance(input_image, np.ndarray) or torch.is_tensor(input_image)) and input_image.ndim == 4:
+            num_images = input_image.shape[0]
+            is_input_batched = True
+
+        if denoising_steps is None:
+            denoising_steps = self.default_denoising_steps
+        if processing_resolution is None:
+            processing_resolution = self.default_processing_resolution
+
+        # 1. Checking inputs
+        self.check_inputs(
+            input_image,
+            denoising_steps,
+            ensemble_size,
+            processing_resolution,
+            resample_method_input,
+            resample_method_output,
+            batch_size,
+            ensembling_kwargs,
+            input_latent,
+            generator,
+            output_prediction_format,
+            output_visualization_kwargs,
+        )
+
+        # 2. Prepare empty text conditioning. Model invocation: self.tokenizer, self.text_encoder
+        if self.empty_text_embedding is None:
+            self.encode_empty_text()
+
+        # 3. Preprocessing input_image
+        image, input_dtype_max = load_image_canonical(input_image)  # [N,3,H,W]
+
         image = image.to(device=device, dtype=dtype)
 
         original_resolution = image.shape[-2:]
@@ -667,166 +595,134 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             check_image_values_range(image)
 
         if processing_resolution > 0:
-            image = resize_to_max_edge(image, processing_resolution, resample_method_input)  # [1,3,PH,PW]
+            image = resize_to_max_edge(image, processing_resolution, resample_method_input)  # [N,3,PH,PW]
 
-        image, padding = pad_image(image, self.latent_size_scale)  # [1,3,PPH,PPW]
+        image, padding = pad_image(image, self.latent_size_scale)  # [N,3,PPH,PPW]
 
-        # Model invocation: self.vae.encoder, self.vae.quant_conv
-        image_latent = self.encode_image(image)  # [1,4,h,w]
+        # 4. Encode input image into latent space. Model invocation: self.vae.encoder
+        image_latent, pred_latent = self.prepare_latent(
+            image, input_latent, generator, ensemble_size, batch_size
+        )  # [N*E,4,h,w], [N*E,4,h,w]
 
-        pred_latent = self.prepare_latent(image_latent, input_latent, generator, ensemble_size)  # [E,4,h,w]
+        del image
 
-        # Model invocation: self.unet
-        pred_latent = self.denoise_prediction_batched(
-            image_latent, pred_latent, generator, denoising_steps, ensemble_size, batch_size, progress_bar
-        )  # [E,4,h,w]
+        batch_empty_text_embedding = self.empty_text_embedding.to(device=device, dtype=dtype).repeat(
+            batch_size, 1, 1
+        )  # [B,1024,2]
 
-        # Model invocation: self.vae.decoder, self.vae.post_quant_conv
-        prediction = self.decode_prediction_batched(pred_latent, ensemble_size, batch_size)  # [E,3,PPH,PPW]
+        # 5. Denoising loop. Model invocation: self.unet
+        with self.progress_bar(total=num_images * ensemble_size * denoising_steps) as progress_bar:
+            clean_latent = []
 
-        prediction = unpad_image(prediction, padding)  # [E,3,PH,PW]
+            for i in range(0, num_images * ensemble_size, batch_size):
+                batch_image_latent = image_latent[i : i + batch_size]  # [B,4,h,w]
+                batch_pred_latent = pred_latent[i : i + batch_size]  # [B,4,h,w]
+                B = batch_image_latent.shape[0]
+
+                batch_text_embedding = batch_empty_text_embedding[:B]  # [B,2,1024]
+
+                self.scheduler.set_timesteps(denoising_steps, device=device)
+
+                for t in self.scheduler.timesteps:
+                    batch_latent = torch.cat([batch_image_latent, batch_pred_latent], dim=1)  # [B,8,h,w]
+                    noise = self.unet(batch_latent, t, encoder_hidden_states=batch_text_embedding).sample  # [B,4,h,w]
+                    batch_pred_latent = self.scheduler.step(
+                        noise, t, batch_pred_latent, generator=generator
+                    ).prev_sample  # [B,4,h,w]
+                    progress_bar.update(B)
+
+                clean_latent.append(batch_pred_latent)
+
+                del batch_image_latent, batch_pred_latent, batch_text_embedding, batch_latent, noise
+
+            pred_latent = torch.cat(clean_latent, dim=0)  # [N*E,4,h,w]
+
+            del clean_latent
+
+        del image_latent, batch_empty_text_embedding
+
+        # 6. Decode prediction from latent into pixel space. Model invocation: self.vae.decoder
+        prediction = torch.cat(
+            [
+                self.decode_prediction(pred_latent[i : i + batch_size])
+                for i in range(0, pred_latent.shape[0], batch_size)
+            ],
+            dim=0,
+        )  # [N*E,1,PPH,PPW]
+
+        if not output_latent:
+            pred_latent = None
+
+        # 7. Postprocess predictions
+        prediction = unpad_image(prediction, padding)  # [N*E,1,PH,PW]
 
         uncertainty = None
         if ensemble_size > 1:
-            prediction, uncertainty = ensemble_depth(
-                prediction, output_uncertainty, **(ensembling_kwargs or {})
-            )  # [1,1,PH,PW], [1,1,PH,PW]
+            prediction = prediction.reshape(num_images, ensemble_size, *prediction.shape[1:])  # [N,E,1,PH,PW]
+            prediction = [
+                ensemble_depth(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
+                for i in range(num_images)
+            ]  # [ [[1,1,PH,PW], [1,1,PH,PW]], ... ]
+            prediction, uncertainty = zip(*prediction)  # [[1,1,PH,PW], ... ], [[1,1,PH,PW], ... ]
+            prediction = torch.cat(prediction, dim=0)  # [N,1,PH,PW]
+            uncertainty = torch.cat(uncertainty, dim=0)  # [N,1,PH,PW]
 
         if match_input_resolution:
-            prediction = resize_maybe_antialias(
+            prediction = resize_antialias(
                 prediction, original_resolution, resample_method_output, is_aa=False
             )  # [1,1,H,W]
             if uncertainty is not None and output_uncertainty:
-                uncertainty = resize_maybe_antialias(
+                uncertainty = resize_antialias(
                     uncertainty, original_resolution, resample_method_output, is_aa=False
                 )  # [1,1,H,W]
 
         visualization = None
         if output_visualization:
-            visualization = visualize_depth(
-                prediction.squeeze(0).squeeze(0), **(output_visualization_kwargs or {})
-            )  # PIL.Image
+            visualization = [
+                visualize_depth(prediction[i].squeeze(0), **(output_visualization_kwargs or {}))
+                for i in range(num_images)
+            ]  # [PIL.Image, ...]
 
         if output_prediction_format != "pt":
-            assert output_prediction_format == "np"
             prediction = prediction.cpu().numpy()
             if uncertainty is not None and output_uncertainty:
                 uncertainty = uncertainty.cpu().numpy()
+            if output_prediction_format == "pil":
+                prediction = prediction.squeeze(0).squeeze(0)
+                prediction = (prediction * 65535).astype(np.uint16)
+                prediction = Image.fromarray(prediction, mode="I;16")
 
         out = MarigoldDepthOutput(
             prediction=prediction,
-            visualization=visualization if output_visualization else None,
-            uncertainty=uncertainty if output_uncertainty else None,
-            latent=pred_latent if output_latent else None,
+            visualization=visualization,
+            uncertainty=uncertainty,
+            latent=pred_latent,
         )
 
         return out
 
     def prepare_latent(
         self,
-        image_latent: torch.FloatTensor,
+        image: torch.FloatTensor,
         input_latent: Optional[torch.FloatTensor],
         generator: Optional[torch.Generator],
         ensemble_size: int,
-    ) -> torch.FloatTensor:
-        assert image_latent.dim() == 4 and image_latent.shape[:2] == (1, self.latent_space_size)  # [1,4,h,w]
-        assert (
-            input_latent is None
-            or input_latent.dim() == 4
-            and input_latent.shape[:2] == (ensemble_size, self.latent_space_size)
-        )  # [E,4,h,w]
+        batch_size: int,
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+        image_latent = torch.cat(
+            [self.encode_image(image[i : i + batch_size]) for i in range(0, image.shape[0], batch_size)], dim=0
+        )  # [N,4,h,w]
+        image_latent = image_latent.repeat_interleave(ensemble_size, dim=0)  # [N*E,4,h,w]
 
-        if input_latent is not None and input_latent.shape[2:] != image_latent.shape[2:]:
-            raise ValueError(
-                f"Mismatching size between the passed latent ({input_latent.shape[2:]} and encoded image "
-                f"latent ({image_latent.shape[2:]})."
-            )
-
-        device = self._execution_device
-        dtype = self.dtype
-
-        latent = input_latent  # [E,4,h,w]
         if input_latent is None:
-            latent = randn_tensor(
-                (ensemble_size, self.latent_space_size, image_latent.shape[2], image_latent.shape[3]),
+            input_latent = randn_tensor(
+                image_latent.shape,
                 generator=generator,
-                device=device,
-                dtype=dtype,
-            )
+                device=image_latent.device,
+                dtype=image_latent.dtype,
+            )  # [N*E,4,h,w]
 
-        return latent
-
-    def denoise_prediction_batched(
-        self,
-        image_latent: torch.FloatTensor,
-        input_latent: torch.FloatTensor,
-        generator: Optional[torch.Generator],
-        denoising_steps: Optional[int],
-        ensemble_size: Optional[int],
-        batch_size: int,
-        progress_bar: tqdm,
-    ) -> torch.FloatTensor:
-        assert input_latent.dim() == 4 and input_latent.shape[:2] == (ensemble_size, self.latent_space_size)
-
-        out = []
-
-        for i in range(0, ensemble_size, batch_size):
-            i_end = min(i + batch_size, ensemble_size)
-            latent = input_latent[i:i_end]  # [B,4,h,w]
-            latent = self.denoise_prediction(image_latent, latent, denoising_steps, generator, progress_bar)
-            out.append(latent)
-
-        out = torch.cat(out, dim=0)
-
-        return out  # [E,4,h,w]
-
-    def denoise_prediction(
-        self,
-        image_latent: torch.FloatTensor,
-        pred_latent: torch.FloatTensor,
-        denoising_steps: int,
-        generator: Optional[torch.Generator],
-        progress_bar: tqdm,
-    ) -> torch.FloatTensor:
-        assert image_latent.dim() == 4 and image_latent.shape[:2] == (1, self.latent_space_size)  # [1,4,h,w]
-        assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.latent_space_size  # [B,4,h,w]
-
-        device = self._execution_device
-        dtype = self.dtype
-        B = pred_latent.shape[0]
-
-        pred_latent = pred_latent.to(device=device, dtype=dtype)
-        image_latent = image_latent.to(device=device, dtype=dtype).repeat(B, 1, 1, 1)  # [B,4,h,w]
-        text_embedding = self.empty_text_embedding.to(device=device, dtype=dtype).repeat((B, 1, 1))  # [B,2,1024]
-
-        self.scheduler.set_timesteps(denoising_steps, device=device)
-        for t in self.scheduler.timesteps:
-            latent_cat = torch.cat([image_latent, pred_latent], dim=1)  # [B,8,h,w]
-            pred_noise = self.unet(latent_cat, t, encoder_hidden_states=text_embedding).sample  # [B,4,h,w]
-            pred_latent = self.scheduler.step(pred_noise, t, pred_latent, generator=generator).prev_sample
-            if progress_bar is not None:
-                progress_bar.update(B)
-
-        return pred_latent  # [B,4,h,w]
-
-    def decode_prediction_batched(
-        self,
-        pred_latent: torch.FloatTensor,
-        ensemble_size: int,
-        batch_size: int,
-    ) -> torch.FloatTensor:
-        assert pred_latent.dim() == 4 and pred_latent.shape[:2] == (ensemble_size, self.latent_space_size)  # [E,4,h,w]
-
-        out = []
-        for i in range(0, ensemble_size, batch_size):
-            i_end = min(i + batch_size, ensemble_size)
-            latent = pred_latent[i:i_end]
-            prediction = self.decode_prediction(latent)
-            out.append(prediction)
-
-        out = torch.cat(out, dim=0)
-
-        return out  # [E,1,H,W]
+        return image_latent, input_latent
 
     def decode_prediction(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
         assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.latent_space_size  # [B,4,h,w]
