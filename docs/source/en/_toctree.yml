@@ -62,13 +62,11 @@
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
-    title: Improve image quality with deterministic generation
-  - local: using-diffusers/control_brightness
-    title: Control image brightness
+    title: Reproducible pipelines
+  - local: using-diffusers/image_quality
+    title: Controlling image quality
   - local: using-diffusers/weighted_prompts
     title: Prompt techniques
-  - local: using-diffusers/freeu
-    title: Improve generation quality with FreeU
   title: Inference techniques
 - sections:
   - local: using-diffusers/sdxl
@@ -83,22 +81,14 @@
     title: ControlNet
   - local: using-diffusers/t2i_adapter
     title: T2I-Adapter
+  - local: using-diffusers/inference_with_lcm
+    title: Latent Consistency Model
   - local: using-diffusers/textual_inversion_inference
     title: Textual inversion
   - local: using-diffusers/shap-e
     title: Shap-E
   - local: using-diffusers/diffedit
     title: DiffEdit
-  - local: using-diffusers/reproducibility
-    title: Create reproducible pipelines
-  - local: using-diffusers/custom_pipeline_examples
-    title: Community pipelines
-  - local: using-diffusers/contribute_pipeline
-    title: Contribute a community pipeline
-  - local: using-diffusers/inference_with_lcm_lora
-    title: Latent Consistency Model-LoRA
-  - local: using-diffusers/inference_with_lcm
-    title: Latent Consistency Model
   - local: using-diffusers/inference_with_tcd_lora
     title: Trajectory Consistency Distillation-LoRA
   - local: using-diffusers/svd
@@ -149,8 +139,6 @@
 - sections:
   - local: optimization/fp16
     title: Speed up inference
-  - local: using-diffusers/distilled_sd
-    title: Distilled Stable Diffusion inference
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/torch2.0
@@ -451,6 +439,8 @@
       title: Utilities
     - local: api/image_processor
       title: VAE Image Processor
+    - local: api/video_processor
+      title: Video Processor
     title: Internal classes
     isExpanded: false
   title: API

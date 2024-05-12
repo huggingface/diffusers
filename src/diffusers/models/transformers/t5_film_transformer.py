@@ -86,7 +86,7 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
         self.post_dropout = nn.Dropout(p=dropout_rate)
         self.spec_out = nn.Linear(d_model, input_dims, bias=False)
 
-    def encoder_decoder_mask(self, query_input: torch.FloatTensor, key_input: torch.FloatTensor) -> torch.FloatTensor:
+    def encoder_decoder_mask(self, query_input: torch.Tensor, key_input: torch.Tensor) -> torch.Tensor:
         mask = torch.mul(query_input.unsqueeze(-1), key_input.unsqueeze(-2))
         return mask.unsqueeze(-3)
 
@@ -195,13 +195,13 @@ class DecoderLayer(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        conditioning_emb: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        conditioning_emb: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         encoder_decoder_position_bias=None,
-    ) -> Tuple[torch.FloatTensor]:
+    ) -> Tuple[torch.Tensor]:
         hidden_states = self.layer[0](
             hidden_states,
             conditioning_emb=conditioning_emb,
@@ -249,10 +249,10 @@ class T5LayerSelfAttentionCond(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        conditioning_emb: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        hidden_states: torch.Tensor,
+        conditioning_emb: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         # pre_self_attention_layer_norm
         normed_hidden_states = self.layer_norm(hidden_states)
 
@@ -292,10 +292,10 @@ class T5LayerCrossAttention(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        key_value_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        hidden_states: torch.Tensor,
+        key_value_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         normed_hidden_states = self.layer_norm(hidden_states)
         attention_output = self.attention(
             normed_hidden_states,
@@ -328,9 +328,7 @@ class T5LayerFFCond(nn.Module):
         self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(
-        self, hidden_states: torch.FloatTensor, conditioning_emb: Optional[torch.FloatTensor] = None
-    ) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, conditioning_emb: Optional[torch.Tensor] = None) -> torch.Tensor:
         forwarded_states = self.layer_norm(hidden_states)
         if conditioning_emb is not None:
             forwarded_states = self.film(forwarded_states, conditioning_emb)
@@ -361,7 +359,7 @@ class T5DenseGatedActDense(nn.Module):
         self.dropout = nn.Dropout(dropout_rate)
         self.act = NewGELUActivation()
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_gelu = self.act(self.wi_0(hidden_states))
         hidden_linear = self.wi_1(hidden_states)
         hidden_states = hidden_gelu * hidden_linear
@@ -390,7 +388,7 @@ class T5LayerNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         # T5 uses a layer_norm which only scales and doesn't shift, which is also known as Root Mean
         # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus variance is calculated
         # w/o mean and there is no bias. Additionally we want to make sure that the accumulation for
@@ -431,7 +429,7 @@ class T5FiLMLayer(nn.Module):
         super().__init__()
         self.scale_bias = nn.Linear(in_features, out_features * 2, bias=False)
 
-    def forward(self, x: torch.FloatTensor, conditioning_emb: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, x: torch.Tensor, conditioning_emb: torch.Tensor) -> torch.Tensor:
         emb = self.scale_bias(conditioning_emb)
         scale, shift = torch.chunk(emb, 2, -1)
         x = x * (1 + scale) + shift
