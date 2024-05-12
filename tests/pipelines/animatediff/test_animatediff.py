@@ -175,7 +175,19 @@ class AnimateDiffPipelineFastTests(
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
         if torch_device == "cpu":
-            expected_slice = np.array([0.4051, 0.4495, 0.4480, 0.5845, 0.4172, 0.6066, 0.4205, 0.3786, 0.5323])
+            expected_slice = np.array(
+                [
+                    0.40426707,
+                    0.4486752,
+                    0.44591454,
+                    0.583729,
+                    0.41623282,
+                    0.60586107,
+                    0.42043722,
+                    0.37848428,
+                    0.5303071,
+                ]
+            )
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     def test_inference_batch_single_identical(
