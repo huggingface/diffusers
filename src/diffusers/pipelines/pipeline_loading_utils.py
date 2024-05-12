@@ -435,7 +435,7 @@ def _load_empty_model(
             return_unused_kwargs=True,
             return_commit_hash=True,
             force_download=kwargs.pop("force_download", False),
-            resume_download=kwargs.pop("resume_download", False),
+            resume_download=kwargs.pop("resume_download", None),
             proxies=kwargs.pop("proxies", None),
             local_files_only=kwargs.pop("local_files_only", False),
             token=kwargs.pop("token", None),
@@ -454,7 +454,7 @@ def _load_empty_model(
             cached_folder,
             subfolder=name,
             force_download=kwargs.pop("force_download", False),
-            resume_download=kwargs.pop("resume_download", False),
+            resume_download=kwargs.pop("resume_download", None),
             proxies=kwargs.pop("proxies", None),
             local_files_only=kwargs.pop("local_files_only", False),
             token=kwargs.pop("token", None),
@@ -571,15 +571,17 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
 
     # Obtain a dictionary mapping the model-level components to the available
     # devices based on the maximum memory and the model sizes.
-    device_id_component_mapping = _assign_components_to_devices(
-        module_sizes, max_memory, device_mapping_strategy=device_map
-    )
+    final_device_map = None
+    if len(max_memory) > 0:
+        device_id_component_mapping = _assign_components_to_devices(
+            module_sizes, max_memory, device_mapping_strategy=device_map
+        )
 
-    # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
-    final_device_map = {}
-    for device_id, components in device_id_component_mapping.items():
-        for component in components:
-            final_device_map[component] = device_id
+        # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
+        final_device_map = {}
+        for device_id, components in device_id_component_mapping.items():
+            for component in components:
+                final_device_map[component] = device_id
 
     return final_device_map
 
@@ -607,6 +609,7 @@ def load_sub_model(
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     # retrieve class candidates
+
     class_obj, class_candidates = get_class_obj_and_candidates(
         library_name,
         class_name,

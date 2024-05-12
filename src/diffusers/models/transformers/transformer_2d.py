@@ -35,12 +35,12 @@ class Transformer2DModelOutput(BaseOutput):
     The output of [`Transformer2DModel`].
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
             The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
             distributions for the unnoised latent pixels.
     """
 
-    sample: torch.FloatTensor
+    sample: torch.Tensor
 
 
 class Transformer2DModel(ModelMixin, ConfigMixin):
@@ -72,6 +72,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["BasicTransformerBlock"]
 
     @register_to_config
     def __init__(
@@ -100,6 +101,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         attention_type: str = "default",
         caption_channels: int = None,
         interpolation_scale: float = None,
+        use_additional_conditions: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -124,6 +126,12 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.in_channels = in_channels
         self.out_channels = in_channels if out_channels is None else out_channels
         self.gradient_checkpointing = False
+        if use_additional_conditions is None:
+            if norm_type == "ada_norm_single" and sample_size == 128:
+                use_additional_conditions = True
+            else:
+                use_additional_conditions = False
+        self.use_additional_conditions = use_additional_conditions
 
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
@@ -305,9 +313,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # PixArt-Alpha blocks.
         self.adaln_single = None
-        self.use_additional_conditions = False
         if self.config.norm_type == "ada_norm_single":
-            self.use_additional_conditions = self.config.sample_size == 128
             # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
             # additional conditions until we find better name
             self.adaln_single = AdaLayerNormSingle(
@@ -340,9 +346,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         The [`Transformer2DModel`] forward method.
 
         Args:
-            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
+            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.Tensor` of shape `(batch size, channel, height, width)` if continuous):
                 Input `hidden_states`.
-            encoder_hidden_states ( `torch.FloatTensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
+            encoder_hidden_states ( `torch.Tensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
             timestep ( `torch.LongTensor`, *optional*):
