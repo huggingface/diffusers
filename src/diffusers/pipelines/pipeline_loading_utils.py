@@ -435,7 +435,7 @@ def _load_empty_model(
             return_unused_kwargs=True,
             return_commit_hash=True,
             force_download=kwargs.pop("force_download", False),
-            resume_download=kwargs.pop("resume_download", False),
+            resume_download=kwargs.pop("resume_download", None),
             proxies=kwargs.pop("proxies", None),
             local_files_only=kwargs.pop("local_files_only", False),
             token=kwargs.pop("token", None),
@@ -454,7 +454,7 @@ def _load_empty_model(
             cached_folder,
             subfolder=name,
             force_download=kwargs.pop("force_download", False),
-            resume_download=kwargs.pop("resume_download", False),
+            resume_download=kwargs.pop("resume_download", None),
             proxies=kwargs.pop("proxies", None),
             local_files_only=kwargs.pop("local_files_only", False),
             token=kwargs.pop("token", None),
@@ -609,6 +609,7 @@ def load_sub_model(
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     # retrieve class candidates
+
     class_obj, class_candidates = get_class_obj_and_candidates(
         library_name,
         class_name,
