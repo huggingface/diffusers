@@ -291,7 +291,8 @@ class DemoFusionSDXLPipeline(
                 )
 
                 # We are only ALWAYS interested in the pooled output of the final text encoder
-                pooled_prompt_embeds = prompt_embeds[0]
+                pooled_prompt_embeds = prompt_embeds[0] if pooled_prompt_embeds is None else pooled_prompt_embeds
+
                 prompt_embeds = prompt_embeds.hidden_states[-2]
 
                 prompt_embeds_list.append(prompt_embeds)
