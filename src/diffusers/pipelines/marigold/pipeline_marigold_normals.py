@@ -21,7 +21,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -41,6 +40,7 @@ from ...utils import (
 from ...utils.export_utils import visualize_normals
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from .marigold_image_processing import MarigoldImageProcessor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -64,107 +64,6 @@ Examples:
 >>> depth.visualization.save("einstein_normals.png")
 ```
 """
-
-
-def resize_antialias(image: torch.Tensor, size: Tuple[int, int], mode: str, is_aa: bool = None) -> torch.Tensor:
-    assert image.dim() == 4 and isinstance(is_aa, bool)
-
-    antialias = is_aa and mode in ("bilinear", "bicubic")
-    image = F.interpolate(image, size, mode=mode, antialias=antialias)
-
-    return image
-
-
-def resize_to_max_edge(image: torch.Tensor, max_edge_sz: int, mode: str) -> torch.Tensor:
-    assert image.dim() == 4
-
-    h, w = image.shape[-2:]
-    max_orig = max(h, w)
-    new_h = h * max_edge_sz // max_orig
-    new_w = w * max_edge_sz // max_orig
-
-    if new_h == 0 or new_w == 0:
-        raise ValueError(f"Extreme aspect ratio of the input image: [{w} x {h}]")
-
-    image = resize_antialias(image, (new_h, new_w), mode, is_aa=True)
-
-    return image
-
-
-def pad_image(image: torch.Tensor, align: int) -> Tuple[torch.Tensor, Tuple[int, int]]:
-    assert image.dim() == 4
-
-    h, w = image.shape[-2:]
-    ph, pw = -h % align, -w % align
-
-    image = F.pad(image, (0, pw, 0, ph), mode="replicate")
-
-    return image, (ph, pw)
-
-
-def unpad_image(image: torch.Tensor, padding: Tuple[int, int]) -> torch.Tensor:
-    assert image.dim() == 4
-
-    ph, pw = padding
-    uh = None if ph == 0 else -ph
-    uw = None if pw == 0 else -pw
-
-    image = image[:, :, :uh, :uw]
-
-    return image
-
-
-def load_image_canonical(image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Tuple[torch.Tensor, int]:
-    if isinstance(image, Image.Image):
-        image = np.array(image)
-
-    input_dtype_max = None
-    if isinstance(image, np.ndarray):
-        if np.issubdtype(image.dtype, np.integer) and not np.issubdtype(image.dtype, np.unsignedinteger):
-            raise ValueError(f"Input image dtype={image.dtype} cannot be a signed integer.")
-        if np.issubdtype(image.dtype, np.complexfloating):
-            raise ValueError(f"Input image dtype={image.dtype} cannot be complex.")
-        if np.issubdtype(image.dtype, bool):
-            raise ValueError(f"Input image dtype={image.dtype} cannot be boolean.")
-        if np.issubdtype(image.dtype, np.unsignedinteger):
-            input_dtype_max = np.iinfo(image.dtype).max
-            image = image.astype(np.float32)  # because torch does not have unsigned dtypes beyond torch.uint8
-        image = torch.from_numpy(image)
-
-    if torch.is_tensor(image) and not torch.is_floating_point(image) and input_dtype_max is None:
-        if image.dtype != torch.uint8:
-            raise ValueError(f"Image dtype={image.dtype} is not supported.")
-        input_dtype_max = 255
-
-    if image.dim() == 2:
-        image = image.unsqueeze(0).unsqueeze(0).repeat(1, 3, 1, 1)  # [1,3,H,W]
-    elif image.dim() == 3:
-        if image.shape[2] in (1, 3):
-            image = image.permute(2, 0, 1)  # [1|3,H,W]
-        if image.shape[0] == 1:
-            image = image.repeat(3, 1, 1)  # [3,H,W]
-        if image.shape[0] != 3:
-            raise ValueError(f"Input image is not 1- or 3-channel: {image.shape}.")
-        image = image.unsqueeze(0)  # [1,3,H,W]
-    elif image.dim() != 4:
-        raise ValueError("Input image is not a 2-, 3-, or 4-dimensional tensor.")
-
-    return image, input_dtype_max
-
-
-def check_image_values_range(image: torch.FloatTensor) -> None:
-    assert torch.is_floating_point(image)
-
-    val_min = image.min().item()
-    val_max = image.max().item()
-
-    if val_min < -1.0 or val_max > 1.0:
-        raise ValueError("Input image data is partially outside of the [-1,1] range.")
-    if val_min >= 0.0:
-        logger.warning(
-            "Input image data is entirely in the [0,1] range; expecting [-1,1]. "
-            "This could be an issue with normalization"
-        )
 
 
 def normalize_normals(normals: torch.FloatTensor, eps: float = 1e-6) -> torch.FloatTensor:
@@ -278,7 +177,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             use_full_z_range=use_full_z_range,
         )
 
-        self.latent_size_scale = 8
+        self.vae_scale_factor = 8
         self.latent_space_size = self.vae.config.latent_channels
         self.latent_scaling_factor = self.vae.config.scaling_factor
         self.default_denoising_steps = default_denoising_steps
@@ -286,6 +185,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         self.use_full_z_range = use_full_z_range
 
         self.empty_text_embedding = None
+
+        self.image_processor = MarigoldImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def check_inputs(
         self,
@@ -322,8 +223,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 "`processing_resolution` must be non-negative: 0 for native resolution, or any positive value for "
                 "downsampled processing."
             )
-        if processing_resolution % self.latent_size_scale != 0:
-            raise ValueError(f"`processing_resolution` must be a multiple of {self.latent_size_scale}.")
+        if processing_resolution % self.vae_scale_factor != 0:
+            raise ValueError(f"`processing_resolution` must be a multiple of {self.vae_scale_factor}.")
         if resample_method_input not in ("nearest", "nearest-exact", "bilinear", "bicubic", "area"):
             raise ValueError(
                 "`resample_method_input` takes string values compatible with PIL library: "
@@ -372,8 +273,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 if new_H == 0 or new_W == 0:
                     raise ValueError(f"Extreme aspect ratio of the input image: [{W} x {H}]")
                 W, H = new_W, new_H
-            w = (W + self.latent_size_scale - 1) // self.latent_size_scale
-            h = (H + self.latent_size_scale - 1) // self.latent_size_scale
+            w = (W + self.vae_scale_factor - 1) // self.vae_scale_factor
+            h = (H + self.vae_scale_factor - 1) // self.vae_scale_factor
             shape_expected = (num_images * ensemble_size, self.latent_space_size, h, w)
 
             if latents.shape != shape_expected:
@@ -520,21 +421,9 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             self.encode_empty_text()
 
         # 3. Preprocessing input image
-        image, input_dtype_max = load_image_canonical(image)  # [N,3,H,W]
-
-        image = image.to(device=device, dtype=dtype)
-
-        original_resolution = image.shape[-2:]
-
-        if input_dtype_max is not None:
-            image = image * (2.0 / input_dtype_max) - 1.0
-        elif check_input:
-            check_image_values_range(image)
-
-        if processing_resolution > 0:
-            image = resize_to_max_edge(image, processing_resolution, resample_method_input)  # [N,3,PH,PW]
-
-        image, padding = pad_image(image, self.latent_size_scale)  # [N,3,PPH,PPW]
+        image, padding, original_resolution = self.image_processor.preprocess(
+            image, processing_resolution, resample_method_input, check_input, device, dtype
+        )  # [N,3,PPH,PPW]
 
         # 4. Encode input image into latent space. Model invocation: self.vae.encoder
         image_latent, pred_latent = self.prepare_latent(
@@ -589,7 +478,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             pred_latent = None
 
         # 7. Postprocess predictions
-        prediction = unpad_image(prediction, padding)  # [N*E,3,PH,PW]
+        prediction = self.image_processor.unpad_image(prediction, padding)  # [N*E,3,PH,PW]
 
         uncertainty = None
         if ensemble_size > 1:
@@ -603,12 +492,12 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             uncertainty = torch.cat(uncertainty, dim=0)  # [N,1,PH,PW]
 
         if match_input_resolution:
-            prediction = resize_antialias(
+            prediction = self.image_processor.resize_antialias(
                 prediction, original_resolution, resample_method_output, is_aa=False
             )  # [N,3,H,W]
             prediction = normalize_normals(prediction)  # [N,3,H,W]
             if uncertainty is not None and output_uncertainty:
-                uncertainty = resize_antialias(
+                uncertainty = self.image_processor.resize_antialias(
                     uncertainty, original_resolution, resample_method_output, is_aa=False
                 )  # [N,1,H,W]
 
