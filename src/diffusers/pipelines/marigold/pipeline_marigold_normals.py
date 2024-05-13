@@ -297,7 +297,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         resample_method_output: str,
         batch_size: int,
         ensembling_kwargs: Optional[Dict[str, Any]],
-        input_latent: Optional[torch.FloatTensor],
+        latents: Optional[torch.FloatTensor],
         generator: Optional[Union[torch.Generator, List[torch.Generator]]],
         output_prediction_format: str,
         output_visualization_kwargs: Optional[Dict[str, Any]],
@@ -338,8 +338,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             raise ValueError("`batch_size` must be positive.")
         if output_prediction_format not in ["pt", "np"]:
             raise ValueError("`output_prediction_format` must be one of `pt` or `np`.")
-        if input_latent is not None and generator is not None:
-            raise ValueError("`input_latent` and `generator` cannot be used together.")
+        if latents is not None and generator is not None:
+            raise ValueError("`latents` and `generator` cannot be used together.")
         if ensembling_kwargs is not None and not isinstance(ensembling_kwargs, dict):
             raise ValueError("`ensembling_kwargs` must be a dictionary.")
         if output_visualization_kwargs is not None and not isinstance(output_visualization_kwargs, dict):
@@ -358,12 +358,12 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         else:
             raise ValueError(f"Unsupported `image` type: {type(image)}.")
 
-        # input_latent checks
-        if input_latent is not None:
-            if not torch.is_tensor(input_latent):
-                raise ValueError("`input_latent` must be a torch.FloatTensor.")
-            if not input_latent.dim() != 4:
-                raise ValueError(f"`input_latent` has unsupported dimensions or shape: {input_latent.shape}.")
+        # latents checks
+        if latents is not None:
+            if not torch.is_tensor(latents):
+                raise ValueError("`latents` must be a torch.FloatTensor.")
+            if not latents.dim() != 4:
+                raise ValueError(f"`latents` has unsupported dimensions or shape: {latents.shape}.")
 
             if processing_resolution > 0:
                 max_orig = max(H, W)
@@ -376,10 +376,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             h = (H + self.latent_size_scale - 1) // self.latent_size_scale
             shape_expected = (num_images * ensemble_size, self.latent_space_size, h, w)
 
-            if input_latent.shape != shape_expected:
-                raise ValueError(
-                    f"`input_latent` has unexpected shape={input_latent.shape} expected={shape_expected}."
-                )
+            if latents.shape != shape_expected:
+                raise ValueError(f"`latents` has unexpected shape={latents.shape} expected={shape_expected}.")
 
         # generator checks
         if generator is not None:
@@ -411,7 +409,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         batch_size: int = 1,
         check_input: bool = True,
         ensembling_kwargs: Optional[Dict[str, Any]] = None,
-        input_latent: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
+        latents: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_prediction_format: str = "np",
         output_visualization: bool = True,
@@ -454,7 +452,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 Extra dictionary with arguments for precise ensembling control. The following options are available:
                 - reduction (`str`, *optional*, defaults to `"closest"`): Defines the ensembling function applied in
                   every pixel location, can be either `"closest"` or `"mean"`.
-            input_latent (`torch.Tensor`, *optional*, defaults to `None`):
+            latents (`torch.Tensor`, *optional*, defaults to `None`):
                 Latent noise tensors to replace the random initialization. These can be taken from the previous
                 function call's output.
             generator (`torch.Generator`, or `List[torch.Generator]`, *optional*, defaults to `None`):
@@ -480,7 +478,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             output_latent (`bool`, *optional*, defaults to `False`):
                 When enabled, the output's `latent` field contains the latent codes corresponding to the predictions
                 within the ensemble. These codes can be saved, modified, and used for subsequent calls with the
-                `input_latent` argument.
+                `latents` argument.
 
         Examples:
 
@@ -511,7 +509,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             resample_method_output,
             batch_size,
             ensembling_kwargs,
-            input_latent,
+            latents,
             generator,
             output_prediction_format,
             output_visualization_kwargs,
@@ -540,7 +538,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         # 4. Encode input image into latent space. Model invocation: self.vae.encoder
         image_latent, pred_latent = self.prepare_latent(
-            image, input_latent, generator, ensemble_size, batch_size
+            image, latents, generator, ensemble_size, batch_size
         )  # [N*E,4,h,w], [N*E,4,h,w]
 
         del image
@@ -640,7 +638,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
     def prepare_latent(
         self,
         image: torch.FloatTensor,
-        input_latent: Optional[torch.FloatTensor],
+        latents: Optional[torch.FloatTensor],
         generator: Optional[torch.Generator],
         ensemble_size: int,
         batch_size: int,
@@ -650,15 +648,16 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         )  # [N,4,h,w]
         image_latent = image_latent.repeat_interleave(ensemble_size, dim=0)  # [N*E,4,h,w]
 
-        if input_latent is None:
-            input_latent = randn_tensor(
+        pred_latent = latents
+        if pred_latent is None:
+            pred_latent = randn_tensor(
                 image_latent.shape,
                 generator=generator,
                 device=image_latent.device,
                 dtype=image_latent.dtype,
             )  # [N*E,4,h,w]
 
-        return image_latent, input_latent
+        return image_latent, pred_latent
 
     def decode_prediction(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
         assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.latent_space_size  # [B,4,h,w]
