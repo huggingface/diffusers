@@ -662,7 +662,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
     def decode_prediction(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
         assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.latent_space_size  # [B,4,h,w]
 
-        prediction = self.decode_image(pred_latent)  # [B,3,H,W]
+        prediction = self.vae.decode(pred_latent / self.vae.config.scaling_factor, return_dict=False)[0]  # [B,3,H,W]
 
         prediction = torch.clip(prediction, -1.0, 1.0)
 
@@ -671,15 +671,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             prediction[:, 2, :, :] += 0.5
 
         prediction = normalize_normals(prediction)  # [B,3,H,W]
-
-        return prediction  # [B,3,H,W]
-
-    def decode_image(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
-        assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.latent_space_size  # [B,4,h,w]
-
-        pred_latent = pred_latent / self.latent_scaling_factor
-        pred_latent = self.vae.post_quant_conv(pred_latent)
-        prediction = self.vae.decoder(pred_latent)
 
         return prediction  # [B,3,H,W]
 

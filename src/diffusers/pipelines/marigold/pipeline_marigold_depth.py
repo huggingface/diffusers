@@ -724,22 +724,13 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     def decode_prediction(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
         assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.latent_space_size  # [B,4,h,w]
 
-        prediction = self.decode_image(pred_latent)  # [B,3,H,W]
+        prediction = self.vae.decode(pred_latent / self.vae.config.scaling_factor, return_dict=False)[0]  # [B,3,H,W]
 
         prediction = prediction.mean(dim=1, keepdim=True)  # [B,1,H,W]
         prediction = torch.clip(prediction, -1.0, 1.0)  # [B,1,H,W]
         prediction = (prediction + 1.0) / 2.0
 
         return prediction  # [B,1,H,W]
-
-    def decode_image(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
-        assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.latent_space_size  # [B,4,h,w]
-
-        pred_latent = pred_latent / self.latent_scaling_factor
-        pred_latent = self.vae.post_quant_conv(pred_latent)
-        prediction = self.vae.decoder(pred_latent)
-
-        return prediction  # [B,3,H,W]
 
     def encode_prediction(self, prediction: torch.FloatTensor, check_input: bool = True) -> torch.FloatTensor:
         assert torch.is_tensor(prediction) and torch.is_floating_point(prediction)
