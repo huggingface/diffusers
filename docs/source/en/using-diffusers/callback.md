@@ -23,11 +23,12 @@ This guide will demonstrate how callbacks work by a few features you can impleme
 
 We provide a list of callbacks you can plug into an existing pipeline and modify the denoising loop. This is the current list of official callbacks:
 
-- `SDCFGCutoffCallback`: Disables the CFG after a certain number of steps for SD 1.5 pipelines.
-- `SDXLCFGCutoffCallback`: Disables the CFG after a certain number of steps for SDXL pipelines.
-- `IPAdapterScaleCutoffCallback`: Disables the IP Adapter after a certain number of steps.
+- `SDCFGCutoffCallback`: Disables the CFG after a certain number of steps for all SD 1.5 pipelines, including text-to-image, image-to-image, inpaint, and controlnet.
+- `SDXLCFGCutoffCallback`: Disables the CFG after a certain number of steps for all SDXL pipelines, including text-to-image, image-to-image, inpaint, and controlnet.
+- `IPAdapterScaleCutoffCallback`: Disables the IP Adapter after a certain number of steps for all pipelines supporting IP-Adapter.
 
-> These callbacks also work with the `ControlNet` pipelines of the corresponding model architecture.
+> [!TIP]
+> If you want to add a new official callback, feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) or [submit a PR](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#how-to-open-a-pr).
 
 To set up a callback, you need to specify the number of denoising steps after which the callback comes into effect. You can do so by using either one of these two arguments
 
