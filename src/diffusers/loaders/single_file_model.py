@@ -193,6 +193,7 @@ class FromOriginalModelMixin:
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
+        diffusers_model_config = None
         if original_config:
             if "config_mapping_fn" in mapping_functions:
                 config_mapping_fn = mapping_functions["config_mapping_fn"]
@@ -220,6 +221,8 @@ class FromOriginalModelMixin:
             if config:
                 if isinstance(config, str):
                     default_pretrained_model_config_name = config
+                elif isinstance(config, dict):
+                    diffusers_model_config = config
                 else:
                     raise ValueError(
                         (
@@ -239,11 +242,12 @@ class FromOriginalModelMixin:
                     "subfolder", None
                 )  # some configs contain a subfolder key, e.g. StableCascadeUNet
 
-            diffusers_model_config = cls.load_config(
-                pretrained_model_name_or_path=default_pretrained_model_config_name,
-                subfolder=subfolder,
-                local_files_only=local_files_only,
-            )
+            if diffusers_model_config is None:
+                diffusers_model_config = cls.load_config(
+                    pretrained_model_name_or_path=default_pretrained_model_config_name,
+                    subfolder=subfolder,
+                    local_files_only=local_files_only,
+                )
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
 
             # Map legacy kwargs to new kwargs
