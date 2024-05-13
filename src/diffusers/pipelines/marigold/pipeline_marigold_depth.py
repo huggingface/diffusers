@@ -343,7 +343,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     def check_inputs(
         self,
         input_image: Union[Image.Image, np.ndarray, torch.FloatTensor],
-        denoising_steps: int,
+        num_inference_steps: int,
         ensemble_size: int,
         processing_resolution: int,
         resample_method_input: str,
@@ -355,10 +355,10 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         output_prediction_format: str,
         output_visualization_kwargs: Optional[Dict[str, Any]],
     ) -> None:
-        if denoising_steps is None:
-            raise ValueError("`denoising_steps` is not specified and could not be resolved from the model config.")
-        if denoising_steps < 1:
-            raise ValueError("`denoising_steps` must be positive.")
+        if num_inference_steps is None:
+            raise ValueError("`num_inference_steps` is not specified and could not be resolved from the model config.")
+        if num_inference_steps < 1:
+            raise ValueError("`num_inference_steps` must be positive.")
         if ensemble_size < 1:
             raise ValueError("`ensemble_size` must be positive.")
         if ensemble_size == 2:
@@ -458,7 +458,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     def __call__(
         self,
         input_image: Union[Image.Image, np.ndarray, torch.FloatTensor],
-        denoising_steps: Optional[int] = None,
+        num_inference_steps: Optional[int] = None,
         ensemble_size: int = 1,
         processing_resolution: Optional[int] = None,
         match_input_resolution: bool = True,
@@ -482,7 +482,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         Args:
             input_image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`):
                 Input image or stacked images.
-            denoising_steps (`int`, *optional*, defaults to `None`):
+            num_inference_steps (`int`, *optional*, defaults to `None`):
                 Number of denoising diffusion steps during inference. The default value `None` results in automatic
                 selection. The number of steps should be at least 10 with the full Marigold models, and between 1 and 4
                 for Marigold-LCM models.
@@ -555,15 +555,15 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         if (isinstance(input_image, np.ndarray) or torch.is_tensor(input_image)) and input_image.ndim == 4:
             num_images = input_image.shape[0]
 
-        if denoising_steps is None:
-            denoising_steps = self.default_denoising_steps
+        if num_inference_steps is None:
+            num_inference_steps = self.default_denoising_steps
         if processing_resolution is None:
             processing_resolution = self.default_processing_resolution
 
         # 1. Checking inputs
         self.check_inputs(
             input_image,
-            denoising_steps,
+            num_inference_steps,
             ensemble_size,
             processing_resolution,
             resample_method_input,
@@ -609,7 +609,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         )  # [B,1024,2]
 
         # 5. Denoising loop. Model invocation: self.unet
-        with self.progress_bar(total=num_images * ensemble_size * denoising_steps) as progress_bar:
+        with self.progress_bar(total=num_images * ensemble_size * num_inference_steps) as progress_bar:
             clean_latent = []
 
             for i in range(0, num_images * ensemble_size, batch_size):
@@ -619,7 +619,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
                 batch_text_embedding = batch_empty_text_embedding[:B]  # [B,2,1024]
 
-                self.scheduler.set_timesteps(denoising_steps, device=device)
+                self.scheduler.set_timesteps(num_inference_steps, device=device)
 
                 for t in self.scheduler.timesteps:
                     batch_latent = torch.cat([batch_image_latent, batch_pred_latent], dim=1)  # [B,8,h,w]
