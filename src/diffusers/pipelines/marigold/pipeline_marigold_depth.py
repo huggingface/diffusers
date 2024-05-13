@@ -136,8 +136,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.latent_space_size = self.vae.config.latent_channels
-        self.latent_scaling_factor = self.vae.config.scaling_factor
+
         self.default_denoising_steps = default_denoising_steps
         self.default_processing_resolution = default_processing_resolution
 
@@ -234,7 +233,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 W, H = new_W, new_H
             w = (W + self.vae_scale_factor - 1) // self.vae_scale_factor
             h = (H + self.vae_scale_factor - 1) // self.vae_scale_factor
-            shape_expected = (num_images * ensemble_size, self.latent_space_size, h, w)
+            shape_expected = (num_images * ensemble_size, self.vae.config.latent_channels, h, w)
 
             if latents.shape != shape_expected:
                 raise ValueError(f"`latents` has unexpected shape={latents.shape} expected={shape_expected}.")
@@ -487,7 +486,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         return image_latent, pred_latent
 
     def decode_prediction(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
-        assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.latent_space_size  # [B,4,h,w]
+        assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.vae.config.latent_channels  # [B,4,h,w]
 
         prediction = self.vae.decode(pred_latent / self.vae.config.scaling_factor, return_dict=False)[0]  # [B,3,H,W]
 
@@ -503,7 +502,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         h = self.vae.encoder(image)
         moments = self.vae.quant_conv(h)
         mean, logvar = torch.chunk(moments, 2, dim=1)
-        latent = mean * self.latent_scaling_factor
+        latent = mean * self.vae.config.scaling_factor
 
         return latent  # [B,4,h,w]
 
