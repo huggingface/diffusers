@@ -342,7 +342,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        input_image: Union[Image.Image, np.ndarray, torch.FloatTensor],
+        image: Union[Image.Image, np.ndarray, torch.FloatTensor],
         num_inference_steps: int,
         ensemble_size: int,
         processing_resolution: int,
@@ -398,18 +398,18 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         if output_visualization_kwargs is not None and not isinstance(output_visualization_kwargs, dict):
             raise ValueError("`output_visualization_kwargs` must be a dictionary.")
 
-        # input_image checks
+        # image checks
         num_images = 1
-        if isinstance(input_image, np.ndarray) or torch.is_tensor(input_image):
-            H, W = input_image.shape[-2:]
-            if input_image.ndim not in (2, 3, 4):
-                raise ValueError(f"`input_image` has unsupported dimension or shape: {input_image.shape}.")
-            if input_image.ndim == 4:
-                num_images = input_image.shape[0]
-        elif isinstance(input_image, Image.Image):
-            W, H = input_image.size
+        if isinstance(image, np.ndarray) or torch.is_tensor(image):
+            H, W = image.shape[-2:]
+            if image.ndim not in (2, 3, 4):
+                raise ValueError(f"`image` has unsupported dimension or shape: {image.shape}.")
+            if image.ndim == 4:
+                num_images = image.shape[0]
+        elif isinstance(image, Image.Image):
+            W, H = image.size
         else:
-            raise ValueError(f"Unsupported input image type: {type(input_image)}.")
+            raise ValueError(f"Unsupported `image` type: {type(image)}.")
 
         if num_images > 1 and output_prediction_format == "pil":
             raise ValueError("`output_prediction_format='pil'` is not supported when passing multiple input images.")
@@ -457,7 +457,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        input_image: Union[Image.Image, np.ndarray, torch.FloatTensor],
+        image: Union[Image.Image, np.ndarray, torch.FloatTensor],
         num_inference_steps: Optional[int] = None,
         ensemble_size: int = 1,
         processing_resolution: Optional[int] = None,
@@ -480,7 +480,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline.
 
         Args:
-            input_image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`):
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`):
                 Input image or stacked images.
             num_inference_steps (`int`, *optional*, defaults to `None`):
                 Number of denoising diffusion steps during inference. The default value `None` results in automatic
@@ -552,8 +552,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         dtype = self.dtype
 
         num_images = 1
-        if (isinstance(input_image, np.ndarray) or torch.is_tensor(input_image)) and input_image.ndim == 4:
-            num_images = input_image.shape[0]
+        if (isinstance(image, np.ndarray) or torch.is_tensor(image)) and image.ndim == 4:
+            num_images = image.shape[0]
 
         if num_inference_steps is None:
             num_inference_steps = self.default_denoising_steps
@@ -562,7 +562,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         # 1. Checking inputs
         self.check_inputs(
-            input_image,
+            image,
             num_inference_steps,
             ensemble_size,
             processing_resolution,
@@ -580,8 +580,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         if self.empty_text_embedding is None:
             self.encode_empty_text()
 
-        # 3. Preprocessing input_image
-        image, input_dtype_max = load_image_canonical(input_image)  # [N,3,H,W]
+        # 3. Preprocessing input image
+        image, input_dtype_max = load_image_canonical(image)  # [N,3,H,W]
 
         image = image.to(device=device, dtype=dtype)
 
