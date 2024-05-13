@@ -513,6 +513,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         assert images[0].shape == (768, 512, 3)
 
         original_image = images[0, -3:, -3:, -1].flatten()
+        print(", ".join([(str(round(x, 4))) for x in original_image]))
         expected_image = np.array([0.4574, 0.4461, 0.4435, 0.4462, 0.4396, 0.439, 0.4474, 0.4486, 0.4333])
 
         max_diff = numpy_cosine_similarity_distance(expected_image, original_image)
