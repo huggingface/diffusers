@@ -31,11 +31,11 @@ class TransformerTemporalModelOutput(BaseOutput):
     The output of [`TransformerTemporalModel`].
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size x num_frames, num_channels, height, width)`):
+        sample (`torch.Tensor` of shape `(batch_size x num_frames, num_channels, height, width)`):
             The hidden states output conditioned on `encoder_hidden_states` input.
     """
 
-    sample: torch.FloatTensor
+    sample: torch.Tensor
 
 
 class TransformerTemporalModel(ModelMixin, ConfigMixin):
@@ -120,7 +120,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
+        hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.LongTensor] = None,
         timestep: Optional[torch.LongTensor] = None,
         class_labels: torch.LongTensor = None,
@@ -132,7 +132,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         The [`TransformerTemporal`] forward method.
 
         Args:
-            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
+            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.Tensor` of shape `(batch size, channel, height, width)` if continuous):
                 Input hidden_states.
             encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
@@ -283,7 +283,7 @@ class TransformerSpatioTemporalModel(nn.Module):
     ):
         """
         Args:
-            hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
+            hidden_states (`torch.Tensor` of shape `(batch size, channel, height, width)`):
                 Input hidden_states.
             num_frames (`int`):
                 The number of frames to be processed per batch. This is used to reshape the hidden states.

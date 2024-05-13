@@ -272,6 +272,36 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if self._supports_gradient_checkpointing:
             self.apply(partial(self._set_gradient_checkpointing, value=False))
 
+    def set_use_npu_flash_attention(self, valid: bool) -> None:
+        r"""
+        Set the switch for the npu flash attention.
+        """
+
+        def fn_recursive_set_npu_flash_attention(module: torch.nn.Module):
+            if hasattr(module, "set_use_npu_flash_attention"):
+                module.set_use_npu_flash_attention(valid)
+
+            for child in module.children():
+                fn_recursive_set_npu_flash_attention(child)
+
+        for module in self.children():
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_npu_flash_attention(module)
+
+    def enable_npu_flash_attention(self) -> None:
+        r"""
+        Enable npu flash attention from torch_npu
+
+        """
+        self.set_use_npu_flash_attention(True)
+
+    def disable_npu_flash_attention(self) -> None:
+        r"""
+        disable npu flash attention from torch_npu
+
+        """
+        self.set_use_npu_flash_attention(False)
+
     def set_use_memory_efficient_attention_xformers(
         self, valid: bool, attention_op: Optional[Callable] = None
     ) -> None:
@@ -446,9 +476,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -530,7 +560,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
         from_flax = kwargs.pop("from_flax", False)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
         local_files_only = kwargs.pop("local_files_only", None)
@@ -932,6 +962,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
 
         return model, missing_keys, unexpected_keys, mismatched_keys, error_msgs
+
+    @classmethod
+    def _get_signature_keys(cls, obj):
+        parameters = inspect.signature(obj.__init__).parameters
+        required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
+        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
+        expected_modules = set(required_parameters.keys()) - {"self"}
+
+        return expected_modules, optional_parameters
 
     # Adapted from `transformers` modeling_utils.py
     def _get_no_split_modules(self, device_map: str):
