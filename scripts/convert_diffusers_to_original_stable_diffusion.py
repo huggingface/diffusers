@@ -159,10 +159,21 @@ vae_conversion_map_attn = [
     ("proj_out.", "proj_attn."),
 ]
 
+# This is probably not the most ideal solution, but it does work.
+vae_extra_conversion_map = [
+    ("to_q", "q"),
+    ("to_k", "k"),
+    ("to_v", "v"),
+    ("to_out.0", "proj_out"),
+]
+
 
 def reshape_weight_for_sd(w):
     # convert HF linear weights to SD conv2d weights
-    return w.reshape(*w.shape, 1, 1)
+    if not w.ndim == 1:
+        return w.reshape(*w.shape, 1, 1)
+    else:
+        return w
 
 
 def convert_vae_state_dict(vae_state_dict):
@@ -178,11 +189,20 @@ def convert_vae_state_dict(vae_state_dict):
             mapping[k] = v
     new_state_dict = {v: vae_state_dict[k] for k, v in mapping.items()}
     weights_to_convert = ["q", "k", "v", "proj_out"]
+    keys_to_rename = {}
     for k, v in new_state_dict.items():
         for weight_name in weights_to_convert:
             if f"mid.attn_1.{weight_name}.weight" in k:
                 print(f"Reshaping {k} for SD format")
                 new_state_dict[k] = reshape_weight_for_sd(v)
+        for weight_name, real_weight_name in vae_extra_conversion_map:
+            if f"mid.attn_1.{weight_name}.weight" in k or f"mid.attn_1.{weight_name}.bias" in k:
+                keys_to_rename[k] = k.replace(weight_name, real_weight_name)
+    for k, v in keys_to_rename.items():
+        if k in new_state_dict:
+            print(f"Renaming {k} to {v}")
+            new_state_dict[v] = reshape_weight_for_sd(new_state_dict[k])
+            del new_state_dict[k]
     return new_state_dict
 
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import glob
 import json
 import os
 import random
@@ -57,7 +56,7 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
-from diffusers.pipelines.pipeline_utils import _get_pipeline_class, variant_compatible_siblings
+from diffusers.pipelines.pipeline_utils import _get_pipeline_class
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import (
     CONFIG_NAME,
@@ -67,6 +66,7 @@ from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
     floats_tensor,
+    get_python_version,
     get_tests_dir,
     load_numpy,
     nightly,
@@ -118,10 +118,10 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
             new_ddpm.to(torch_device)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=5, output_type="np").images
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
+        new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="np").images
 
         assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
     except Exception:
@@ -364,12 +364,12 @@ class DownloadTests(unittest.TestCase):
         )
         pipe = pipe.to(torch_device)
         generator = torch.manual_seed(0)
-        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
         pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         pipe_2 = pipe_2.to(torch_device)
         generator = torch.manual_seed(0)
-        out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
@@ -380,7 +380,7 @@ class DownloadTests(unittest.TestCase):
         )
         pipe = pipe.to(torch_device)
         generator = torch.manual_seed(0)
-        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
@@ -389,7 +389,7 @@ class DownloadTests(unittest.TestCase):
 
             generator = torch.manual_seed(0)
 
-            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
@@ -399,7 +399,7 @@ class DownloadTests(unittest.TestCase):
         pipe = pipe.to(torch_device)
 
         generator = torch.manual_seed(0)
-        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
@@ -408,7 +408,7 @@ class DownloadTests(unittest.TestCase):
 
             generator = torch.manual_seed(0)
 
-            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
@@ -591,7 +591,7 @@ class DownloadTests(unittest.TestCase):
                 )
                 pipe = pipe.to(torch_device)
                 generator = torch.manual_seed(0)
-                out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+                out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
                 with tempfile.TemporaryDirectory() as tmpdirname:
                     pipe.save_pretrained(tmpdirname)
@@ -602,7 +602,7 @@ class DownloadTests(unittest.TestCase):
 
                 generator = torch.manual_seed(0)
 
-                out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+                out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
                 assert np.max(np.abs(out - out_2)) < 1e-3
 
@@ -627,7 +627,7 @@ class DownloadTests(unittest.TestCase):
             assert pipe._maybe_convert_prompt("<*>", pipe.tokenizer) == "<*>"
 
             prompt = "hey <*>"
-            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            out = pipe(prompt, num_inference_steps=1, output_type="np").images
             assert out.shape == (1, 128, 128, 3)
 
         # single token load local with weight name
@@ -643,7 +643,7 @@ class DownloadTests(unittest.TestCase):
             assert pipe._maybe_convert_prompt("<**>", pipe.tokenizer) == "<**>"
 
             prompt = "hey <**>"
-            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            out = pipe(prompt, num_inference_steps=1, output_type="np").images
             assert out.shape == (1, 128, 128, 3)
 
         # multi token load
@@ -666,7 +666,7 @@ class DownloadTests(unittest.TestCase):
             assert pipe._maybe_convert_prompt("<***>", pipe.tokenizer) == "<***> <***>_1 <***>_2"
 
             prompt = "hey <***>"
-            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            out = pipe(prompt, num_inference_steps=1, output_type="np").images
             assert out.shape == (1, 128, 128, 3)
 
         # multi token load a1111
@@ -694,7 +694,7 @@ class DownloadTests(unittest.TestCase):
             assert pipe._maybe_convert_prompt("<****>", pipe.tokenizer) == "<****> <****>_1 <****>_2"
 
             prompt = "hey <****>"
-            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            out = pipe(prompt, num_inference_steps=1, output_type="np").images
             assert out.shape == (1, 128, 128, 3)
 
         # multi embedding load
@@ -719,7 +719,7 @@ class DownloadTests(unittest.TestCase):
                 assert pipe._maybe_convert_prompt("<******>", pipe.tokenizer) == "<******>"
 
                 prompt = "hey <*****> <******>"
-                out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+                out = pipe(prompt, num_inference_steps=1, output_type="np").images
                 assert out.shape == (1, 128, 128, 3)
 
         # single token state dict load
@@ -732,7 +732,7 @@ class DownloadTests(unittest.TestCase):
         assert pipe._maybe_convert_prompt("<x>", pipe.tokenizer) == "<x>"
 
         prompt = "hey <x>"
-        out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+        out = pipe(prompt, num_inference_steps=1, output_type="np").images
         assert out.shape == (1, 128, 128, 3)
 
         # multi embedding state dict load
@@ -752,7 +752,7 @@ class DownloadTests(unittest.TestCase):
         assert pipe._maybe_convert_prompt("<xxxxxx>", pipe.tokenizer) == "<xxxxxx>"
 
         prompt = "hey <xxxxx> <xxxxxx>"
-        out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+        out = pipe(prompt, num_inference_steps=1, output_type="np").images
         assert out.shape == (1, 128, 128, 3)
 
         # auto1111 multi-token state dict load
@@ -778,7 +778,7 @@ class DownloadTests(unittest.TestCase):
         assert pipe._maybe_convert_prompt("<xxxx>", pipe.tokenizer) == "<xxxx> <xxxx>_1 <xxxx>_2"
 
         prompt = "hey <xxxx>"
-        out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+        out = pipe(prompt, num_inference_steps=1, output_type="np").images
         assert out.shape == (1, 128, 128, 3)
 
         # multiple references to multi embedding
@@ -790,8 +790,56 @@ class DownloadTests(unittest.TestCase):
         )
 
         prompt = "hey <cat> <cat>"
-        out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+        out = pipe(prompt, num_inference_steps=1, output_type="np").images
         assert out.shape == (1, 128, 128, 3)
+
+    def test_text_inversion_multi_tokens(self):
+        pipe1 = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe1 = pipe1.to(torch_device)
+
+        token1, token2 = "<*>", "<**>"
+        ten1 = torch.ones((32,))
+        ten2 = torch.ones((32,)) * 2
+
+        num_tokens = len(pipe1.tokenizer)
+
+        pipe1.load_textual_inversion(ten1, token=token1)
+        pipe1.load_textual_inversion(ten2, token=token2)
+        emb1 = pipe1.text_encoder.get_input_embeddings().weight
+
+        pipe2 = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe2 = pipe2.to(torch_device)
+        pipe2.load_textual_inversion([ten1, ten2], token=[token1, token2])
+        emb2 = pipe2.text_encoder.get_input_embeddings().weight
+
+        pipe3 = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe3 = pipe3.to(torch_device)
+        pipe3.load_textual_inversion(torch.stack([ten1, ten2], dim=0), token=[token1, token2])
+        emb3 = pipe3.text_encoder.get_input_embeddings().weight
+
+        assert len(pipe1.tokenizer) == len(pipe2.tokenizer) == len(pipe3.tokenizer) == num_tokens + 2
+        assert (
+            pipe1.tokenizer.convert_tokens_to_ids(token1)
+            == pipe2.tokenizer.convert_tokens_to_ids(token1)
+            == pipe3.tokenizer.convert_tokens_to_ids(token1)
+            == num_tokens
+        )
+        assert (
+            pipe1.tokenizer.convert_tokens_to_ids(token2)
+            == pipe2.tokenizer.convert_tokens_to_ids(token2)
+            == pipe3.tokenizer.convert_tokens_to_ids(token2)
+            == num_tokens + 1
+        )
+        assert emb1[num_tokens].sum().item() == emb2[num_tokens].sum().item() == emb3[num_tokens].sum().item()
+        assert (
+            emb1[num_tokens + 1].sum().item() == emb2[num_tokens + 1].sum().item() == emb3[num_tokens + 1].sum().item()
+        )
 
     def test_download_ignore_files(self):
         # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
@@ -861,6 +909,58 @@ class CustomPipelineTests(unittest.TestCase):
 
         # compare output to https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L102
         assert output_str == "This is a test"
+
+    def test_remote_components(self):
+        # make sure that trust remote code has to be passed
+        with self.assertRaises(ValueError):
+            pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-components")
+
+        # Check that only loading custom components "my_unet", "my_scheduler" works
+        pipeline = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-sdxl-custom-components", trust_remote_code=True
+        )
+
+        assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
+        assert pipeline.config.scheduler == ("diffusers_modules.local.my_scheduler", "MyScheduler")
+        assert pipeline.__class__.__name__ == "StableDiffusionXLPipeline"
+
+        pipeline = pipeline.to(torch_device)
+        images = pipeline("test", num_inference_steps=2, output_type="np")[0]
+
+        assert images.shape == (1, 64, 64, 3)
+
+        # Check that only loading custom components "my_unet", "my_scheduler" and explicit custom pipeline works
+        pipeline = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-sdxl-custom-components", custom_pipeline="my_pipeline", trust_remote_code=True
+        )
+
+        assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
+        assert pipeline.config.scheduler == ("diffusers_modules.local.my_scheduler", "MyScheduler")
+        assert pipeline.__class__.__name__ == "MyPipeline"
+
+        pipeline = pipeline.to(torch_device)
+        images = pipeline("test", num_inference_steps=2, output_type="np")[0]
+
+        assert images.shape == (1, 64, 64, 3)
+
+    def test_remote_auto_custom_pipe(self):
+        # make sure that trust remote code has to be passed
+        with self.assertRaises(ValueError):
+            pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-all")
+
+        # Check that only loading custom components "my_unet", "my_scheduler" and auto custom pipeline works
+        pipeline = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-sdxl-custom-all", trust_remote_code=True
+        )
+
+        assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
+        assert pipeline.config.scheduler == ("diffusers_modules.local.my_scheduler", "MyScheduler")
+        assert pipeline.__class__.__name__ == "MyPipeline"
+
+        pipeline = pipeline.to(torch_device)
+        images = pipeline("test", num_inference_steps=2, output_type="np")[0]
+
+        assert images.shape == (1, 64, 64, 3)
 
     def test_local_custom_pipeline_repo(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
@@ -956,6 +1056,12 @@ class CustomPipelineTests(unittest.TestCase):
 
 
 class PipelineFastTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -1085,8 +1191,8 @@ class PipelineFastTests(unittest.TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         ).to(torch_device)
-        img2img = StableDiffusionImg2ImgPipeline(**inpaint.components).to(torch_device)
-        text2img = StableDiffusionPipeline(**inpaint.components).to(torch_device)
+        img2img = StableDiffusionImg2ImgPipeline(**inpaint.components, image_encoder=None).to(torch_device)
+        text2img = StableDiffusionPipeline(**inpaint.components, image_encoder=None).to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
 
@@ -1224,6 +1330,29 @@ class PipelineFastTests(unittest.TestCase):
 
         assert out_image.shape == (1, 64, 64, 3)
         assert np.abs(out_image - out_image_2).max() < 1e-3
+
+    def test_optional_components_is_none(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        items = {
+            "feature_extractor": self.dummy_extractor,
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": bert,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            # we don't add an image encoder
+        }
+
+        pipeline = StableDiffusionPipeline(**items)
+
+        assert sorted(pipeline.components.keys()) == sorted(["image_encoder"] + list(items.keys()))
+        assert pipeline.image_encoder is None
 
     def test_set_scheduler_consistency(self):
         unet = self.dummy_cond_unet()
@@ -1453,28 +1582,15 @@ class PipelineFastTests(unittest.TestCase):
 
             assert sd.name_or_path == tmpdirname
 
-    def test_warning_no_variant_available(self):
+    def test_error_no_variant_available(self):
         variant = "fp16"
-        with self.assertWarns(FutureWarning) as warning_context:
-            cached_folder = StableDiffusionPipeline.download(
+        with self.assertRaises(ValueError) as error_context:
+            _ = StableDiffusionPipeline.download(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
             )
 
-        assert "but no such modeling files are available" in str(warning_context.warning)
-        assert variant in str(warning_context.warning)
-
-        def get_all_filenames(directory):
-            filenames = glob.glob(directory + "/**", recursive=True)
-            filenames = [f for f in filenames if os.path.isfile(f)]
-            return filenames
-
-        filenames = get_all_filenames(str(cached_folder))
-
-        all_model_files, variant_model_files = variant_compatible_siblings(filenames, variant=variant)
-
-        # make sure that none of the model names are variant model names
-        assert len(variant_model_files) == 0
-        assert len(all_model_files) > 0
+        assert "but no such modeling files are available" in str(error_context.exception)
+        assert variant in str(error_context.exception)
 
     def test_pipe_to(self):
         unet = self.dummy_cond_unet()
@@ -1514,7 +1630,7 @@ class PipelineFastTests(unittest.TestCase):
         sd1 = sd.to(torch.float16)
         sd2 = sd.to(None, torch.float16)
         sd3 = sd.to(dtype=torch.float16)
-        sd4 = sd.to(torch_dtype=torch.float16)
+        sd4 = sd.to(dtype=torch.float16)
         sd5 = sd.to(None, dtype=torch.float16)
         sd6 = sd.to(None, torch_dtype=torch.float16)
 
@@ -1563,6 +1679,12 @@ class PipelineFastTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class PipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -1630,15 +1752,19 @@ class PipelineSlowTests(unittest.TestCase):
             new_ddpm.to(torch_device)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=5, output_type="np").images
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
+        new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="np").images
 
         assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
     @require_python39_or_higher
     @require_torch_2
+    @unittest.skipIf(
+        get_python_version == (3, 12),
+        reason="Torch Dynamo isn't yet supported for Python 3.12.",
+    )
     def test_from_save_pretrained_dynamo(self):
         run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
 
@@ -1656,10 +1782,10 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=5, output_type="np").images
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
+        new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="np").images
 
         assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
@@ -1679,10 +1805,10 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm_from_hub_custom_model(generator=generator, num_inference_steps=5, output_type="numpy").images
+        image = ddpm_from_hub_custom_model(generator=generator, num_inference_steps=5, output_type="np").images
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
+        new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="np").images
 
         assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
@@ -1694,7 +1820,7 @@ class PipelineSlowTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        images = pipe(output_type="numpy").images
+        images = pipe(output_type="np").images
         assert images.shape == (1, 32, 32, 3)
         assert isinstance(images, np.ndarray)
 
@@ -1769,7 +1895,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = [torch.Generator(device="cpu").manual_seed(33) for _ in range(prompt_embeds.shape[0])]
 
         images = pipe(
-            prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20, output_type="numpy"
+            prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20, output_type="np"
         ).images
 
         for i, image in enumerate(images):
@@ -1784,6 +1910,12 @@ class PipelineSlowTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class PipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -1807,7 +1939,7 @@ class PipelineNightlyTests(unittest.TestCase):
         ddim.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(seed)
-        ddpm_images = ddpm(batch_size=2, generator=generator, output_type="numpy").images
+        ddpm_images = ddpm(batch_size=2, generator=generator, output_type="np").images
 
         generator = torch.Generator(device=torch_device).manual_seed(seed)
         ddim_images = ddim(
@@ -1815,7 +1947,7 @@ class PipelineNightlyTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=1000,
             eta=1.0,
-            output_type="numpy",
+            output_type="np",
             use_clipped_model_output=True,  # Need this to make DDIM match DDPM
         ).images
 

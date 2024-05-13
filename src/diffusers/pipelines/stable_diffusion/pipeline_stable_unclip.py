@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, StableDiffusionMixin
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
@@ -58,12 +58,17 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class StableUnCLIPPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin):
     """
     Pipeline for text-to-image generation using stable unCLIP.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
+        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
 
     Args:
         prior_tokenizer ([`CLIPTokenizer`]):
@@ -71,7 +76,7 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         prior_text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen [`CLIPTextModelWithProjection`] text-encoder.
         prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         prior_scheduler ([`KarrasDiffusionSchedulers`]):
             Scheduler used in the prior denoising process.
         image_normalizer ([`StableUnCLIPImageNormalizer`]):
@@ -150,22 +155,6 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline._encode_prompt with _encode_prompt->_encode_prior_prompt, tokenizer->prior_tokenizer, text_encoder->prior_text_encoder
     def _encode_prior_prompt(
         self,
@@ -206,17 +195,15 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             prior_text_encoder_output = self.prior_text_encoder(text_input_ids.to(device))
 
             prompt_embeds = prior_text_encoder_output.text_embeds
-            prior_text_encoder_hidden_states = prior_text_encoder_output.last_hidden_state
+            text_enc_hid_states = prior_text_encoder_output.last_hidden_state
 
         else:
             batch_size = text_model_output[0].shape[0]
-            prompt_embeds, prior_text_encoder_hidden_states = text_model_output[0], text_model_output[1]
+            prompt_embeds, text_enc_hid_states = text_model_output[0], text_model_output[1]
             text_mask = text_attention_mask
 
         prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-        prior_text_encoder_hidden_states = prior_text_encoder_hidden_states.repeat_interleave(
-            num_images_per_prompt, dim=0
-        )
+        text_enc_hid_states = text_enc_hid_states.repeat_interleave(num_images_per_prompt, dim=0)
         text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
@@ -235,9 +222,7 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             )
 
             negative_prompt_embeds = negative_prompt_embeds_prior_text_encoder_output.text_embeds
-            uncond_prior_text_encoder_hidden_states = (
-                negative_prompt_embeds_prior_text_encoder_output.last_hidden_state
-            )
+            uncond_text_enc_hid_states = negative_prompt_embeds_prior_text_encoder_output.last_hidden_state
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
 
@@ -245,11 +230,9 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len)
 
-            seq_len = uncond_prior_text_encoder_hidden_states.shape[1]
-            uncond_prior_text_encoder_hidden_states = uncond_prior_text_encoder_hidden_states.repeat(
-                1, num_images_per_prompt, 1
-            )
-            uncond_prior_text_encoder_hidden_states = uncond_prior_text_encoder_hidden_states.view(
+            seq_len = uncond_text_enc_hid_states.shape[1]
+            uncond_text_enc_hid_states = uncond_text_enc_hid_states.repeat(1, num_images_per_prompt, 1)
+            uncond_text_enc_hid_states = uncond_text_enc_hid_states.view(
                 batch_size * num_images_per_prompt, seq_len, -1
             )
             uncond_text_mask = uncond_text_mask.repeat_interleave(num_images_per_prompt, dim=0)
@@ -260,13 +243,11 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-            prior_text_encoder_hidden_states = torch.cat(
-                [uncond_prior_text_encoder_hidden_states, prior_text_encoder_hidden_states]
-            )
+            text_enc_hid_states = torch.cat([uncond_text_enc_hid_states, text_enc_hid_states])
 
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
-        return prompt_embeds, prior_text_encoder_hidden_states, text_mask
+        return prompt_embeds, text_enc_hid_states, text_mask
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -276,8 +257,8 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         **kwargs,
     ):
@@ -309,8 +290,8 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
     ):
@@ -330,10 +311,10 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -362,7 +343,7 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
@@ -444,7 +425,7 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             else:
                 uncond_tokens = negative_prompt
 
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
@@ -607,7 +588,7 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         self,
         image_embeds: torch.Tensor,
         noise_level: int,
-        noise: Optional[torch.FloatTensor] = None,
+        noise: Optional[torch.Tensor] = None,
         generator: Optional[torch.Generator] = None,
     ):
         """
@@ -663,19 +644,19 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         noise_level: int = 0,
         # prior args
         prior_num_inference_steps: int = 25,
         prior_guidance_scale: float = 4.0,
-        prior_latents: Optional[torch.FloatTensor] = None,
+        prior_latents: Optional[torch.Tensor] = None,
         clip_skip: Optional[int] = None,
     ):
         """
@@ -705,14 +686,14 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -721,7 +702,7 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
@@ -737,7 +718,7 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             prior_guidance_scale (`float`, *optional*, defaults to 4.0):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            prior_latents (`torch.FloatTensor`, *optional*):
+            prior_latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 embedding generation in the prior denoising process. Can be used to tweak the same generation with
                 different prompts. If not provided, a latents tensor is generated by sampling using the supplied random
@@ -895,7 +876,12 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
 
         # 11. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         latents = self.prepare_latents(
             shape=shape,
             dtype=prompt_embeds.dtype,
@@ -942,9 +928,8 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image,)

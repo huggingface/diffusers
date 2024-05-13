@@ -1,4 +1,4 @@
-# Copyright 2023 Katherine Crowson and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Katherine Crowson and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,16 +35,16 @@ class EulerAncestralDiscreteSchedulerOutput(BaseOutput):
     Output class for the scheduler's `step` function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
             `pred_original_sample` can be used to preview progress or for guidance.
     """
 
-    prev_sample: torch.FloatTensor
-    pred_original_sample: Optional[torch.FloatTensor] = None
+    prev_sample: torch.Tensor
+    pred_original_sample: Optional[torch.Tensor] = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -82,7 +82,7 @@ def betas_for_alpha_bar(
             return math.exp(t * -12.0)
 
     else:
-        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
+        raise ValueError(f"Unsupported alpha_transform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
@@ -90,6 +90,43 @@ def betas_for_alpha_bar(
         t2 = (i + 1) / num_diffusion_timesteps
         betas.append(min(1 - alpha_bar_fn(t2) / alpha_bar_fn(t1), max_beta))
     return torch.tensor(betas, dtype=torch.float32)
+
+
+# Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
+def rescale_zero_terminal_snr(betas):
+    """
+    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
+
+
+    Args:
+        betas (`torch.Tensor`):
+            the betas that the scheduler is being initialized with.
+
+    Returns:
+        `torch.Tensor`: rescaled betas with zero terminal SNR
+    """
+    # Convert betas to alphas_bar_sqrt
+    alphas = 1.0 - betas
+    alphas_cumprod = torch.cumprod(alphas, dim=0)
+    alphas_bar_sqrt = alphas_cumprod.sqrt()
+
+    # Store old values.
+    alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
+    alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
+
+    # Shift so the last timestep is zero.
+    alphas_bar_sqrt -= alphas_bar_sqrt_T
+
+    # Scale so the first timestep is back to the old value.
+    alphas_bar_sqrt *= alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
+
+    # Convert alphas_bar_sqrt to betas
+    alphas_bar = alphas_bar_sqrt**2  # Revert sqrt
+    alphas = alphas_bar[1:] / alphas_bar[:-1]  # Revert cumprod
+    alphas = torch.cat([alphas_bar[0:1], alphas])
+    betas = 1 - alphas
+
+    return betas
 
 
 class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
@@ -119,9 +156,11 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+            An offset added to the inference steps, as required by some model families.
+        rescale_betas_zero_snr (`bool`, defaults to `False`):
+            Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
+            dark samples instead of limiting it to samples with medium brightness. Loosely related to
+            [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -138,6 +177,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         prediction_type: str = "epsilon",
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
+        rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -145,17 +185,23 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
+            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
+        if rescale_betas_zero_snr:
+            self.betas = rescale_zero_terminal_snr(self.betas)
+
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+
+        if rescale_betas_zero_snr:
+            # Close to 0 without being 0 so first sigma is not inf
+            # FP16 smallest positive subnormal works well here
+            self.alphas_cumprod[-1] = 2**-24
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
@@ -168,6 +214,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = False
 
         self._step_index = None
+        self._begin_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
     def init_noise_sigma(self):
@@ -180,25 +228,41 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
 
-    def scale_model_input(
-        self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
-    ) -> torch.FloatTensor:
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
+
+    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep. Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
             timestep (`int`, *optional*):
                 The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
 
@@ -251,30 +315,38 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device=device)
         self._step_index = None
+        self._begin_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep):
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
 
-        index_candidates = (self.timesteps == timestep).nonzero()
+        indices = (schedule_timesteps == timestep).nonzero()
 
         # The sigma index that is taken for the **very** first `step`
         # is always the second index (or the last index if there is only 1)
         # This way we can ensure we don't accidentally skip a sigma in
         # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-        if len(index_candidates) > 1:
-            step_index = index_candidates[1]
-        else:
-            step_index = index_candidates[0]
+        pos = 1 if len(indices) > 1 else 0
 
-        self._step_index = step_index.item()
+        return indices[pos].item()
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        if self.begin_index is None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.to(self.timesteps.device)
+            self._step_index = self.index_for_timestep(timestep)
+        else:
+            self._step_index = self._begin_index
 
     def step(
         self,
-        model_output: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
-        sample: torch.FloatTensor,
+        model_output: torch.Tensor,
+        timestep: Union[float, torch.Tensor],
+        sample: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[EulerAncestralDiscreteSchedulerOutput, Tuple]:
@@ -283,11 +355,11 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
             timestep (`float`):
                 The current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
@@ -327,6 +399,9 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         sigma = self.sigmas[self.step_index]
 
+        # Upcast to avoid precision issues when computing prev_sample
+        sample = sample.to(torch.float32)
+
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
             pred_original_sample = sample - sigma * model_output
@@ -357,6 +432,9 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         prev_sample = prev_sample + noise * sigma_up
 
+        # Cast sample back to model compatible dtype
+        prev_sample = prev_sample.to(model_output.dtype)
+
         # upon completion increase step index by one
         self._step_index += 1
 
@@ -370,10 +448,10 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
-        timesteps: torch.FloatTensor,
-    ) -> torch.FloatTensor:
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
+        timesteps: torch.Tensor,
+    ) -> torch.Tensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
@@ -384,7 +462,15 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        # self.begin_index is None when scheduler is used for training, or pipeline does not implement set_begin_index
+        if self.begin_index is None:
+            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        elif self.step_index is not None:
+            # add_noise is called after first denoising step (for inpainting)
+            step_indices = [self.step_index] * timesteps.shape[0]
+        else:
+            # add noise is called before first denoising step to create initial latent(img2img)
+            step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

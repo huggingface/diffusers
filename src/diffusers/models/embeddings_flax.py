@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,6 +65,7 @@ class FlaxTimestepEmbedding(nn.Module):
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
                 Parameters `dtype`
     """
+
     time_embed_dim: int = 32
     dtype: jnp.dtype = jnp.float32
 
@@ -84,6 +85,7 @@ class FlaxTimesteps(nn.Module):
         dim (`int`, *optional*, defaults to `32`):
                 Time step embedding dimension
     """
+
     dim: int = 32
     flip_sin_to_cos: bool = False
     freq_shift: float = 1

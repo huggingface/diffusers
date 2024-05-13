@@ -4,7 +4,7 @@ import torch
 
 from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import ConfigMixin
-from diffusers.pipeline_utils import ImagePipelineOutput
+from diffusers.pipelines.pipeline_utils import ImagePipelineOutput
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 
 
@@ -17,21 +17,21 @@ class IADBScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         timestep: int,
-        x_alpha: torch.FloatTensor,
-    ) -> torch.FloatTensor:
+        x_alpha: torch.Tensor,
+    ) -> torch.Tensor:
         """
         Predict the sample at the previous timestep by reversing the ODE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model. It is the direction from x0 to x1.
+            model_output (`torch.Tensor`): direct output from learned diffusion model. It is the direction from x0 to x1.
             timestep (`float`): current timestep in the diffusion chain.
-            x_alpha (`torch.FloatTensor`): x_alpha sample for the current timestep
+            x_alpha (`torch.Tensor`): x_alpha sample for the current timestep
 
         Returns:
-            `torch.FloatTensor`: the sample at the previous timestep
+            `torch.Tensor`: the sample at the previous timestep
 
         """
         if self.num_inference_steps is None:
@@ -53,10 +53,10 @@ class IADBScheduler(SchedulerMixin, ConfigMixin):
 
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
-        alpha: torch.FloatTensor,
-    ) -> torch.FloatTensor:
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
+        alpha: torch.Tensor,
+    ) -> torch.Tensor:
         return original_samples * alpha + noise * (1 - alpha)
 
     def __len__(self):

@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,9 +35,9 @@ from ...models.embeddings import (
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from ...models.transformer_2d import Transformer2DModel
-from ...models.unet_2d_blocks import DownBlock2D, UpBlock2D
-from ...models.unet_2d_condition import UNet2DConditionOutput
+from ...models.transformers.transformer_2d import Transformer2DModel
+from ...models.unets.unet_2d_blocks import DownBlock2D, UpBlock2D
+from ...models.unets.unet_2d_condition import UNet2DConditionOutput
 from ...utils import BaseOutput, is_torch_version, logging
 
 
@@ -64,7 +64,7 @@ class AudioLDM2ProjectionModelOutput(BaseOutput):
     """
     Args:
     Class for AudioLDM2 projection layer's outputs.
-        hidden_states (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+        hidden_states (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`):
             Sequence of hidden-states obtained by linearly projecting the hidden-states for each of the text
              encoders and subsequently concatenating them together.
         attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -75,7 +75,7 @@ class AudioLDM2ProjectionModelOutput(BaseOutput):
             - 0 for tokens that are **masked**.
     """
 
-    hidden_states: torch.FloatTensor
+    hidden_states: torch.Tensor
     attention_mask: Optional[torch.LongTensor] = None
 
 
@@ -95,7 +95,14 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
     """
 
     @register_to_config
-    def __init__(self, text_encoder_dim, text_encoder_1_dim, langauge_model_dim):
+    def __init__(
+        self,
+        text_encoder_dim,
+        text_encoder_1_dim,
+        langauge_model_dim,
+        use_learned_position_embedding=None,
+        max_seq_length=None,
+    ):
         super().__init__()
         # additional projection layers for each text encoder
         self.projection = nn.Linear(text_encoder_dim, langauge_model_dim)
@@ -108,10 +115,18 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
         self.sos_embed_1 = nn.Parameter(torch.ones(langauge_model_dim))
         self.eos_embed_1 = nn.Parameter(torch.ones(langauge_model_dim))
 
+        self.use_learned_position_embedding = use_learned_position_embedding
+
+        # learable positional embedding for vits encoder
+        if self.use_learned_position_embedding is not None:
+            self.learnable_positional_embedding = torch.nn.Parameter(
+                torch.zeros((1, text_encoder_1_dim, max_seq_length))
+            )
+
     def forward(
         self,
-        hidden_states: Optional[torch.FloatTensor] = None,
-        hidden_states_1: Optional[torch.FloatTensor] = None,
+        hidden_states: Optional[torch.Tensor] = None,
+        hidden_states_1: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
         attention_mask_1: Optional[torch.LongTensor] = None,
     ):
@@ -119,6 +134,10 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
         hidden_states, attention_mask = add_special_tokens(
             hidden_states, attention_mask, sos_token=self.sos_embed, eos_token=self.eos_embed
         )
+
+        # Add positional embedding for Vits hidden state
+        if self.use_learned_position_embedding is not None:
+            hidden_states_1 = (hidden_states_1.permute(0, 2, 1) + self.learnable_positional_embedding).permute(0, 2, 1)
 
         hidden_states_1 = self.projection_1(hidden_states_1)
         hidden_states_1, attention_mask_1 = add_special_tokens(
@@ -513,7 +532,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         )
 
     @property
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
@@ -537,10 +556,8 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
 
         return processors
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
-    ):
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -564,9 +581,9 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
-                    module.set_processor(processor, _remove_lora=_remove_lora)
+                    module.set_processor(processor)
                 else:
-                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
+                    module.set_processor(processor.pop(f"{name}.processor"))
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
@@ -574,7 +591,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
@@ -588,9 +605,9 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
             )
 
-        self.set_attn_processor(processor, _remove_lora=True)
+        self.set_attn_processor(processor)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attention_slice
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attention_slice
     def set_attention_slice(self, slice_size):
         r"""
         Enable sliced attention computation.
@@ -656,14 +673,14 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel._set_gradient_checkpointing
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel._set_gradient_checkpointing
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
@@ -679,21 +696,21 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         The [`AudioLDM2UNet2DConditionModel`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The noisy input tensor with the following shape `(batch, channel, height, width)`.
-            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
-            encoder_hidden_states (`torch.FloatTensor`):
+            timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             encoder_attention_mask (`torch.Tensor`):
                 A cross-attention mask of shape `(batch, sequence_length)` is applied to `encoder_hidden_states`. If
                 `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
                 which adds large negative values to the attention scores corresponding to "discard" tokens.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
                 tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
-            encoder_hidden_states_1 (`torch.FloatTensor`, *optional*):
+            encoder_hidden_states_1 (`torch.Tensor`, *optional*):
                 A second set of encoder hidden states with shape `(batch, sequence_length_2, feature_dim_2)`. Can be
                 used to condition the model on a different set of embeddings to `encoder_hidden_states`.
             encoder_attention_mask_1 (`torch.Tensor`, *optional*):
@@ -702,9 +719,9 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 which adds large negative values to the attention scores corresponding to "discard" tokens.
 
         Returns:
-            [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_2d_condition.UNet2DConditionOutput`] is returned, otherwise
-                a `tuple` is returned where the first element is the sample tensor.
+            [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
@@ -1074,14 +1091,14 @@ class CrossAttnDownBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states_1: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask_1: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states_1: Optional[torch.Tensor] = None,
+        encoder_attention_mask_1: Optional[torch.Tensor] = None,
     ):
         output_states = ()
         num_layers = len(self.resnets)
@@ -1253,15 +1270,15 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states_1: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask_1: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states_1: Optional[torch.Tensor] = None,
+        encoder_attention_mask_1: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         num_attention_per_layer = len(self.attentions) // (len(self.resnets) - 1)
 
@@ -1420,16 +1437,16 @@ class CrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states_1: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask_1: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states_1: Optional[torch.Tensor] = None,
+        encoder_attention_mask_1: Optional[torch.Tensor] = None,
     ):
         num_layers = len(self.resnets)
         num_attention_per_layer = len(self.attentions) // num_layers

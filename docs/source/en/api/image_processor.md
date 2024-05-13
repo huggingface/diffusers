@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -12,9 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # VAE Image Processor
 
-The [`VaeImageProcessor`] provides a unified API for [`StableDiffusionPipeline`]'s to prepare image inputs for VAE encoding and post-processing outputs once they're decoded. This includes transformations such as resizing, normalization, and conversion between PIL Image, PyTorch, and NumPy arrays. 
+The [`VaeImageProcessor`] provides a unified API for [`StableDiffusionPipeline`]s to prepare image inputs for VAE encoding and post-processing outputs once they're decoded. This includes transformations such as resizing, normalization, and conversion between PIL Image, PyTorch, and NumPy arrays.
 
-All pipelines with [`VaeImageProcessor`] accepts PIL Image, PyTorch tensor, or NumPy arrays as image inputs and returns outputs based on the `output_type` argument by the user. You can pass encoded image latents directly to the pipeline and return latents from the pipeline as a specific output with the `output_type` argument (for example `output_type="pt"`). This allows you to take the generated latents from one pipeline and pass it to another pipeline as input without leaving the latent space. It also makes it much easier to use multiple pipelines together by passing PyTorch tensors directly between different pipelines. 
+All pipelines with [`VaeImageProcessor`] accept PIL Image, PyTorch tensor, or NumPy arrays as image inputs and return outputs based on the `output_type` argument by the user. You can pass encoded image latents directly to the pipeline and return latents from the pipeline as a specific output with the `output_type` argument (for example `output_type="latent"`). This allows you to take the generated latents from one pipeline and pass it to another pipeline as input without leaving the latent space. It also makes it much easier to use multiple pipelines together by passing PyTorch tensors directly between different pipelines.
 
 ## VaeImageProcessor
 
@@ -25,3 +25,11 @@ All pipelines with [`VaeImageProcessor`] accepts PIL Image, PyTorch tensor, or N
 The [`VaeImageProcessorLDM3D`] accepts RGB and depth inputs and returns RGB and depth outputs.
 
 [[autodoc]] image_processor.VaeImageProcessorLDM3D
+
+## PixArtImageProcessor
+
+[[autodoc]] image_processor.PixArtImageProcessor
+
+## IPAdapterMaskProcessor
+
+[[autodoc]] image_processor.IPAdapterMaskProcessor

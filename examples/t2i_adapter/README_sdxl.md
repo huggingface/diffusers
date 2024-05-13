@@ -42,7 +42,7 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
-When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 
 ## Circle filling dataset
 
@@ -85,7 +85,7 @@ accelerate launch train_t2i_adapter_sdxl.py \
 To better track our training experiments, we're using the following flags in the command above:
 
 * `report_to="wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
-* `validation_image`, `validation_prompt`, and `validation_steps` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected. 
+* `validation_image`, `validation_prompt`, and `validation_steps` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
 Our experiments were conducted on a single 40GB A100 GPU.
 

@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,13 +25,27 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import deprecate, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .image_encoder import PaintByExampleImageEncoder
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 def prepare_mask_and_masked_image(image, mask):
@@ -134,7 +148,7 @@ def prepare_mask_and_masked_image(image, mask):
     return mask, masked_image
 
 
-class PaintByExamplePipeline(DiffusionPipeline):
+class PaintByExamplePipeline(DiffusionPipeline, StableDiffusionMixin):
     r"""
     <Tip warning={true}>
 
@@ -167,6 +181,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
 
     """
+
     # TODO: feature_extractor is required to encode initial images (if they are in PIL format),
     # we should give a descriptive message if the pipeline doesn't have one.
 
@@ -251,7 +266,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             and not isinstance(image, list)
         ):
             raise ValueError(
-                "`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
                 f" {type(image)}"
             )
 
@@ -268,7 +283,12 @@ class PaintByExamplePipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -334,12 +354,12 @@ class PaintByExamplePipeline(DiffusionPipeline):
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                 for i in range(image.shape[0])
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
         image_latents = self.vae.config.scaling_factor * image_latents
 
@@ -373,9 +393,9 @@ class PaintByExamplePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        example_image: Union[torch.FloatTensor, PIL.Image.Image],
-        image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
+        example_image: Union[torch.Tensor, PIL.Image.Image],
+        image: Union[torch.Tensor, PIL.Image.Image],
+        mask_image: Union[torch.Tensor, PIL.Image.Image],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -384,22 +404,22 @@ class PaintByExamplePipeline(DiffusionPipeline):
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
-            example_image (`torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]`):
+            example_image (`torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]`):
                 An example image to guide image generation.
-            image (`torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]`):
+            image (`torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]`):
                 `Image` or tensor representing an image batch to be inpainted (parts of the image are masked out with
                 `mask_image` and repainted according to `prompt`).
-            mask_image (`torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]`):
+            mask_image (`torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]`):
                 `Image` or tensor representing an image batch to mask `image`. White pixels in the mask are repainted,
                 while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a single channel
                 (luminance) before use. If it's a tensor, it should contain one color channel (L) instead of 3, so the
@@ -425,7 +445,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
@@ -436,7 +456,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.

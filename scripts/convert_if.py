@@ -4,19 +4,12 @@ import os
 
 import numpy as np
 import torch
+import yaml
 from torch.nn import functional as F
 from transformers import CLIPConfig, CLIPImageProcessor, CLIPVisionModelWithProjection, T5EncoderModel, T5Tokenizer
 
 from diffusers import DDPMScheduler, IFPipeline, IFSuperResolutionPipeline, UNet2DConditionModel
 from diffusers.pipelines.deepfloyd_if.safety_checker import IFSafetyChecker
-
-
-try:
-    from omegaconf import OmegaConf
-except ImportError:
-    raise ImportError(
-        "OmegaConf is required to convert the IF checkpoints. Please install it with `pip install" " OmegaConf`."
-    )
 
 
 def parse_args():
@@ -143,8 +136,8 @@ def convert_super_res_pipeline(tokenizer, text_encoder, feature_extractor, safet
 
 
 def get_stage_1_unet(unet_config, unet_checkpoint_path):
-    original_unet_config = OmegaConf.load(unet_config)
-    original_unet_config = original_unet_config.params
+    original_unet_config = yaml.safe_load(unet_config)
+    original_unet_config = original_unet_config["params"]
 
     unet_diffusers_config = create_unet_diffusers_config(original_unet_config)
 
@@ -215,11 +208,11 @@ def convert_safety_checker(p_head_path, w_head_path):
 
 
 def create_unet_diffusers_config(original_unet_config, class_embed_type=None):
-    attention_resolutions = parse_list(original_unet_config.attention_resolutions)
-    attention_resolutions = [original_unet_config.image_size // int(res) for res in attention_resolutions]
+    attention_resolutions = parse_list(original_unet_config["attention_resolutions"])
+    attention_resolutions = [original_unet_config["image_size"] // int(res) for res in attention_resolutions]
 
-    channel_mult = parse_list(original_unet_config.channel_mult)
-    block_out_channels = [original_unet_config.model_channels * mult for mult in channel_mult]
+    channel_mult = parse_list(original_unet_config["channel_mult"])
+    block_out_channels = [original_unet_config["model_channels"] * mult for mult in channel_mult]
 
     down_block_types = []
     resolution = 1
@@ -227,7 +220,7 @@ def create_unet_diffusers_config(original_unet_config, class_embed_type=None):
     for i in range(len(block_out_channels)):
         if resolution in attention_resolutions:
             block_type = "SimpleCrossAttnDownBlock2D"
-        elif original_unet_config.resblock_updown:
+        elif original_unet_config["resblock_updown"]:
             block_type = "ResnetDownsampleBlock2D"
         else:
             block_type = "DownBlock2D"
@@ -241,17 +234,17 @@ def create_unet_diffusers_config(original_unet_config, class_embed_type=None):
     for i in range(len(block_out_channels)):
         if resolution in attention_resolutions:
             block_type = "SimpleCrossAttnUpBlock2D"
-        elif original_unet_config.resblock_updown:
+        elif original_unet_config["resblock_updown"]:
             block_type = "ResnetUpsampleBlock2D"
         else:
             block_type = "UpBlock2D"
         up_block_types.append(block_type)
         resolution //= 2
 
-    head_dim = original_unet_config.num_head_channels
+    head_dim = original_unet_config["num_head_channels"]
 
     use_linear_projection = (
-        original_unet_config.use_linear_in_transformer
+        original_unet_config["use_linear_in_transformer"]
         if "use_linear_in_transformer" in original_unet_config
         else False
     )
@@ -264,27 +257,27 @@ def create_unet_diffusers_config(original_unet_config, class_embed_type=None):
 
     if class_embed_type is None:
         if "num_classes" in original_unet_config:
-            if original_unet_config.num_classes == "sequential":
+            if original_unet_config["num_classes"] == "sequential":
                 class_embed_type = "projection"
                 assert "adm_in_channels" in original_unet_config
-                projection_class_embeddings_input_dim = original_unet_config.adm_in_channels
+                projection_class_embeddings_input_dim = original_unet_config["adm_in_channels"]
             else:
                 raise NotImplementedError(
-                    f"Unknown conditional unet num_classes config: {original_unet_config.num_classes}"
+                    f"Unknown conditional unet num_classes config: {original_unet_config['num_classes']}"
                 )
 
     config = {
-        "sample_size": original_unet_config.image_size,
-        "in_channels": original_unet_config.in_channels,
+        "sample_size": original_unet_config["image_size"],
+        "in_channels": original_unet_config["in_channels"],
         "down_block_types": tuple(down_block_types),
         "block_out_channels": tuple(block_out_channels),
-        "layers_per_block": original_unet_config.num_res_blocks,
-        "cross_attention_dim": original_unet_config.encoder_channels,
+        "layers_per_block": original_unet_config["num_res_blocks"],
+        "cross_attention_dim": original_unet_config["encoder_channels"],
         "attention_head_dim": head_dim,
         "use_linear_projection": use_linear_projection,
         "class_embed_type": class_embed_type,
         "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
-        "out_channels": original_unet_config.out_channels,
+        "out_channels": original_unet_config["out_channels"],
         "up_block_types": tuple(up_block_types),
         "upcast_attention": False,  # TODO: guessing
         "cross_attention_norm": "group_norm",
@@ -293,11 +286,11 @@ def create_unet_diffusers_config(original_unet_config, class_embed_type=None):
         "act_fn": "gelu",
     }
 
-    if original_unet_config.use_scale_shift_norm:
+    if original_unet_config["use_scale_shift_norm"]:
         config["resnet_time_scale_shift"] = "scale_shift"
 
     if "encoder_dim" in original_unet_config:
-        config["encoder_hid_dim"] = original_unet_config.encoder_dim
+        config["encoder_hid_dim"] = original_unet_config["encoder_dim"]
 
     return config
 
@@ -725,15 +718,15 @@ def parse_list(value):
 def get_super_res_unet(unet_checkpoint_path, verify_param_count=True, sample_size=None):
     orig_path = unet_checkpoint_path
 
-    original_unet_config = OmegaConf.load(os.path.join(orig_path, "config.yml"))
-    original_unet_config = original_unet_config.params
+    original_unet_config = yaml.safe_load(os.path.join(orig_path, "config.yml"))
+    original_unet_config = original_unet_config["params"]
 
     unet_diffusers_config = superres_create_unet_diffusers_config(original_unet_config)
-    unet_diffusers_config["time_embedding_dim"] = original_unet_config.model_channels * int(
-        original_unet_config.channel_mult.split(",")[-1]
+    unet_diffusers_config["time_embedding_dim"] = original_unet_config["model_channels"] * int(
+        original_unet_config["channel_mult"].split(",")[-1]
     )
-    if original_unet_config.encoder_dim != original_unet_config.encoder_channels:
-        unet_diffusers_config["encoder_hid_dim"] = original_unet_config.encoder_dim
+    if original_unet_config["encoder_dim"] != original_unet_config["encoder_channels"]:
+        unet_diffusers_config["encoder_hid_dim"] = original_unet_config["encoder_dim"]
         unet_diffusers_config["class_embed_type"] = "timestep"
         unet_diffusers_config["addition_embed_type"] = "text"
 
@@ -742,16 +735,16 @@ def get_super_res_unet(unet_checkpoint_path, verify_param_count=True, sample_siz
     unet_diffusers_config["resnet_out_scale_factor"] = 1 / 0.7071
     unet_diffusers_config["mid_block_scale_factor"] = 1 / 0.7071
     unet_diffusers_config["only_cross_attention"] = (
-        bool(original_unet_config.disable_self_attentions)
+        bool(original_unet_config["disable_self_attentions"])
         if (
             "disable_self_attentions" in original_unet_config
-            and isinstance(original_unet_config.disable_self_attentions, int)
+            and isinstance(original_unet_config["disable_self_attentions"], int)
         )
         else True
     )
 
     if sample_size is None:
-        unet_diffusers_config["sample_size"] = original_unet_config.image_size
+        unet_diffusers_config["sample_size"] = original_unet_config["image_size"]
     else:
         # The second upscaler unet's sample size is incorrectly specified
         # in the config and is instead hardcoded in source
@@ -783,11 +776,11 @@ def get_super_res_unet(unet_checkpoint_path, verify_param_count=True, sample_siz
 
 
 def superres_create_unet_diffusers_config(original_unet_config):
-    attention_resolutions = parse_list(original_unet_config.attention_resolutions)
-    attention_resolutions = [original_unet_config.image_size // int(res) for res in attention_resolutions]
+    attention_resolutions = parse_list(original_unet_config["attention_resolutions"])
+    attention_resolutions = [original_unet_config["image_size"] // int(res) for res in attention_resolutions]
 
-    channel_mult = parse_list(original_unet_config.channel_mult)
-    block_out_channels = [original_unet_config.model_channels * mult for mult in channel_mult]
+    channel_mult = parse_list(original_unet_config["channel_mult"])
+    block_out_channels = [original_unet_config["model_channels"] * mult for mult in channel_mult]
 
     down_block_types = []
     resolution = 1
@@ -795,7 +788,7 @@ def superres_create_unet_diffusers_config(original_unet_config):
     for i in range(len(block_out_channels)):
         if resolution in attention_resolutions:
             block_type = "SimpleCrossAttnDownBlock2D"
-        elif original_unet_config.resblock_updown:
+        elif original_unet_config["resblock_updown"]:
             block_type = "ResnetDownsampleBlock2D"
         else:
             block_type = "DownBlock2D"
@@ -809,16 +802,16 @@ def superres_create_unet_diffusers_config(original_unet_config):
     for i in range(len(block_out_channels)):
         if resolution in attention_resolutions:
             block_type = "SimpleCrossAttnUpBlock2D"
-        elif original_unet_config.resblock_updown:
+        elif original_unet_config["resblock_updown"]:
             block_type = "ResnetUpsampleBlock2D"
         else:
             block_type = "UpBlock2D"
         up_block_types.append(block_type)
         resolution //= 2
 
-    head_dim = original_unet_config.num_head_channels
+    head_dim = original_unet_config["num_head_channels"]
     use_linear_projection = (
-        original_unet_config.use_linear_in_transformer
+        original_unet_config["use_linear_in_transformer"]
         if "use_linear_in_transformer" in original_unet_config
         else False
     )
@@ -831,26 +824,26 @@ def superres_create_unet_diffusers_config(original_unet_config):
     projection_class_embeddings_input_dim = None
 
     if "num_classes" in original_unet_config:
-        if original_unet_config.num_classes == "sequential":
+        if original_unet_config["num_classes"] == "sequential":
             class_embed_type = "projection"
             assert "adm_in_channels" in original_unet_config
-            projection_class_embeddings_input_dim = original_unet_config.adm_in_channels
+            projection_class_embeddings_input_dim = original_unet_config["adm_in_channels"]
         else:
             raise NotImplementedError(
-                f"Unknown conditional unet num_classes config: {original_unet_config.num_classes}"
+                f"Unknown conditional unet num_classes config: {original_unet_config['num_classes']}"
             )
 
     config = {
-        "in_channels": original_unet_config.in_channels,
+        "in_channels": original_unet_config["in_channels"],
         "down_block_types": tuple(down_block_types),
         "block_out_channels": tuple(block_out_channels),
-        "layers_per_block": tuple(original_unet_config.num_res_blocks),
-        "cross_attention_dim": original_unet_config.encoder_channels,
+        "layers_per_block": tuple(original_unet_config["num_res_blocks"]),
+        "cross_attention_dim": original_unet_config["encoder_channels"],
         "attention_head_dim": head_dim,
         "use_linear_projection": use_linear_projection,
         "class_embed_type": class_embed_type,
         "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
-        "out_channels": original_unet_config.out_channels,
+        "out_channels": original_unet_config["out_channels"],
         "up_block_types": tuple(up_block_types),
         "upcast_attention": False,  # TODO: guessing
         "cross_attention_norm": "group_norm",
@@ -858,7 +851,7 @@ def superres_create_unet_diffusers_config(original_unet_config):
         "act_fn": "gelu",
     }
 
-    if original_unet_config.use_scale_shift_norm:
+    if original_unet_config["use_scale_shift_norm"]:
         config["resnet_time_scale_shift"] = "scale_shift"
 
     return config
@@ -1202,9 +1195,9 @@ def superres_check_against_original(dump_path, unet_checkpoint_path):
         if_II_model = IFStageIII(device="cuda", dir_or_name=orig_path, model_kwargs={"precision": "fp32"}).model
 
     batch_size = 1
-    channels = model.in_channels // 2
-    height = model.sample_size
-    width = model.sample_size
+    channels = model.config.in_channels // 2
+    height = model.config.sample_size
+    width = model.config.sample_size
     height = 1024
     width = 1024
 

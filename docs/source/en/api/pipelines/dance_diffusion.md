@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -16,7 +16,6 @@ specific language governing permissions and limitations under the License.
 
 Dance Diffusion is the first in a suite of generative audio tools for producers and musicians released by [Harmonai](https://github.com/Harmonai-org).
 
-The original codebase of this implementation can be found at [Harmonai-org](https://github.com/Harmonai-org/sample-generator).
 
 <Tip>
 

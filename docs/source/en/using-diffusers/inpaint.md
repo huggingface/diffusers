@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -23,12 +23,13 @@ With 🤗 Diffusers, here is how you can do inpainting:
 ```py
 import torch
 from diffusers import AutoPipelineForInpainting
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 ```
 
@@ -41,8 +42,8 @@ You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu
 2. Load the base and mask images:
 
 ```py
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 ```
 
 3. Create a prompt to inpaint the image with and pass it to the pipeline with the base and mask images:
@@ -51,12 +52,17 @@ mask_image = load_image("https://huggingface.co/datasets/huggingface/documentati
 prompt = "a black cat with glowing eyes, cute, adorable, disney, pixar, highly detailed, 8k"
 negative_prompt = "bad anatomy, deformed, ugly, disfigured"
 image = pipeline(prompt=prompt, negative_prompt=negative_prompt, image=init_image, mask_image=mask_image).images[0]
+make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 ```
 
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">base image</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">mask image</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-cat.png"/>
@@ -71,15 +77,45 @@ Throughout this guide, the mask image is provided in all of the code examples fo
 Upload a base image to inpaint on and use the sketch tool to draw a mask. Once you're done, click **Run** to generate and download the mask image.
 
 <iframe
-	src="https://stevhliu-inpaint-mask-maker.hf.space"
-	frameborder="0"
-	width="850"
-	height="450"
+  src="https://stevhliu-inpaint-mask-maker.hf.space"
+  frameborder="0"
+  width="850"
+  height="450"
 ></iframe>
+
+### Mask blur
+
+The [`~VaeImageProcessor.blur`] method provides an option for how to blend the original image and inpaint area. The amount of blur is determined by the `blur_factor` parameter. Increasing the `blur_factor` increases the amount of blur applied to the mask edges, softening the transition between the original image and inpaint area. A low or zero `blur_factor` preserves the sharper edges of the mask.
+
+To use this, create a blurred mask with the image processor.
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image
+from PIL import Image
+
+pipeline = AutoPipelineForInpainting.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to('cuda')
+
+mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore_mask.png")
+blurred_mask = pipeline.mask_processor.blur(mask, blur_factor=33)
+blurred_mask
+```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore_mask.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">mask with no blur</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/mask_blurred.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">mask with blur applied</figcaption>
+  </div>
+</div>
 
 ## Popular models
 
-[Stable Diffusion Inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting), [Stable Diffusion XL (SDXL) Inpainting](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images.
+[Stable Diffusion Inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting), [Stable Diffusion XL (SDXL) Inpainting](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1), and [Kandinsky 2.2 Inpainting](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images.
 
 ### Stable Diffusion Inpainting
 
@@ -88,21 +124,23 @@ Stable Diffusion Inpainting is a latent diffusion model finetuned on 512x512 ima
 ```py
 import torch
 from diffusers import AutoPipelineForInpainting
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 generator = torch.Generator("cuda").manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
+make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 ```
 
 ### Stable Diffusion XL (SDXL) Inpainting
@@ -112,21 +150,23 @@ SDXL is a larger and more powerful version of Stable Diffusion v1.5. This model 
 ```py
 import torch
 from diffusers import AutoPipelineForInpainting
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "diffusers/stable-diffusion-xl-1.0-inpainting-0.1", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 generator = torch.Generator("cuda").manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
+make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 ```
 
 ### Kandinsky 2.2 Inpainting
@@ -136,21 +176,23 @@ The Kandinsky model family is similar to SDXL because it uses two models as well
 ```py
 import torch
 from diffusers import AutoPipelineForInpainting
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 generator = torch.Generator("cuda").manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
+make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 ```
 
 <div class="flex flex-row gap-4">
@@ -172,6 +214,172 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generat
   </div>
 </div>
 
+## Non-inpaint specific checkpoints
+
+So far, this guide has used inpaint specific checkpoints such as [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting). But you can also use regular checkpoints like [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5). Let's compare the results of the two checkpoints.
+
+The image on the left is generated from a regular checkpoint, and the image on the right is from an inpaint checkpoint. You'll immediately notice the image on the left is not as clean, and you can still see the outline of the area the model is supposed to inpaint. The image on the right is much cleaner and the inpainted area appears more natural.
+
+<hfoptions id="regular-specific">
+<hfoption id="runwayml/stable-diffusion-v1-5">
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
+
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
+pipeline.enable_xformers_memory_efficient_attention()
+
+# load base and mask image
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+generator = torch.Generator("cuda").manual_seed(92)
+prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
+image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
+make_image_grid([init_image, image], rows=1, cols=2)
+```
+
+</hfoption>
+<hfoption id="runwayml/stable-diffusion-inpainting">
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
+
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
+pipeline.enable_xformers_memory_efficient_attention()
+
+# load base and mask image
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+generator = torch.Generator("cuda").manual_seed(92)
+prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
+image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
+make_image_grid([init_image, image], rows=1, cols=2)
+```
+
+</hfoption>
+</hfoptions>
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/non-inpaint-specific.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-v1-5</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-specific.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-inpainting</figcaption>
+  </div>
+</div>
+
+However, for more basic tasks like erasing an object from an image (like the rocks in the road for example), a regular checkpoint yields pretty good results. There isn't as noticeable of difference between the regular and inpaint checkpoint.
+
+<hfoptions id="inpaint">
+<hfoption id="runwayml/stable-diffusion-v1-5">
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
+
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
+pipeline.enable_xformers_memory_efficient_attention()
+
+# load base and mask image
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/road-mask.png")
+
+image = pipeline(prompt="road", image=init_image, mask_image=mask_image).images[0]
+make_image_grid([init_image, image], rows=1, cols=2)
+```
+
+</hfoption>
+<hfoption id="runwayml/stable-diffusion-inpaint">
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
+
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
+pipeline.enable_xformers_memory_efficient_attention()
+
+# load base and mask image
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/road-mask.png")
+
+image = pipeline(prompt="road", image=init_image, mask_image=mask_image).images[0]
+make_image_grid([init_image, image], rows=1, cols=2)
+```
+
+</hfoption>
+</hfoptions>
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/regular-inpaint-basic.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-v1-5</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/specific-inpaint-basic.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-inpainting</figcaption>
+  </div>
+</div>
+
+The trade-off of using a non-inpaint specific checkpoint is the overall image quality may be lower, but it generally tends to preserve the mask area (that is why you can see the mask outline). The inpaint specific checkpoints are intentionally trained to generate higher quality inpainted images, and that includes creating a more natural transition between the masked and unmasked areas. As a result, these checkpoints are more likely to change your unmasked area.
+
+If preserving the unmasked area is important for your task, you can use the [`VaeImageProcessor.apply_overlay`] method to force the unmasked area of an image to remain the same at the expense of some more unnatural transitions between the masked and unmasked areas.
+
+```py
+import PIL
+import numpy as np
+import torch
+
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
+
+device = "cuda"
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-inpainting",
+    torch_dtype=torch.float16,
+)
+pipeline = pipeline.to(device)
+
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = load_image(img_url).resize((512, 512))
+mask_image = load_image(mask_url).resize((512, 512))
+
+prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+repainted_image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+repainted_image.save("repainted_image.png")
+
+unmasked_unchanged_image = pipeline.image_processor.apply_overlay(mask_image, init_image, repainted_image)
+unmasked_unchanged_image.save("force_unmasked_unchanged.png")
+make_image_grid([init_image, mask_image, repainted_image, unmasked_unchanged_image], rows=2, cols=2)
+```
+
 ## Configure pipeline parameters
 
 Image features - like quality and "creativity" - are dependent on pipeline parameters. Knowing what these parameters do is important for getting the results you want. Let's take a look at the most important parameters and see how changing them affects the output.
@@ -186,20 +394,22 @@ Image features - like quality and "creativity" - are dependent on pipeline param
 ```py
 import torch
 from diffusers import AutoPipelineForInpainting
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.6).images[0]
+make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 ```
 
 <div class="flex flex-row gap-4">
@@ -229,20 +439,22 @@ You can use `strength` and `guidance_scale` together for more control over how e
 ```py
 import torch
 from diffusers import AutoPipelineForInpainting
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, guidance_scale=2.5).images[0]
+make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 ```
 
 <div class="flex flex-row gap-4">
@@ -267,22 +479,23 @@ A negative prompt assumes the opposite role of a prompt; it guides the model awa
 ```py
 import torch
 from diffusers import AutoPipelineForInpainting
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 negative_prompt = "bad architecture, unstable, poor details, blurry"
 image = pipeline(prompt=prompt, negative_prompt=negative_prompt, image=init_image, mask_image=mask_image).images[0]
-image
+make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 ```
 
 <div class="flex justify-center">
@@ -292,49 +505,38 @@ image
   </figure>
 </div>
 
-## Preserve unmasked areas
+### Padding mask crop
 
-The [`AutoPipelineForInpainting`] (and other inpainting pipelines) generally changes the unmasked parts of an image to create a more natural transition between the masked and unmasked region. If this behavior is undesirable, you can force the unmasked area to remain the same. However, forcing the unmasked portion of the image to remain the same may result in some unusual transitions between the unmasked and masked areas.
+A method for increasing the inpainting image quality is to use the [`padding_mask_crop`](https://huggingface.co/docs/diffusers/v0.25.0/en/api/pipelines/stable_diffusion/inpaint#diffusers.StableDiffusionInpaintPipeline.__call__.padding_mask_crop) parameter. When enabled, this option crops the masked area with some user-specified padding and it'll also crop the same area from the original image. Both the image and mask are upscaled to a higher resolution for inpainting, and then overlaid on the original image. This is a quick and easy way to improve image quality without using a separate pipeline like [`StableDiffusionUpscalePipeline`].
+
+Add the `padding_mask_crop` parameter to the pipeline call and set it to the desired padding value.
 
 ```py
-import PIL
-import numpy as np
 import torch
-
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
+from PIL import Image
 
-device = "cuda"
-pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting",
-    torch_dtype=torch.float16,
-)
-pipeline = pipeline.to(device)
+generator = torch.Generator(device='cuda').manual_seed(0)
+pipeline = AutoPipelineForInpainting.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to('cuda')
 
-img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
-mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+base = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore.png")
+mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore_mask.png")
 
-init_image = load_image(img_url).resize((512, 512))
-mask_image = load_image(mask_url).resize((512, 512))
-
-prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
-repainted_image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
-repainted_image.save("repainted_image.png")
-
-# Convert mask to grayscale NumPy array
-mask_image_arr = np.array(mask_image.convert("L"))
-# Add a channel dimension to the end of the grayscale mask
-mask_image_arr = mask_image_arr[:, :, None]
-# Binarize the mask: 1s correspond to the pixels which are repainted
-mask_image_arr = mask_image_arr.astype(np.float32) / 255.0
-mask_image_arr[mask_image_arr < 0.5] = 0
-mask_image_arr[mask_image_arr >= 0.5] = 1
-
-# Take the masked pixels from the repainted image and the unmasked pixels from the initial image
-unmasked_unchanged_image_arr = (1 - mask_image_arr) * init_image + mask_image_arr * repainted_image
-unmasked_unchanged_image = PIL.Image.fromarray(unmasked_unchanged_image_arr.round().astype("uint8"))
-unmasked_unchanged_image.save("force_unmasked_unchanged.png")
+image = pipeline("boat", image=base, mask_image=mask, strength=0.75, generator=generator, padding_mask_crop=32).images[0]
+image
 ```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/baseline_inpaint.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">default inpaint image</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/padding_mask_crop_inpaint.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">inpaint image with `padding_mask_crop` enabled</figcaption>
+  </div>
+</div>
 
 ## Chained inpainting pipelines
 
@@ -349,35 +551,37 @@ Start with the text-to-image pipeline to create a castle:
 ```py
 import torch
 from diffusers import AutoPipelineForText2Image, AutoPipelineForInpainting
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
-image = pipeline("concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k").images[0]
+text2image = pipeline("concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k").images[0]
 ```
 
 Load the mask image of the output from above:
 
 ```py
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_text-chain-mask.png").convert("RGB")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_text-chain-mask.png")
 ```
 
 And let's inpaint the masked area with a waterfall:
 
 ```py
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+    "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 prompt = "digital painting of a fantasy waterfall, cloudy"
-image = pipeline(prompt=prompt, image=image, mask_image=mask_image).images[0]
-image
+image = pipeline(prompt=prompt, image=text2image, mask_image=mask_image).images[0]
+make_image_grid([text2image, mask_image, image], rows=1, cols=3)
 ```
 
 <div class="flex flex-row gap-4">
@@ -391,7 +595,6 @@ image
   </div>
 </div>
 
-
 ### Inpaint-to-image-to-image
 
 You can also chain an inpainting pipeline before another pipeline like image-to-image or an upscaler to improve the quality.
@@ -401,23 +604,24 @@ Begin by inpainting an image:
 ```py
 import torch
 from diffusers import AutoPipelineForInpainting, AutoPipelineForImage2Image
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
-image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+image_inpainting = pipeline(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 
 # resize image to 1024x1024 for SDXL
-image = image.resize((1024, 1024))
+image_inpainting = image_inpainting.resize((1024, 1024))
 ```
 
 Now let's pass the image to another inpainting pipeline with SDXL's refiner model to enhance the image details and quality:
@@ -425,11 +629,12 @@ Now let's pass the image to another inpainting pipeline with SDXL's refiner mode
 ```py
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
-image = pipeline(prompt=prompt, image=image, mask_image=mask_image, output_type="latent").images[0]
+image = pipeline(prompt=prompt, image=image_inpainting, mask_image=mask_image, output_type="latent").images[0]
 ```
 
 <Tip>
@@ -442,9 +647,11 @@ Finally, you can pass this image to an image-to-image pipeline to put the finish
 
 ```py
 pipeline = AutoPipelineForImage2Image.from_pipe(pipeline)
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 image = pipeline(prompt=prompt, image=image).images[0]
+make_image_grid([init_image, mask_image, image_inpainting, image], rows=2, cols=2)
 ```
 
 <div class="flex flex-row gap-4">
@@ -477,18 +684,21 @@ Once you've generated the embeddings, pass them to the `prompt_embeds` (and `neg
 ```py
 import torch
 from diffusers import AutoPipelineForInpainting
+from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16,
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
-image = pipeline(prompt_emebds=prompt_embeds, # generated from Compel
-    negative_prompt_embeds, # generated from Compel
+image = pipeline(prompt_embeds=prompt_embeds, # generated from Compel
+    negative_prompt_embeds=negative_prompt_embeds, # generated from Compel
     image=init_image,
     mask_image=mask_image
 ).images[0]
+make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 ```
 
 ### ControlNet
@@ -501,7 +711,7 @@ For example, let's condition an image with a ControlNet pretrained on inpaint im
 import torch
 import numpy as np
 from diffusers import ControlNetModel, StableDiffusionControlNetInpaintPipeline
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 # load ControlNet
 controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16, variant="fp16")
@@ -509,13 +719,14 @@ controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpai
 # pass ControlNet to the pipeline
 pipeline = StableDiffusionControlNetInpaintPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 # prepare control image
 def make_inpaint_condition(init_image, mask_image):
@@ -536,7 +747,7 @@ Now generate an image from the base, mask and control images. You'll notice feat
 ```py
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, control_image=control_image).images[0]
-image
+make_image_grid([init_image, mask_image, PIL.Image.fromarray(np.uint8(control_image[0][0])).convert('RGB'), image], rows=2, cols=2)
 ```
 
 You can take this a step further and chain it with an image-to-image pipeline to apply a new [style](https://huggingface.co/nitrosocke/elden-ring-diffusion):
@@ -546,15 +757,16 @@ from diffusers import AutoPipelineForImage2Image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "nitrosocke/elden-ring-diffusion", torch_dtype=torch.float16,
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 prompt = "elden ring style castle" # include the token "elden ring style" in the prompt
 negative_prompt = "bad architecture, deformed, disfigured, poor details"
 
-image = pipeline(prompt, negative_prompt=negative_prompt, image=image).images[0]
-image
+image_elden_ring = pipeline(prompt, negative_prompt=negative_prompt, image=image).images[0]
+make_image_grid([init_image, mask_image, image, image_elden_ring], rows=2, cols=2)
 ```
 
 <div class="flex flex-row gap-4">
@@ -576,17 +788,17 @@ image
 
 It can be difficult and slow to run diffusion models if you're resource constrained, but it doesn't have to be with a few optimization tricks. One of the biggest (and easiest) optimizations you can enable is switching to memory-efficient attention. If you're using PyTorch 2.0, [scaled-dot product attention](../optimization/torch2.0#scaled-dot-product-attention) is automatically enabled and you don't need to do anything else. For non-PyTorch 2.0 users, you can install and use [xFormers](../optimization/xformers)'s implementation of memory-efficient attention. Both options reduce memory usage and accelerate inference.
 
-You can also offload the model to the GPU to save even more memory:
+You can also offload the model to the CPU to save even more memory:
 
 ```diff
 + pipeline.enable_xformers_memory_efficient_attention()
 + pipeline.enable_model_cpu_offload()
 ```
 
-To speed-up your inference code even more, use [`torch_compile`](../optimization/torch2.0#torch.compile). You should wrap `torch.compile` around the most intensive component in the pipeline which is typically the UNet:
+To speed-up your inference code even more, use [`torch_compile`](../optimization/torch2.0#torchcompile). You should wrap `torch.compile` around the most intensive component in the pipeline which is typically the UNet:
 
 ```py
-pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
 Learn more in the [Reduce memory usage](../optimization/memory) and [Torch 2.0](../optimization/torch2.0) guides.

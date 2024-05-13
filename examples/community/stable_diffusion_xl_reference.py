@@ -8,7 +8,7 @@ import torch
 
 from diffusers import StableDiffusionXLPipeline
 from diffusers.models.attention import BasicTransformerBlock
-from diffusers.models.unet_2d_blocks import (
+from diffusers.models.unets.unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     DownBlock2D,
@@ -190,7 +190,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        ref_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        ref_image: Union[torch.Tensor, PIL.Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -201,14 +201,14 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
@@ -335,10 +335,10 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
         def hacked_basic_transformer_inner_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            attention_mask: Optional[torch.FloatTensor] = None,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
-            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            attention_mask: Optional[torch.Tensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
             timestep: Optional[torch.LongTensor] = None,
             cross_attention_kwargs: Dict[str, Any] = None,
             class_labels: Optional[torch.LongTensor] = None,
@@ -453,12 +453,12 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
         def hack_CrossAttnDownBlock2D_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            temb: Optional[torch.FloatTensor] = None,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
-            attention_mask: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            temb: Optional[torch.Tensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            attention_mask: Optional[torch.Tensor] = None,
             cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
         ):
             eps = 1e-6
 
@@ -507,7 +507,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
             return hidden_states, output_states
 
-        def hacked_DownBlock2D_forward(self, hidden_states, temb=None):
+        def hacked_DownBlock2D_forward(self, hidden_states, temb=None, *args, **kwargs):
             eps = 1e-6
 
             output_states = ()
@@ -549,14 +549,14 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
         def hacked_CrossAttnUpBlock2D_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-            temb: Optional[torch.FloatTensor] = None,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+            temb: Optional[torch.Tensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
             cross_attention_kwargs: Optional[Dict[str, Any]] = None,
             upsample_size: Optional[int] = None,
-            attention_mask: Optional[torch.FloatTensor] = None,
-            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
         ):
             eps = 1e-6
             # TODO(Patrick, William) - attention mask is not used
@@ -603,7 +603,9 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
             return hidden_states
 
-        def hacked_UpBlock2D_forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
+        def hacked_UpBlock2D_forward(
+            self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, **kwargs
+        ):
             eps = 1e-6
             for i, resnet in enumerate(self.resnets):
                 # pop res hidden states
@@ -684,8 +686,17 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
         # 10. Prepare added time ids & embeddings
         add_text_embeds = pooled_prompt_embeds
+        if self.text_encoder_2 is None:
+            text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
+        else:
+            text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
+
         add_time_ids = self._get_add_time_ids(
-            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+            original_size,
+            crops_coords_top_left,
+            target_size,
+            dtype=prompt_embeds.dtype,
+            text_encoder_projection_dim=text_encoder_projection_dim,
         )
 
         if do_classifier_free_guidance:

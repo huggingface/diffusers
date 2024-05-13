@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,18 +24,28 @@ from typing import Dict, List, Tuple
 import numpy as np
 import requests_mock
 import torch
-from huggingface_hub import delete_repo
+from accelerate.utils import compute_module_sizes
+from huggingface_hub import ModelCard, delete_repo
+from huggingface_hub.utils import is_jinja_available
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
-from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0, XFormersAttnProcessor
+from diffusers.models.attention_processor import (
+    AttnProcessor,
+    AttnProcessor2_0,
+    AttnProcessorNPU,
+    XFormersAttnProcessor,
+)
 from diffusers.training_utils import EMAModel
-from diffusers.utils import is_xformers_available, logging
+from diffusers.utils import is_torch_npu_available, is_xformers_available, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    get_python_version,
     require_python39_or_higher,
     require_torch_2,
+    require_torch_accelerator_with_training,
     require_torch_gpu,
+    require_torch_multi_gpu,
     run_test_in_subprocess,
     torch_device,
 )
@@ -196,11 +206,30 @@ class UNetTesterMixin:
 class ModelTesterMixin:
     main_input_name = None  # overwrite in model specific tester class
     base_precision = 1e-3
+    forward_requires_fresh_args = False
+    model_split_percents = [0.5, 0.7, 0.9]
+
+    def check_device_map_is_respected(self, model, device_map):
+        for param_name, param in model.named_parameters():
+            # Find device in device_map
+            while len(param_name) > 0 and param_name not in device_map:
+                param_name = ".".join(param_name.split(".")[:-1])
+            if param_name not in device_map:
+                raise ValueError("device map is incomplete, it does not contain any device for `param_name`.")
+
+            param_device = device_map[param_name]
+            if param_device in ["cpu", "disk"]:
+                self.assertEqual(param.device, torch.device("meta"))
+            else:
+                self.assertEqual(param.device, torch.device(param_device))
 
     def test_from_save_pretrained(self, expected_max_diff=5e-5):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
 
-        model = self.model_class(**init_dict)
         if hasattr(model, "set_default_attn_processor"):
             model.set_default_attn_processor()
         model.to(torch_device)
@@ -214,11 +243,18 @@ class ModelTesterMixin:
             new_model.to(torch_device)
 
         with torch.no_grad():
-            image = model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                image = model(**self.inputs_dict(0))
+            else:
+                image = model(**inputs_dict)
+
             if isinstance(image, dict):
                 image = image.to_tuple()[0]
 
-            new_image = new_model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                new_image = new_model(**self.inputs_dict(0))
+            else:
+                new_image = new_model(**inputs_dict)
 
             if isinstance(new_image, dict):
                 new_image = new_image.to_tuple()[0]
@@ -270,13 +306,63 @@ class ModelTesterMixin:
         assert str(error.exception) == f"'{type(model).__name__}' object has no attribute 'does_not_exist'"
 
     @unittest.skipIf(
+        torch_device != "npu" or not is_torch_npu_available(),
+        reason="torch npu flash attention is only available with NPU and `torch_npu` installed",
+    )
+    def test_set_torch_npu_flash_attn_processor_determinism(self):
+        torch.use_deterministic_algorithms(False)
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        if not hasattr(model, "set_attn_processor"):
+            # If not has `set_attn_processor`, skip test
+            return
+
+        model.set_default_attn_processor()
+        assert all(type(proc) == AttnProcessorNPU for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output = model(**self.inputs_dict(0))[0]
+            else:
+                output = model(**inputs_dict)[0]
+
+        model.enable_npu_flash_attention()
+        assert all(type(proc) == AttnProcessorNPU for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_2 = model(**self.inputs_dict(0))[0]
+            else:
+                output_2 = model(**inputs_dict)[0]
+
+        model.set_attn_processor(AttnProcessorNPU())
+        assert all(type(proc) == AttnProcessorNPU for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_3 = model(**self.inputs_dict(0))[0]
+            else:
+                output_3 = model(**inputs_dict)[0]
+
+        torch.use_deterministic_algorithms(True)
+
+        assert torch.allclose(output, output_2, atol=self.base_precision)
+        assert torch.allclose(output, output_3, atol=self.base_precision)
+        assert torch.allclose(output_2, output_3, atol=self.base_precision)
+
+    @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
     def test_set_xformers_attn_processor_for_determinism(self):
         torch.use_deterministic_algorithms(False)
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
         model.to(torch_device)
 
         if not hasattr(model, "set_attn_processor"):
@@ -286,54 +372,78 @@ class ModelTesterMixin:
         model.set_default_attn_processor()
         assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
-            output = model(**inputs_dict)[0]
+            if self.forward_requires_fresh_args:
+                output = model(**self.inputs_dict(0))[0]
+            else:
+                output = model(**inputs_dict)[0]
 
         model.enable_xformers_memory_efficient_attention()
         assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
-            output_2 = model(**inputs_dict)[0]
-
-        assert torch.allclose(output, output_2, atol=self.base_precision)
-
-    @require_torch_gpu
-    def test_set_attn_processor_for_determinism(self):
-        torch.use_deterministic_algorithms(False)
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        if not hasattr(model, "set_attn_processor"):
-            # If not has `set_attn_processor`, skip test
-            return
-
-        assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
-        with torch.no_grad():
-            output_1 = model(**inputs_dict)[0]
-
-        model.set_default_attn_processor()
-        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
-        with torch.no_grad():
-            output_2 = model(**inputs_dict)[0]
-
-        model.enable_xformers_memory_efficient_attention()
-        assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
-        with torch.no_grad():
-            model(**inputs_dict)[0]
-
-        model.set_attn_processor(AttnProcessor2_0())
-        assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
-        with torch.no_grad():
-            output_4 = model(**inputs_dict)[0]
-
-        model.set_attn_processor(AttnProcessor())
-        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
-        with torch.no_grad():
-            output_5 = model(**inputs_dict)[0]
+            if self.forward_requires_fresh_args:
+                output_2 = model(**self.inputs_dict(0))[0]
+            else:
+                output_2 = model(**inputs_dict)[0]
 
         model.set_attn_processor(XFormersAttnProcessor())
         assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
-            output_6 = model(**inputs_dict)[0]
+            if self.forward_requires_fresh_args:
+                output_3 = model(**self.inputs_dict(0))[0]
+            else:
+                output_3 = model(**inputs_dict)[0]
+
+        torch.use_deterministic_algorithms(True)
+
+        assert torch.allclose(output, output_2, atol=self.base_precision)
+        assert torch.allclose(output, output_3, atol=self.base_precision)
+        assert torch.allclose(output_2, output_3, atol=self.base_precision)
+
+    @require_torch_gpu
+    def test_set_attn_processor_for_determinism(self):
+        torch.use_deterministic_algorithms(False)
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
+
+        model.to(torch_device)
+
+        if not hasattr(model, "set_attn_processor"):
+            # If not has `set_attn_processor`, skip test
+            return
+
+        assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_1 = model(**self.inputs_dict(0))[0]
+            else:
+                output_1 = model(**inputs_dict)[0]
+
+        model.set_default_attn_processor()
+        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_2 = model(**self.inputs_dict(0))[0]
+            else:
+                output_2 = model(**inputs_dict)[0]
+
+        model.set_attn_processor(AttnProcessor2_0())
+        assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_4 = model(**self.inputs_dict(0))[0]
+            else:
+                output_4 = model(**inputs_dict)[0]
+
+        model.set_attn_processor(AttnProcessor())
+        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_5 = model(**self.inputs_dict(0))[0]
+            else:
+                output_5 = model(**inputs_dict)[0]
 
         torch.use_deterministic_algorithms(True)
 
@@ -341,12 +451,14 @@ class ModelTesterMixin:
         assert torch.allclose(output_2, output_1, atol=self.base_precision)
         assert torch.allclose(output_2, output_4, atol=self.base_precision)
         assert torch.allclose(output_2, output_5, atol=self.base_precision)
-        assert torch.allclose(output_2, output_6, atol=self.base_precision)
 
     def test_from_save_pretrained_variant(self, expected_max_diff=5e-5):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
 
-        model = self.model_class(**init_dict)
         if hasattr(model, "set_default_attn_processor"):
             model.set_default_attn_processor()
 
@@ -369,11 +481,17 @@ class ModelTesterMixin:
             new_model.to(torch_device)
 
         with torch.no_grad():
-            image = model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                image = model(**self.inputs_dict(0))
+            else:
+                image = model(**inputs_dict)
             if isinstance(image, dict):
                 image = image.to_tuple()[0]
 
-            new_image = new_model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                new_image = new_model(**self.inputs_dict(0))
+            else:
+                new_image = new_model(**inputs_dict)
 
             if isinstance(new_image, dict):
                 new_image = new_image.to_tuple()[0]
@@ -383,6 +501,10 @@ class ModelTesterMixin:
 
     @require_python39_or_higher
     @require_torch_2
+    @unittest.skipIf(
+        get_python_version == (3, 12),
+        reason="Torch Dynamo isn't yet supported for Python 3.12.",
+    )
     def test_from_save_pretrained_dynamo(self):
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
         inputs = [init_dict, self.model_class]
@@ -407,17 +529,26 @@ class ModelTesterMixin:
                 assert new_model.dtype == dtype
 
     def test_determinism(self, expected_max_diff=1e-5):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
 
         with torch.no_grad():
-            first = model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                first = model(**self.inputs_dict(0))
+            else:
+                first = model(**inputs_dict)
             if isinstance(first, dict):
                 first = first.to_tuple()[0]
 
-            second = model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                second = model(**self.inputs_dict(0))
+            else:
+                second = model(**inputs_dict)
             if isinstance(second, dict):
                 second = second.to_tuple()[0]
 
@@ -481,7 +612,7 @@ class ModelTesterMixin:
 
         self.assertEqual(output_1.shape, output_2.shape)
 
-    @unittest.skipIf(torch_device == "mps", "Training is not supported in mps")
+    @require_torch_accelerator_with_training
     def test_training(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -498,7 +629,7 @@ class ModelTesterMixin:
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
 
-    @unittest.skipIf(torch_device == "mps", "Training is not supported in mps")
+    @require_torch_accelerator_with_training
     def test_ema_training(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -550,19 +681,26 @@ class ModelTesterMixin:
                     ),
                 )
 
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
 
-        model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
 
         with torch.no_grad():
-            outputs_dict = model(**inputs_dict)
-            outputs_tuple = model(**inputs_dict, return_dict=False)
+            if self.forward_requires_fresh_args:
+                outputs_dict = model(**self.inputs_dict(0))
+                outputs_tuple = model(**self.inputs_dict(0), return_dict=False)
+            else:
+                outputs_dict = model(**inputs_dict)
+                outputs_tuple = model(**inputs_dict, return_dict=False)
 
         recursive_check(outputs_tuple, outputs_dict)
 
-    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
+    @require_torch_accelerator_with_training
     def test_enable_disable_gradient_checkpointing(self):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
@@ -600,6 +738,129 @@ class ModelTesterMixin:
                 f" {self.model_class}.__init__ if there are deprecated arguments or remove the deprecated argument"
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
+
+    @require_torch_gpu
+    def test_cpu_offload(self):
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        if model._no_split_modules is None:
+            return
+
+        model = model.to(torch_device)
+
+        torch.manual_seed(0)
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        # We test several splits of sizes to make sure it works.
+        max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir)
+
+            for max_size in max_gpu_sizes:
+                max_memory = {0: max_size, "cpu": model_size * 2}
+                new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
+                # Making sure part of the model will actually end up offloaded
+                self.assertSetEqual(set(new_model.hf_device_map.values()), {0, "cpu"})
+
+                self.check_device_map_is_respected(new_model, new_model.hf_device_map)
+                torch.manual_seed(0)
+                new_output = new_model(**inputs_dict)
+
+                self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_gpu
+    def test_disk_offload_without_safetensors(self):
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        if model._no_split_modules is None:
+            return
+
+        model = model.to(torch_device)
+
+        torch.manual_seed(0)
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
+
+            with self.assertRaises(ValueError):
+                max_size = int(self.model_split_percents[0] * model_size)
+                max_memory = {0: max_size, "cpu": max_size}
+                # This errors out because it's missing an offload folder
+                new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
+
+            max_size = int(self.model_split_percents[0] * model_size)
+            max_memory = {0: max_size, "cpu": max_size}
+            new_model = self.model_class.from_pretrained(
+                tmp_dir, device_map="auto", max_memory=max_memory, offload_folder=tmp_dir
+            )
+
+            self.check_device_map_is_respected(new_model, new_model.hf_device_map)
+            torch.manual_seed(0)
+            new_output = new_model(**inputs_dict)
+
+            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_gpu
+    def test_disk_offload_with_safetensors(self):
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        if model._no_split_modules is None:
+            return
+
+        model = model.to(torch_device)
+
+        torch.manual_seed(0)
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir)
+
+            max_size = int(self.model_split_percents[0] * model_size)
+            max_memory = {0: max_size, "cpu": max_size}
+            new_model = self.model_class.from_pretrained(
+                tmp_dir, device_map="auto", offload_folder=tmp_dir, max_memory=max_memory
+            )
+
+            self.check_device_map_is_respected(new_model, new_model.hf_device_map)
+            torch.manual_seed(0)
+            new_output = new_model(**inputs_dict)
+
+            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_multi_gpu
+    def test_model_parallelism(self):
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        if model._no_split_modules is None:
+            return
+
+        model = model.to(torch_device)
+
+        torch.manual_seed(0)
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        # We test several splits of sizes to make sure it works.
+        max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir)
+
+            for max_size in max_gpu_sizes:
+                max_memory = {0: max_size, 1: model_size * 2, "cpu": model_size * 2}
+                new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
+                # Making sure part of the model will actually end up offloaded
+                self.assertSetEqual(set(new_model.hf_device_map.values()), {0, 1})
+
+                self.check_device_map_is_respected(new_model, new_model.hf_device_map)
+
+                torch.manual_seed(0)
+                new_output = new_model(**inputs_dict)
+
+                self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
 
 @is_staging_test
@@ -669,3 +930,26 @@ class ModelPushToHubTester(unittest.TestCase):
 
         # Reset repo
         delete_repo(self.org_repo_id, token=TOKEN)
+
+    @unittest.skipIf(
+        not is_jinja_available(),
+        reason="Model card tests cannot be performed without Jinja installed.",
+    )
+    def test_push_to_hub_library_name(self):
+        model = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        model.push_to_hub(self.repo_id, token=TOKEN)
+
+        model_card = ModelCard.load(f"{USER}/{self.repo_id}", token=TOKEN).data
+        assert model_card.library_name == "diffusers"
+
+        # Reset repo
+        delete_repo(self.repo_id, token=TOKEN)

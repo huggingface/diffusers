@@ -1,3 +1,15 @@
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # Distributed inference with multiple GPUs
 
 On distributed setups, you can run inference across multiple GPUs with 🤗 [Accelerate](https://huggingface.co/docs/accelerate/index) or [PyTorch Distributed](https://pytorch.org/tutorials/beginner/dist_overview.html), which is useful for generating with multiple prompts in parallel.
@@ -13,6 +25,7 @@ To begin, create a Python file and initialize an [`accelerate.PartialState`] to 
 Now use the [`~accelerate.PartialState.split_between_processes`] utility as a context manager to automatically distribute the prompts between the number of processes.
 
 ```py
+import torch
 from accelerate import PartialState
 from diffusers import DiffusionPipeline
 
@@ -38,6 +51,76 @@ accelerate launch run_distributed.py --num_processes=2
 To learn more, take a look at the [Distributed Inference with 🤗 Accelerate](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) guide.
 
 </Tip>
+
+### Device placement
+
+> [!WARNING]
+> This feature is experimental and its APIs might change in the future. 
+
+With Accelerate, you can use the `device_map` to determine how to distribute the models of a pipeline across multiple devices. This is useful in situations where you have more than one GPU.
+
+For example, if you have two 8GB GPUs, then using [`~DiffusionPipeline.enable_model_cpu_offload`] may not work so well because:
+
+* it only works on a single GPU
+* a single model might not fit on a single GPU ([`~DiffusionPipeline.enable_sequential_cpu_offload`] might work but it will be extremely slow and it is also limited to a single GPU)
+
+To make use of both GPUs, you can use the "balanced" device placement strategy which splits the models across all available GPUs.
+
+> [!WARNING]
+> Only the "balanced" strategy is supported at the moment, and we plan to support additional mapping strategies in the future.
+
+```diff
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained(
+-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True,
++    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True, device_map="balanced"
+)
+image = pipeline("a dog").images[0]
+image
+```
+
+You can also pass a dictionary to enforce the maximum GPU memory that can be used on each device:
+
+```diff
+from diffusers import DiffusionPipeline
+import torch
+
+max_memory = {0:"1GB", 1:"1GB"}
+pipeline = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16, 
+    use_safetensors=True, 
+    device_map="balanced",
++   max_memory=max_memory
+)
+image = pipeline("a dog").images[0]
+image
+```
+
+If a device is not present in `max_memory`, then it will be completely ignored and will not participate in the device placement. 
+
+By default, Diffusers uses the maximum memory of all devices. If the models don't fit on the GPUs, they are offloaded to the CPU. If the CPU doesn't have enough memory, then you might see an error. In that case, you could defer to using [`~DiffusionPipeline.enable_sequential_cpu_offload`] and [`~DiffusionPipeline.enable_model_cpu_offload`].
+
+Call [`~DiffusionPipeline.reset_device_map`] to reset the `device_map` of a pipeline. This is also necessary if you want to use methods like `to()`, [`~DiffusionPipeline.enable_sequential_cpu_offload`], and [`~DiffusionPipeline.enable_model_cpu_offload`] on a pipeline that was device-mapped.
+
+```py
+pipeline.reset_device_map()
+```
+
+Once a pipeline has been device-mapped, you can also access its device map via `hf_device_map`:
+
+```py
+print(pipeline.hf_device_map)
+```
+
+An example device map would look like so:
+
+
+```bash
+{'unet': 1, 'vae': 1, 'safety_checker': 0, 'text_encoder': 0}
+```
 
 ## PyTorch Distributed
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,16 +25,22 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     EulerDiscreteScheduler,
+    LCMScheduler,
     MultiAdapter,
     StableDiffusionXLAdapterPipeline,
     T2IAdapter,
     UNet2DConditionModel,
 )
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
     PipelineTesterMixin,
     SDXLOptionalComponentsTesterMixin,
     assert_mean_pixel_difference,
@@ -45,13 +51,13 @@ enable_full_determinism()
 
 
 class StableDiffusionXLAdapterPipelineFastTests(
-    PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionXLAdapterPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
-    def get_dummy_components(self, adapter_type="full_adapter_xl"):
+    def get_dummy_components(self, adapter_type="full_adapter_xl", time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -69,6 +75,7 @@ class StableDiffusionXLAdapterPipelineFastTests(
             transformer_layers_per_block=(1, 2),
             projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
             cross_attention_dim=64,
+            time_cond_proj_dim=time_cond_proj_dim,
         )
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085,
@@ -149,7 +156,8 @@ class StableDiffusionXLAdapterPipelineFastTests(
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
             # "safety_checker": None,
-            # "feature_extractor": None,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
@@ -255,7 +263,8 @@ class StableDiffusionXLAdapterPipelineFastTests(
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
             # "safety_checker": None,
-            # "feature_extractor": None,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
@@ -277,9 +286,18 @@ class StableDiffusionXLAdapterPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
+
+    def test_ip_adapter_single(self, from_multi=False, expected_pipe_slice=None):
+        if not from_multi:
+            expected_pipe_slice = None
+            if torch_device == "cpu":
+                expected_pipe_slice = np.array(
+                    [0.5753, 0.6022, 0.4728, 0.4986, 0.5708, 0.4645, 0.5194, 0.5134, 0.4730]
+                )
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_adapter_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -301,9 +319,9 @@ class StableDiffusionXLAdapterPipelineFastTests(
     @parameterized.expand(
         [
             # (dim=144) The internal feature map will be 9x9 after initial pixel unshuffling (downscaled x16).
-            ((4 * 2 + 1) * 16),
+            (((4 * 2 + 1) * 16),),
             # (dim=160) The internal feature map will be 5x5 after the first T2I down block (downscaled x32).
-            ((4 * 1 + 1) * 32),
+            (((4 * 1 + 1) * 32),),
         ]
     )
     def test_multiple_image_dimensions(self, dim):
@@ -359,12 +377,54 @@ class StableDiffusionXLAdapterPipelineFastTests(
     def test_save_load_optional_components(self):
         return self._test_save_load_optional_components()
 
+    def test_adapter_sdxl_lcm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.5425, 0.5385, 0.4964, 0.5045, 0.6149, 0.4974, 0.5469, 0.5332, 0.5426])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_adapter_sdxl_lcm_custom_timesteps(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        del inputs["num_inference_steps"]
+        inputs["timesteps"] = [999, 499]
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.5425, 0.5385, 0.4964, 0.5045, 0.6149, 0.4974, 0.5469, 0.5332, 0.5426])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
 
 class StableDiffusionXLMultiAdapterPipelineFastTests(
     StableDiffusionXLAdapterPipelineFastTests, PipelineTesterMixin, unittest.TestCase
 ):
-    def get_dummy_components(self):
-        return super().get_dummy_components("multi_adapter")
+    def get_dummy_components(self, time_cond_proj_dim=None):
+        return super().get_dummy_components("multi_adapter", time_cond_proj_dim=time_cond_proj_dim)
 
     def get_dummy_components_with_full_downscaling(self):
         return super().get_dummy_components_with_full_downscaling("multi_adapter")
@@ -390,6 +450,12 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
             [0.5813032, 0.60995954, 0.47563356, 0.5056669, 0.57199144, 0.4631841, 0.5176794, 0.51252556, 0.47183886]
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5813, 0.6100, 0.4756, 0.5057, 0.5720, 0.4632, 0.5177, 0.5125, 0.4718])
+        return super().test_ip_adapter_single(from_multi=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_inference_batch_consistent(
         self, batch_sizes=[2, 4, 13], additional_params_copy_to_batched_inputs=["num_inference_steps"]
@@ -560,3 +626,51 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
 
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(output_batch[0][0], output[0][0])
+
+    def test_adapter_sdxl_lcm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.5313, 0.5375, 0.4942, 0.5021, 0.6142, 0.4968, 0.5434, 0.5311, 0.5448])
+
+        debug = [str(round(i, 4)) for i in image_slice.flatten().tolist()]
+        print(",".join(debug))
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_adapter_sdxl_lcm_custom_timesteps(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        del inputs["num_inference_steps"]
+        inputs["timesteps"] = [999, 499]
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.5313, 0.5375, 0.4942, 0.5021, 0.6142, 0.4968, 0.5434, 0.5311, 0.5448])
+
+        debug = [str(round(i, 4)) for i in image_slice.flatten().tolist()]
+        print(",".join(debug))
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

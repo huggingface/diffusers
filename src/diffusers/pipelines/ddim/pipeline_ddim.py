@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ class DDIMPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
             [`DDPMScheduler`], or [`DDIMScheduler`].
     """
+
     model_cpu_offload_seq = "unet"
 
     def __init__(self, unet, scheduler):

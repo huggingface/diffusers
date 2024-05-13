@@ -21,16 +21,22 @@ class StableDiffusionXLWatermarker:
 
         self.encoder.set_watermark("bits", self.watermark)
 
-    def apply_watermark(self, images: torch.FloatTensor):
+    def apply_watermark(self, images: torch.Tensor):
         # can't encode images that are smaller than 256
         if images.shape[-1] < 256:
             return images
 
         images = (255 * (images / 2 + 0.5)).cpu().permute(0, 2, 3, 1).float().numpy()
 
-        images = [self.encoder.encode(image, "dwtDct") for image in images]
+        # Convert RGB to BGR, which is the channel order expected by the watermark encoder.
+        images = images[:, :, :, ::-1]
 
-        images = torch.from_numpy(np.array(images)).permute(0, 3, 1, 2)
+        # Add watermark and convert BGR back to RGB
+        images = [self.encoder.encode(image, "dwtDct")[:, :, ::-1] for image in images]
+
+        images = np.array(images)
+
+        images = torch.from_numpy(images).permute(0, 3, 1, 2)
 
         images = torch.clamp(2 * (images / 255 - 0.5), min=-1.0, max=1.0)
         return images

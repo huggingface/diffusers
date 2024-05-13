@@ -5,15 +5,16 @@ from typing import Dict, List, Union
 import safetensors.torch
 import torch
 from huggingface_hub import snapshot_download
+from huggingface_hub.utils import validate_hf_hub_args
 
 from diffusers import DiffusionPipeline, __version__
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from diffusers.utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME
+from diffusers.utils import CONFIG_NAME, ONNX_WEIGHTS_NAME, WEIGHTS_NAME
 
 
 class CheckpointMergerPipeline(DiffusionPipeline):
     """
-    A class that that supports merging diffusion models based on the discussion here:
+    A class that supports merging diffusion models based on the discussion here:
     https://github.com/huggingface/diffusers/issues/877
 
     Example usage:-
@@ -57,6 +58,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         return (temp_dict, meta_keys)
 
     @torch.no_grad()
+    @validate_hf_hub_args
     def merge(self, pretrained_model_name_or_path_list: List[Union[str, os.PathLike]], **kwargs):
         """
         Returns a new pipeline object of the class 'DiffusionPipeline' with the merged checkpoints(weights) of the models passed
@@ -69,7 +71,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             **kwargs:
                 Supports all the default DiffusionPipeline.get_config_dict kwargs viz..
 
-                cache_dir, resume_download, force_download, proxies, local_files_only, use_auth_token, revision, torch_dtype, device_map.
+                cache_dir, resume_download, force_download, proxies, local_files_only, token, revision, torch_dtype, device_map.
 
                 alpha - The interpolation parameter. Ranges from 0 to 1.  It affects the ratio in which the checkpoints are merged. A 0.8 alpha
                     would mean that the first model checkpoints would affect the final result far less than an alpha of 0.2
@@ -79,14 +81,17 @@ class CheckpointMergerPipeline(DiffusionPipeline):
 
                 force - Whether to ignore mismatch in model_config.json for the current models. Defaults to False.
 
+                variant - which variant of a pretrained model to load, e.g. "fp16" (None)
+
         """
         # Default kwargs from DiffusionPipeline
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        token = kwargs.pop("token", None)
+        variant = kwargs.pop("variant", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         device_map = kwargs.pop("device_map", None)
@@ -98,7 +103,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         print(f"Combining with alpha={alpha}, interpolation mode={interp}")
 
         checkpoint_count = len(pretrained_model_name_or_path_list)
-        # Ignore result from model_index_json comparision of the two checkpoints
+        # Ignore result from model_index_json comparison of the two checkpoints
         force = kwargs.pop("force", False)
 
         # If less than 2 checkpoints, nothing to merge. If more than 3, not supported for now.
@@ -123,7 +128,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                 force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
             )
             config_dicts.append(config_dict)
@@ -133,7 +138,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             comparison_result &= self._compare_model_configs(config_dicts[idx - 1], config_dicts[idx])
             if not force and comparison_result is False:
                 raise ValueError("Incompatible checkpoints. Please check model_index.json for the models.")
-                print(config_dicts[0], config_dicts[1])
         print("Compatible model_index.json files found")
         # Step 2: Basic Validation has succeeded. Let's download the models and save them into our local files.
         cached_folders = []
@@ -159,7 +163,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     revision=revision,
                     allow_patterns=allow_patterns,
                     user_agent=user_agent,
@@ -171,7 +175,10 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         # Step 3:-
         # Load the first checkpoint as a diffusion pipeline and modify its module state_dict in place
         final_pipe = DiffusionPipeline.from_pretrained(
-            cached_folders[0], torch_dtype=torch_dtype, device_map=device_map
+            cached_folders[0],
+            torch_dtype=torch_dtype,
+            device_map=device_map,
+            variant=variant,
         )
         final_pipe.to(self.device)
 
@@ -209,7 +216,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                         ]
                         checkpoint_path_2 = files[0] if len(files) > 0 else None
                 # For an attr if both checkpoint_path_1 and 2 are None, ignore.
-                # If atleast one is present, deal with it according to interp method, of course only if the state_dict keys match.
+                # If at least one is present, deal with it according to interp method, of course only if the state_dict keys match.
                 if checkpoint_path_1 is None and checkpoint_path_2 is None:
                     print(f"Skipping {attr}: not present in 2nd or 3d model")
                     continue

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -118,6 +118,12 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @nightly
 @require_torch_gpu
 class PipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -137,7 +143,7 @@ class PipelineIntegrationTests(unittest.TestCase):
 
         audio_slice = audio[0, -3:, -3:]
 
-        assert audio.shape == (1, 2, pipe.unet.sample_size)
+        assert audio.shape == (1, 2, pipe.unet.config.sample_size)
         expected_slice = np.array([-0.0192, -0.0231, -0.0318, -0.0059, 0.0002, -0.0020])
 
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2
@@ -155,7 +161,7 @@ class PipelineIntegrationTests(unittest.TestCase):
 
         audio_slice = audio[0, -3:, -3:]
 
-        assert audio.shape == (1, 2, pipe.unet.sample_size)
+        assert audio.shape == (1, 2, pipe.unet.config.sample_size)
         expected_slice = np.array([-0.0367, -0.0488, -0.0771, -0.0525, -0.0444, -0.0341])
 
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2

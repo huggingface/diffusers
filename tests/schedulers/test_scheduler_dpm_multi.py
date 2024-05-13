@@ -29,8 +29,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "algorithm_type": "dpmsolver++",
             "solver_type": "midpoint",
             "lower_order_final": False,
+            "euler_at_final": False,
             "lambda_min_clipped": -float("inf"),
             "variance_type": None,
+            "final_sigmas_type": "sigma_min",
         }
 
         config.update(**kwargs)
@@ -109,9 +111,33 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         sample = self.dummy_sample_deter
         scheduler.set_timesteps(num_inference_steps)
 
+        generator = torch.manual_seed(0)
+
         for i, t in enumerate(scheduler.timesteps):
             residual = model(sample, t)
-            sample = scheduler.step(residual, t, sample).prev_sample
+            sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
+
+        return sample
+
+    def full_loop_custom_timesteps(self, **config):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(**config)
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = 10
+        scheduler.set_timesteps(num_inference_steps)
+        timesteps = scheduler.timesteps
+        # reset the timesteps using `timesteps`
+        scheduler = scheduler_class(**scheduler_config)
+        scheduler.set_timesteps(num_inference_steps=None, timesteps=timesteps)
+
+        generator = torch.manual_seed(0)
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+
+        for i, t in enumerate(scheduler.timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
 
         return sample
 
@@ -195,6 +221,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         self.check_over_configs(lower_order_final=True)
         self.check_over_configs(lower_order_final=False)
 
+    def test_euler_at_final(self):
+        self.check_over_configs(euler_at_final=True)
+        self.check_over_configs(euler_at_final=False)
+
     def test_lambda_min_clipped(self):
         self.check_over_configs(lambda_min_clipped=-float("inf"))
         self.check_over_configs(lambda_min_clipped=-5.1)
@@ -206,6 +236,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
     def test_inference_steps(self):
         for num_inference_steps in [1, 2, 3, 5, 10, 50, 100, 999, 1000]:
             self.check_over_forward(num_inference_steps=num_inference_steps, time_step=0)
+
+    def test_rescale_betas_zero_snr(self):
+        for rescale_betas_zero_snr in [True, False]:
+            self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
 
     def test_full_loop_no_noise(self):
         sample = self.full_loop()
@@ -258,6 +292,12 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_mean.item() - 0.2096) < 1e-3
 
+    def test_full_loop_with_lu_and_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction", use_lu_lambdas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.1554) < 1e-3
+
     def test_switch(self):
         # make sure that iterating over schedulers with same config names gives same results
         # for defaults
@@ -293,10 +333,28 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
         assert sample.dtype == torch.float16
 
-    def test_duplicated_timesteps(self, **config):
+    def test_duplicated_timesteps(self):
         for scheduler_class in self.scheduler_classes:
-            scheduler_config = self.get_scheduler_config(**config)
+            scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
             scheduler.set_timesteps(scheduler.config.num_train_timesteps)
             assert len(scheduler.timesteps) == scheduler.num_inference_steps
+
+    def test_custom_timesteps(self):
+        for algorithm_type in ["dpmsolver++", "sde-dpmsolver++"]:
+            for prediction_type in ["epsilon", "sample", "v_prediction"]:
+                for final_sigmas_type in ["sigma_min", "zero"]:
+                    sample = self.full_loop(
+                        algorithm_type=algorithm_type,
+                        prediction_type=prediction_type,
+                        final_sigmas_type=final_sigmas_type,
+                    )
+                    sample_custom_timesteps = self.full_loop_custom_timesteps(
+                        algorithm_type=algorithm_type,
+                        prediction_type=prediction_type,
+                        final_sigmas_type=final_sigmas_type,
+                    )
+                    assert (
+                        torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5
+                    ), f"Scheduler outputs are not identical for algorithm_type: {algorithm_type}, prediction_type: {prediction_type} and final_sigmas_type: {final_sigmas_type}"

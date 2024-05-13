@@ -1,4 +1,4 @@
-# Copyright 2023 FLAIR Lab and The HuggingFace Team. All rights reserved.
+# Copyright 2024 FLAIR Lab and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ def betas_for_alpha_bar(
             return math.exp(t * -12.0)
 
     else:
-        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
+        raise ValueError(f"Unsupported alpha_transform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
@@ -115,9 +115,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+            An offset added to the inference steps, as required by some model families.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -149,9 +147,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
+            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -164,6 +160,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.alpha_t = torch.sqrt(self.alphas_cumprod)
         self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
         self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
+        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -188,13 +185,33 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs = [None] * solver_order
         self.lower_order_nums = 0
         self._step_index = None
+        self._begin_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
@@ -255,9 +272,11 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
+        self._begin_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
-    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+    def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """
         "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
         prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
@@ -293,7 +312,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
-        log_sigma = np.log(sigma)
+        log_sigma = np.log(np.maximum(sigma, 1e-10))
 
         # get distribution
         dists = log_sigma - log_sigmas[:, np.newaxis]
@@ -322,11 +341,23 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         return alpha_t, sigma_t
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
-    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
+    def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps) -> torch.Tensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
-        sigma_min: float = in_sigmas[-1].item()
-        sigma_max: float = in_sigmas[0].item()
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
 
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)
@@ -337,24 +368,24 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     def convert_model_output(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         *args,
-        sample: torch.FloatTensor = None,
+        sample: torch.Tensor = None,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
         Convert the model output to the corresponding type the DEIS algorithm needs.
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from the learned diffusion model.
             timestep (`int`):
                 The current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The converted model output.
         """
         timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
@@ -394,26 +425,26 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     def deis_first_order_update(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         *args,
-        sample: torch.FloatTensor = None,
+        sample: torch.Tensor = None,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
         One step for the first-order DEIS (equivalent to DDIM).
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from the learned diffusion model.
             timestep (`int`):
                 The current discrete timestep in the diffusion chain.
             prev_timestep (`int`):
                 The previous discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The sample tensor at the previous timestep.
         """
         timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
@@ -452,22 +483,22 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     def multistep_deis_second_order_update(
         self,
-        model_output_list: List[torch.FloatTensor],
+        model_output_list: List[torch.Tensor],
         *args,
-        sample: torch.FloatTensor = None,
+        sample: torch.Tensor = None,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
         One step for the second-order multistep DEIS.
 
         Args:
-            model_output_list (`List[torch.FloatTensor]`):
+            model_output_list (`List[torch.Tensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The sample tensor at the previous timestep.
         """
         timestep_list = args[0] if len(args) > 0 else kwargs.pop("timestep_list", None)
@@ -521,22 +552,22 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     def multistep_deis_third_order_update(
         self,
-        model_output_list: List[torch.FloatTensor],
+        model_output_list: List[torch.Tensor],
         *args,
-        sample: torch.FloatTensor = None,
+        sample: torch.Tensor = None,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
         One step for the third-order multistep DEIS.
 
         Args:
-            model_output_list (`List[torch.FloatTensor]`):
+            model_output_list (`List[torch.Tensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by diffusion process.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The sample tensor at the previous timestep.
         """
 
@@ -607,11 +638,12 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError("only support log-rho multistep deis now")
 
-    def _init_step_index(self, timestep):
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
 
-        index_candidates = (self.timesteps == timestep).nonzero()
+        index_candidates = (schedule_timesteps == timestep).nonzero()
 
         if len(index_candidates) == 0:
             step_index = len(self.timesteps) - 1
@@ -624,13 +656,26 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = index_candidates[0].item()
 
-        self._step_index = step_index
+        return step_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        """
+        Initialize the step_index counter for the scheduler.
+        """
+
+        if self.begin_index is None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.to(self.timesteps.device)
+            self._step_index = self.index_for_timestep(timestep)
+        else:
+            self._step_index = self._begin_index
 
     def step(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         timestep: int,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
@@ -638,11 +683,11 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         the multistep DEIS.
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
             timestep (`float`):
                 The current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             return_dict (`bool`):
                 Whether or not to return a [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`.
@@ -691,17 +736,17 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
-    def scale_model_input(self, sample: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
         return sample
@@ -709,10 +754,10 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.add_noise
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
         timesteps: torch.IntTensor,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
@@ -723,7 +768,15 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        # begin_index is None when the scheduler is used for training or pipeline does not implement set_begin_index
+        if self.begin_index is None:
+            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        elif self.step_index is not None:
+            # add_noise is called after first denoising step (for inpainting)
+            step_indices = [self.step_index] * timesteps.shape[0]
+        else:
+            # add noise is called before first denoising step to create initial latent(img2img)
+            step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

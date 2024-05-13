@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -37,8 +37,10 @@ source .env/bin/activate
 
 You should also install 🤗 Transformers because 🤗 Diffusers relies on its models:
 
+
 <frameworkcontent>
 <pt>
+Note - PyTorch only supports Python 3.8 - 3.11 on Windows.
 ```bash
 pip install diffusers["torch"] transformers
 ```
@@ -49,6 +51,14 @@ pip install diffusers["flax"] transformers
 ```
 </jax>
 </frameworkcontent>
+
+## Install with conda
+
+After activating your virtual environment, with `conda` (maintained by the community):
+
+```bash
+conda install -c conda-forge diffusers
+```
 
 ## Install from source
 
@@ -102,7 +112,7 @@ pip install -e ".[flax]"
 
 These commands will link the folder you cloned the repository to and your Python library paths.
 Python will now look inside the folder you cloned to in addition to the normal library paths.
-For example, if your Python packages are typically installed in `~/anaconda3/envs/main/lib/python3.8/site-packages/`, Python will also search the `~/diffusers/` folder you cloned to.
+For example, if your Python packages are typically installed in `~/anaconda3/envs/main/lib/python3.10/site-packages/`, Python will also search the `~/diffusers/` folder you cloned to.
 
 <Tip warning={true}>
 

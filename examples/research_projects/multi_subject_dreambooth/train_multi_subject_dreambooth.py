@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import itertools
 import json
 import logging
@@ -21,6 +20,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
+from huggingface_hub.utils import insecure_hashlib
 from PIL import Image
 from torch import dtype
 from torch.nn import Module
@@ -681,6 +681,12 @@ class PromptDataset(Dataset):
 
 
 def main(args):
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(
         total_limit=args.checkpoints_total_limit, project_dir=args.output_dir, logging_dir=logging_dir
@@ -691,6 +697,10 @@ def main(args):
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -843,7 +853,7 @@ def main(args):
                     images = pipeline(example["prompt"]).images
 
                     for ii, image in enumerate(images):
-                        hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                        hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                         image_filename = (
                             class_images_dir / f"{example['index'][ii] + cur_class_images}-{hash_image}.jpg"
                         )

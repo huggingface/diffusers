@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -28,11 +28,11 @@ the core library.
 In the following, we give an overview of different ways to contribute, ranked by difficulty in ascending order. All of them are valuable to the community.
 
 * 1. Asking and answering questions on [the Diffusers discussion forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers) or on [Discord](https://discord.gg/G7tWnz98XR).
-* 2. Opening new issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues/new/choose)
-* 3. Answering issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues)
+* 2. Opening new issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues/new/choose).
+* 3. Answering issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues).
 * 4. Fix a simple issue, marked by the "Good first issue" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
 * 5. Contribute to the [documentation](https://github.com/huggingface/diffusers/tree/main/docs/source).
-* 6. Contribute a [Community Pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Acommunity-examples)
+* 6. Contribute a [Community Pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Acommunity-examples).
 * 7. Contribute to the [examples](https://github.com/huggingface/diffusers/tree/main/examples).
 * 8. Fix a more difficult issue, marked by the "Good second issue" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22).
 * 9. Add a new pipeline, model, or scheduler, see ["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) and ["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) issues. For this contribution, please have a look at [Design Philosophy](https://github.com/huggingface/diffusers/blob/main/PHILOSOPHY.md).
@@ -40,7 +40,7 @@ In the following, we give an overview of different ways to contribute, ranked by
 As said before, **all contributions are valuable to the community**.
 In the following, we will explain each contribution a bit more in detail.
 
-For all contributions 4.-9. you will need to open a PR. It is explained in detail how to do so in [Opening a pull request](#how-to-open-a-pr)
+For all contributions 4 - 9, you will need to open a PR. It is explained in detail how to do so in [Opening a pull request](#how-to-open-a-pr).
 
 ### 1. Asking and answering questions on the Diffusers discussion forum or on the Diffusers Discord
 
@@ -57,7 +57,7 @@ Any question or comment related to the Diffusers library can be asked on the [di
 - ...
 
 Every question that is asked on the forum or on Discord actively encourages the community to publicly
-share knowledge and might very well help a beginner in the future that has the same question you're
+share knowledge and might very well help a beginner in the future who has the same question you're
 having. Please do pose any questions you might have.
 In the same spirit, you are of immense help to the community by answering such questions because this way you are publicly documenting knowledge for everybody to learn from.
 
@@ -91,12 +91,12 @@ open a new issue nevertheless and link to the related issue.
 
 New issues usually include the following.
 
-#### 2.1. Reproducible, minimal bug reports.
+#### 2.1. Reproducible, minimal bug reports
 
 A bug report should always have a reproducible code snippet and be as minimal and concise as possible.
 This means in more detail:
-- Narrow the bug down as much as you can, **do not just dump your whole code file**
-- Format your code
+- Narrow the bug down as much as you can, **do not just dump your whole code file**.
+- Format your code.
 - Do not include any external libraries except for Diffusers depending on them.
 - **Always** provide all necessary information about your environment; for this, you can run: `diffusers-cli env` in your shell and copy-paste the displayed information to the issue.
 - Explain the issue. If the reader doesn't know what the issue is and why it is an issue, she cannot solve it.
@@ -105,9 +105,9 @@ This means in more detail:
 
 For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue) section.
 
-You can open a bug report [here](https://github.com/huggingface/diffusers/issues/new/choose).
+You can open a bug report [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=bug&projects=&template=bug-report.yml).
 
-#### 2.2. Feature requests.
+#### 2.2. Feature requests
 
 A world-class feature request addresses the following points:
 
@@ -125,26 +125,26 @@ Awesome! Tell us what problem it solved for you.
 
 You can open a feature request [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=).
 
-#### 2.3 Feedback. 
+#### 2.3 Feedback
 
 Feedback about the library design and why it is good or not good helps the core maintainers immensely to build a user-friendly library. To understand the philosophy behind the current design philosophy, please have a look [here](https://huggingface.co/docs/diffusers/conceptual/philosophy). If you feel like a certain design choice does not fit with the current design philosophy, please explain why and how it should be changed. If a certain design choice follows the design philosophy too much, hence restricting use cases, explain why and how it should be changed.
 If a certain design choice is very useful for you, please also leave a note as this is great feedback for future design decisions.
 
 You can open an issue about feedback [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=).
 
-#### 2.4 Technical questions. 
+#### 2.4 Technical questions
 
-Technical questions are mainly about why certain code of the library was written in a certain way, or what a certain part of the code does. Please make sure to link to the code in question and please provide detail on
+Technical questions are mainly about why certain code of the library was written in a certain way, or what a certain part of the code does. Please make sure to link to the code in question and please provide details on
 why this part of the code is difficult to understand.
 
 You can open an issue about a technical question [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=bug&template=bug-report.yml).
 
-#### 2.5 Proposal to add a new model, scheduler, or pipeline.
+#### 2.5 Proposal to add a new model, scheduler, or pipeline
 
 If the diffusion model community released a new model, pipeline, or scheduler that you would like to see in the Diffusers library, please provide the following information:
 
 * Short description of the diffusion pipeline, model, or scheduler and link to the paper or public release.
-* Link to any of its open-source implementation.
+* Link to any of its open-source implementation(s).
 * Link to the model weights if they are available.
 
 If you are willing to contribute to the model yourself, let us know so we can best guide you. Also, don't forget
@@ -156,21 +156,21 @@ You can open a request for a model/pipeline/scheduler [here](https://github.com/
 
 Answering issues on GitHub might require some technical knowledge of Diffusers, but we encourage everybody to give it a try even if you are not 100% certain that your answer is correct.
 Some tips to give a high-quality answer to an issue:
-- Be as concise and minimal as possible
+- Be as concise and minimal as possible.
 - Stay on topic. An answer to the issue should concern the issue and only the issue.
 - Provide links to code, papers, or other sources that prove or encourage your point.
 - Answer in code. If a simple code snippet is the answer to the issue or shows how the issue can be solved, please provide a fully reproducible code snippet.
 
 Also, many issues tend to be simply off-topic, duplicates of other issues, or irrelevant. It is of great
 help to the maintainers if you can answer such issues, encouraging the author of the issue to be
-more precise, provide the link to a duplicated issue or redirect them to [the forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) or [Discord](https://discord.gg/G7tWnz98XR)
+more precise, provide the link to a duplicated issue or redirect them to [the forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) or [Discord](https://discord.gg/G7tWnz98XR).
 
 If you have verified that the issued bug report is correct and requires a correction in the source code,
 please have a look at the next sections.
 
 For all of the following contributions, you will need to open a PR. It is explained in detail how to do so in the [Opening a pull request](#how-to-open-a-pr) section.
 
-### 4. Fixing a `Good first issue`
+### 4. Fixing a "Good first issue"
 
 *Good first issues* are marked by the [Good first issue](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) label. Usually, the issue already
 explains how a potential solution should look so that it is easier to fix.
@@ -188,7 +188,7 @@ valuable contribution**.
 Contributing to the library can have many forms:
 
 - Correcting spelling or grammatical errors.
-- Correct incorrect formatting of the docstring. If you see that the official documentation is weirdly displayed or a link is broken, we are very happy if you take some time to correct it.
+- Correct incorrect formatting of the docstring. If you see that the official documentation is weirdly displayed or a link is broken, we would be very happy if you take some time to correct it.
 - Correct the shape or dimensions of a docstring input or output tensor.
 - Clarify documentation that is hard to understand or incorrect.
 - Update outdated code examples.
@@ -198,38 +198,81 @@ Anything displayed on [the official Diffusers doc page](https://huggingface.co/d
 
 Please have a look at [this page](https://github.com/huggingface/diffusers/tree/main/docs) on how to verify changes made to the documentation locally.
 
-
 ### 6. Contribute a community pipeline
 
-[Pipelines](https://huggingface.co/docs/diffusers/api/pipelines/overview) are usually the first point of contact between the Diffusers library and the user.
-Pipelines are examples of how to use Diffusers [models](https://huggingface.co/docs/diffusers/api/models) and [schedulers](https://huggingface.co/docs/diffusers/api/schedulers/overview).
-We support two types of pipelines:
+> [!TIP]
+> Read the [Community pipelines](../using-diffusers/custom_pipeline_overview#community-pipelines) guide to learn more about the difference between a GitHub and Hugging Face Hub community pipeline. If you're interested in why we have community pipelines, take a look at GitHub Issue [#841](https://github.com/huggingface/diffusers/issues/841) (basically, we can't maintain all the possible ways diffusion models can be used for inference but we also don't want to prevent the community from building them).
 
-- Official Pipelines
-- Community Pipelines
+Contributing a community pipeline is a great way to share your creativity and work with the community. It lets you build on top of the [`DiffusionPipeline`] so that anyone can load and use it by setting the `custom_pipeline` parameter. This section will walk you through how to create a simple pipeline where the UNet only does a single forward pass and calls the scheduler once (a "one-step" pipeline).
 
-Both official and community pipelines follow the same design and consist of the same type of components.
+1. Create a one_step_unet.py file for your community pipeline. This file can contain whatever package you want to use as long as it's installed by the user. Make sure you only have one pipeline class that inherits from [`DiffusionPipeline`] to load model weights and the scheduler configuration from the Hub. Add a UNet and scheduler to the `__init__` function.
 
-Official pipelines are tested and maintained by the core maintainers of Diffusers. Their code
-resides in [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
-In contrast, community pipelines are contributed and maintained purely by the **community** and are **not** tested.
-They reside in [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) and while they can be accessed via the [PyPI diffusers package](https://pypi.org/project/diffusers/), their code is not part of the PyPI distribution.
+    You should also add the `register_modules` function to ensure your pipeline and its components can be saved with [`~DiffusionPipeline.save_pretrained`].
 
-The reason for the distinction is that the core maintainers of the Diffusers library cannot maintain and test all
-possible ways diffusion models can be used for inference, but some of them may be of interest to the community.
-Officially released diffusion pipelines,
-such as Stable Diffusion are added to the core src/diffusers/pipelines package which ensures
-high quality of maintenance, no backward-breaking code changes, and testing.
-More bleeding edge pipelines should be added as community pipelines. If usage for a community pipeline is high, the pipeline can be moved to the official pipelines upon request from the community. This is one of the ways we strive to be a community-driven library.
+```py
+from diffusers import DiffusionPipeline
+import torch
 
-To add a community pipeline, one should add a <name-of-the-community>.py file to [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) and adapt the [examples/community/README.md](https://github.com/huggingface/diffusers/tree/main/examples/community/README.md) to include an example of the new pipeline.
+class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
+    def __init__(self, unet, scheduler):
+        super().__init__()
 
-An example can be seen [here](https://github.com/huggingface/diffusers/pull/2400).
+        self.register_modules(unet=unet, scheduler=scheduler)
+```
 
-Community pipeline PRs are only checked at a superficial level and ideally they should be maintained by their original authors.
+1. In the forward pass (which we recommend defining as `__call__`), you can add any feature you'd like. For the "one-step" pipeline, create a random image and call the UNet and scheduler once by setting `timestep=1`.
 
-Contributing a community pipeline is a great way to understand how Diffusers models and schedulers work. Having contributed a community pipeline is usually the first stepping stone to contributing an official pipeline to the
-core package.
+```py
+  from diffusers import DiffusionPipeline
+  import torch
+
+  class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
+      def __init__(self, unet, scheduler):
+          super().__init__()
+
+          self.register_modules(unet=unet, scheduler=scheduler)
+
+      def __call__(self):
+          image = torch.randn(
+              (1, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size),
+          )
+          timestep = 1
+
+          model_output = self.unet(image, timestep).sample
+          scheduler_output = self.scheduler.step(model_output, timestep, image).prev_sample
+
+          return scheduler_output
+```
+
+Now you can run the pipeline by passing a UNet and scheduler to it or load pretrained weights if the pipeline structure is identical.
+
+```py
+from diffusers import DDPMScheduler, UNet2DModel
+
+scheduler = DDPMScheduler()
+unet = UNet2DModel()
+
+pipeline = UnetSchedulerOneForwardPipeline(unet=unet, scheduler=scheduler)
+output = pipeline()
+# load pretrained weights
+pipeline = UnetSchedulerOneForwardPipeline.from_pretrained("google/ddpm-cifar10-32", use_safetensors=True)
+output = pipeline()
+```
+
+You can either share your pipeline as a GitHub community pipeline or Hub community pipeline.
+
+<hfoptions id="pipeline type">
+<hfoption id="GitHub pipeline">
+
+Share your GitHub pipeline by opening a pull request on the Diffusers [repository](https://github.com/huggingface/diffusers) and add the one_step_unet.py file to the [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) subfolder.
+
+</hfoption>
+<hfoption id="Hub pipeline">
+
+Share your Hub pipeline by creating a model repository on the Hub and uploading the one_step_unet.py file to it.
+
+</hfoption>
+</hfoptions>
 
 ### 7. Contribute to training examples
 
@@ -242,46 +285,46 @@ We support two types of training examples:
 
 Research training examples are located in [examples/research_projects](https://github.com/huggingface/diffusers/tree/main/examples/research_projects) whereas official training examples include all folders under [examples](https://github.com/huggingface/diffusers/tree/main/examples) except the `research_projects` and `community` folders.
 The official training examples are maintained by the Diffusers' core maintainers whereas the research training examples are maintained by the community.
-This is because of the same reasons put forward in [6. Contribute a community pipeline](#contribute-a-community-pipeline) for official pipelines vs. community pipelines: It is not feasible for the core maintainers to maintain all possible training methods for diffusion models.
+This is because of the same reasons put forward in [6. Contribute a community pipeline](#6-contribute-a-community-pipeline) for official pipelines vs. community pipelines: It is not feasible for the core maintainers to maintain all possible training methods for diffusion models.
 If the Diffusers core maintainers and the community consider a certain training paradigm to be too experimental or not popular enough, the corresponding training code should be put in the `research_projects` folder and maintained by the author.
 
 Both official training and research examples consist of a directory that contains one or more training scripts, a requirements.txt file, and a README.md file. In order for the user to make use of the
 training examples, it is required to clone the repository:
 
-```
+```bash
 git clone https://github.com/huggingface/diffusers
 ```
 
 as well as to install all additional dependencies required for training:
 
-```
+```bash
 pip install -r /examples/<your-example-folder>/requirements.txt
 ```
 
 Therefore when adding an example, the `requirements.txt` file shall define all pip dependencies required for your training example so that once all those are installed, the user can run the example's training script. See, for example, the [DreamBooth `requirements.txt` file](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/requirements.txt).
 
 Training examples of the Diffusers library should adhere to the following philosophy:
-- All the code necessary to run the examples should be found in a single Python file
-- One should be able to run the example from the command line with `python <your-example>.py --args`
+- All the code necessary to run the examples should be found in a single Python file.
+- One should be able to run the example from the command line with `python <your-example>.py --args`.
 - Examples should be kept simple and serve as **an example** on how to use Diffusers for training. The purpose of example scripts is **not** to create state-of-the-art diffusion models, but rather to reproduce known training schemes without adding too much custom logic. As a byproduct of this point, our examples also strive to serve as good educational materials.
 
 To contribute an example, it is highly recommended to look at already existing examples such as [dreambooth](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) to get an idea of how they should look like.
 We strongly advise contributors to make use of the [Accelerate library](https://github.com/huggingface/accelerate) as it's tightly integrated
 with Diffusers.
 Once an example script works, please make sure to add a comprehensive `README.md` that states how to use the example exactly. This README should include:
-- An example command on how to run the example script as shown [here e.g.](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#running-locally-with-pytorch).
-- A link to some training results (logs, models, ...) that show what the user can expect as shown [here e.g.](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
+- An example command on how to run the example script as shown [here](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#running-locally-with-pytorch).
+- A link to some training results (logs, models, etc.) that show what the user can expect as shown [here](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
 - If you are adding a non-official/research training example, **please don't forget** to add a sentence that you are maintaining this training example which includes your git handle as shown [here](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/intel_opts#diffusers-examples-with-intel-optimizations).
 
 If you are contributing to the official training examples, please also make sure to add a test to [examples/test_examples.py](https://github.com/huggingface/diffusers/blob/main/examples/test_examples.py). This is not necessary for non-official training examples.
 
-### 8. Fixing a `Good second issue`
+### 8. Fixing a "Good second issue"
 
 *Good second issues* are marked by the [Good second issue](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22) label. Good second issues are
 usually more complicated to solve than [Good first issues](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
 The issue description usually gives less guidance on how to fix the issue and requires
 a decent understanding of the library by the interested contributor.
-If you are interested in tackling a second good issue, feel free to open a PR to fix it and link the PR to the issue. If you see that a PR has already been opened for this issue but did not get merged, have a look to understand why it wasn't merged and try to open an improved PR.
+If you are interested in tackling a good second issue, feel free to open a PR to fix it and link the PR to the issue. If you see that a PR has already been opened for this issue but did not get merged, have a look to understand why it wasn't merged and try to open an improved PR.
 Good second issues are usually more difficult to get merged compared to good first issues, so don't hesitate to ask for help from the core maintainers. If your PR is almost finished the core maintainers can also jump into your PR and commit to it in order to get it merged.
 
 ### 9. Adding pipelines, models, schedulers
@@ -297,16 +340,36 @@ if you don't know yet what specific component you would like to add:
 - [Model or pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22)
 - [Scheduler](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22)
 
-Before adding any of the three components, it is strongly recommended that you give the [Philosophy guide](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22) a read to better understand the design of any of the three components. Please be aware that
-we cannot merge model, scheduler, or pipeline additions that strongly diverge from our design philosophy
-as it will lead to API inconsistencies. If you fundamentally disagree with a design choice, please
-open a [Feedback issue](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=) instead so that it can be discussed whether a certain design
-pattern/design choice shall be changed everywhere in the library and whether we shall update our design philosophy. Consistency across the library is very important for us.
+Before adding any of the three components, it is strongly recommended that you give the [Philosophy guide](philosophy) a read to better understand the design of any of the three components. Please be aware that we cannot merge model, scheduler, or pipeline additions that strongly diverge from our design philosophy
+as it will lead to API inconsistencies. If you fundamentally disagree with a design choice, please open a [Feedback issue](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=) instead so that it can be discussed whether a certain design pattern/design choice shall be changed everywhere in the library and whether we shall update our design philosophy. Consistency across the library is very important for us.
 
-Please make sure to add links to the original codebase/paper to the PR and ideally also ping the
-original author directly on the PR so that they can follow the progress and potentially help with questions.
+Please make sure to add links to the original codebase/paper to the PR and ideally also ping the original author directly on the PR so that they can follow the progress and potentially help with questions.
 
 If you are unsure or stuck in the PR, don't hesitate to leave a message to ask for a first review or help.
+
+#### Copied from mechanism
+
+A unique and important feature to understand when adding any pipeline, model or scheduler code is the `# Copied from` mechanism. You'll see this all over the Diffusers codebase, and the reason we use it is to keep the codebase easy to understand and maintain. Marking code with the `# Copied from` mechanism forces the marked code to be identical to the code it was copied from. This makes it easy to update and propagate changes across many files whenever you run `make fix-copies`.
+
+For example, in the code example below, [`~diffusers.pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is the original code and `AltDiffusionPipelineOutput` uses the `# Copied from` mechanism to copy it. The only difference is changing the class prefix from `Stable` to `Alt`.
+
+```py
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_output.StableDiffusionPipelineOutput with Stable->Alt
+class AltDiffusionPipelineOutput(BaseOutput):
+    """
+    Output class for Alt Diffusion pipelines.
+
+    Args:
+        images (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            num_channels)`.
+        nsfw_content_detected (`List[bool]`)
+            List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
+            `None` if safety checking could not be performed.
+    """
+```
+
+To learn more, read this section of the [~Don't~ Repeat Yourself*](https://huggingface.co/blog/transformers-design-philosophy#4-machine-learning-models-are-static) blog post.
 
 ## How to write a good issue
 
@@ -337,8 +400,8 @@ to be merged;
 9. Add high-coverage tests. No quality testing = no merge.
 - If you are adding new `@slow` tests, make sure they pass using
 `RUN_SLOW=1 python -m pytest tests/test_my_new_model.py`.
-CircleCI does not run the slow tests, but GitHub actions does every night!
-10. All public methods must have informative docstrings that work nicely with markdown. See `[pipeline_latent_diffusion.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py)` for an example.
+CircleCI does not run the slow tests, but GitHub Actions does every night!
+10. All public methods must have informative docstrings that work nicely with markdown. See [`pipeline_latent_diffusion.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py) for an example.
 11. Due to the rapidly growing repository, it is important to make sure that no files that would significantly weigh down the repository are added. This includes images, videos, and other non-text files. We prefer to leverage a hf.co hosted `dataset` like
 [`hf-internal-testing`](https://huggingface.co/hf-internal-testing) or [huggingface/documentation-images](https://huggingface.co/datasets/huggingface/documentation-images) to place these files.
 If an external contribution, feel free to add the images to your PR and ask a Hugging Face member to migrate your images
@@ -364,7 +427,7 @@ under your GitHub user account.
 2. Clone your fork to your local disk, and add the base repository as a remote:
 
  ```bash
- $ git clone git@github.com:<your Github handle>/diffusers.git
+ $ git clone git@github.com:<your GitHub handle>/diffusers.git
  $ cd diffusers
  $ git remote add upstream https://github.com/huggingface/diffusers.git
  ```
@@ -395,7 +458,14 @@ passes. You should run the tests impacted by your changes like this:
  $ pytest tests/<TEST_TO_RUN>.py
  ```
 
-You can also run the full suite with the following command, but it takes
+Before you run the tests, please make sure you install the dependencies required for testing. You can do so
+with this command:
+
+ ```bash
+ $ pip install -e ".[test]"
+ ```
+
+You can also run the full test suite with the following command, but it takes
 a beefy machine to produce a result in a decent amount of time now that
 Diffusers has grown a lot. Here is the command for it:
 
@@ -423,7 +493,7 @@ make a commit with `git commit` to record your changes locally:
 
  ```bash
  $ git add modified_file.py
- $ git commit
+ $ git commit -m "A descriptive message about your changes."
  ```
 
 It is a good idea to sync your copy of the code with the original
@@ -443,7 +513,7 @@ Push the changes to your account using:
 webpage of your fork on GitHub. Click on 'Pull request' to send your changes
 to the project maintainers for review.
 
-7. It's ok if maintainers ask you for changes. It happens to core contributors
+7. It's OK if maintainers ask you for changes. It happens to core contributors
 too! So everyone can see the changes in the Pull request, work in your local
 branch and push the changes to your fork. They will automatically appear in
 the pull request.
@@ -486,7 +556,7 @@ To avoid pinging the upstream repository which adds reference notes to each upst
 when syncing the main branch of a forked repository, please, follow these steps:
 1. When possible, avoid syncing with the upstream using a branch and PR on the forked repository. Instead, merge directly into the forked main.
 2. If a PR is absolutely necessary, use the following steps after checking out your branch:
-```
+```bash
 $ git checkout -b your-branch-for-syncing
 $ git pull --squash --no-commit upstream main
 $ git commit -m '<your message without GitHub references>'
@@ -495,4 +565,4 @@ $ git push --set-upstream origin your-branch-for-syncing
 
 ### Style guide
 
-For documentation strings, 🧨 Diffusers follows the [google style](https://google.github.io/styleguide/pyguide.html).
+For documentation strings, 🧨 Diffusers follows the [Google style](https://google.github.io/styleguide/pyguide.html).

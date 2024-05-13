@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,15 +70,16 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet3DConditionModel(
-            block_out_channels=(32, 64, 64, 64),
-            layers_per_block=2,
+            block_out_channels=(4, 8),
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
-            down_block_types=("CrossAttnDownBlock3D", "CrossAttnDownBlock3D", "CrossAttnDownBlock3D", "DownBlock3D"),
-            up_block_types=("UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"),
+            down_block_types=("CrossAttnDownBlock3D", "DownBlock3D"),
+            up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
             cross_attention_dim=32,
             attention_head_dim=4,
+            norm_num_groups=2,
         )
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -89,13 +90,18 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 64],
+            block_out_channels=[
+                8,
+            ],
             in_channels=3,
             out_channels=3,
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            down_block_types=[
+                "DownEncoderBlock2D",
+            ],
+            up_block_types=["UpDecoderBlock2D"],
             latent_channels=4,
-            sample_size=128,
+            sample_size=32,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
@@ -151,10 +157,10 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         inputs["output_type"] = "np"
         frames = sd_pipe(**inputs).frames
-        image_slice = frames[0][-3:, -3:, -1]
+        image_slice = frames[0][0][-3:, -3:, -1]
 
-        assert frames[0].shape == (32, 32, 3)
-        expected_slice = np.array([106, 117, 113, 174, 137, 112, 148, 151, 131])
+        assert frames[0][0].shape == (32, 32, 3)
+        expected_slice = np.array([0.6391, 0.5350, 0.5202, 0.5521, 0.5453, 0.5393, 0.6652, 0.5270, 0.5185])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -208,9 +214,11 @@ class VideoToVideoSDPipelineSlowTests(unittest.TestCase):
 
         prompt = "Spiderman is surfing"
 
-        video_frames = pipe(prompt, video=video, generator=generator, num_inference_steps=3, output_type="pt").frames
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        video_frames = pipe(prompt, video=video, generator=generator, num_inference_steps=3, output_type="np").frames
 
-        expected_array = np.array([-0.9770508, -0.8027344, -0.62646484, -0.8334961, -0.7573242])
-        output_array = video_frames.cpu().numpy()[0, 0, 0, 0, -5:]
-
-        assert numpy_cosine_similarity_distance(expected_array, output_array) < 1e-2
+        expected_array = np.array(
+            [0.17114258, 0.13720703, 0.08886719, 0.14819336, 0.1730957, 0.24584961, 0.22021484, 0.35180664, 0.2607422]
+        )
+        output_array = video_frames[0, 0, :3, :3, 0].flatten()
+        assert numpy_cosine_similarity_distance(expected_array, output_array) < 1e-3

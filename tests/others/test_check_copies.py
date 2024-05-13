@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,6 @@ import sys
 import tempfile
 import unittest
 
-import black
-
 
 git_repo_path = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 sys.path.append(os.path.join(git_repo_path, "utils"))
@@ -34,16 +32,16 @@ REFERENCE_CODE = """    \"""
     Output class for the scheduler's `step` function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
             `pred_original_sample` can be used to preview progress or for guidance.
     \"""
 
-    prev_sample: torch.FloatTensor
-    pred_original_sample: Optional[torch.FloatTensor] = None
+    prev_sample: torch.Tensor
+    pred_original_sample: Optional[torch.Tensor] = None
 """
 
 
@@ -65,8 +63,7 @@ class CopyCheckTester(unittest.TestCase):
         code = comment + f"\nclass {class_name}(nn.Module):\n" + class_code
         if overwrite_result is not None:
             expected = comment + f"\nclass {class_name}(nn.Module):\n" + overwrite_result
-        mode = black.Mode(target_versions={black.TargetVersion.PY35}, line_length=119)
-        code = black.format_str(code, mode=mode)
+        code = check_copies.run_ruff(code)
         fname = os.path.join(self.diffusers_dir, "new_code.py")
         with open(fname, "w", newline="\n") as f:
             f.write(code)

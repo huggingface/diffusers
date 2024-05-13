@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -21,7 +21,7 @@ samples, and it can generate quite good samples even in 10 steps.
 
 It is recommended to set `solver_order` to 2 for guide sampling, and `solver_order=3` for unconditional sampling.
 
-Dynamic thresholding from Imagen (https://huggingface.co/papers/2205.11487) is supported, and for pixel-space
+Dynamic thresholding from [Imagen](https://huggingface.co/papers/2205.11487) is supported, and for pixel-space
 diffusion models, you can set both `algorithm_type="dpmsolver++"` and `thresholding=True` to use the dynamic
 thresholding. This thresholding method is unsuitable for latent-space diffusion models such as
 Stable Diffusion.
