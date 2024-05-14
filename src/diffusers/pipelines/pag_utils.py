@@ -177,7 +177,6 @@ class PAGMixin:
                     )
         self._pag_scale = None
         self._pag_adaptive_scaling = None
-        self._pag_drop_rate = None
         self._pag_applied_layers = None
         self._pag_applied_layers_index = None
         self._pag_cfg = None
