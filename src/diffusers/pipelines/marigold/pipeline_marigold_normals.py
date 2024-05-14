@@ -200,8 +200,11 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             raise ValueError("`output_prediction_format` must be one of `pt` or `np`.")
         if latents is not None and generator is not None:
             raise ValueError("`latents` and `generator` cannot be used together.")
-        if ensembling_kwargs is not None and not isinstance(ensembling_kwargs, dict):
-            raise ValueError("`ensembling_kwargs` must be a dictionary.")
+        if ensembling_kwargs is not None:
+            if not isinstance(ensembling_kwargs, dict):
+                raise ValueError("`ensembling_kwargs` must be a dictionary.")
+            if "reduction" in ensembling_kwargs and ensembling_kwargs["reduction"] not in ("closest", "mean"):
+                raise ValueError("`ensembling_kwargs['reduction']` can be either `'closest'` or `'mean'`.")
         if output_visualization_kwargs is not None and not isinstance(output_visualization_kwargs, dict):
             raise ValueError("`output_visualization_kwargs` must be a dictionary.")
 
@@ -582,11 +585,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
     def ensemble_normals(
         normals: torch.FloatTensor, output_uncertainty: bool, reduction: str = "closest"
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
-        assert normals.dim() == 4
+        assert normals.dim() == 4 and normals.shape[1] == 3  # [E,3,H,W]
         assert reduction in ("closest", "mean")
-
-        E, C, H, W = normals.shape
-        assert C == 3
 
         mean_normals = normals.mean(dim=0, keepdim=True)  # [1,3,H,W]
         mean_normals = MarigoldNormalsPipeline.normalize_normals(mean_normals)  # [1,3,H,W]
@@ -603,6 +603,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         closest_indices = sim_cos.argmax(dim=0, keepdim=True)  # [1,1,H,W]
         closest_indices = closest_indices.repeat(1, 3, 1, 1)  # [1,3,H,W]
-        closest_normals = torch.gather(normals, 0, closest_indices)
+        closest_normals = torch.gather(normals, 0, closest_indices)  # [1,3,H,W]
 
         return closest_normals, uncertainty  # [1,3,H,W], [1,1,H,W]

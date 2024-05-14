@@ -38,7 +38,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.export_utils import visualize_depth
-from ...utils.import_utils import is_scipy_available
+from ...utils.import_utils import is_matplotlib_available, is_scipy_available
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .marigold_image_processing import MarigoldImageProcessor
@@ -171,6 +171,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 "`ensemble_size` == 2 results are similar to no ensembling (1); "
                 "consider increasing the value to at least 3."
             )
+        if ensemble_size > 1 and not is_scipy_available():
+            raise ImportError("Make sure to install scipy if you want to use ensembling.")
         if processing_resolution is None:
             raise ValueError(
                 "`processing_resolution` is not specified and could not be resolved from the model config."
@@ -198,10 +200,23 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             raise ValueError("`output_prediction_format` must be one of `pt`, `np`, or `pil`.")
         if latents is not None and generator is not None:
             raise ValueError("`latents` and `generator` cannot be used together.")
-        if ensembling_kwargs is not None and not isinstance(ensembling_kwargs, dict):
-            raise ValueError("`ensembling_kwargs` must be a dictionary.")
-        if output_visualization_kwargs is not None and not isinstance(output_visualization_kwargs, dict):
-            raise ValueError("`output_visualization_kwargs` must be a dictionary.")
+        if ensembling_kwargs is not None:
+            if not isinstance(ensembling_kwargs, dict):
+                raise ValueError("`ensembling_kwargs` must be a dictionary.")
+            if "reduction" in ensembling_kwargs and ensembling_kwargs["reduction"] not in ("mean", "median"):
+                raise ValueError("`ensembling_kwargs['reduction']` can be either `'mean'` or `'median'`.")
+        if output_visualization_kwargs is not None:
+            if not isinstance(output_visualization_kwargs, dict):
+                raise ValueError("`output_visualization_kwargs` must be a dictionary.")
+            if (
+                "color_map" in output_visualization_kwargs
+                and output_visualization_kwargs["color_map"] != "Spectral"
+                and not is_matplotlib_available()
+            ):
+                raise ValueError(
+                    "`output_visualization_kwargs['color_map']` can be only `'Spectral'` when matplotlib "
+                    "is not installed`."
+                )
 
         # image checks
         num_images = 1
@@ -574,26 +589,24 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         tol: float = 1e-3,
         max_res: int = 1024,
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
+        import scipy
+
         assert depth.dim() == 4 and depth.shape[1] == 1
-
-        if is_scipy_available():
-            import scipy
-        else:
-            raise ImportError("Make sure to install scipy if you want to use ensembling.")
-
-        E = depth.shape[0]
-
-        if reduction not in ("mean", "median"):
-            raise ValueError("Ensembling `reduction` can be either `'mean'` or `'median'`.")
+        ensemble_size = depth.shape[0]
 
         depth_to_align = depth.to(torch.float32)
         if max_res is not None and max(depth_to_align.shape[2:]) > max_res:
             depth_to_align = MarigoldImageProcessor.resize_to_max_edge(depth_to_align, max_res, "nearest-exact")
 
         def align_depth(depth: torch.FloatTensor, s: np.ndarray, t: np.ndarray) -> torch.FloatTensor:
-            assert depth.dim() == 4 and isinstance(s, np.ndarray) and isinstance(t, np.ndarray) and len(s) == len(t) == E
-            s = torch.from_numpy(s).to(depth).view(E, 1, 1, 1)
-            t = torch.from_numpy(t).to(depth).view(E, 1, 1, 1)
+            assert (
+                depth.dim() == 4
+                and isinstance(s, np.ndarray)
+                and isinstance(t, np.ndarray)
+                and len(s) == len(t) == ensemble_size
+            )
+            s = torch.from_numpy(s).to(depth).view(ensemble_size, 1, 1, 1)
+            t = torch.from_numpy(t).to(depth).view(ensemble_size, 1, 1, 1)
             out = depth * s + t
             return out
 
@@ -618,7 +631,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             s, t = np.split(st, 2)
             depth_aligned = align_depth(depth_to_align, s, t)
 
-            for i, j in torch.combinations(torch.arange(E)):
+            for i, j in torch.combinations(torch.arange(ensemble_size)):
                 diff = depth_aligned[i] - depth_aligned[j]
                 cost += (diff**2).mean().sqrt().item()
 
@@ -630,8 +643,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
             return cost
 
-        init_min = depth_to_align.reshape(E, -1).min(dim=1).values
-        init_max = depth_to_align.reshape(E, -1).max(dim=1).values
+        init_min = depth_to_align.reshape(ensemble_size, -1).min(dim=1).values
+        init_max = depth_to_align.reshape(ensemble_size, -1).max(dim=1).values
         init_s = 1.0 / (init_max - init_min).clamp(min=1e-6)
         init_t = -init_s * init_min
         init_st = torch.cat((init_s, init_t)).cpu().numpy()
