@@ -54,6 +54,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
+from ..pag_utils import PAGMixin
 
 
 if is_invisible_watermark_available():
@@ -168,6 +169,7 @@ class StableDiffusionXLPipeline(
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
+    PAGMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
@@ -866,11 +868,6 @@ class StableDiffusionXLPipeline(
         sigmas: List[float] = None,
         denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
-        pag_scale: float = 0.0,
-        pag_adaptive_scaling: float = 0.0,
-        pag_drop_rate: float = 0.5,
-        pag_applied_layers: List[str] = ['mid'], #['down', 'mid', 'up']
-        pag_applied_layers_index: List[str] = None, #['d4', 'd5', 'm0']
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -1090,12 +1087,6 @@ class StableDiffusionXLPipeline(
         self._cross_attention_kwargs = cross_attention_kwargs
         self._denoising_end = denoising_end
         self._interrupt = False
-
-        self._pag_scale = pag_scale
-        self._pag_adaptive_scaling = pag_adaptive_scaling
-        self._pag_drop_rate = pag_drop_rate
-        self._pag_applied_layers = pag_applied_layers
-        self._pag_applied_layers_index = pag_applied_layers_index
         
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1180,6 +1171,9 @@ class StableDiffusionXLPipeline(
             negative_add_time_ids = add_time_ids
 
         #cfg
+        if self.do_adversarial_guidance:
+            self.set_pag_attn_processor()
+
         if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
@@ -1234,23 +1228,6 @@ class StableDiffusionXLPipeline(
             timestep_cond = self.get_guidance_scale_embedding(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
-
-        # 10. Create down mid and up layer lists
-        if self.do_adversarial_guidance:
-            down_layers = []
-            mid_layers = []
-            up_layers = []
-            for name, module in self.unet.named_modules():
-                if 'attn1' in name and 'to' not in name:
-                    layer_type = name.split('.')[0].split('_')[0]
-                    if layer_type == 'down':
-                        down_layers.append(module)
-                    elif layer_type == 'mid':
-                        mid_layers.append(module)
-                    elif layer_type == 'up':
-                        up_layers.append(module)
-                    else:
-                        raise ValueError(f"Invalid layer type: {layer_type}")
             
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1270,51 +1247,6 @@ class StableDiffusionXLPipeline(
                 #no
                 else:
                     latent_model_input = latents
-                    
-                # change attention layer in UNet if use PAG
-                if self.do_adversarial_guidance:
-                    
-                    if self.do_classifier_free_guidance:
-                        replace_processor = PAGCFGIdentitySelfAttnProcessor()
-                    else:
-                        replace_processor = PAGIdentitySelfAttnProcessor()
-
-                    if(self.pag_applied_layers_index):
-                        drop_layers = self.pag_applied_layers_index
-                        for drop_layer in drop_layers:
-                            layer_number = int(drop_layer[1:])
-                            try:
-                                if drop_layer[0] == 'd':
-                                    down_layers[layer_number].processor = replace_processor
-                                elif drop_layer[0] == 'm':
-                                    mid_layers[layer_number].processor = replace_processor
-                                elif drop_layer[0] == 'u':
-                                    up_layers[layer_number].processor = replace_processor
-                                else:
-                                    raise ValueError(f"Invalid layer type: {drop_layer[0]}")
-                            except IndexError:
-                                raise ValueError(
-                                    f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
-                                )
-                    elif(self.pag_applied_layers):
-                        drop_full_layers = self.pag_applied_layers
-                        for drop_full_layer in drop_full_layers:
-                            try:
-                                if drop_full_layer == "down":
-                                    for down_layer in down_layers:
-                                        down_layer.processor = replace_processor
-                                elif drop_full_layer == "mid":
-                                    for mid_layer in mid_layers:
-                                        mid_layer.processor = replace_processor
-                                elif drop_full_layer == "up":
-                                    for up_layer in up_layers:
-                                        up_layer.processor = replace_processor
-                                else:
-                                    raise ValueError(f"Invalid layer type: {drop_full_layer}")
-                            except IndexError:
-                                raise ValueError(
-                                    f"Invalid layer index: {drop_full_layer}. Available layers are: down, mid and up. If you need to specify each layer index, you can use `pag_applied_layers_index`"
-                                )
                                 
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -1447,273 +1379,4 @@ class StableDiffusionXLPipeline(
         if not return_dict:
             return (image,)
 
-        #Change the attention layers back to original ones after PAG was applied
-        if self.do_adversarial_guidance:
-            if(self.pag_applied_layers_index):
-                drop_layers = self.pag_applied_layers_index
-                for drop_layer in drop_layers:
-                    layer_number = int(drop_layer[1:])
-                    try:
-                        if drop_layer[0] == 'd':
-                            down_layers[layer_number].processor = AttnProcessor2_0()
-                        elif drop_layer[0] == 'm':
-                            mid_layers[layer_number].processor = AttnProcessor2_0()
-                        elif drop_layer[0] == 'u':
-                            up_layers[layer_number].processor = AttnProcessor2_0()
-                        else:
-                            raise ValueError(f"Invalid layer type: {drop_layer[0]}")
-                    except IndexError:
-                        raise ValueError(
-                            f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
-                        )
-            elif(self.pag_applied_layers):
-                            drop_full_layers = self.pag_applied_layers
-                            for drop_full_layer in drop_full_layers:
-                                try:
-                                    if drop_full_layer == "down":
-                                        for down_layer in down_layers:
-                                            down_layer.processor = AttnProcessor2_0()
-                                    elif drop_full_layer == "mid":
-                                        for mid_layer in mid_layers:
-                                            mid_layer.processor = AttnProcessor2_0()
-                                    elif drop_full_layer == "up":
-                                        for up_layer in up_layers:
-                                            up_layer.processor = AttnProcessor2_0()
-                                    else:
-                                        raise ValueError(f"Invalid layer type: {drop_full_layer}")
-                                except IndexError:
-                                    raise ValueError(
-                                        f"Invalid layer index: {drop_full_layer}. Available layers are: down, mid and up. If you need to specify each layer index, you can use `pag_applied_layers_index`"
-                                    )
         return StableDiffusionXLPipelineOutput(images=image)
-
-
-
-from diffusers.models.attention_processor import Attention, AttnProcessor2_0
-import torch.nn.functional as F
-
-class PAGIdentitySelfAttnProcessor:
-    r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        temb: Optional[torch.FloatTensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.FloatTensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-        
-        residual = hidden_states
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-        
-        # chunk
-        hidden_states_org, hidden_states_ptb = hidden_states.chunk(2)
-        
-        # original path
-        batch_size, sequence_length, _ = hidden_states_org.shape
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states_org = attn.group_norm(hidden_states_org.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states_org)
-        key = attn.to_k(hidden_states_org)
-        value = attn.to_v(hidden_states_org)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states_org = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states_org = hidden_states_org.to(query.dtype)
-        
-        # linear proj
-        hidden_states_org = attn.to_out[0](hidden_states_org)
-        # dropout
-        hidden_states_org = attn.to_out[1](hidden_states_org)
-
-        if input_ndim == 4:
-            hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        # perturbed path (identity attention)
-        batch_size, sequence_length, _ = hidden_states_ptb.shape
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states_ptb = attn.group_norm(hidden_states_ptb.transpose(1, 2)).transpose(1, 2)
-
-        value = attn.to_v(hidden_states_ptb)
-        
-        # hidden_states_ptb = torch.zeros(value.shape).to(value.get_device())
-        hidden_states_ptb = value
-        
-        hidden_states_ptb = hidden_states_ptb.to(query.dtype)
-        
-        # linear proj
-        hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
-        # dropout
-        hidden_states_ptb = attn.to_out[1](hidden_states_ptb)
-
-        if input_ndim == 4:
-            hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        # cat
-        hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-
-class PAGCFGIdentitySelfAttnProcessor:
-    r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        temb: Optional[torch.FloatTensor] = None,
-        *args,
-        **kwargs,
-    ) -> torch.FloatTensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-        
-        residual = hidden_states
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-        
-        # chunk
-        hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
-        hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
-        
-        # original path
-        batch_size, sequence_length, _ = hidden_states_org.shape
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states_org = attn.group_norm(hidden_states_org.transpose(1, 2)).transpose(1, 2)
-        
-        query = attn.to_q(hidden_states_org)
-        key = attn.to_k(hidden_states_org)
-        value = attn.to_v(hidden_states_org)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states_org = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states_org = hidden_states_org.to(query.dtype)
-        
-        # linear proj
-        hidden_states_org = attn.to_out[0](hidden_states_org)
-        # dropout
-        hidden_states_org = attn.to_out[1](hidden_states_org)
-
-        if input_ndim == 4:
-            hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        # perturbed path (identity attention)
-        batch_size, sequence_length, _ = hidden_states_ptb.shape
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states_ptb = attn.group_norm(hidden_states_ptb.transpose(1, 2)).transpose(1, 2)
-
-        value = attn.to_v(hidden_states_ptb)
-        hidden_states_ptb = value
-        hidden_states_ptb = hidden_states_ptb.to(query.dtype)
-        
-        # linear proj
-        hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
-        # dropout
-        hidden_states_ptb = attn.to_out[1](hidden_states_ptb)
-
-        if input_ndim == 4:
-            hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        # cat
-        hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
