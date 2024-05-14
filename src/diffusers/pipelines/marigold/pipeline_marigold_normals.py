@@ -136,7 +136,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             use_full_z_range=use_full_z_range,
         )
 
-        self.vae_scale_factor = 8
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.latent_space_size = self.vae.config.latent_channels
         self.latent_scaling_factor = self.vae.config.scaling_factor
         self.default_denoising_steps = default_denoising_steps
