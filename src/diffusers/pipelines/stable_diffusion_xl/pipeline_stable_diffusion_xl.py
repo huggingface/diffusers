@@ -52,9 +52,9 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
+from ..pag_utils import PAGMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
-from ..pag_utils import PAGMixin
 
 
 if is_invisible_watermark_available():

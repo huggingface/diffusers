@@ -13,10 +13,11 @@
 # limitations under the License.
 
 from typing import Tuple
+
 from ..models.attention_processor import (
+    AttnProcessor2_0,
     PAGCFGIdentitySelfAttnProcessor2_0,
     PAGIdentitySelfAttnProcessor2_0,
-    AttnProcessor2_0,
 )
 
 
