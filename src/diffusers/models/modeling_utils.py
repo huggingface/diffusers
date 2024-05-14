@@ -671,6 +671,24 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             **kwargs,
         )
 
+        # resolve remapping
+        if cls.__name__ == "Transformer2DModel":
+            # prevent circular imports
+            from ..models.transformers import DiTTransformer2DModel, PixArtTransformer2DModel
+
+            previous_class_name = cls.__name__
+            # DiT
+            if config["norm_type"] == "ada_norm_zero":
+                cls = DiTTransformer2DModel
+            # PixArt
+            elif config["norm_type"] == "ada_norm_single":
+                cls = PixArtTransformer2DModel
+
+            logger.info(
+                f"Changing class object to be of `{cls.__name__}` type from `{previous_class_name}` type."
+                " Note that this doesn't affect the final results."
+            )
+
         # load model
         model_file = None
         if from_flax:
