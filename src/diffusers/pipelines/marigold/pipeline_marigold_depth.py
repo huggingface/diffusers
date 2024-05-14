@@ -50,16 +50,13 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
 Examples:
 ```py
->>> import requests
->>> from diffusers import MarigoldDepthPipeline
->>> from PIL import Image
+>>> import diffusers
 
->>> pipe = MarigoldDepthPipeline.from_pretrained(
+>>> pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
 ...     "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
-... )
->>> pipe = pipe.to("cuda")
+... ).to("cuda")
 
->>> image = Image.open(requests.get("https://marigoldmonodepth.github.io/images/einstein.jpg", stream=True).raw)
+>>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 >>> depth = pipe(image, output_visualization=True)
 
 >>> depth.visualization.save("einstein_depth.png")
