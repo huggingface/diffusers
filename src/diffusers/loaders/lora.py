@@ -363,7 +363,7 @@ class LoraLoaderMixin:
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
-        if _pipeline is not None:
+        if _pipeline is not None and _pipeline.hf_device_map is None:
             for _, component in _pipeline.components.items():
                 if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
                     if not is_model_cpu_offload:
@@ -1294,7 +1294,7 @@ class LoraLoaderMixin:
                         text_encoder_module.lora_B[adapter_name].to(device)
                         # this is a param, not a module, so device placement is not in-place -> re-assign
                         if (
-                            hasattr(text_encoder, "lora_magnitude_vector")
+                            hasattr(text_encoder_module, "lora_magnitude_vector")
                             and text_encoder_module.lora_magnitude_vector is not None
                         ):
                             text_encoder_module.lora_magnitude_vector[
