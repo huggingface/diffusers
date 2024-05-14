@@ -559,7 +559,8 @@ class StableDiffusionXLPipeline(
                 single_negative_image_embeds = torch.stack(
                     [single_negative_image_embeds] * num_images_per_prompt, dim=0
                 )
-
+                if self.do_perturbed_attention_guidance:
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
                 if do_classifier_free_guidance:
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                     single_image_embeds = single_image_embeds.to(device)
@@ -611,6 +612,7 @@ class StableDiffusionXLPipeline(
         height,
         width,
         callback_steps,
+        guidance_scale,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -699,6 +701,11 @@ class StableDiffusionXLPipeline(
                 raise ValueError(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
+        
+        if hasattr(self, "_pag_cfg") and self.pag_cfg == False and guidance_scale != 0:
+            raise ValueError(
+                F"Cannot use guidance scale {guidance_scale} with PAG unconditional guidance. Please set `guidance_scale` to 0."
+            )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -826,34 +833,6 @@ class StableDiffusionXLPipeline(
     @property
     def interrupt(self):
         return self._interrupt
-
-    @property
-    def pag_scale(self):
-        return self._pag_scale
-    
-    @property
-    def do_adversarial_guidance(self):
-        return self._pag_scale > 0
-    
-    @property
-    def pag_adaptive_scaling(self):
-        return self._pag_adaptive_scaling
-    
-    @property
-    def do_pag_adaptive_scaling(self):
-        return self._pag_adaptive_scaling > 0
-    
-    @property
-    def pag_drop_rate(self):
-        return self._pag_drop_rate
-    
-    @property
-    def pag_applied_layers(self):
-        return self._pag_applied_layers
-    
-    @property
-    def pag_applied_layers_index(self):
-        return self._pag_applied_layers_index
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -1070,6 +1049,7 @@ class StableDiffusionXLPipeline(
             height,
             width,
             callback_steps,
+            guidance_scale,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
@@ -1171,23 +1151,15 @@ class StableDiffusionXLPipeline(
             negative_add_time_ids = add_time_ids
 
         #cfg
-        if self.do_adversarial_guidance:
-            self.set_pag_attn_processor()
-
-        if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
-        #pag
-        elif not self.do_classifier_free_guidance and self.do_adversarial_guidance:
+        if self.do_perturbed_attention_guidance:
             prompt_embeds = torch.cat([prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([add_text_embeds, add_text_embeds], dim=0)
             add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
-        #both
-        elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([negative_add_time_ids, add_time_ids, add_time_ids], dim=0)
+        
+        if self.do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
             
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
@@ -1235,19 +1207,9 @@ class StableDiffusionXLPipeline(
                 if self.interrupt:
                     continue
 
-                #cfg
-                if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
-                    latent_model_input = torch.cat([latents] * 2)
-                #pag
-                elif not self.do_classifier_free_guidance and self.do_adversarial_guidance:
-                    latent_model_input = torch.cat([latents] * 2)
-                #both
-                elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
-                    latent_model_input = torch.cat([latents] * 3)
-                #no
-                else:
-                    latent_model_input = latents
-                                
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] //latents.shape[0]))
+
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
@@ -1265,34 +1227,15 @@ class StableDiffusionXLPipeline(
                 )[0]
 
                 # perform guidance
-                if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
+        
+                if self.do_perturbed_attention_guidance:
+                    noise_pred = self._apply_perturbed_attention_guidance(noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t)
+
+                elif self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-                # pag
-                elif not self.do_classifier_free_guidance and self.do_adversarial_guidance:
-                    noise_pred_original, noise_pred_perturb = noise_pred.chunk(2)
-                    
-                    signal_scale = self.pag_scale
-                    if self.do_pag_adaptive_scaling:
-                        signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000-t)
-                        if signal_scale<0:
-                            signal_scale = 0
-                    
-                    noise_pred = noise_pred_original + signal_scale * (noise_pred_original - noise_pred_perturb)
-                    
-                # both
-                elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
-                    
-                    noise_pred_uncond, noise_pred_text, noise_pred_text_perturb = noise_pred.chunk(3)
-                    
-                    signal_scale = self.pag_scale
-                    if self.do_pag_adaptive_scaling:
-                        signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000-t)
-                        if signal_scale<0:
-                            signal_scale = 0
-                    
-                    noise_pred = noise_pred_text + (self.guidance_scale-1.0) * (noise_pred_text - noise_pred_uncond) + signal_scale * (noise_pred_text - noise_pred_text_perturb)
-                
+
+
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)

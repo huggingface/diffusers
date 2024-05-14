@@ -12,13 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-from typing import Tuple, Union, List
-
-import torch
-import torch.fft as fft
-
-from ..utils.torch_utils import randn_tensor
+from typing import Tuple
 from ..models.attention_processor import PAGCFGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0, AttnProcessor2_0
 
 
@@ -30,8 +24,9 @@ class PAGMixin:
         pag_scale: float = 0.0,
         pag_adaptive_scaling: float = 0.0,
         pag_drop_rate: float = 0.5,
-        pag_applied_layers: List[str] = ['mid'], #['down', 'mid', 'up']
-        pag_applied_layers_index: List[str] = None, #['d4', 'd5', 'm0']
+        pag_applied_layers: Tuple[str] = ('mid',), #('down', 'mid', 'up',)
+        pag_applied_layers_index: Tuple[str] = None, #('d4', 'd5', 'm0',)
+        pag_cfg: bool = True,
     ):
         """Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
 
@@ -46,6 +41,9 @@ class PAGMixin:
         self._pag_drop_rate = pag_drop_rate
         self._pag_applied_layers = pag_applied_layers
         self._pag_applied_layers_index = pag_applied_layers_index
+        self._pag_cfg = pag_cfg
+
+        self._set_pag_attn_processor()
     
     def _get_self_attn_layers(self):
         down_layers = []
@@ -63,10 +61,11 @@ class PAGMixin:
                 else:
                     raise ValueError(f"Invalid layer type: {layer_type}")
         return up_layers, mid_layers, down_layers
-    def set_pag_attn_processor(self):
+
+    def _set_pag_attn_processor(self):
         up_layers, mid_layers, down_layers = self._get_self_attn_layers()
         
-        if self.do_classifier_free_guidance:
+        if self._pag_cfg:
             replace_processor = PAGCFGIdentitySelfAttnProcessor2_0()
         else:
             replace_processor = PAGIdentitySelfAttnProcessor2_0()
@@ -107,9 +106,31 @@ class PAGMixin:
                     raise ValueError(
                         f"Invalid layer index: {drop_full_layer}. Available layers are: down, mid and up. If you need to specify each layer index, you can use `pag_applied_layers_index`"
                     )
+    
+    def _get_pag_scale(self, t):
+        if self.do_pag_adaptive_scaling:
+            signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000-t)
+            if signal_scale<0:
+                signal_scale = 0
+            return signal_scale
+        else:
+            return self.pag_scale
+    
+    def _apply_perturbed_attention_guidance(self, noise_pred, do_classifier_free_guidance, guidance_scale, t):
+        pag_scale = self._get_pag_scale(t)
+        if do_classifier_free_guidance:
+            noise_pred_uncond, noise_pred_text, noise_pred_perturb = noise_pred.chunk(3)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond) + pag_scale * (noise_pred_text - noise_pred_perturb)
+        else:
+            noise_pred_uncond, noise_pred_perturb = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + pag_scale * (noise_pred_uncond - noise_pred_perturb)
+        return noise_pred
 
     def disable_pag(self):
         """Disables the PAG mechanism if enabled."""
+        if not self.do_perturbed_attention_guidance:
+            raise ValueError("PAG is not enabled.")
+        
         up_layers, mid_layers, down_layers = self._get_self_attn_layers()
         if(self.pag_applied_layers_index):
             drop_layers = self.pag_applied_layers_index
@@ -147,17 +168,21 @@ class PAGMixin:
                                 raise ValueError(
                                     f"Invalid layer index: {drop_full_layer}. Available layers are: down, mid and up. If you need to specify each layer index, you can use `pag_applied_layers_index`"
                                 )
-
-        
+        self._pag_scale = None
+        self._pag_adaptive_scaling = None
+        self._pag_drop_rate = None
+        self._pag_applied_layers = None
+        self._pag_applied_layers_index = None
+        self._pag_cfg = None
 
     @property
     def pag_scale(self):
         return self._pag_scale
     
     @property
-    def do_adversarial_guidance(self):
-        return self._pag_scale > 0
-    
+    def pag_cfg(self):
+        return self._pag_cfg
+        
     @property
     def pag_adaptive_scaling(self):
         return self._pag_adaptive_scaling
@@ -178,3 +203,7 @@ class PAGMixin:
     def pag_applied_layers_index(self):
         return self._pag_applied_layers_index
 
+    @property
+    def do_perturbed_attention_guidance(self):
+        return hasattr(self, "_pag_scale") and self._pag_scale is not None and self._pag_scale > 0
+    
