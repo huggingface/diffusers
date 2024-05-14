@@ -1150,7 +1150,6 @@ class StableDiffusionXLPipeline(
         else:
             negative_add_time_ids = add_time_ids
 
-        # cfg
         if self.do_perturbed_attention_guidance:
             prompt_embeds = torch.cat([prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([add_text_embeds, add_text_embeds], dim=0)
@@ -1227,7 +1226,6 @@ class StableDiffusionXLPipeline(
                 )[0]
 
                 # perform guidance
-
                 if self.do_perturbed_attention_guidance:
                     noise_pred = self._apply_perturbed_attention_guidance(
                         noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
