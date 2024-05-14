@@ -13,7 +13,11 @@
 # limitations under the License.
 
 from typing import Tuple
-from ..models.attention_processor import PAGCFGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0, AttnProcessor2_0
+from ..models.attention_processor import (
+    PAGCFGIdentitySelfAttnProcessor2_0,
+    PAGIdentitySelfAttnProcessor2_0,
+    AttnProcessor2_0,
+)
 
 
 class PAGMixin:
@@ -24,8 +28,8 @@ class PAGMixin:
         pag_scale: float = 0.0,
         pag_adaptive_scaling: float = 0.0,
         pag_drop_rate: float = 0.5,
-        pag_applied_layers: Tuple[str] = ('mid',), #('down', 'mid', 'up',)
-        pag_applied_layers_index: Tuple[str] = None, #('d4', 'd5', 'm0',)
+        pag_applied_layers: Tuple[str] = ("mid",),  # ('down', 'mid', 'up',)
+        pag_applied_layers_index: Tuple[str] = None,  # ('d4', 'd5', 'm0',)
         pag_cfg: bool = True,
     ):
         """Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
@@ -44,19 +48,19 @@ class PAGMixin:
         self._pag_cfg = pag_cfg
 
         self._set_pag_attn_processor()
-    
+
     def _get_self_attn_layers(self):
         down_layers = []
         mid_layers = []
         up_layers = []
         for name, module in self.unet.named_modules():
-            if 'attn1' in name and 'to' not in name:
-                layer_type = name.split('.')[0].split('_')[0]
-                if layer_type == 'down':
+            if "attn1" in name and "to" not in name:
+                layer_type = name.split(".")[0].split("_")[0]
+                if layer_type == "down":
                     down_layers.append(module)
-                elif layer_type == 'mid':
+                elif layer_type == "mid":
                     mid_layers.append(module)
-                elif layer_type == 'up':
+                elif layer_type == "up":
                     up_layers.append(module)
                 else:
                     raise ValueError(f"Invalid layer type: {layer_type}")
@@ -64,22 +68,22 @@ class PAGMixin:
 
     def _set_pag_attn_processor(self):
         up_layers, mid_layers, down_layers = self._get_self_attn_layers()
-        
+
         if self._pag_cfg:
             replace_processor = PAGCFGIdentitySelfAttnProcessor2_0()
         else:
             replace_processor = PAGIdentitySelfAttnProcessor2_0()
 
-        if(self.pag_applied_layers_index):
+        if self.pag_applied_layers_index:
             drop_layers = self.pag_applied_layers_index
             for drop_layer in drop_layers:
                 layer_number = int(drop_layer[1:])
                 try:
-                    if drop_layer[0] == 'd':
+                    if drop_layer[0] == "d":
                         down_layers[layer_number].processor = replace_processor
-                    elif drop_layer[0] == 'm':
+                    elif drop_layer[0] == "m":
                         mid_layers[layer_number].processor = replace_processor
-                    elif drop_layer[0] == 'u':
+                    elif drop_layer[0] == "u":
                         up_layers[layer_number].processor = replace_processor
                     else:
                         raise ValueError(f"Invalid layer type: {drop_layer[0]}")
@@ -87,7 +91,7 @@ class PAGMixin:
                     raise ValueError(
                         f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
                     )
-        elif(self.pag_applied_layers):
+        elif self.pag_applied_layers:
             drop_full_layers = self.pag_applied_layers
             for drop_full_layer in drop_full_layers:
                 try:
@@ -106,21 +110,25 @@ class PAGMixin:
                     raise ValueError(
                         f"Invalid layer index: {drop_full_layer}. Available layers are: down, mid and up. If you need to specify each layer index, you can use `pag_applied_layers_index`"
                     )
-    
+
     def _get_pag_scale(self, t):
         if self.do_pag_adaptive_scaling:
-            signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000-t)
-            if signal_scale<0:
+            signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000 - t)
+            if signal_scale < 0:
                 signal_scale = 0
             return signal_scale
         else:
             return self.pag_scale
-    
+
     def _apply_perturbed_attention_guidance(self, noise_pred, do_classifier_free_guidance, guidance_scale, t):
         pag_scale = self._get_pag_scale(t)
         if do_classifier_free_guidance:
             noise_pred_uncond, noise_pred_text, noise_pred_perturb = noise_pred.chunk(3)
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond) + pag_scale * (noise_pred_text - noise_pred_perturb)
+            noise_pred = (
+                noise_pred_uncond
+                + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                + pag_scale * (noise_pred_text - noise_pred_perturb)
+            )
         else:
             noise_pred_uncond, noise_pred_perturb = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + pag_scale * (noise_pred_uncond - noise_pred_perturb)
@@ -130,18 +138,18 @@ class PAGMixin:
         """Disables the PAG mechanism if enabled."""
         if not self.do_perturbed_attention_guidance:
             raise ValueError("PAG is not enabled.")
-        
+
         up_layers, mid_layers, down_layers = self._get_self_attn_layers()
-        if(self.pag_applied_layers_index):
+        if self.pag_applied_layers_index:
             drop_layers = self.pag_applied_layers_index
             for drop_layer in drop_layers:
                 layer_number = int(drop_layer[1:])
                 try:
-                    if drop_layer[0] == 'd':
+                    if drop_layer[0] == "d":
                         down_layers[layer_number].processor = AttnProcessor2_0()
-                    elif drop_layer[0] == 'm':
+                    elif drop_layer[0] == "m":
                         mid_layers[layer_number].processor = AttnProcessor2_0()
-                    elif drop_layer[0] == 'u':
+                    elif drop_layer[0] == "u":
                         up_layers[layer_number].processor = AttnProcessor2_0()
                     else:
                         raise ValueError(f"Invalid layer type: {drop_layer[0]}")
@@ -149,25 +157,25 @@ class PAGMixin:
                     raise ValueError(
                         f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
                     )
-        elif(self.pag_applied_layers):
-                        drop_full_layers = self.pag_applied_layers
-                        for drop_full_layer in drop_full_layers:
-                            try:
-                                if drop_full_layer == "down":
-                                    for down_layer in down_layers:
-                                        down_layer.processor = AttnProcessor2_0()
-                                elif drop_full_layer == "mid":
-                                    for mid_layer in mid_layers:
-                                        mid_layer.processor = AttnProcessor2_0()
-                                elif drop_full_layer == "up":
-                                    for up_layer in up_layers:
-                                        up_layer.processor = AttnProcessor2_0()
-                                else:
-                                    raise ValueError(f"Invalid layer type: {drop_full_layer}")
-                            except IndexError:
-                                raise ValueError(
-                                    f"Invalid layer index: {drop_full_layer}. Available layers are: down, mid and up. If you need to specify each layer index, you can use `pag_applied_layers_index`"
-                                )
+        elif self.pag_applied_layers:
+            drop_full_layers = self.pag_applied_layers
+            for drop_full_layer in drop_full_layers:
+                try:
+                    if drop_full_layer == "down":
+                        for down_layer in down_layers:
+                            down_layer.processor = AttnProcessor2_0()
+                    elif drop_full_layer == "mid":
+                        for mid_layer in mid_layers:
+                            mid_layer.processor = AttnProcessor2_0()
+                    elif drop_full_layer == "up":
+                        for up_layer in up_layers:
+                            up_layer.processor = AttnProcessor2_0()
+                    else:
+                        raise ValueError(f"Invalid layer type: {drop_full_layer}")
+                except IndexError:
+                    raise ValueError(
+                        f"Invalid layer index: {drop_full_layer}. Available layers are: down, mid and up. If you need to specify each layer index, you can use `pag_applied_layers_index`"
+                    )
         self._pag_scale = None
         self._pag_adaptive_scaling = None
         self._pag_drop_rate = None
@@ -178,27 +186,27 @@ class PAGMixin:
     @property
     def pag_scale(self):
         return self._pag_scale
-    
+
     @property
     def pag_cfg(self):
         return self._pag_cfg
-        
+
     @property
     def pag_adaptive_scaling(self):
         return self._pag_adaptive_scaling
-    
+
     @property
     def do_pag_adaptive_scaling(self):
         return self._pag_adaptive_scaling > 0
-    
+
     @property
     def pag_drop_rate(self):
         return self._pag_drop_rate
-    
+
     @property
     def pag_applied_layers(self):
         return self._pag_applied_layers
-    
+
     @property
     def pag_applied_layers_index(self):
         return self._pag_applied_layers_index
@@ -206,4 +214,3 @@ class PAGMixin:
     @property
     def do_perturbed_attention_guidance(self):
         return hasattr(self, "_pag_scale") and self._pag_scale is not None and self._pag_scale > 0
-    

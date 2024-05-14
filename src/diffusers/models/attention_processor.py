@@ -2673,7 +2673,7 @@ class PAGIdentitySelfAttnProcessor2_0:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
-        
+
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2682,10 +2682,10 @@ class PAGIdentitySelfAttnProcessor2_0:
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-        
+
         # chunk
         hidden_states_org, hidden_states_ptb = hidden_states.chunk(2)
-        
+
         # original path
         batch_size, sequence_length, _ = hidden_states_org.shape
 
@@ -2718,7 +2718,7 @@ class PAGIdentitySelfAttnProcessor2_0:
 
         hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states_org = hidden_states_org.to(query.dtype)
-        
+
         # linear proj
         hidden_states_org = attn.to_out[0](hidden_states_org)
         # dropout
@@ -2740,12 +2740,12 @@ class PAGIdentitySelfAttnProcessor2_0:
             hidden_states_ptb = attn.group_norm(hidden_states_ptb.transpose(1, 2)).transpose(1, 2)
 
         value = attn.to_v(hidden_states_ptb)
-        
+
         # hidden_states_ptb = torch.zeros(value.shape).to(value.get_device())
         hidden_states_ptb = value
-        
+
         hidden_states_ptb = hidden_states_ptb.to(query.dtype)
-        
+
         # linear proj
         hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
         # dropout
@@ -2787,7 +2787,7 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
-        
+
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2796,11 +2796,11 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-        
+
         # chunk
         hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
         hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
-        
+
         # original path
         batch_size, sequence_length, _ = hidden_states_org.shape
 
@@ -2812,7 +2812,7 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
 
         if attn.group_norm is not None:
             hidden_states_org = attn.group_norm(hidden_states_org.transpose(1, 2)).transpose(1, 2)
-        
+
         query = attn.to_q(hidden_states_org)
         key = attn.to_k(hidden_states_org)
         value = attn.to_v(hidden_states_org)
@@ -2833,7 +2833,7 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
 
         hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states_org = hidden_states_org.to(query.dtype)
-        
+
         # linear proj
         hidden_states_org = attn.to_out[0](hidden_states_org)
         # dropout
@@ -2857,7 +2857,7 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
         value = attn.to_v(hidden_states_ptb)
         hidden_states_ptb = value
         hidden_states_ptb = hidden_states_ptb.to(query.dtype)
-        
+
         # linear proj
         hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
         # dropout
