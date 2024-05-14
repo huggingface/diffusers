@@ -64,99 +64,6 @@ Examples:
 """
 
 
-def ensemble_depth(
-    depth: torch.FloatTensor,
-    output_uncertainty: bool,
-    reduction: str = "median",
-    regularizer_strength: float = 0.02,
-    max_iter: int = 2,
-    tol: float = 1e-3,
-    max_res: int = 1024,
-) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
-    assert depth.dim() == 4 and depth.shape[1] == 1
-
-    if is_scipy_available():
-        import scipy
-    else:
-        raise ImportError("Make sure to install scipy if you want to use ensembling.")
-
-    E = depth.shape[0]
-
-    if reduction not in ("mean", "median"):
-        raise ValueError("Ensembling `reduction` can be either `'mean'` or `'median'`.")
-
-    depth_to_align = depth.to(torch.float32)
-    if max_res is not None and max(depth_to_align.shape[2:]) > max_res:
-        depth_to_align = MarigoldImageProcessor.resize_to_max_edge(depth_to_align, max_res, "nearest-exact")
-
-    def align_depth(depth: torch.FloatTensor, s: np.ndarray, t: np.ndarray) -> torch.FloatTensor:
-        assert depth.dim() == 4 and isinstance(s, np.ndarray) and isinstance(t, np.ndarray) and len(s) == len(t) == E
-        s = torch.from_numpy(s).to(depth).view(E, 1, 1, 1)
-        t = torch.from_numpy(t).to(depth).view(E, 1, 1, 1)
-        out = depth * s + t
-        return out
-
-    def ensemble(
-        depth_aligned: torch.FloatTensor, return_uncertainty: bool = False
-    ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
-        uncertainty = None
-        if reduction == "mean":
-            prediction = torch.mean(depth_aligned, dim=0, keepdim=True)
-            if return_uncertainty:
-                uncertainty = torch.std(depth_aligned, dim=0, keepdim=True)
-        elif reduction == "median":
-            prediction = torch.median(depth_aligned, dim=0, keepdim=True).values
-            if return_uncertainty:
-                uncertainty = torch.median(torch.abs(depth_aligned - prediction), dim=0, keepdim=True).values
-        else:
-            assert False
-        return prediction, uncertainty
-
-    def cost_fn(st: np.ndarray) -> float:
-        cost = 0.0
-        s, t = np.split(st, 2)
-        depth_aligned = align_depth(depth_to_align, s, t)
-
-        for i, j in torch.combinations(torch.arange(E)):
-            diff = depth_aligned[i] - depth_aligned[j]
-            cost += (diff**2).mean().sqrt().item()
-
-        if regularizer_strength > 0:
-            prediction, _ = ensemble(depth_aligned, return_uncertainty=False)
-            err_near = (0.0 - prediction.min()).abs().item()
-            err_far = (1.0 - prediction.max()).abs().item()
-            cost += (err_near + err_far) * regularizer_strength
-
-        return cost
-
-    init_min = depth_to_align.reshape(E, -1).min(dim=1).values
-    init_max = depth_to_align.reshape(E, -1).max(dim=1).values
-    init_s = 1.0 / (init_max - init_min).clamp(min=1e-6)
-    init_t = -init_s * init_min
-    init_st = torch.cat((init_s, init_t)).cpu().numpy()
-
-    res = scipy.optimize.minimize(
-        cost_fn,
-        init_st,
-        method="BFGS",
-        tol=tol,
-        options={"maxiter": max_iter, "disp": False},
-    )
-    s, t = np.split(res.x, 2)
-
-    depth = align_depth(depth, s, t)
-    depth, uncertainty = ensemble(depth, return_uncertainty=output_uncertainty)
-
-    depth_min = depth.min()
-    depth_max = depth.max()
-    depth_range = (depth_max - depth_min).clamp(min=1e-6)
-    depth = (depth - depth_min) / depth_range
-    if output_uncertainty:
-        uncertainty /= depth_range
-
-    return depth, uncertainty  # [1,1,H,W], [1,1,H,W]
-
-
 @dataclass
 class MarigoldDepthOutput(BaseOutput):
     """
@@ -540,7 +447,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         if ensemble_size > 1:
             prediction = prediction.reshape(num_images, ensemble_size, *prediction.shape[1:])  # [N,E,1,PH,PW]
             prediction = [
-                ensemble_depth(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
+                self.ensemble_depth(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
                 for i in range(num_images)
             ]  # [ [[1,1,PH,PW], [1,1,PH,PW]], ... ]
             prediction, uncertainty = zip(*prediction)  # [[1,1,PH,PW], ... ], [[1,1,PH,PW], ... ]
@@ -656,3 +563,96 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         )
         text_input_ids = text_inputs.input_ids.to(self.text_encoder.device)
         self.empty_text_embedding = self.text_encoder(text_input_ids)[0].to(self.dtype)  # [1,2,1024]
+
+    @staticmethod
+    def ensemble_depth(
+        depth: torch.FloatTensor,
+        output_uncertainty: bool,
+        reduction: str = "median",
+        regularizer_strength: float = 0.02,
+        max_iter: int = 2,
+        tol: float = 1e-3,
+        max_res: int = 1024,
+    ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
+        assert depth.dim() == 4 and depth.shape[1] == 1
+
+        if is_scipy_available():
+            import scipy
+        else:
+            raise ImportError("Make sure to install scipy if you want to use ensembling.")
+
+        E = depth.shape[0]
+
+        if reduction not in ("mean", "median"):
+            raise ValueError("Ensembling `reduction` can be either `'mean'` or `'median'`.")
+
+        depth_to_align = depth.to(torch.float32)
+        if max_res is not None and max(depth_to_align.shape[2:]) > max_res:
+            depth_to_align = MarigoldImageProcessor.resize_to_max_edge(depth_to_align, max_res, "nearest-exact")
+
+        def align_depth(depth: torch.FloatTensor, s: np.ndarray, t: np.ndarray) -> torch.FloatTensor:
+            assert depth.dim() == 4 and isinstance(s, np.ndarray) and isinstance(t, np.ndarray) and len(s) == len(t) == E
+            s = torch.from_numpy(s).to(depth).view(E, 1, 1, 1)
+            t = torch.from_numpy(t).to(depth).view(E, 1, 1, 1)
+            out = depth * s + t
+            return out
+
+        def ensemble(
+            depth_aligned: torch.FloatTensor, return_uncertainty: bool = False
+        ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
+            uncertainty = None
+            if reduction == "mean":
+                prediction = torch.mean(depth_aligned, dim=0, keepdim=True)
+                if return_uncertainty:
+                    uncertainty = torch.std(depth_aligned, dim=0, keepdim=True)
+            elif reduction == "median":
+                prediction = torch.median(depth_aligned, dim=0, keepdim=True).values
+                if return_uncertainty:
+                    uncertainty = torch.median(torch.abs(depth_aligned - prediction), dim=0, keepdim=True).values
+            else:
+                assert False
+            return prediction, uncertainty
+
+        def cost_fn(st: np.ndarray) -> float:
+            cost = 0.0
+            s, t = np.split(st, 2)
+            depth_aligned = align_depth(depth_to_align, s, t)
+
+            for i, j in torch.combinations(torch.arange(E)):
+                diff = depth_aligned[i] - depth_aligned[j]
+                cost += (diff**2).mean().sqrt().item()
+
+            if regularizer_strength > 0:
+                prediction, _ = ensemble(depth_aligned, return_uncertainty=False)
+                err_near = (0.0 - prediction.min()).abs().item()
+                err_far = (1.0 - prediction.max()).abs().item()
+                cost += (err_near + err_far) * regularizer_strength
+
+            return cost
+
+        init_min = depth_to_align.reshape(E, -1).min(dim=1).values
+        init_max = depth_to_align.reshape(E, -1).max(dim=1).values
+        init_s = 1.0 / (init_max - init_min).clamp(min=1e-6)
+        init_t = -init_s * init_min
+        init_st = torch.cat((init_s, init_t)).cpu().numpy()
+
+        res = scipy.optimize.minimize(
+            cost_fn,
+            init_st,
+            method="BFGS",
+            tol=tol,
+            options={"maxiter": max_iter, "disp": False},
+        )
+        s, t = np.split(res.x, 2)
+
+        depth = align_depth(depth, s, t)
+        depth, uncertainty = ensemble(depth, return_uncertainty=output_uncertainty)
+
+        depth_min = depth.min()
+        depth_max = depth.max()
+        depth_range = (depth_max - depth_min).clamp(min=1e-6)
+        depth = (depth - depth_min) / depth_range
+        if output_uncertainty:
+            uncertainty /= depth_range
+
+        return depth, uncertainty  # [1,1,H,W], [1,1,H,W]

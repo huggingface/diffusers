@@ -63,44 +63,6 @@ Examples:
 """
 
 
-def normalize_normals(normals: torch.FloatTensor, eps: float = 1e-6) -> torch.FloatTensor:
-    assert normals.dim() == 4
-
-    norm = torch.norm(normals, dim=1, keepdim=True)
-    normals /= norm.clamp(min=eps)
-
-    return normals
-
-
-def ensemble_normals(
-    normals: torch.FloatTensor, output_uncertainty: bool, reduction: str = "closest"
-) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
-    assert normals.dim() == 4
-    assert reduction in ("closest", "mean")
-
-    E, C, H, W = normals.shape
-    assert C == 3
-
-    mean_normals = normals.mean(dim=0, keepdim=True)  # [1,3,H,W]
-    mean_normals = normalize_normals(mean_normals)  # [1,3,H,W]
-
-    sim_cos = (mean_normals * normals).sum(dim=1, keepdim=True)  # [E,1,H,W]
-
-    uncertainty = None
-    if output_uncertainty:
-        uncertainty = sim_cos.arccos()  # [E,1,H,W]
-        uncertainty = uncertainty.mean(dim=0, keepdim=True) / np.pi  # [1,1,H,W]
-
-    if reduction == "mean":
-        return mean_normals, uncertainty  # [1,3,H,W], [1,1,H,W]
-
-    closest_indices = sim_cos.argmax(dim=0, keepdim=True)  # [1,1,H,W]
-    closest_indices = closest_indices.repeat(1, 3, 1, 1)  # [1,3,H,W]
-    closest_normals = torch.gather(normals, 0, closest_indices)
-
-    return closest_normals, uncertainty  # [1,3,H,W], [1,1,H,W]
-
-
 @dataclass
 class MarigoldNormalsOutput(BaseOutput):
     """
@@ -481,7 +443,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         if ensemble_size > 1:
             prediction = prediction.reshape(num_images, ensemble_size, *prediction.shape[1:])  # [N,E,3,PH,PW]
             prediction = [
-                ensemble_normals(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
+                self.ensemble_normals(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
                 for i in range(num_images)
             ]  # [ [[1,3,PH,PW], [1,1,PH,PW]], ... ]
             prediction, uncertainty = zip(*prediction)  # [[1,3,PH,PW], ... ], [[1,1,PH,PW], ... ]
@@ -492,7 +454,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             prediction = self.image_processor.resize_antialias(
                 prediction, original_resolution, resample_method_output, is_aa=False
             )  # [N,3,H,W]
-            prediction = normalize_normals(prediction)  # [N,3,H,W]
+            prediction = self.normalize_normals(prediction)  # [N,3,H,W]
             if uncertainty is not None and output_uncertainty:
                 uncertainty = self.image_processor.resize_antialias(
                     uncertainty, original_resolution, resample_method_output, is_aa=False
@@ -554,7 +516,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             prediction[:, 2, :, :] *= 0.5
             prediction[:, 2, :, :] += 0.5
 
-        prediction = normalize_normals(prediction)  # [B,3,H,W]
+        prediction = self.normalize_normals(prediction)  # [B,3,H,W]
 
         return prediction  # [B,3,H,W]
 
@@ -606,3 +568,41 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         )
         text_input_ids = text_inputs.input_ids.to(self.text_encoder.device)
         self.empty_text_embedding = self.text_encoder(text_input_ids)[0].to(self.dtype)  # [1,2,1024]
+
+    @staticmethod
+    def normalize_normals(normals: torch.FloatTensor, eps: float = 1e-6) -> torch.FloatTensor:
+        assert normals.dim() == 4
+
+        norm = torch.norm(normals, dim=1, keepdim=True)
+        normals /= norm.clamp(min=eps)
+
+        return normals
+
+    @staticmethod
+    def ensemble_normals(
+        normals: torch.FloatTensor, output_uncertainty: bool, reduction: str = "closest"
+    ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
+        assert normals.dim() == 4
+        assert reduction in ("closest", "mean")
+
+        E, C, H, W = normals.shape
+        assert C == 3
+
+        mean_normals = normals.mean(dim=0, keepdim=True)  # [1,3,H,W]
+        mean_normals = MarigoldNormalsPipeline.normalize_normals(mean_normals)  # [1,3,H,W]
+
+        sim_cos = (mean_normals * normals).sum(dim=1, keepdim=True)  # [E,1,H,W]
+
+        uncertainty = None
+        if output_uncertainty:
+            uncertainty = sim_cos.arccos()  # [E,1,H,W]
+            uncertainty = uncertainty.mean(dim=0, keepdim=True) / np.pi  # [1,1,H,W]
+
+        if reduction == "mean":
+            return mean_normals, uncertainty  # [1,3,H,W], [1,1,H,W]
+
+        closest_indices = sim_cos.argmax(dim=0, keepdim=True)  # [1,1,H,W]
+        closest_indices = closest_indices.repeat(1, 3, 1, 1)  # [1,3,H,W]
+        closest_normals = torch.gather(normals, 0, closest_indices)
+
+        return closest_normals, uncertainty  # [1,3,H,W], [1,1,H,W]
