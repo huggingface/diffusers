@@ -559,8 +559,7 @@ class StableDiffusionXLPipeline(
                 single_negative_image_embeds = torch.stack(
                     [single_negative_image_embeds] * num_images_per_prompt, dim=0
                 )
-                if self.do_perturbed_attention_guidance:
-                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
+
                 if do_classifier_free_guidance:
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                     single_image_embeds = single_image_embeds.to(device)
