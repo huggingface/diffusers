@@ -37,7 +37,7 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
-from ...utils.export_utils import visualize_depth
+from ...utils.export_utils import export_depth_to_png, visualize_depth
 from ...utils.import_utils import is_matplotlib_available, is_scipy_available
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -489,9 +489,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             if uncertainty is not None and output_uncertainty:
                 uncertainty = uncertainty.cpu().numpy()
             if output_prediction_format == "pil":
-                prediction = prediction.squeeze(0).squeeze(0)
-                prediction = (prediction * 65535).astype(np.uint16)
-                prediction = Image.fromarray(prediction, mode="I;16")
+                prediction = export_depth_to_png(prediction.squeeze(0).squeeze(0))
 
         out = MarigoldDepthOutput(
             prediction=prediction,

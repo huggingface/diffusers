@@ -256,6 +256,12 @@ def colormap(
     return out
 
 
+def export_depth_to_png(depth):
+    depth_u16 = (depth * (2**16 - 1)).astype(np.uint16)
+    out = PIL.Image.fromarray(depth_u16, mode="I;16")
+    return out
+
+
 def visualize_depth(
     depth: torch.FloatTensor,
     color_map: str = "Spectral",
