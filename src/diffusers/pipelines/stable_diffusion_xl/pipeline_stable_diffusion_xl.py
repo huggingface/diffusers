@@ -702,7 +702,7 @@ class StableDiffusionXLPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
         
-        if hasattr(self, "_pag_cfg") and self.pag_cfg == False and guidance_scale != 0:
+        if hasattr(self, "_pag_cfg") and self.pag_cfg is False and guidance_scale != 0:
             raise ValueError(
                 F"Cannot use guidance scale {guidance_scale} with PAG unconditional guidance. Please set `guidance_scale` to 0."
             )
