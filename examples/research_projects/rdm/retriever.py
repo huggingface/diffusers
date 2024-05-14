@@ -20,7 +20,7 @@ def normalize_images(images: List[Image.Image]):
     return images
 
 
-def preprocess_images(images: List[np.array], feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:
+def preprocess_images(images: List[np.array], feature_extractor: CLIPFeatureExtractor) -> torch.Tensor:
     """
     Preprocesses a list of images into a batch of tensors.
 
@@ -29,7 +29,7 @@ def preprocess_images(images: List[np.array], feature_extractor: CLIPFeatureExtr
             A list of images to preprocess.
 
     Returns:
-        :obj:`torch.FloatTensor`: A batch of tensors.
+        :obj:`torch.Tensor`: A batch of tensors.
     """
     images = [np.array(image) for image in images]
     images = [(image + 1.0) / 2.0 for image in images]

@@ -26,11 +26,11 @@ class PriorTransformerOutput(BaseOutput):
     The output of [`PriorTransformer`].
 
     Args:
-        predicted_image_embedding (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
+        predicted_image_embedding (`torch.Tensor` of shape `(batch_size, embedding_dim)`):
             The predicted CLIP image embedding conditioned on the CLIP text embedding input.
     """
 
-    predicted_image_embedding: torch.FloatTensor
+    predicted_image_embedding: torch.Tensor
 
 
 class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin):
@@ -246,8 +246,8 @@ class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Pef
         self,
         hidden_states,
         timestep: Union[torch.Tensor, float, int],
-        proj_embedding: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        proj_embedding: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.BoolTensor] = None,
         return_dict: bool = True,
     ):
@@ -255,13 +255,13 @@ class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Pef
         The [`PriorTransformer`] forward method.
 
         Args:
-            hidden_states (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
+            hidden_states (`torch.Tensor` of shape `(batch_size, embedding_dim)`):
                 The currently predicted image embeddings.
             timestep (`torch.LongTensor`):
                 Current denoising step.
-            proj_embedding (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
+            proj_embedding (`torch.Tensor` of shape `(batch_size, embedding_dim)`):
                 Projected embedding vector the denoising process is conditioned on.
-            encoder_hidden_states (`torch.FloatTensor` of shape `(batch_size, num_embeddings, embedding_dim)`):
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, num_embeddings, embedding_dim)`):
                 Hidden states of the text embeddings the denoising process is conditioned on.
             attention_mask (`torch.BoolTensor` of shape `(batch_size, num_embeddings)`):
                 Text mask for the text embeddings.

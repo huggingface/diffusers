@@ -26,7 +26,6 @@ import yaml
 from ..models.modeling_utils import load_state_dict
 from ..schedulers import (
     DDIMScheduler,
-    DDPMScheduler,
     DPMSolverMultistepScheduler,
     EDMDPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
@@ -35,17 +34,19 @@ from ..schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ..utils import is_accelerate_available, is_transformers_available, logging
+from ..utils import (
+    SAFETENSORS_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+    deprecate,
+    is_accelerate_available,
+    is_transformers_available,
+    logging,
+)
 from ..utils.hub_utils import _get_model_file
 
 
 if is_transformers_available():
-    from transformers import (
-        CLIPTextConfig,
-        CLIPTextModel,
-        CLIPTextModelWithProjection,
-        CLIPTokenizer,
-    )
+    from transformers import AutoImageProcessor
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -54,114 +55,62 @@ if is_accelerate_available():
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-CONFIG_URLS = {
-    "v1": "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml",
-    "v2": "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml",
-    "xl": "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml",
-    "xl_refiner": "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml",
-    "upscale": "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/x4-upscaling.yaml",
-    "controlnet": "https://raw.githubusercontent.com/lllyasviel/ControlNet/main/models/cldm_v15.yaml",
-}
-
 CHECKPOINT_KEY_NAMES = {
     "v2": "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight",
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",
+    "upscale": "model.diffusion_model.input_blocks.10.0.skip_connection.bias",
+    "controlnet": "control_model.time_embed.0.weight",
+    "playground-v2-5": "edm_mean",
+    "inpainting": "model.diffusion_model.input_blocks.0.0.weight",
+    "clip": "cond_stage_model.transformer.text_model.embeddings.position_ids",
+    "clip_sdxl": "conditioner.embedders.0.transformer.text_model.embeddings.position_embedding.weight",
+    "open_clip": "cond_stage_model.model.token_embedding.weight",
+    "open_clip_sdxl": "conditioner.embedders.1.model.positional_embedding",
+    "open_clip_sdxl_refiner": "conditioner.embedders.0.model.text_projection",
+    "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
+    "stable_cascade_stage_c": "clip_txt_mapper.weight",
 }
 
-SCHEDULER_DEFAULT_CONFIG = {
-    "beta_schedule": "scaled_linear",
-    "beta_start": 0.00085,
-    "beta_end": 0.012,
-    "interpolation_type": "linear",
-    "num_train_timesteps": 1000,
-    "prediction_type": "epsilon",
-    "sample_max_value": 1.0,
-    "set_alpha_to_one": False,
-    "skip_prk_steps": True,
-    "steps_offset": 1,
-    "timestep_spacing": "leading",
+DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
+    "xl_base": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-base-1.0"},
+    "xl_refiner": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-refiner-1.0"},
+    "xl_inpaint": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"},
+    "playground-v2-5": {"pretrained_model_name_or_path": "playgroundai/playground-v2.5-1024px-aesthetic"},
+    "upscale": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
+    "inpainting": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-inpainting"},
+    "inpainting_v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-inpainting"},
+    "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
+    "v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-1"},
+    "v1": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
+    "stable_cascade_stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder"},
+    "stable_cascade_stage_b_lite": {
+        "pretrained_model_name_or_path": "stabilityai/stable-cascade",
+        "subfolder": "decoder_lite",
+    },
+    "stable_cascade_stage_c": {
+        "pretrained_model_name_or_path": "stabilityai/stable-cascade-prior",
+        "subfolder": "prior",
+    },
+    "stable_cascade_stage_c_lite": {
+        "pretrained_model_name_or_path": "stabilityai/stable-cascade-prior",
+        "subfolder": "prior_lite",
+    },
 }
 
-
-STABLE_CASCADE_DEFAULT_CONFIGS = {
-    "stage_c": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior"},
-    "stage_c_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior_lite"},
-    "stage_b": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder"},
-    "stage_b_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder_lite"},
+# Use to configure model sample size when original config is provided
+DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP = {
+    "xl_base": 1024,
+    "xl_refiner": 1024,
+    "xl_inpaint": 1024,
+    "playground-v2-5": 1024,
+    "upscale": 512,
+    "inpainting": 512,
+    "inpainting_v2": 512,
+    "controlnet": 512,
+    "v2": 768,
+    "v1": 512,
 }
-
-
-def convert_stable_cascade_unet_single_file_to_diffusers(original_state_dict):
-    is_stage_c = "clip_txt_mapper.weight" in original_state_dict
-
-    if is_stage_c:
-        state_dict = {}
-        for key in original_state_dict.keys():
-            if key.endswith("in_proj_weight"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
-                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
-                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
-            elif key.endswith("in_proj_bias"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
-                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
-                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
-            elif key.endswith("out_proj.weight"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
-            elif key.endswith("out_proj.bias"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
-            else:
-                state_dict[key] = original_state_dict[key]
-    else:
-        state_dict = {}
-        for key in original_state_dict.keys():
-            if key.endswith("in_proj_weight"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
-                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
-                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
-            elif key.endswith("in_proj_bias"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
-                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
-                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
-            elif key.endswith("out_proj.weight"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
-            elif key.endswith("out_proj.bias"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
-            # rename clip_mapper to clip_txt_pooled_mapper
-            elif key.endswith("clip_mapper.weight"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("clip_mapper.weight", "clip_txt_pooled_mapper.weight")] = weights
-            elif key.endswith("clip_mapper.bias"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
-            else:
-                state_dict[key] = original_state_dict[key]
-
-    return state_dict
-
-
-def infer_stable_cascade_single_file_config(checkpoint):
-    is_stage_c = "clip_txt_mapper.weight" in checkpoint
-    is_stage_b = "down_blocks.1.0.channelwise.0.weight" in checkpoint
-
-    if is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 1536):
-        config_type = "stage_c_lite"
-    elif is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 2048):
-        config_type = "stage_c"
-    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 576:
-        config_type = "stage_b_lite"
-    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 640:
-        config_type = "stage_b"
-
-    return STABLE_CASCADE_DEFAULT_CONFIGS[config_type]
 
 
 DIFFUSERS_TO_LDM_MAPPING = {
@@ -257,14 +206,6 @@ DIFFUSERS_TO_LDM_MAPPING = {
     },
 }
 
-LDM_VAE_KEY = "first_stage_model."
-LDM_VAE_DEFAULT_SCALING_FACTOR = 0.18215
-PLAYGROUND_VAE_SCALING_FACTOR = 0.5
-LDM_UNET_KEY = "model.diffusion_model."
-LDM_CONTROLNET_KEY = "control_model."
-LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
-LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
-
 SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
     "cond_stage_model.model.transformer.resblocks.23.attn.in_proj_bias",
     "cond_stage_model.model.transformer.resblocks.23.attn.in_proj_weight",
@@ -281,11 +222,51 @@ SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
     "cond_stage_model.model.text_projection",
 ]
 
+# To support legacy scheduler_type argument
+SCHEDULER_DEFAULT_CONFIG = {
+    "beta_schedule": "scaled_linear",
+    "beta_start": 0.00085,
+    "beta_end": 0.012,
+    "interpolation_type": "linear",
+    "num_train_timesteps": 1000,
+    "prediction_type": "epsilon",
+    "sample_max_value": 1.0,
+    "set_alpha_to_one": False,
+    "skip_prk_steps": True,
+    "steps_offset": 1,
+    "timestep_spacing": "leading",
+}
+
+LDM_VAE_KEY = "first_stage_model."
+LDM_VAE_DEFAULT_SCALING_FACTOR = 0.18215
+PLAYGROUND_VAE_SCALING_FACTOR = 0.5
+LDM_UNET_KEY = "model.diffusion_model."
+LDM_CONTROLNET_KEY = "control_model."
+LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
+OPEN_CLIP_PREFIX = "conditioner.embedders.0.model."
+LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
 
 VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
 
 
+class SingleFileComponentError(Exception):
+    def __init__(self, message=None):
+        self.message = message
+        super().__init__(self.message)
+
+
+def is_valid_url(url):
+    result = urlparse(url)
+    if result.scheme and result.netloc:
+        return True
+
+    return False
+
+
 def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
+    if not is_valid_url(pretrained_model_name_or_path):
+        raise ValueError("Invalid `pretrained_model_name_or_path` provided. Please set it to a valid URL.")
+
     pattern = r"([^/]+)/([^/]+)/(?:blob/main/)?(.+)"
     weights_name = None
     repo_id = (None,)
@@ -293,6 +274,7 @@ def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
         pretrained_model_name_or_path = pretrained_model_name_or_path.replace(prefix, "")
     match = re.match(pattern, pretrained_model_name_or_path)
     if not match:
+        logger.warning("Unable to identify the repo_id and weights_name from the provided URL.")
         return repo_id, weights_name
 
     repo_id = f"{match.group(1)}/{match.group(2)}"
@@ -301,34 +283,18 @@ def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
     return repo_id, weights_name
 
 
-def fetch_ldm_config_and_checkpoint(
-    pretrained_model_link_or_path,
-    class_name,
-    original_config_file=None,
-    resume_download=False,
-    force_download=False,
-    proxies=None,
-    token=None,
-    cache_dir=None,
-    local_files_only=None,
-    revision=None,
-):
-    checkpoint = load_single_file_model_checkpoint(
-        pretrained_model_link_or_path,
-        resume_download=resume_download,
-        force_download=force_download,
-        proxies=proxies,
-        token=token,
-        cache_dir=cache_dir,
-        local_files_only=local_files_only,
-        revision=revision,
-    )
-    original_config = fetch_original_config(class_name, checkpoint, original_config_file)
+def _is_model_weights_in_cached_folder(cached_folder, name):
+    pretrained_model_name_or_path = os.path.join(cached_folder, name)
+    weights_exist = False
 
-    return original_config, checkpoint
+    for weights_name in [WEIGHTS_NAME, SAFETENSORS_WEIGHTS_NAME]:
+        if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
+            weights_exist = True
+
+    return weights_exist
 
 
-def load_single_file_model_checkpoint(
+def load_single_file_checkpoint(
     pretrained_model_link_or_path,
     resume_download=False,
     force_download=False,
@@ -339,10 +305,11 @@ def load_single_file_model_checkpoint(
     revision=None,
 ):
     if os.path.isfile(pretrained_model_link_or_path):
-        checkpoint = load_state_dict(pretrained_model_link_or_path)
+        pretrained_model_link_or_path = pretrained_model_link_or_path
+
     else:
         repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
-        checkpoint_path = _get_model_file(
+        pretrained_model_link_or_path = _get_model_file(
             repo_id,
             weights_name=weights_name,
             force_download=force_download,
@@ -353,7 +320,8 @@ def load_single_file_model_checkpoint(
             token=token,
             revision=revision,
         )
-        checkpoint = load_state_dict(checkpoint_path)
+
+    checkpoint = load_state_dict(pretrained_model_link_or_path)
 
     # some checkpoints contain the model state dict under a "state_dict" key
     while "state_dict" in checkpoint:
@@ -362,46 +330,18 @@ def load_single_file_model_checkpoint(
     return checkpoint
 
 
-def infer_original_config_file(class_name, checkpoint):
-    if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
-        config_url = CONFIG_URLS["v2"]
-
-    elif CHECKPOINT_KEY_NAMES["xl_base"] in checkpoint:
-        config_url = CONFIG_URLS["xl"]
-
-    elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
-        config_url = CONFIG_URLS["xl_refiner"]
-
-    elif class_name == "StableDiffusionUpscalePipeline":
-        config_url = CONFIG_URLS["upscale"]
-
-    elif class_name == "ControlNetModel":
-        config_url = CONFIG_URLS["controlnet"]
-
-    else:
-        config_url = CONFIG_URLS["v1"]
-
-    original_config_file = BytesIO(requests.get(config_url).content)
-
-    return original_config_file
-
-
-def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=None):
-    def is_valid_url(url):
-        result = urlparse(url)
-        if result.scheme and result.netloc:
-            return True
-
-        return False
-
-    if original_config_file is None:
-        original_config_file = infer_original_config_file(pipeline_class_name, checkpoint)
-
-    elif os.path.isfile(original_config_file):
+def fetch_original_config(original_config_file, local_files_only=False):
+    if os.path.isfile(original_config_file):
         with open(original_config_file, "r") as fp:
             original_config_file = fp.read()
 
     elif is_valid_url(original_config_file):
+        if local_files_only:
+            raise ValueError(
+                "`local_files_only` is set to True, but a URL was provided as `original_config_file`. "
+                "Please provide a valid local file path."
+            )
+
         original_config_file = BytesIO(requests.get(original_config_file).content)
 
     else:
@@ -412,69 +352,131 @@ def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=
     return original_config
 
 
-def infer_model_type(original_config, checkpoint, model_type=None):
-    if model_type is not None:
-        return model_type
+def is_clip_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["clip"] in checkpoint:
+        return True
 
-    has_cond_stage_config = (
-        "cond_stage_config" in original_config["model"]["params"]
-        and original_config["model"]["params"]["cond_stage_config"] is not None
+    return False
+
+
+def is_clip_sdxl_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["clip_sdxl"] in checkpoint:
+        return True
+
+    return False
+
+
+def is_open_clip_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["open_clip"] in checkpoint:
+        return True
+
+    return False
+
+
+def is_open_clip_sdxl_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["open_clip_sdxl"] in checkpoint:
+        return True
+
+    return False
+
+
+def is_open_clip_sdxl_refiner_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["open_clip_sdxl_refiner"] in checkpoint:
+        return True
+
+    return False
+
+
+def is_clip_model_in_single_file(class_obj, checkpoint):
+    is_clip_in_checkpoint = any(
+        [
+            is_clip_model(checkpoint),
+            is_open_clip_model(checkpoint),
+            is_open_clip_sdxl_model(checkpoint),
+            is_open_clip_sdxl_refiner_model(checkpoint),
+        ]
     )
-    has_network_config = (
-        "network_config" in original_config["model"]["params"]
-        and original_config["model"]["params"]["network_config"] is not None
-    )
+    if (
+        class_obj.__name__ == "CLIPTextModel" or class_obj.__name__ == "CLIPTextModelWithProjection"
+    ) and is_clip_in_checkpoint:
+        return True
 
-    if has_cond_stage_config:
-        model_type = original_config["model"]["params"]["cond_stage_config"]["target"].split(".")[-1]
+    return False
 
-    elif has_network_config:
-        context_dim = original_config["model"]["params"]["network_config"]["params"]["context_dim"]
-        if "edm_mean" in checkpoint and "edm_std" in checkpoint:
-            model_type = "Playground"
-        elif context_dim == 2048:
-            model_type = "SDXL"
+
+def infer_diffusers_model_type(checkpoint):
+    if (
+        CHECKPOINT_KEY_NAMES["inpainting"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["inpainting"]].shape[1] == 9
+    ):
+        if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
+            model_type = "inpainting_v2"
         else:
-            model_type = "SDXL-Refiner"
-    else:
-        raise ValueError("Unable to infer model type from config")
+            model_type = "inpainting"
 
-    logger.debug(f"No `model_type` given, `model_type` inferred as: {model_type}")
+    elif CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
+        model_type = "v2"
+
+    elif CHECKPOINT_KEY_NAMES["playground-v2-5"] in checkpoint:
+        model_type = "playground-v2-5"
+
+    elif CHECKPOINT_KEY_NAMES["xl_base"] in checkpoint:
+        model_type = "xl_base"
+
+    elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
+        model_type = "xl_refiner"
+
+    elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
+        model_type = "upscale"
+
+    elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
+        model_type = "controlnet"
+
+    elif (
+        CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"]].shape[0] == 1536
+    ):
+        model_type = "stable_cascade_stage_c_lite"
+
+    elif (
+        CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"]].shape[0] == 2048
+    ):
+        model_type = "stable_cascade_stage_c"
+
+    elif (
+        CHECKPOINT_KEY_NAMES["stable_cascade_stage_b"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["stable_cascade_stage_b"]].shape[-1] == 576
+    ):
+        model_type = "stable_cascade_stage_b_lite"
+
+    elif (
+        CHECKPOINT_KEY_NAMES["stable_cascade_stage_b"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["stable_cascade_stage_b"]].shape[-1] == 640
+    ):
+        model_type = "stable_cascade_stage_b"
+
+    else:
+        model_type = "v1"
 
     return model_type
 
 
-def get_default_scheduler_config():
-    return SCHEDULER_DEFAULT_CONFIG
+def fetch_diffusers_config(checkpoint):
+    model_type = infer_diffusers_model_type(checkpoint)
+    model_path = DIFFUSERS_DEFAULT_PIPELINE_PATHS[model_type]
+
+    return model_path
 
 
-def set_image_size(pipeline_class_name, original_config, checkpoint, image_size=None, model_type=None):
+def set_image_size(checkpoint, image_size=None):
     if image_size:
         return image_size
 
-    global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
-    model_type = infer_model_type(original_config, checkpoint, model_type)
+    model_type = infer_diffusers_model_type(checkpoint)
+    image_size = DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP[model_type]
 
-    if pipeline_class_name == "StableDiffusionUpscalePipeline":
-        image_size = original_config["model"]["params"]["unet_config"]["params"]["image_size"]
-        return image_size
-
-    elif model_type in ["SDXL", "SDXL-Refiner", "Playground"]:
-        image_size = 1024
-        return image_size
-
-    elif (
-        "parameterization" in original_config["model"]["params"]
-        and original_config["model"]["params"]["parameterization"] == "v"
-    ):
-        # NOTE: For stable diffusion 2 base one has to pass `image_size==512`
-        # as it relies on a brittle global step parameter here
-        image_size = 512 if global_step == 875000 else 768
-        return image_size
-
-    else:
-        image_size = 512
-        return image_size
+    return image_size
 
 
 # Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.conv_attn_to_linear
@@ -490,10 +492,21 @@ def conv_attn_to_linear(checkpoint):
                 checkpoint[key] = checkpoint[key][:, :, 0]
 
 
-def create_unet_diffusers_config(original_config, image_size: int):
+def create_unet_diffusers_config_from_ldm(
+    original_config, checkpoint, image_size=None, upcast_attention=None, num_in_channels=None
+):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
+    if image_size is not None:
+        deprecation_message = (
+            "Configuring UNet2DConditionModel with the `image_size` argument to `from_single_file`"
+            "is deprecated and will be ignored in future versions."
+        )
+        deprecate("image_size", "1.0.0", deprecation_message)
+
+    image_size = set_image_size(checkpoint, image_size=image_size)
+
     if (
         "unet_config" in original_config["model"]["params"]
         and original_config["model"]["params"]["unet_config"] is not None
@@ -501,6 +514,16 @@ def create_unet_diffusers_config(original_config, image_size: int):
         unet_params = original_config["model"]["params"]["unet_config"]["params"]
     else:
         unet_params = original_config["model"]["params"]["network_config"]["params"]
+
+    if num_in_channels is not None:
+        deprecation_message = (
+            "Configuring UNet2DConditionModel with the `num_in_channels` argument to `from_single_file`"
+            "is deprecated and will be ignored in future versions."
+        )
+        deprecate("image_size", "1.0.0", deprecation_message)
+        in_channels = num_in_channels
+    else:
+        in_channels = unet_params["in_channels"]
 
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
     block_out_channels = [unet_params["model_channels"] * mult for mult in unet_params["channel_mult"]]
@@ -566,7 +589,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
 
     config = {
         "sample_size": image_size // vae_scale_factor,
-        "in_channels": unet_params["in_channels"],
+        "in_channels": in_channels,
         "down_block_types": down_block_types,
         "block_out_channels": block_out_channels,
         "layers_per_block": unet_params["num_res_blocks"],
@@ -580,6 +603,14 @@ def create_unet_diffusers_config(original_config, image_size: int):
         "transformer_layers_per_block": transformer_layers_per_block,
     }
 
+    if upcast_attention is not None:
+        deprecation_message = (
+            "Configuring UNet2DConditionModel with the `upcast_attention` argument to `from_single_file`"
+            "is deprecated and will be ignored in future versions."
+        )
+        deprecate("image_size", "1.0.0", deprecation_message)
+        config["upcast_attention"] = upcast_attention
+
     if "disable_self_attentions" in unet_params:
         config["only_cross_attention"] = unet_params["disable_self_attentions"]
 
@@ -592,9 +623,18 @@ def create_unet_diffusers_config(original_config, image_size: int):
     return config
 
 
-def create_controlnet_diffusers_config(original_config, image_size: int):
+def create_controlnet_diffusers_config_from_ldm(original_config, checkpoint, image_size=None, **kwargs):
+    if image_size is not None:
+        deprecation_message = (
+            "Configuring ControlNetModel with the `image_size` argument"
+            "is deprecated and will be ignored in future versions."
+        )
+        deprecate("image_size", "1.0.0", deprecation_message)
+
+    image_size = set_image_size(checkpoint, image_size=image_size)
+
     unet_params = original_config["model"]["params"]["control_stage_config"]["params"]
-    diffusers_unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
+    diffusers_unet_config = create_unet_diffusers_config_from_ldm(original_config, image_size=image_size)
 
     controlnet_config = {
         "conditioning_channels": unet_params["hint_channels"],
@@ -615,15 +655,33 @@ def create_controlnet_diffusers_config(original_config, image_size: int):
     return controlnet_config
 
 
-def create_vae_diffusers_config(original_config, image_size, scaling_factor=None, latents_mean=None, latents_std=None):
+def create_vae_diffusers_config_from_ldm(original_config, checkpoint, image_size=None, scaling_factor=None):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
+    if image_size is not None:
+        deprecation_message = (
+            "Configuring AutoencoderKL with the `image_size` argument"
+            "is deprecated and will be ignored in future versions."
+        )
+        deprecate("image_size", "1.0.0", deprecation_message)
+
+    image_size = set_image_size(checkpoint, image_size=image_size)
+
+    if "edm_mean" in checkpoint and "edm_std" in checkpoint:
+        latents_mean = checkpoint["edm_mean"]
+        latents_std = checkpoint["edm_std"]
+    else:
+        latents_mean = None
+        latents_std = None
+
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
     if (scaling_factor is None) and (latents_mean is not None) and (latents_std is not None):
         scaling_factor = PLAYGROUND_VAE_SCALING_FACTOR
+
     elif (scaling_factor is None) and ("scale_factor" in original_config["model"]["params"]):
         scaling_factor = original_config["model"]["params"]["scale_factor"]
+
     elif scaling_factor is None:
         scaling_factor = LDM_VAE_DEFAULT_SCALING_FACTOR
 
@@ -660,16 +718,104 @@ def update_unet_resnet_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint, ma
         )
         if mapping:
             diffusers_key = diffusers_key.replace(mapping["old"], mapping["new"])
-        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+        new_checkpoint[diffusers_key] = checkpoint.get(ldm_key)
 
 
 def update_unet_attention_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint, mapping):
     for ldm_key in ldm_keys:
         diffusers_key = ldm_key.replace(mapping["old"], mapping["new"])
-        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+        new_checkpoint[diffusers_key] = checkpoint.get(ldm_key)
 
 
-def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False):
+def update_vae_resnet_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
+    for ldm_key in keys:
+        diffusers_key = ldm_key.replace(mapping["old"], mapping["new"]).replace("nin_shortcut", "conv_shortcut")
+        new_checkpoint[diffusers_key] = checkpoint.get(ldm_key)
+
+
+def update_vae_attentions_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
+    for ldm_key in keys:
+        diffusers_key = (
+            ldm_key.replace(mapping["old"], mapping["new"])
+            .replace("norm.weight", "group_norm.weight")
+            .replace("norm.bias", "group_norm.bias")
+            .replace("q.weight", "to_q.weight")
+            .replace("q.bias", "to_q.bias")
+            .replace("k.weight", "to_k.weight")
+            .replace("k.bias", "to_k.bias")
+            .replace("v.weight", "to_v.weight")
+            .replace("v.bias", "to_v.bias")
+            .replace("proj_out.weight", "to_out.0.weight")
+            .replace("proj_out.bias", "to_out.0.bias")
+        )
+        new_checkpoint[diffusers_key] = checkpoint.get(ldm_key)
+
+        # proj_attn.weight has to be converted from conv 1D to linear
+        shape = new_checkpoint[diffusers_key].shape
+
+        if len(shape) == 3:
+            new_checkpoint[diffusers_key] = new_checkpoint[diffusers_key][:, :, 0]
+        elif len(shape) == 4:
+            new_checkpoint[diffusers_key] = new_checkpoint[diffusers_key][:, :, 0, 0]
+
+
+def convert_stable_cascade_unet_single_file_to_diffusers(checkpoint, **kwargs):
+    is_stage_c = "clip_txt_mapper.weight" in checkpoint
+
+    if is_stage_c:
+        state_dict = {}
+        for key in checkpoint.keys():
+            if key.endswith("in_proj_weight"):
+                weights = checkpoint[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
+                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
+                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
+            elif key.endswith("in_proj_bias"):
+                weights = checkpoint[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
+                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
+                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
+            elif key.endswith("out_proj.weight"):
+                weights = checkpoint[key]
+                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
+            elif key.endswith("out_proj.bias"):
+                weights = checkpoint[key]
+                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
+            else:
+                state_dict[key] = checkpoint[key]
+    else:
+        state_dict = {}
+        for key in checkpoint.keys():
+            if key.endswith("in_proj_weight"):
+                weights = checkpoint[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
+                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
+                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
+            elif key.endswith("in_proj_bias"):
+                weights = checkpoint[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
+                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
+                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
+            elif key.endswith("out_proj.weight"):
+                weights = checkpoint[key]
+                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
+            elif key.endswith("out_proj.bias"):
+                weights = checkpoint[key]
+                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
+            # rename clip_mapper to clip_txt_pooled_mapper
+            elif key.endswith("clip_mapper.weight"):
+                weights = checkpoint[key]
+                state_dict[key.replace("clip_mapper.weight", "clip_txt_pooled_mapper.weight")] = weights
+            elif key.endswith("clip_mapper.bias"):
+                weights = checkpoint[key]
+                state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
+            else:
+                state_dict[key] = checkpoint[key]
+
+    return state_dict
+
+
+def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False, **kwargs):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
     """
@@ -680,24 +826,24 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False):
 
     # at least a 100 parameters have to start with `model_ema` in order for the checkpoint to be EMA
     if sum(k.startswith("model_ema") for k in keys) > 100 and extract_ema:
-        logger.warning("Checkpoint has both EMA and non-EMA weights.")
-        logger.warning(
+        logger.warninging("Checkpoint has both EMA and non-EMA weights.")
+        logger.warninging(
             "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
             " weights (useful to continue fine-tuning), please make sure to remove the `--extract_ema` flag."
         )
         for key in keys:
             if key.startswith("model.diffusion_model"):
                 flat_ema_key = "model_ema." + "".join(key.split(".")[1:])
-                unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
+                unet_state_dict[key.replace(unet_key, "")] = checkpoint.get(flat_ema_key)
     else:
         if sum(k.startswith("model_ema") for k in keys) > 100:
-            logger.warning(
+            logger.warninging(
                 "In this conversion only the non-EMA weights are extracted. If you want to instead extract the EMA"
                 " weights (usually better for inference), please make sure to add the `--extract_ema` flag."
             )
         for key in keys:
             if key.startswith(unet_key):
-                unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(key)
+                unet_state_dict[key.replace(unet_key, "")] = checkpoint.get(key)
 
     new_checkpoint = {}
     ldm_unet_keys = DIFFUSERS_TO_LDM_MAPPING["unet"]["layers"]
@@ -758,10 +904,10 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False):
         )
 
         if f"input_blocks.{i}.0.op.weight" in unet_state_dict:
-            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.weight"] = unet_state_dict.pop(
+            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.weight"] = unet_state_dict.get(
                 f"input_blocks.{i}.0.op.weight"
             )
-            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.bias"] = unet_state_dict.pop(
+            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.bias"] = unet_state_dict.get(
                 f"input_blocks.{i}.0.op.bias"
             )
 
@@ -775,19 +921,22 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False):
             )
 
     # Mid blocks
-    resnet_0 = middle_blocks[0]
-    attentions = middle_blocks[1]
-    resnet_1 = middle_blocks[2]
-
-    update_unet_resnet_ldm_to_diffusers(
-        resnet_0, new_checkpoint, unet_state_dict, mapping={"old": "middle_block.0", "new": "mid_block.resnets.0"}
-    )
-    update_unet_resnet_ldm_to_diffusers(
-        resnet_1, new_checkpoint, unet_state_dict, mapping={"old": "middle_block.2", "new": "mid_block.resnets.1"}
-    )
-    update_unet_attention_ldm_to_diffusers(
-        attentions, new_checkpoint, unet_state_dict, mapping={"old": "middle_block.1", "new": "mid_block.attentions.0"}
-    )
+    for key in middle_blocks.keys():
+        diffusers_key = max(key - 1, 0)
+        if key % 2 == 0:
+            update_unet_resnet_ldm_to_diffusers(
+                middle_blocks[key],
+                new_checkpoint,
+                unet_state_dict,
+                mapping={"old": f"middle_block.{key}", "new": f"mid_block.resnets.{diffusers_key}"},
+            )
+        else:
+            update_unet_attention_ldm_to_diffusers(
+                middle_blocks[key],
+                new_checkpoint,
+                unet_state_dict,
+                mapping={"old": f"middle_block.{key}", "new": f"mid_block.attentions.{diffusers_key}"},
+            )
 
     # Up Blocks
     for i in range(num_output_blocks):
@@ -836,6 +985,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False):
 def convert_controlnet_checkpoint(
     checkpoint,
     config,
+    **kwargs,
 ):
     # Some controlnet ckpt files are distributed independently from the rest of the
     # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
@@ -848,7 +998,7 @@ def convert_controlnet_checkpoint(
         controlnet_key = LDM_CONTROLNET_KEY
         for key in keys:
             if key.startswith(controlnet_key):
-                controlnet_state_dict[key.replace(controlnet_key, "")] = checkpoint.pop(key)
+                controlnet_state_dict[key.replace(controlnet_key, "")] = checkpoint.get(key)
 
     new_checkpoint = {}
     ldm_controlnet_keys = DIFFUSERS_TO_LDM_MAPPING["controlnet"]["layers"]
@@ -882,10 +1032,10 @@ def convert_controlnet_checkpoint(
         )
 
         if f"input_blocks.{i}.0.op.weight" in controlnet_state_dict:
-            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.weight"] = controlnet_state_dict.pop(
+            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.weight"] = controlnet_state_dict.get(
                 f"input_blocks.{i}.0.op.weight"
             )
-            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.bias"] = controlnet_state_dict.pop(
+            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.bias"] = controlnet_state_dict.get(
                 f"input_blocks.{i}.0.op.bias"
             )
 
@@ -900,8 +1050,8 @@ def convert_controlnet_checkpoint(
 
     # controlnet down blocks
     for i in range(num_input_blocks):
-        new_checkpoint[f"controlnet_down_blocks.{i}.weight"] = controlnet_state_dict.pop(f"zero_convs.{i}.0.weight")
-        new_checkpoint[f"controlnet_down_blocks.{i}.bias"] = controlnet_state_dict.pop(f"zero_convs.{i}.0.bias")
+        new_checkpoint[f"controlnet_down_blocks.{i}.weight"] = controlnet_state_dict.get(f"zero_convs.{i}.0.weight")
+        new_checkpoint[f"controlnet_down_blocks.{i}.bias"] = controlnet_state_dict.get(f"zero_convs.{i}.0.bias")
 
     # Retrieves the keys for the middle blocks only
     num_middle_blocks = len(
@@ -911,33 +1061,28 @@ def convert_controlnet_checkpoint(
         layer_id: [key for key in controlnet_state_dict if f"middle_block.{layer_id}" in key]
         for layer_id in range(num_middle_blocks)
     }
-    if middle_blocks:
-        resnet_0 = middle_blocks[0]
-        attentions = middle_blocks[1]
-        resnet_1 = middle_blocks[2]
 
-        update_unet_resnet_ldm_to_diffusers(
-            resnet_0,
-            new_checkpoint,
-            controlnet_state_dict,
-            mapping={"old": "middle_block.0", "new": "mid_block.resnets.0"},
-        )
-        update_unet_resnet_ldm_to_diffusers(
-            resnet_1,
-            new_checkpoint,
-            controlnet_state_dict,
-            mapping={"old": "middle_block.2", "new": "mid_block.resnets.1"},
-        )
-        update_unet_attention_ldm_to_diffusers(
-            attentions,
-            new_checkpoint,
-            controlnet_state_dict,
-            mapping={"old": "middle_block.1", "new": "mid_block.attentions.0"},
-        )
+    # Mid blocks
+    for key in middle_blocks.keys():
+        diffusers_key = max(key - 1, 0)
+        if key % 2 == 0:
+            update_unet_resnet_ldm_to_diffusers(
+                middle_blocks[key],
+                new_checkpoint,
+                controlnet_state_dict,
+                mapping={"old": f"middle_block.{key}", "new": f"mid_block.resnets.{diffusers_key}"},
+            )
+        else:
+            update_unet_attention_ldm_to_diffusers(
+                middle_blocks[key],
+                new_checkpoint,
+                controlnet_state_dict,
+                mapping={"old": f"middle_block.{key}", "new": f"mid_block.attentions.{diffusers_key}"},
+            )
 
     # mid block
-    new_checkpoint["controlnet_mid_block.weight"] = controlnet_state_dict.pop("middle_block_out.0.weight")
-    new_checkpoint["controlnet_mid_block.bias"] = controlnet_state_dict.pop("middle_block_out.0.bias")
+    new_checkpoint["controlnet_mid_block.weight"] = controlnet_state_dict.get("middle_block_out.0.weight")
+    new_checkpoint["controlnet_mid_block.bias"] = controlnet_state_dict.get("middle_block_out.0.bias")
 
     # controlnet cond embedding blocks
     cond_embedding_blocks = {
@@ -951,84 +1096,14 @@ def convert_controlnet_checkpoint(
         diffusers_idx = idx - 1
         cond_block_id = 2 * idx
 
-        new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_idx}.weight"] = controlnet_state_dict.pop(
+        new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_idx}.weight"] = controlnet_state_dict.get(
             f"input_hint_block.{cond_block_id}.weight"
         )
-        new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_idx}.bias"] = controlnet_state_dict.pop(
+        new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_idx}.bias"] = controlnet_state_dict.get(
             f"input_hint_block.{cond_block_id}.bias"
         )
 
     return new_checkpoint
-
-
-def create_diffusers_controlnet_model_from_ldm(
-    pipeline_class_name, original_config, checkpoint, upcast_attention=False, image_size=None, torch_dtype=None
-):
-    # import here to avoid circular imports
-    from ..models import ControlNetModel
-
-    image_size = set_image_size(pipeline_class_name, original_config, checkpoint, image_size=image_size)
-
-    diffusers_config = create_controlnet_diffusers_config(original_config, image_size=image_size)
-    diffusers_config["upcast_attention"] = upcast_attention
-
-    diffusers_format_controlnet_checkpoint = convert_controlnet_checkpoint(checkpoint, diffusers_config)
-
-    ctx = init_empty_weights if is_accelerate_available() else nullcontext
-    with ctx():
-        controlnet = ControlNetModel(**diffusers_config)
-
-    if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(
-            controlnet, diffusers_format_controlnet_checkpoint, dtype=torch_dtype
-        )
-        if controlnet._keys_to_ignore_on_load_unexpected is not None:
-            for pat in controlnet._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {controlnet.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-    else:
-        controlnet.load_state_dict(diffusers_format_controlnet_checkpoint)
-
-    if torch_dtype is not None:
-        controlnet = controlnet.to(torch_dtype)
-
-    return {"controlnet": controlnet}
-
-
-def update_vae_resnet_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
-    for ldm_key in keys:
-        diffusers_key = ldm_key.replace(mapping["old"], mapping["new"]).replace("nin_shortcut", "conv_shortcut")
-        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
-
-
-def update_vae_attentions_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
-    for ldm_key in keys:
-        diffusers_key = (
-            ldm_key.replace(mapping["old"], mapping["new"])
-            .replace("norm.weight", "group_norm.weight")
-            .replace("norm.bias", "group_norm.bias")
-            .replace("q.weight", "to_q.weight")
-            .replace("q.bias", "to_q.bias")
-            .replace("k.weight", "to_k.weight")
-            .replace("k.bias", "to_k.bias")
-            .replace("v.weight", "to_v.weight")
-            .replace("v.bias", "to_v.bias")
-            .replace("proj_out.weight", "to_out.0.weight")
-            .replace("proj_out.bias", "to_out.0.bias")
-        )
-        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
-
-        # proj_attn.weight has to be converted from conv 1D to linear
-        shape = new_checkpoint[diffusers_key].shape
-
-        if len(shape) == 3:
-            new_checkpoint[diffusers_key] = new_checkpoint[diffusers_key][:, :, 0]
-        elif len(shape) == 4:
-            new_checkpoint[diffusers_key] = new_checkpoint[diffusers_key][:, :, 0, 0]
 
 
 def convert_ldm_vae_checkpoint(checkpoint, config):
@@ -1063,10 +1138,10 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
             mapping={"old": f"down.{i}.block", "new": f"down_blocks.{i}.resnets"},
         )
         if f"encoder.down.{i}.downsample.conv.weight" in vae_state_dict:
-            new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.weight"] = vae_state_dict.pop(
+            new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.weight"] = vae_state_dict.get(
                 f"encoder.down.{i}.downsample.conv.weight"
             )
-            new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.bias"] = vae_state_dict.pop(
+            new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.bias"] = vae_state_dict.get(
                 f"encoder.down.{i}.downsample.conv.bias"
             )
 
@@ -1131,18 +1206,7 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     return new_checkpoint
 
 
-def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=False, torch_dtype=None):
-    try:
-        config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
-    except Exception:
-        raise ValueError(
-            f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: 'openai/clip-vit-large-patch14'."
-        )
-
-    ctx = init_empty_weights if is_accelerate_available() else nullcontext
-    with ctx():
-        text_model = CLIPTextModel(config)
-
+def convert_ldm_clip_checkpoint(checkpoint):
     keys = list(checkpoint.keys())
     text_model_dict = {}
 
@@ -1152,55 +1216,26 @@ def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_
         for prefix in remove_prefixes:
             if key.startswith(prefix):
                 diffusers_key = key.replace(prefix, "")
-                text_model_dict[diffusers_key] = checkpoint[key]
+                text_model_dict[diffusers_key] = checkpoint.get(key)
 
-    if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict, dtype=torch_dtype)
-        if text_model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in text_model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-    else:
-        if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
-            text_model_dict.pop("text_model.embeddings.position_ids", None)
-
-        text_model.load_state_dict(text_model_dict)
-
-    if torch_dtype is not None:
-        text_model = text_model.to(torch_dtype)
-
-    return text_model
+    return text_model_dict
 
 
-def create_text_encoder_from_open_clip_checkpoint(
-    config_name,
+def convert_open_clip_checkpoint(
+    text_model,
     checkpoint,
     prefix="cond_stage_model.model.",
-    has_projection=False,
-    local_files_only=False,
-    torch_dtype=None,
-    **config_kwargs,
 ):
-    try:
-        config = CLIPTextConfig.from_pretrained(config_name, **config_kwargs, local_files_only=local_files_only)
-    except Exception:
-        raise ValueError(
-            f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: '{config_name}'."
-        )
-
-    ctx = init_empty_weights if is_accelerate_available() else nullcontext
-    with ctx():
-        text_model = CLIPTextModelWithProjection(config) if has_projection else CLIPTextModel(config)
-
     text_model_dict = {}
     text_proj_key = prefix + "text_projection"
-    text_proj_dim = (
-        int(checkpoint[text_proj_key].shape[0]) if text_proj_key in checkpoint else LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
-    )
+
+    if text_proj_key in checkpoint:
+        text_proj_dim = int(checkpoint[text_proj_key].shape[0])
+    elif hasattr(text_model.config, "projection_dim"):
+        text_proj_dim = text_model.config.projection_dim
+    else:
+        text_proj_dim = LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
+
     text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
 
     keys = list(checkpoint.keys())
@@ -1233,303 +1268,165 @@ def create_text_encoder_from_open_clip_checkpoint(
             )
 
         if key.endswith(".in_proj_weight"):
-            weight_value = checkpoint[key]
+            weight_value = checkpoint.get(key)
 
-            text_model_dict[diffusers_key + ".q_proj.weight"] = weight_value[:text_proj_dim, :]
-            text_model_dict[diffusers_key + ".k_proj.weight"] = weight_value[text_proj_dim : text_proj_dim * 2, :]
-            text_model_dict[diffusers_key + ".v_proj.weight"] = weight_value[text_proj_dim * 2 :, :]
+            text_model_dict[diffusers_key + ".q_proj.weight"] = weight_value[:text_proj_dim, :].clone().detach()
+            text_model_dict[diffusers_key + ".k_proj.weight"] = (
+                weight_value[text_proj_dim : text_proj_dim * 2, :].clone().detach()
+            )
+            text_model_dict[diffusers_key + ".v_proj.weight"] = weight_value[text_proj_dim * 2 :, :].clone().detach()
 
         elif key.endswith(".in_proj_bias"):
-            weight_value = checkpoint[key]
-            text_model_dict[diffusers_key + ".q_proj.bias"] = weight_value[:text_proj_dim]
-            text_model_dict[diffusers_key + ".k_proj.bias"] = weight_value[text_proj_dim : text_proj_dim * 2]
-            text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :]
-        else:
-            text_model_dict[diffusers_key] = checkpoint[key]
-
-    if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict, dtype=torch_dtype)
-        if text_model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in text_model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
+            weight_value = checkpoint.get(key)
+            text_model_dict[diffusers_key + ".q_proj.bias"] = weight_value[:text_proj_dim].clone().detach()
+            text_model_dict[diffusers_key + ".k_proj.bias"] = (
+                weight_value[text_proj_dim : text_proj_dim * 2].clone().detach()
             )
-
-    else:
-        if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
-            text_model_dict.pop("text_model.embeddings.position_ids", None)
-
-        text_model.load_state_dict(text_model_dict)
-
-    if torch_dtype is not None:
-        text_model = text_model.to(torch_dtype)
-
-    return text_model
-
-
-def create_diffusers_unet_model_from_ldm(
-    pipeline_class_name,
-    original_config,
-    checkpoint,
-    num_in_channels=None,
-    upcast_attention=None,
-    extract_ema=False,
-    image_size=None,
-    torch_dtype=None,
-    model_type=None,
-):
-    from ..models import UNet2DConditionModel
-
-    if num_in_channels is None:
-        if pipeline_class_name in [
-            "StableDiffusionInpaintPipeline",
-            "StableDiffusionControlNetInpaintPipeline",
-            "StableDiffusionXLInpaintPipeline",
-            "StableDiffusionXLControlNetInpaintPipeline",
-        ]:
-            num_in_channels = 9
-
-        elif pipeline_class_name == "StableDiffusionUpscalePipeline":
-            num_in_channels = 7
-
+            text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :].clone().detach()
         else:
-            num_in_channels = 4
+            text_model_dict[diffusers_key] = checkpoint.get(key)
 
-    image_size = set_image_size(
-        pipeline_class_name, original_config, checkpoint, image_size=image_size, model_type=model_type
-    )
-    unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
-    unet_config["in_channels"] = num_in_channels
-    if upcast_attention is not None:
-        unet_config["upcast_attention"] = upcast_attention
+    if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
+        text_model_dict.pop("text_model.embeddings.position_ids", None)
 
-    diffusers_format_unet_checkpoint = convert_ldm_unet_checkpoint(checkpoint, unet_config, extract_ema=extract_ema)
-    ctx = init_empty_weights if is_accelerate_available() else nullcontext
-
-    with ctx():
-        unet = UNet2DConditionModel(**unet_config)
-
-    if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(unet, diffusers_format_unet_checkpoint, dtype=torch_dtype)
-        if unet._keys_to_ignore_on_load_unexpected is not None:
-            for pat in unet._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {unet.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-    else:
-        unet.load_state_dict(diffusers_format_unet_checkpoint)
-
-    if torch_dtype is not None:
-        unet = unet.to(torch_dtype)
-
-    return {"unet": unet}
+    return text_model_dict
 
 
-def create_diffusers_vae_model_from_ldm(
-    pipeline_class_name,
-    original_config,
+def create_diffusers_clip_model_from_ldm(
+    cls,
     checkpoint,
-    image_size=None,
-    scaling_factor=None,
+    subfolder="",
+    config=None,
     torch_dtype=None,
-    model_type=None,
+    local_files_only=None,
+    is_legacy_loading=False,
 ):
-    # import here to avoid circular imports
-    from ..models import AutoencoderKL
+    if config:
+        config = {"pretrained_model_name_or_path": config}
+    else:
+        config = fetch_diffusers_config(checkpoint)
 
-    image_size = set_image_size(
-        pipeline_class_name, original_config, checkpoint, image_size=image_size, model_type=model_type
-    )
-    model_type = infer_model_type(original_config, checkpoint, model_type)
-
-    if model_type == "Playground":
-        edm_mean = (
-            checkpoint["edm_mean"].to(dtype=torch_dtype).tolist() if torch_dtype else checkpoint["edm_mean"].tolist()
+    # For backwards compatibility
+    # Older versions of `from_single_file` expected CLIP configs to be placed in their original transformers model repo
+    # in the cache_dir, rather than in a subfolder of the Diffusers model
+    if is_legacy_loading:
+        logger.warning(
+            (
+                "Detected legacy CLIP loading behavior. Please run `from_single_file` with `local_files_only=False once to update "
+                "the local cache directory with the necessary CLIP model config files. "
+                "Attempting to load CLIP model from legacy cache directory."
+            )
         )
-        edm_std = (
-            checkpoint["edm_std"].to(dtype=torch_dtype).tolist() if torch_dtype else checkpoint["edm_std"].tolist()
-        )
-    else:
-        edm_mean = None
-        edm_std = None
 
-    vae_config = create_vae_diffusers_config(
-        original_config,
-        image_size=image_size,
-        scaling_factor=scaling_factor,
-        latents_mean=edm_mean,
-        latents_std=edm_std,
-    )
-    diffusers_format_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
+        if is_clip_model(checkpoint) or is_clip_sdxl_model(checkpoint):
+            clip_config = "openai/clip-vit-large-patch14"
+            config["pretrained_model_name_or_path"] = clip_config
+            subfolder = ""
+
+        elif is_open_clip_model(checkpoint):
+            clip_config = "stabilityai/stable-diffusion-2"
+            config["pretrained_model_name_or_path"] = clip_config
+            subfolder = "text_encoder"
+
+        else:
+            clip_config = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+            config["pretrained_model_name_or_path"] = clip_config
+            subfolder = ""
+
+    model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
-
     with ctx():
-        vae = AutoencoderKL(**vae_config)
+        model = cls(model_config)
 
-    if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(vae, diffusers_format_vae_checkpoint, dtype=torch_dtype)
-        if vae._keys_to_ignore_on_load_unexpected is not None:
-            for pat in vae._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+    position_embedding_dim = model.text_model.embeddings.position_embedding.weight.shape[-1]
 
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {vae.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-    else:
-        vae.load_state_dict(diffusers_format_vae_checkpoint)
+    if is_clip_model(checkpoint):
+        diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
 
-    if torch_dtype is not None:
-        vae = vae.to(torch_dtype)
+    elif (
+        is_clip_sdxl_model(checkpoint)
+        and checkpoint[CHECKPOINT_KEY_NAMES["clip_sdxl"]].shape[-1] == position_embedding_dim
+    ):
+        diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
 
-    return {"vae": vae}
+    elif is_open_clip_model(checkpoint):
+        prefix = "cond_stage_model.model."
+        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
+    elif (
+        is_open_clip_sdxl_model(checkpoint)
+        and checkpoint[CHECKPOINT_KEY_NAMES["open_clip_sdxl"]].shape[-1] == position_embedding_dim
+    ):
+        prefix = "conditioner.embedders.1.model."
+        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
-def create_text_encoders_and_tokenizers_from_ldm(
-    original_config,
-    checkpoint,
-    model_type=None,
-    local_files_only=False,
-    torch_dtype=None,
-):
-    model_type = infer_model_type(original_config, checkpoint=checkpoint, model_type=model_type)
-
-    if model_type == "FrozenOpenCLIPEmbedder":
-        config_name = "stabilityai/stable-diffusion-2"
-        config_kwargs = {"subfolder": "text_encoder"}
-
-        try:
-            text_encoder = create_text_encoder_from_open_clip_checkpoint(
-                config_name, checkpoint, local_files_only=local_files_only, torch_dtype=torch_dtype, **config_kwargs
-            )
-            tokenizer = CLIPTokenizer.from_pretrained(
-                config_name, subfolder="tokenizer", local_files_only=local_files_only
-            )
-        except Exception:
-            raise ValueError(
-                f"With local_files_only set to {local_files_only}, you must first locally save the text_encoder in the following path: '{config_name}'."
-            )
-        else:
-            return {"text_encoder": text_encoder, "tokenizer": tokenizer}
-
-    elif model_type == "FrozenCLIPEmbedder":
-        try:
-            config_name = "openai/clip-vit-large-patch14"
-            text_encoder = create_text_encoder_from_ldm_clip_checkpoint(
-                config_name,
-                checkpoint,
-                local_files_only=local_files_only,
-                torch_dtype=torch_dtype,
-            )
-            tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
-
-        except Exception:
-            raise ValueError(
-                f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: '{config_name}'."
-            )
-        else:
-            return {"text_encoder": text_encoder, "tokenizer": tokenizer}
-
-    elif model_type == "SDXL-Refiner":
-        config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-        config_kwargs = {"projection_dim": 1280}
+    elif is_open_clip_sdxl_refiner_model(checkpoint):
         prefix = "conditioner.embedders.0.model."
+        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
-        try:
-            tokenizer_2 = CLIPTokenizer.from_pretrained(config_name, pad_token="!", local_files_only=local_files_only)
-            text_encoder_2 = create_text_encoder_from_open_clip_checkpoint(
-                config_name,
-                checkpoint,
-                prefix=prefix,
-                has_projection=True,
-                local_files_only=local_files_only,
-                torch_dtype=torch_dtype,
-                **config_kwargs,
-            )
-        except Exception:
-            raise ValueError(
-                f"With local_files_only set to {local_files_only}, you must first locally save the text_encoder_2 and tokenizer_2 in the following path: {config_name} with `pad_token` set to '!'."
-            )
+    else:
+        raise ValueError("The provided checkpoint does not seem to contain a valid CLIP model.")
 
-        else:
-            return {
-                "text_encoder": None,
-                "tokenizer": None,
-                "tokenizer_2": tokenizer_2,
-                "text_encoder_2": text_encoder_2,
-            }
+    if is_accelerate_available():
+        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
-    elif model_type in ["SDXL", "Playground"]:
-        try:
-            config_name = "openai/clip-vit-large-patch14"
-            tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
-            text_encoder = create_text_encoder_from_ldm_clip_checkpoint(
-                config_name, checkpoint, local_files_only=local_files_only, torch_dtype=torch_dtype
+        if len(unexpected_keys) > 0:
+            logger.warning(
+                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
-        except Exception:
-            raise ValueError(
-                f"With local_files_only set to {local_files_only}, you must first locally save the text_encoder and tokenizer in the following path: 'openai/clip-vit-large-patch14'."
-            )
+    else:
+        model.load_state_dict(diffusers_format_checkpoint)
 
-        try:
-            config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-            config_kwargs = {"projection_dim": 1280}
-            prefix = "conditioner.embedders.1.model."
-            tokenizer_2 = CLIPTokenizer.from_pretrained(config_name, pad_token="!", local_files_only=local_files_only)
-            text_encoder_2 = create_text_encoder_from_open_clip_checkpoint(
-                config_name,
-                checkpoint,
-                prefix=prefix,
-                has_projection=True,
-                local_files_only=local_files_only,
-                torch_dtype=torch_dtype,
-                **config_kwargs,
-            )
-        except Exception:
-            raise ValueError(
-                f"With local_files_only set to {local_files_only}, you must first locally save the text_encoder_2 and tokenizer_2 in the following path: {config_name} with `pad_token` set to '!'."
-            )
+    if torch_dtype is not None:
+        model.to(torch_dtype)
 
-        return {
-            "tokenizer": tokenizer,
-            "text_encoder": text_encoder,
-            "tokenizer_2": tokenizer_2,
-            "text_encoder_2": text_encoder_2,
-        }
+    model.eval()
 
-    return
+    return model
 
 
-def create_scheduler_from_ldm(
-    pipeline_class_name,
-    original_config,
+def _legacy_load_scheduler(
+    cls,
     checkpoint,
-    prediction_type=None,
-    scheduler_type="ddim",
-    model_type=None,
+    component_name,
+    original_config=None,
+    **kwargs,
 ):
-    scheduler_config = get_default_scheduler_config()
-    model_type = infer_model_type(original_config, checkpoint=checkpoint, model_type=model_type)
+    scheduler_type = kwargs.get("scheduler_type", None)
+    prediction_type = kwargs.get("prediction_type", None)
+
+    if scheduler_type is not None:
+        deprecation_message = (
+            "Please pass an instance of a Scheduler object directly to the `scheduler` argument in `from_single_file`."
+        )
+        deprecate("scheduler_type", "1.0.0", deprecation_message)
+
+    if prediction_type is not None:
+        deprecation_message = (
+            "Please configure an instance of a Scheduler with the appropriate `prediction_type` "
+            "and pass the object directly to the `scheduler` argument in `from_single_file`."
+        )
+        deprecate("prediction_type", "1.0.0", deprecation_message)
+
+    scheduler_config = SCHEDULER_DEFAULT_CONFIG
+    model_type = infer_diffusers_model_type(checkpoint=checkpoint)
 
     global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
 
-    num_train_timesteps = getattr(original_config["model"]["params"], "timesteps", None) or 1000
+    if original_config:
+        num_train_timesteps = getattr(original_config["model"]["params"], "timesteps", 1000)
+    else:
+        num_train_timesteps = 1000
+
     scheduler_config["num_train_timesteps"] = num_train_timesteps
 
-    if (
-        "parameterization" in original_config["model"]["params"]
-        and original_config["model"]["params"]["parameterization"] == "v"
-    ):
+    if model_type == "v2":
         if prediction_type is None:
-            # NOTE: For stable diffusion 2 base it is recommended to pass `prediction_type=="epsilon"`
-            # as it relies on a brittle global step parameter here
+            # NOTE: For stable diffusion 2 base it is recommended to pass `prediction_type=="epsilon"` # as it relies on a brittle global step parameter here
             prediction_type = "epsilon" if global_step == 875000 else "v_prediction"
 
     else:
@@ -1537,20 +1434,44 @@ def create_scheduler_from_ldm(
 
     scheduler_config["prediction_type"] = prediction_type
 
-    if model_type in ["SDXL", "SDXL-Refiner"]:
+    if model_type in ["xl_base", "xl_refiner"]:
         scheduler_type = "euler"
-    elif model_type == "Playground":
+    elif model_type == "playground":
         scheduler_type = "edm_dpm_solver_multistep"
     else:
-        beta_start = original_config["model"]["params"].get("linear_start", 0.02)
-        beta_end = original_config["model"]["params"].get("linear_end", 0.085)
+        if original_config:
+            beta_start = original_config["model"]["params"].get("linear_start")
+            beta_end = original_config["model"]["params"].get("linear_end")
+
+        else:
+            beta_start = 0.02
+            beta_end = 0.085
+
         scheduler_config["beta_start"] = beta_start
         scheduler_config["beta_end"] = beta_end
         scheduler_config["beta_schedule"] = "scaled_linear"
         scheduler_config["clip_sample"] = False
         scheduler_config["set_alpha_to_one"] = False
 
-    if scheduler_type == "pndm":
+    # to deal with an edge case StableDiffusionUpscale pipeline has two schedulers
+    if component_name == "low_res_scheduler":
+        return cls.from_config(
+            {
+                "beta_end": 0.02,
+                "beta_schedule": "scaled_linear",
+                "beta_start": 0.0001,
+                "clip_sample": True,
+                "num_train_timesteps": 1000,
+                "prediction_type": "epsilon",
+                "trained_betas": None,
+                "variance_type": "fixed_small",
+            }
+        )
+
+    if scheduler_type is None:
+        return cls.from_config(scheduler_config)
+
+    elif scheduler_type == "pndm":
         scheduler_config["skip_prk_steps"] = True
         scheduler = PNDMScheduler.from_config(scheduler_config)
 
@@ -1595,15 +1516,46 @@ def create_scheduler_from_ldm(
     else:
         raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
 
-    if pipeline_class_name == "StableDiffusionUpscalePipeline":
-        scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler")
-        low_res_scheduler = DDPMScheduler.from_pretrained(
-            "stabilityai/stable-diffusion-x4-upscaler", subfolder="low_res_scheduler"
-        )
+    return scheduler
 
-        return {
-            "scheduler": scheduler,
-            "low_res_scheduler": low_res_scheduler,
-        }
 
-    return {"scheduler": scheduler}
+def _legacy_load_clip_tokenizer(cls, checkpoint, config=None, local_files_only=False):
+    if config:
+        config = {"pretrained_model_name_or_path": config}
+    else:
+        config = fetch_diffusers_config(checkpoint)
+
+    if is_clip_model(checkpoint) or is_clip_sdxl_model(checkpoint):
+        clip_config = "openai/clip-vit-large-patch14"
+        config["pretrained_model_name_or_path"] = clip_config
+        subfolder = ""
+
+    elif is_open_clip_model(checkpoint):
+        clip_config = "stabilityai/stable-diffusion-2"
+        config["pretrained_model_name_or_path"] = clip_config
+        subfolder = "tokenizer"
+
+    else:
+        clip_config = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+        config["pretrained_model_name_or_path"] = clip_config
+        subfolder = ""
+
+    tokenizer = cls.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
+
+    return tokenizer
+
+
+def _legacy_load_safety_checker(local_files_only, torch_dtype):
+    # Support for loading safety checker components using the deprecated
+    # `load_safety_checker` argument.
+
+    from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+
+    feature_extractor = AutoImageProcessor.from_pretrained(
+        "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only, torch_dtype=torch_dtype
+    )
+    safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+        "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only, torch_dtype=torch_dtype
+    )
+
+    return {"safety_checker": safety_checker, "feature_extractor": feature_extractor}
