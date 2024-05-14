@@ -34,10 +34,6 @@ Customized normalization layers for supporting various models in 🤗 Diffusers.
 
 [[autodoc]] models.normalization.AdaLayerNormContinuous
 
-## LayerNorm
-
-[[autodoc]] models.normalization.LayerNorm
-
 ## RMSNorm
 
 [[autodoc]] models.normalization.RMSNorm

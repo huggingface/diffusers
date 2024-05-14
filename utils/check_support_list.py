@@ -91,6 +91,8 @@ def check_normalizations():
     with open(os.path.join(REPO_PATH, "src/diffusers/models/normalization.py"), "r") as f:
         doctext = f.read()
         normalization_classes = re.findall(r"class\s+(\w+)\s*\(.*?nn\.Module.*?\):", doctext)
+        # LayerNorm is an exception because adding doc for is confusing.
+        normalization_classes = [norm for norm in normalization_classes if norm != "LayerNorm"]
 
     for norm in normalization_classes:
         if norm not in documented_normalizations:
