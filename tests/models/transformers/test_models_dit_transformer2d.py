@@ -13,25 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-import inspect
 import unittest
 
 import torch
-from parameterized import parameterized
 
-from diffusers import DiTTransformer2DModel
+from diffusers import DiTTransformer2DModel, Transformer2DModel
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     slow,
-    torch_all_close,
     torch_device,
 )
 
 from ..test_modeling_common import ModelTesterMixin
-from diffusers import Transformer2DModel
 
 
 enable_full_determinism()
@@ -82,7 +76,7 @@ class DiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_output(self):
         super().test_output(expected_output_shape=self.output_shape)
-    
+
     @slow
     def test_correct_class_remapping(self):
         model = Transformer2DModel.from_pretrained("facebook/DiT-XL-2-256", subfolder="transformer")

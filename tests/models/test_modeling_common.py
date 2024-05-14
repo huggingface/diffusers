@@ -575,7 +575,7 @@ class ModelTesterMixin:
 
         # input & output have to have the same shape
         input_tensor = inputs_dict[self.main_input_name]
-        
+
         if expected_output_shape is None:
             expected_shape = input_tensor.shape
             self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
