@@ -405,23 +405,22 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             for i in range(0, num_images * ensemble_size, batch_size):
                 batch_image_latent = image_latent[i : i + batch_size]  # [B,4,h,w]
                 batch_pred_latent = pred_latent[i : i + batch_size]  # [B,4,h,w]
-                B = batch_image_latent.shape[0]
-
-                batch_text_embedding = batch_empty_text_embedding[:B]  # [B,2,1024]
+                bsize = batch_image_latent.shape[0]
+                text = batch_empty_text_embedding[:bsize]  # [B,2,1024]
 
                 self.scheduler.set_timesteps(num_inference_steps, device=device)
 
                 for t in self.scheduler.timesteps:
                     batch_latent = torch.cat([batch_image_latent, batch_pred_latent], dim=1)  # [B,8,h,w]
-                    noise = self.unet(batch_latent, t, encoder_hidden_states=batch_text_embedding).sample  # [B,4,h,w]
+                    noise = self.unet(batch_latent, t, encoder_hidden_states=text, return_dict=False)[0]  # [B,4,h,w]
                     batch_pred_latent = self.scheduler.step(
                         noise, t, batch_pred_latent, generator=generator
                     ).prev_sample  # [B,4,h,w]
-                    progress_bar.update(B)
+                    progress_bar.update(bsize)
 
                 clean_latent.append(batch_pred_latent)
 
-                del batch_image_latent, batch_pred_latent, batch_text_embedding, batch_latent, noise
+                del batch_image_latent, batch_pred_latent, text, batch_latent, noise
 
         pred_latent = torch.cat(clean_latent, dim=0)  # [N*E,4,h,w]
 
