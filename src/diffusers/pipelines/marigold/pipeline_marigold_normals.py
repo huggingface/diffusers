@@ -522,33 +522,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         return prediction  # [B,3,H,W]
 
-    def encode_prediction(self, prediction: torch.FloatTensor, check_input: bool = True) -> torch.FloatTensor:
-        assert torch.is_tensor(prediction) and torch.is_floating_point(prediction)
-        assert prediction.dim() == 4 and prediction.shape[1] == 3  # [B,3,H,W]
-
-        if check_input:
-            msg = "ensure the normals vectors are unit length."
-            if prediction.isnan().any().item():
-                raise ValueError(f"NaN values detected, {msg}")
-            if prediction.isfinite().all().item():
-                raise ValueError(f"Non-finite values detected, {msg}")
-            if ((prediction**2).sum(dim=1) - 1.0).abs().max().item() < 1e-3:
-                raise ValueError(f"Non-unit vectors detected, {msg}")
-
-        if not self.use_full_z_range:
-            if check_input and (prediction[:, 2, :, :] < 0).any().item() < 1e-3:
-                raise ValueError(
-                    "Negative Z-component detected, ensure the normals vectors are represented in ray-space"
-                )
-
-            prediction = prediction.clone()
-            prediction[:, 2, :, :] *= 2.0
-            prediction[:, 2, :, :] -= 1.0
-
-        latent = self.encode_image(prediction)
-
-        return latent  # [B,4,h,w]
-
     def encode_image(self, image: torch.FloatTensor) -> torch.FloatTensor:
         assert image.dim() == 4 and image.shape[1] == 3  # [B,3,H,W]
 

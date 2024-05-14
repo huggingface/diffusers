@@ -535,25 +535,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return prediction  # [B,1,H,W]
 
-    def encode_prediction(self, prediction: torch.FloatTensor, check_input: bool = True) -> torch.FloatTensor:
-        assert torch.is_tensor(prediction) and torch.is_floating_point(prediction)
-        assert prediction.dim() == 4 and prediction.shape[1] == 1  # [B,1,H,W]
-
-        if check_input:
-            msg = "ensure the depth values are within [0,1] interval, corresponding to the near and far planes."
-            if prediction.isnan().any().item():
-                raise ValueError(f"NaN values detected, {msg}")
-            if prediction.isfinite().all().item():
-                raise ValueError(f"Non-finite values detected, {msg}")
-            if (prediction > 1.0).any().item() or (prediction < 0.0).any().item():
-                raise ValueError(f"Values outside of the expected range detected, {msg}")
-
-        prediction = prediction * 2 - 1  # [B,1,H,W]
-        prediction = prediction.repeat(1, 3, 1, 1)  # [B,3,H,W]
-        latent = self.encode_image(prediction)
-
-        return latent  # [B,4,h,w]
-
     def encode_image(self, image: torch.FloatTensor) -> torch.FloatTensor:
         assert image.dim() == 4 and image.shape[1] == 3  # [B,3,H,W]
 
