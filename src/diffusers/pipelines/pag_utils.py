@@ -27,7 +27,6 @@ class PAGMixin:
         self,
         pag_scale: float = 0.0,
         pag_adaptive_scaling: float = 0.0,
-        pag_drop_rate: float = 0.5,
         pag_applied_layers: Tuple[str] = ("mid",),  # ('down', 'mid', 'up',)
         pag_applied_layers_index: Tuple[str] = None,  # ('d4', 'd5', 'm0',)
         pag_cfg: bool = True,
@@ -42,7 +41,6 @@ class PAGMixin:
         """
         self._pag_scale = pag_scale
         self._pag_adaptive_scaling = pag_adaptive_scaling
-        self._pag_drop_rate = pag_drop_rate
         self._pag_applied_layers = pag_applied_layers
         self._pag_applied_layers_index = pag_applied_layers_index
         self._pag_cfg = pag_cfg
@@ -74,8 +72,8 @@ class PAGMixin:
         else:
             replace_processor = PAGIdentitySelfAttnProcessor2_0()
 
-        if self.pag_applied_layers_index:
-            drop_layers = self.pag_applied_layers_index
+        if self._pag_applied_layers_index:
+            drop_layers = self._pag_applied_layers_index
             for drop_layer in drop_layers:
                 layer_number = int(drop_layer[1:])
                 try:
@@ -91,8 +89,8 @@ class PAGMixin:
                     raise ValueError(
                         f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
                     )
-        elif self.pag_applied_layers:
-            drop_full_layers = self.pag_applied_layers
+        elif self._pag_applied_layers:
+            drop_full_layers = self._pag_applied_layers
             for drop_full_layer in drop_full_layers:
                 try:
                     if drop_full_layer == "down":
@@ -113,12 +111,12 @@ class PAGMixin:
 
     def _get_pag_scale(self, t):
         if self.do_pag_adaptive_scaling:
-            signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000 - t)
+            signal_scale = self._pag_scale - self.pag_adaptive_scaling * (1000 - t)
             if signal_scale < 0:
                 signal_scale = 0
             return signal_scale
         else:
-            return self.pag_scale
+            return self._pag_scale
 
     def _apply_perturbed_attention_guidance(self, noise_pred, do_classifier_free_guidance, guidance_scale, t):
         pag_scale = self._get_pag_scale(t)
@@ -140,8 +138,8 @@ class PAGMixin:
             raise ValueError("PAG is not enabled.")
 
         up_layers, mid_layers, down_layers = self._get_self_attn_layers()
-        if self.pag_applied_layers_index:
-            drop_layers = self.pag_applied_layers_index
+        if self._pag_applied_layers_index:
+            drop_layers = self._pag_applied_layers_index
             for drop_layer in drop_layers:
                 layer_number = int(drop_layer[1:])
                 try:
@@ -157,8 +155,8 @@ class PAGMixin:
                     raise ValueError(
                         f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
                     )
-        elif self.pag_applied_layers:
-            drop_full_layers = self.pag_applied_layers
+        elif self._pag_applied_layers:
+            drop_full_layers = self._pag_applied_layers
             for drop_full_layer in drop_full_layers:
                 try:
                     if drop_full_layer == "down":
@@ -184,32 +182,12 @@ class PAGMixin:
         self._pag_cfg = None
 
     @property
-    def pag_scale(self):
-        return self._pag_scale
-
-    @property
-    def pag_cfg(self):
-        return self._pag_cfg
-
-    @property
     def pag_adaptive_scaling(self):
         return self._pag_adaptive_scaling
 
     @property
     def do_pag_adaptive_scaling(self):
         return self._pag_adaptive_scaling > 0
-
-    @property
-    def pag_drop_rate(self):
-        return self._pag_drop_rate
-
-    @property
-    def pag_applied_layers(self):
-        return self._pag_applied_layers
-
-    @property
-    def pag_applied_layers_index(self):
-        return self._pag_applied_layers_index
 
     @property
     def do_perturbed_attention_guidance(self):
