@@ -1736,7 +1736,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
                     mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
-                if ip_adapter_image is not None:
+                if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
 
                 if num_channels_unet == 9:
