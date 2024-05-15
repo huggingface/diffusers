@@ -30,7 +30,7 @@
   - local: using-diffusers/schedulers
     title: Load schedulers and models
   - local: using-diffusers/other-formats
-    title: Model files and formats
+    title: Model files and layouts
   - local: using-diffusers/loading_adapters
     title: Load adapters
   - local: using-diffusers/push_to_hub
