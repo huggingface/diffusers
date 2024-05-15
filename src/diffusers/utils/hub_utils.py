@@ -399,7 +399,11 @@ def _get_model_file(
             )
 
 
-# Taken from https://github.com/huggingface/transformers/blob/main/src/transformers/utils/hub.py
+# Adapted from
+# https://github.com/huggingface/transformers/blob/1360801a69c0b169e3efdbb0cd05d9a0e72bfb70/src/transformers/utils/hub.py#L976
+# Differences are in parallelization of shard downloads and checking if shards are present.
+
+
 def _get_checkpoint_shard_files(
     pretrained_model_name_or_path,
     index_filename,

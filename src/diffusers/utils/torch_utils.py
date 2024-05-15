@@ -150,7 +150,8 @@ def apply_freeu(
     return hidden_states, res_hidden_states
 
 
-# Taken from https://github.com/huggingface/transformers/blob/main/src/transformers/pytorch_utils.py
+# Taken from
+# https://github.com/huggingface/transformers/blob/1360801a69c0b169e3efdbb0cd05d9a0e72bfb70/src/transformers/pytorch_utils.py#L279
 def id_tensor_storage(tensor: torch.Tensor) -> Tuple[torch.device, int, int]:
     """
     Unique identifier to a tensor storage. Multiple different tensors can share the same underlying storage. For

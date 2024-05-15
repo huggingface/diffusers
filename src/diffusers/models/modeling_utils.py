@@ -431,7 +431,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         weights_name = _add_variant(weights_name, variant)
 
         # Save the model
-        # Adapted from https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_utils.py
+        # Adapted from
+        # https://github.com/huggingface/transformers/blob/d8f8a9cd61dddf170a18d0f13551baccbf3a2159/src/transformers/modeling_utils.py#L2562
         shards, index = shard_checkpoint(state_dict, max_shard_size=max_shard_size, weights_name=weights_name)
         # Clean the folder from a previous save
         for filename in os.listdir(save_directory):
