@@ -59,11 +59,11 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        return (4, 4, 8, 8)
+        return (4, 8, 8)
 
     @property
     def output_shape(self):
-        return (4, 8, 8, 8)
+        return (8, 8, 8)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
@@ -88,7 +88,9 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_output(self):
-        super().test_output(expected_output_shape=self.output_shape)
+        super().test_output(
+            expected_output_shape=(self.dummy_input[self.main_input_name].shape[0],) + self.output_shape
+        )
 
     @slow
     def test_correct_class_remapping(self):
