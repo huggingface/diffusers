@@ -23,7 +23,7 @@ concurrency:
 jobs:
   run_fast_tests_apple_m1:
     name: Fast PyTorch MPS tests on MacOS
-    runs-on: [ self-hosted, apple-m1 ]
+    runs-on: macos-13-xlarge
 
     steps:
     - name: Checkout diffusers
