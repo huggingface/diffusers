@@ -33,6 +33,7 @@ from .import_utils import (
     is_onnx_available,
     is_opencv_available,
     is_peft_available,
+    is_timm_available,
     is_torch_available,
     is_torch_version,
     is_torchsde_available,
@@ -338,6 +339,13 @@ def require_peft_backend(test_case):
     transformers.
     """
     return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
+
+
+def require_timm(test_case):
+    """
+    Decorator marking a test that requires timm. These tests are skipped when timm isn't installed.
+    """
+    return unittest.skipUnless(is_timm_available(), "test requires timm")(test_case)
 
 
 def require_peft_version_greater(peft_version):
