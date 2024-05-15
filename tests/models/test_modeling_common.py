@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import inspect
+import json
 import os
 import tempfile
 import traceback
@@ -881,6 +882,18 @@ class ModelTesterMixin:
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KIB")
             self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
+
+            # Now check if the right number of shards exists. First, let's get the number of shards.
+            # Since this number can be dependent on the model being tested, it's important that we calculate it
+            # instead of hardcoding it.
+            with open(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)) as f:
+                weight_map_dict = json.load(f)["weight_map"]
+                first_key = list(weight_map_dict.keys())[0]
+                weight_loc = weight_map_dict[first_key]  # e.g., diffusion_pytorch_model-00001-of-00002.safetensors
+                expected_num_shards = int(weight_loc.split("-")[-1].split(".")[0])
+
+            actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(".safetensors")])
+            self.assertTrue(actual_num_shards == expected_num_shards)
 
             new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto")
 
