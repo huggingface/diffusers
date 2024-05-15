@@ -73,6 +73,7 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["BasicTransformerBlock"]
 
     @register_to_config
     def __init__(
