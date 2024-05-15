@@ -307,6 +307,7 @@ if _timm_available:
 def is_timm_available():
     return _timm_available
 
+
 _bitsandbytes_available = importlib.util.find_spec("bitsandbytes") is not None
 try:
     _bitsandbytes_version = importlib_metadata.version("bitsandbytes")
