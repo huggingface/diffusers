@@ -37,7 +37,6 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
-from ...utils.export_utils import visualize_normals
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .marigold_image_processing import MarigoldImageProcessor
@@ -56,9 +55,10 @@ Examples:
 ... ).to("cuda")
 
 >>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
->>> depth = pipe(image, output_visualization=True)
+>>> normals = pipe(image)
 
->>> depth.visualization.save("einstein_normals.png")
+>>> vis = diffusers.utils.export_utils.visualize_normals(normals.prediction)
+>>> vis[0].save("einstein_normals.png")
 ```
 """
 
@@ -72,8 +72,6 @@ class MarigoldNormalsOutput(BaseOutput):
         prediction (`np.ndarray`, `torch.FloatTensor`):
             Predicted normals, with values in the range [-1, 1]. For types `np.ndarray` or `torch.FloatTensor`, the
             shape is always $numimages \times 3 \times height \times width$.
-        visualization (`None` or List[PIL.Image.Image]):
-            Colorized predictions for visualization.
         uncertainty (`None`, `np.ndarray`, `torch.FloatTensor`):
             Uncertainty maps computed from the ensemble. The shape is $numimages \times 1 \times height \times width$.
         latent (`None`, `torch.FloatTensor`):
@@ -82,7 +80,6 @@ class MarigoldNormalsOutput(BaseOutput):
     """
 
     prediction: Union[np.ndarray, torch.FloatTensor]
-    visualization: Union[None, Image.Image, List[Image.Image]]
     uncertainty: Union[None, np.ndarray, torch.FloatTensor]
     latent: Union[None, torch.FloatTensor]
 
@@ -160,7 +157,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor],
         generator: Optional[Union[torch.Generator, List[torch.Generator]]],
         output_prediction_format: str,
-        output_visualization_kwargs: Optional[Dict[str, Any]],
     ) -> None:
         if num_inference_steps is None:
             raise ValueError("`num_inference_steps` is not specified and could not be resolved from the model config.")
@@ -205,8 +201,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 raise ValueError("`ensembling_kwargs` must be a dictionary.")
             if "reduction" in ensembling_kwargs and ensembling_kwargs["reduction"] not in ("closest", "mean"):
                 raise ValueError("`ensembling_kwargs['reduction']` can be either `'closest'` or `'mean'`.")
-        if output_visualization_kwargs is not None and not isinstance(output_visualization_kwargs, dict):
-            raise ValueError("`output_visualization_kwargs` must be a dictionary.")
 
         # image checks
         num_images = 1
@@ -275,8 +269,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         latents: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_prediction_format: str = "np",
-        output_visualization: bool = True,
-        output_visualization_kwargs: Optional[Dict[str, Any]] = None,
         output_uncertainty: bool = True,
         output_latent: bool = False,
         **kwargs,
@@ -323,18 +315,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             output_prediction_format (`str`, *optional*, defaults to `"np"`):
                 Preferred format of the output's `prediction` and the optional `uncertainty` fields. The accepted
                 values are: `"np"` (numpy array) or `"pt"` (torch tensor).
-            output_visualization (`bool`, *optional*, defaults to `True`):
-                When enabled, the output's `visualization` field contains a PIL.Image that can be used for visual
-                quality inspection.
-            output_visualization_kwargs (`dict`, *optional*, defaults to `None`):
-                Extra dictionary with arguments for precise visualization control. Flipping axes leads to a different
-                color scheme. The following options are available:
-                - flip_x (`bool`, *optional*, defaults to `False`): Flips the X axis of the normals frame of reference.
-                  Default direction is right.
-                - flip_y (`bool`, *optional*, defaults to `False`): Flips the Y axis of the normals frame of reference.
-                  Default direction is top.
-                - flip_z (`bool`, *optional*, defaults to `False`): Flips the Z axis of the normals frame of reference.
-                  Default direction is facing the observer.
             output_uncertainty (`bool`, *optional*, defaults to `True`):
                 When enabled, the output's `uncertainty` field contains the predictive uncertainty map, provided that
                 the `ensemble_size` argument is set to a value above 2.
@@ -375,7 +355,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             latents,
             generator,
             output_prediction_format,
-            output_visualization_kwargs,
         )
 
         # 2. Prepare empty text conditioning. Model invocation: self.tokenizer, self.text_encoder
@@ -462,21 +441,13 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                     uncertainty, original_resolution, resample_method_output, is_aa=False
                 )  # [N,1,H,W]
 
-        visualization = None
-        if output_visualization:
-            visualization = [
-                visualize_normals(prediction[i].permute(1, 2, 0), **(output_visualization_kwargs or {}))
-                for i in range(num_images)
-            ]  # [PIL.Image, ...]
-
-        if output_prediction_format != "pt":
+        if output_prediction_format == "np":
             prediction = prediction.cpu().numpy()
             if uncertainty is not None and output_uncertainty:
                 uncertainty = uncertainty.cpu().numpy()
 
         out = MarigoldNormalsOutput(
             prediction=prediction,
-            visualization=visualization,
             uncertainty=uncertainty,
             latent=pred_latent,
         )

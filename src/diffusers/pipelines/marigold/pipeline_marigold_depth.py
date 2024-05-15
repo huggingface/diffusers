@@ -37,8 +37,7 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
-from ...utils.export_utils import export_depth_to_png, visualize_depth
-from ...utils.import_utils import is_matplotlib_available, is_scipy_available
+from ...utils.import_utils import is_scipy_available
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .marigold_image_processing import MarigoldImageProcessor
@@ -57,9 +56,13 @@ Examples:
 ... ).to("cuda")
 
 >>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
->>> depth = pipe(image, output_visualization=True)
+>>> depth = pipe(image)
 
->>> depth.visualization.save("einstein_depth.png")
+>>> vis = diffusers.utils.export_utils.visualize_depth(depth.prediction)
+>>> vis[0].save("einstein_depth.png")
+
+>>> depth_16bit = diffusers.utils.export_utils.export_depth_to_16bit_png(depth.prediction)
+>>> depth_16bit[0].save("einstein_depth_16bit.png")
 ```
 """
 
@@ -70,11 +73,9 @@ class MarigoldDepthOutput(BaseOutput):
     Output class for Marigold monocular depth prediction pipeline.
 
     Args:
-        prediction (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`):
-            Predicted depth, with values in the range [0, 65535] (`PIL.Image.Image`) or [0, 1] otherwise. For types
-            `np.ndarray` or `torch.FloatTensor`, the shape is always $numimages \times 1 \times height \times width$.
-        visualization (`None` or List[PIL.Image.Image]):
-            Colorized predictions for visualization.
+        prediction (`torch.FloatTensor`, `np.ndarray`):
+            Predicted depth maps, with values in the range [0, 1]. For types `np.ndarray` or `torch.FloatTensor`, the
+            shape is always $numimages \times 1 \times height \times width$.
         uncertainty (`None`, `np.ndarray`, `torch.FloatTensor`):
             Uncertainty maps computed from the ensemble. The shape is $numimages \times 1 \times height \times width$.
         latent (`None`, `torch.FloatTensor`):
@@ -82,8 +83,7 @@ class MarigoldDepthOutput(BaseOutput):
             latentheight \times latentwidth$.
     """
 
-    prediction: Union[Image.Image, np.ndarray, torch.FloatTensor]
-    visualization: Union[None, Image.Image, List[Image.Image]]
+    prediction: Union[torch.FloatTensor, np.ndarray]
     uncertainty: Union[None, np.ndarray, torch.FloatTensor]
     latent: Union[None, torch.FloatTensor]
 
@@ -158,7 +158,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor],
         generator: Optional[Union[torch.Generator, List[torch.Generator]]],
         output_prediction_format: str,
-        output_visualization_kwargs: Optional[Dict[str, Any]],
     ) -> None:
         if num_inference_steps is None:
             raise ValueError("`num_inference_steps` is not specified and could not be resolved from the model config.")
@@ -196,8 +195,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             )
         if batch_size < 1:
             raise ValueError("`batch_size` must be positive.")
-        if output_prediction_format not in ["pt", "np", "pil"]:
-            raise ValueError("`output_prediction_format` must be one of `pt`, `np`, or `pil`.")
+        if output_prediction_format not in ["pt", "np"]:
+            raise ValueError("`output_prediction_format` must be one of `pt` or `np`.")
         if latents is not None and generator is not None:
             raise ValueError("`latents` and `generator` cannot be used together.")
         if ensembling_kwargs is not None:
@@ -205,18 +204,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 raise ValueError("`ensembling_kwargs` must be a dictionary.")
             if "reduction" in ensembling_kwargs and ensembling_kwargs["reduction"] not in ("mean", "median"):
                 raise ValueError("`ensembling_kwargs['reduction']` can be either `'mean'` or `'median'`.")
-        if output_visualization_kwargs is not None:
-            if not isinstance(output_visualization_kwargs, dict):
-                raise ValueError("`output_visualization_kwargs` must be a dictionary.")
-            if (
-                "color_map" in output_visualization_kwargs
-                and output_visualization_kwargs["color_map"] != "Spectral"
-                and not is_matplotlib_available()
-            ):
-                raise ValueError(
-                    "`output_visualization_kwargs['color_map']` can be only `'Spectral'` when matplotlib "
-                    "is not installed`."
-                )
 
         # image checks
         num_images = 1
@@ -230,9 +217,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             W, H = image.size
         else:
             raise ValueError(f"Unsupported `image` type: {type(image)}.")
-
-        if num_images > 1 and output_prediction_format == "pil":
-            raise ValueError("`output_prediction_format='pil'` is not supported when passing multiple input images.")
 
         # latents checks
         if latents is not None:
@@ -288,8 +272,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         latents: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_prediction_format: str = "np",
-        output_visualization: bool = True,
-        output_visualization_kwargs: Optional[Dict[str, Any]] = None,
         output_uncertainty: bool = True,
         output_latent: bool = False,
         **kwargs,
@@ -341,16 +323,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 Random number generator object to ensure reproducibility.
             output_prediction_format (`str`, *optional*, defaults to `"np"`):
                 Preferred format of the output's `prediction` and the optional `uncertainty` fields. The accepted
-                values are: `"pil'` (`PIL.Image.Image`), `"np"` (numpy array) or `"pt"` (torch tensor).
-            output_visualization (`bool`, *optional*, defaults to `True`):
-                When enabled, the output's `visualization` field contains a PIL.Image that can be used for visual
-                quality inspection.
-            output_visualization_kwargs (`dict`, *optional*, defaults to `None`):
-                Extra dictionary with arguments for precise visualization control. The following options are available:
-                - color_map (`str`, *optional*, defaults to `"Spectral"`): Color map used to convert a single-channel
-                  depth prediction into colored representation.
-                - vis_min (`float`, *optional*, defaults to `0.0`): Minimum value of the visualized depth range.
-                - vis_max (`float`, *optional*, defaults to `1.0`): Maximum value of the visualized depth range.
+                values are: `"np"` (numpy array) or `"pt"` (torch tensor).
             output_uncertainty (`bool`, *optional*, defaults to `True`):
                 When enabled, the output's `uncertainty` field contains the predictive uncertainty map, provided that
                 the `ensemble_size` argument is set to a value above 2.
@@ -391,7 +364,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             latents,
             generator,
             output_prediction_format,
-            output_visualization_kwargs,
         )
 
         # 2. Prepare empty text conditioning. Model invocation: self.tokenizer, self.text_encoder
@@ -477,23 +449,13 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                     uncertainty, original_resolution, resample_method_output, is_aa=False
                 )  # [1,1,H,W]
 
-        visualization = None
-        if output_visualization:
-            visualization = [
-                visualize_depth(prediction[i].squeeze(0), **(output_visualization_kwargs or {}))
-                for i in range(num_images)
-            ]  # [PIL.Image, ...]
-
-        if output_prediction_format != "pt":
+        if output_prediction_format == "np":
             prediction = prediction.cpu().numpy()
             if uncertainty is not None and output_uncertainty:
                 uncertainty = uncertainty.cpu().numpy()
-            if output_prediction_format == "pil":
-                prediction = export_depth_to_png(prediction.squeeze(0).squeeze(0))
 
         out = MarigoldDepthOutput(
             prediction=prediction,
-            visualization=visualization,
             uncertainty=uncertainty,
             latent=pred_latent,
         )

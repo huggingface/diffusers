@@ -256,52 +256,173 @@ def colormap(
     return out
 
 
-def export_depth_to_png(depth):
-    depth_u16 = (depth * (2**16 - 1)).astype(np.uint16)
-    out = PIL.Image.fromarray(depth_u16, mode="I;16")
-    return out
-
-
 def visualize_depth(
-    depth: torch.FloatTensor,
+    depth: Union[
+        PIL.Image.Image,
+        np.ndarray,
+        torch.FloatTensor,
+        List[PIL.Image.Image],
+        List[np.ndarray],
+        List[torch.FloatTensor],
+    ],
+    val_min: float = 0.0,
+    val_max: float = 1.0,
     color_map: str = "Spectral",
-    vis_min: float = 0.0,
-    vis_max: float = 1.0,
-) -> PIL.Image.Image:
-    if depth.dim() != 2 or not torch.is_floating_point(depth):
-        raise ValueError("Input should be a 2-dimensional floating point tensor of shape [H,W].")
-    if vis_max <= vis_min:
-        raise ValueError(f"Invalid colorization range: [{vis_min}, {vis_max}].")
+) -> Union[PIL.Image.Image, List[PIL.Image.Image]]:
+    """
+    Visualizes depth maps, such as predictions of the `MarigoldDepthPipeline`.
 
-    if vis_min != 0.0 or vis_max != 1.0:
-        depth = (depth - vis_min) / (vis_max - vis_min)
+    Args:
+        depth (`Union[PIL.Image.Image, np.ndarray, torch.FloatTensor, List[PIL.Image.Image], List[np.ndarray],
+            List[torch.FloatTensor]]`): Depth maps.
+        val_min (`float`, *optional*, defaults to `0.0`): Minimum value of the visualized depth range.
+        val_max (`float`, *optional*, defaults to `0.0`): Maximum value of the visualized depth range.
+        color_map (`str`, *optional*, defaults to `"Spectral"`): Color map used to convert a single-channel
+                  depth prediction into colored representation.
 
-    visualization = colormap(depth, cmap=color_map, bytes=True)  # [H,W,3]
-    visualization = PIL.Image.fromarray(visualization.cpu().numpy())
+    Returns: `PIL.Image.Image` or `List[PIL.Image.Image]` with depth maps visualization.
+    """
+    if val_max <= val_min:
+        raise ValueError(f"Invalid values range: [{val_min}, {val_max}].")
 
-    return visualization
+    def visualize_depth_one(img, idx=None):
+        prefix = "Depth" + (f"[{idx}]" if idx else "")
+        if isinstance(img, PIL.Image.Image):
+            if img.mode != "I;16":
+                raise ValueError(f"{prefix}: invalid PIL mode={img.mode}.")
+            img = np.array(img).astype(np.float32) / (2**16 - 1)
+        if isinstance(img, np.ndarray) or torch.is_tensor(img):
+            if img.ndim != 2:
+                raise ValueError(f"{prefix}: unexpected shape={img.shape}.")
+            if isinstance(img, np.ndarray):
+                img = torch.from_numpy(img)
+            if not torch.is_floating_point(img):
+                raise ValueError(f"{prefix}: unexected dtype={img.dtype}.")
+        else:
+            raise ValueError(f"{prefix}: unexpected type={type(img)}.")
+        if val_min != 0.0 or val_max != 1.0:
+            img = (img - val_min) / (val_max - val_min)
+        img = colormap(img, cmap=color_map, bytes=True)  # [H,W,3]
+        img = PIL.Image.fromarray(img.cpu().numpy())
+        return img
+
+    if isinstance(depth, np.ndarray) or torch.is_tensor(depth):
+        if depth.ndim == 2:
+            return visualize_depth_one(depth)
+        if depth.ndim == 3:
+            return [visualize_depth_one(img, idx) for idx, img in enumerate(depth)]
+        if depth.ndim == 4:
+            if depth.shape[1] != 1:
+                raise ValueError(f"Unexpected input shape={depth.shape}, expecting [N,1,H,W].")
+            return [visualize_depth_one(img[0], idx) for idx, img in enumerate(depth)]
+        raise ValueError(f"Unexpected input shape={depth.shape}: expecting 2, 3, or 4 dimensions.")
+    elif isinstance(depth, list):
+        return [visualize_depth_one(img, idx) for idx, img in enumerate(depth)]
+    else:
+        raise ValueError(f"Unexpected input type: {type(depth)}")
+
+
+def export_depth_to_16bit_png(
+    depth: Union[np.ndarray, torch.FloatTensor, List[np.ndarray], List[torch.FloatTensor]],
+    val_min: float = 0.0,
+    val_max: float = 1.0,
+) -> Union[PIL.Image.Image, List[PIL.Image.Image]]:
+    def export_depth_to_16bit_png_one(img, idx=None):
+        prefix = "Depth" + (f"[{idx}]" if idx else "")
+        if not isinstance(img, np.ndarray) and not torch.is_tensor(img):
+            raise ValueError(f"{prefix}: unexpected type={type(img)}.")
+        if img.ndim != 2:
+            raise ValueError(f"{prefix}: unexpected shape={img.shape}.")
+        if torch.is_tensor(img):
+            img = img.cpu().numpy()
+        if not np.issubdtype(img.dtype, np.floating):
+            raise ValueError(f"{prefix}: unexected dtype={img.dtype}.")
+        if val_min != 0.0 or val_max != 1.0:
+            img = (img - val_min) / (val_max - val_min)
+        img = (img * (2**16 - 1)).astype(np.uint16)
+        img = PIL.Image.fromarray(img, mode="I;16")
+        return img
+
+    if isinstance(depth, np.ndarray) or torch.is_tensor(depth):
+        if depth.ndim == 2:
+            return export_depth_to_16bit_png_one(depth)
+        if depth.ndim == 3:
+            return [export_depth_to_16bit_png_one(img, idx) for idx, img in enumerate(depth)]
+        if depth.ndim == 4:
+            if depth.shape[1] != 1:
+                raise ValueError(f"Unexpected input shape={depth.shape}, expecting [N,1,H,W].")
+            return [export_depth_to_16bit_png_one(img[0], idx) for idx, img in enumerate(depth)]
+        raise ValueError(f"Unexpected input shape={depth.shape}: expecting 2, 3, or 4 dimensions.")
+    elif isinstance(depth, list):
+        return [export_depth_to_16bit_png_one(img, idx) for idx, img in enumerate(depth)]
+    else:
+        raise ValueError(f"Unexpected input type: {type(depth)}")
 
 
 def visualize_normals(
-    normals: torch.FloatTensor,
+    normals: Union[
+        np.ndarray,
+        torch.FloatTensor,
+        List[np.ndarray],
+        List[torch.FloatTensor],
+    ],
     flip_x: bool = False,
     flip_y: bool = False,
     flip_z: bool = False,
-) -> PIL.Image.Image:
-    if normals.dim() != 3 or not torch.is_floating_point(normals) or normals.shape[2] != 3:
-        raise ValueError("Input should be a 3-dimensional floating point tensor of shape [H,W,3].")
+) -> Union[PIL.Image.Image, List[PIL.Image.Image]]:
+    """
+    Visualizes surface normals, such as predictions of the `MarigoldNormalsPipeline`.
 
-    visualization = normals
+    Args:
+        normals (`Union[np.ndarray, torch.FloatTensor, List[np.ndarray], List[torch.FloatTensor]]`): Surface normals.
+        flip_x (`bool`, *optional*, defaults to `False`): Flips the X axis of the normals frame of reference.
+                  Default direction is right.
+        flip_y (`bool`, *optional*, defaults to `False`):  Flips the Y axis of the normals frame of reference.
+                  Default direction is top.
+        flip_z (`bool`, *optional*, defaults to `False`): Flips the Z axis of the normals frame of reference.
+                  Default direction is facing the observer.
+
+    Returns: `PIL.Image.Image` or `List[PIL.Image.Image]` with surface normals visualization.
+    """
+    flip_vec = None
     if any((flip_x, flip_y, flip_z)):
-        flip_vec = [
-            (-1) ** flip_x,
-            (-1) ** flip_y,
-            (-1) ** flip_z,
-        ]
-        visualization *= torch.tensor(flip_vec, dtype=normals.dtype, device=normals.device)
+        flip_vec = torch.tensor(
+            [
+                (-1) ** flip_x,
+                (-1) ** flip_y,
+                (-1) ** flip_z,
+            ],
+            dtype=torch.float32,
+        )
 
-    visualization = (visualization + 1.0) * 0.5
-    visualization = (visualization * 255).to(dtype=torch.uint8, device="cpu").numpy()
-    visualization = PIL.Image.fromarray(visualization)
+    def visualize_normals_one(img, idx=None):
+        prefix = "Normals" + (f"[{idx}]" if idx else "")
+        if isinstance(img, np.ndarray) or torch.is_tensor(img):
+            if img.ndim != 3 or img.shape[0] != 3:
+                raise ValueError(f"{prefix}: unexpected shape={img.shape}.")
+            if isinstance(img, np.ndarray):
+                img = torch.from_numpy(img)
+            if not torch.is_floating_point(img):
+                raise ValueError(f"{prefix}: unexected dtype={img.dtype}.")
+        else:
+            raise ValueError(f"{prefix}: unexpected type={type(img)}.")
+        img = img.permute(1, 2, 0)
+        if flip_vec is not None:
+            img *= flip_vec.to(img.device)
+        img = (img + 1.0) * 0.5
+        img = (img * 255).to(dtype=torch.uint8, device="cpu").numpy()
+        img = PIL.Image.fromarray(img)
+        return img
 
-    return visualization
+    if isinstance(normals, np.ndarray) or torch.is_tensor(normals):
+        if normals.ndim == 3:
+            return visualize_normals_one(normals)
+        if normals.ndim == 4:
+            if normals.shape[1] != 3:
+                raise ValueError(f"Unexpected input shape={normals.shape}, expecting [N,3,H,W].")
+            return [visualize_normals_one(img, idx) for idx, img in enumerate(normals)]
+        raise ValueError(f"Unexpected input shape={normals.shape}: expecting 3 or 4 dimensions.")
+    elif isinstance(normals, list):
+        return [visualize_normals_one(img, idx) for idx, img in enumerate(normals)]
+    else:
+        raise ValueError(f"Unexpected input type: {type(normals)}")
