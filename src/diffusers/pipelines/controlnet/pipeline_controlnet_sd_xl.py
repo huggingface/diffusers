@@ -848,7 +848,6 @@ class StableDiffusionXLControlNetPipeline(
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
     def prepare_image(
         self,
         image,
@@ -859,6 +858,7 @@ class StableDiffusionXLControlNetPipeline(
         device,
         dtype,
         do_classifier_free_guidance=False,
+        do_perturbed_attention_guidance=False,
         guess_mode=False,
     ):
         image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
@@ -873,9 +873,13 @@ class StableDiffusionXLControlNetPipeline(
         image = image.repeat_interleave(repeat_by, dim=0)
 
         image = image.to(device=device, dtype=dtype)
-
-        if do_classifier_free_guidance and not guess_mode:
+        
+        if do_classifier_free_guidance and not do_perturbed_attention_guidance and not guess_mode:
             image = torch.cat([image] * 2)
+        elif not do_classifier_free_guidance and do_perturbed_attention_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
+        elif do_classifier_free_guidance and do_perturbed_attention_guidance and not guess_mode:
+            image = torch.cat([image] * 3)
 
         return image
 
@@ -1317,6 +1321,7 @@ class StableDiffusionXLControlNetPipeline(
                 device=device,
                 dtype=controlnet.dtype,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
+                do_perturbed_attention_guidance=self.do_perturbed_attention_guidance,
                 guess_mode=guess_mode,
             )
             height, width = image.shape[-2:]
