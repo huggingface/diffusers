@@ -426,6 +426,7 @@ jobs:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install timm
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports
