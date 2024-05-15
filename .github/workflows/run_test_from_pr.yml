@@ -1,4 +1,4 @@
-name: Run (SLOW) desired tests on our runner from a PR
+name: Run (SLOW) desired tests on our runner from a PR (applicable to GPUs only at the moment)
 
 on:
   workflow_dispatch:
@@ -36,6 +36,7 @@ jobs:
         run: |
           nvidia-smi
 
+      - uses: actions/checkout@v3
       - name: Install `gh`
         run: | 
             : # see https://github.com/cli/cli/blob/trunk/docs/install_linux.md#debian-ubuntu-linux-raspberry-pi-os-apt 
@@ -47,10 +48,9 @@ jobs:
             && apt update \
             && apt install gh -y
       
-      - name: Clone diffusers and checkout the PR branch
+      - name: Checkout the PR branch
         run: |
-          git clone https://github.com/huggingface/diffusers
-          cd diffusers && gh pr checkout ${{ github.event.inputs.pr_number }}
+          gh pr checkout ${{ github.event.inputs.pr_number }}
       
       - name: Run tests
         run: ${{ github.event.inputs.test_command }}
