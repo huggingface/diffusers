@@ -157,10 +157,10 @@ class AdaLayerNormContinuous(nn.Module):
     Args:
         embedding_dim (`int`): Embedding dimension to use during projection.
         conditioning_embedding_dim (`int`): Dimension of the input condition.
-        elementwise_affine (`bool`): Boolean flag to denote if affine transformation should be applied.
-        eps (`int`): Epsilon factor.
-        bias (`bias`): Boolean flag to denote if bias should be use.
-        norm_type (`str`): Normalization layer to use. Values supported: "layer_norm", "rms_norm".
+        elementwise_affine (`bool`, defaults to `True`): Boolean flag to denote if affine transformation should be applied.
+        eps (`float`, defaults to 1e-5): Epsilon factor.
+        bias (`bias`, defaults to `True`): Boolean flag to denote if bias should be use.
+        norm_type (`str`, defaults to `"layer_norm"`): Normalization layer to use. Values supported: "layer_norm", "rms_norm".
     """
 
     def __init__(
@@ -205,9 +205,9 @@ else:
 
         Args:
             dim (`int`): Dimensionality to use for the parameters.
-            eps (`int`): Epsilon factor.
-            elementwise_affine (`bool`): Boolean flag to denote if affine transformation should be applied.
-            bias (`bias`): Boolean flag to denote if bias should be use.
+            eps (`float`, defaults to 1e-5): Epsilon factor.
+            elementwise_affine (`bool`, defaults to `True`): Boolean flag to denote if affine transformation should be applied.
+            bias (`bias`, defaults to `True`): Boolean flag to denote if bias should be use.
         """
 
         def __init__(self, dim, eps: float = 1e-5, elementwise_affine: bool = True, bias: bool = True):
@@ -238,7 +238,7 @@ class RMSNorm(nn.Module):
     Args:
         dim (`int`): Number of dimensions to use for `weights`. Only effective when `elementwise_affine` is True.
         eps (`float`): Small value to use when calculating the reciprocal of the square-root.
-        elementwise_affine (`bool`): Boolean flag to denote if affine transformation should be applied.
+        elementwise_affine (`bool`, defaults to `True`): Boolean flag to denote if affine transformation should be applied.
     """
 
     def __init__(self, dim, eps: float, elementwise_affine: bool = True):
