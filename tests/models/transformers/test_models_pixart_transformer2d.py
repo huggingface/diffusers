@@ -33,6 +33,7 @@ enable_full_determinism()
 
 class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = PixArtTransformer2DModel
+    model_split_percents = [0.5, 0.5, 0.6]
     main_input_name = "hidden_states"
 
     @property
