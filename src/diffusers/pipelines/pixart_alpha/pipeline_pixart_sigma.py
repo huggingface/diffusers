@@ -227,7 +227,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         clean_caption: bool = False,
-        max_sequence_length: int = 120,
+        max_sequence_length: int = 300,
         **kwargs,
     ):
         r"""
@@ -254,7 +254,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                 string.
             clean_caption (`bool`, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
-            max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
+            max_sequence_length (`int`, defaults to 300): Maximum sequence length to use for the prompt.
         """
 
         if "mask_feature" in kwargs:
@@ -707,7 +707,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
                 `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images, they are resized back to
                 the requested resolution. Useful for generating non-square images.
-            max_sequence_length (`int` defaults to 120): Maximum sequence length to use with the `prompt`.
+            max_sequence_length (`int` defaults to 300): Maximum sequence length to use with the `prompt`.
 
         Examples:
 
