@@ -221,7 +221,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMix
             )
 
         # verify batch size of prompt and image are same if image is a list or tensor
-        if isinstance(image, list) or isinstance(image, torch.Tensor):
+        if isinstance(image, (list, torch.Tensor)):
             if isinstance(prompt, str):
                 batch_size = 1
             else:

@@ -185,7 +185,7 @@ def preprocess(image):
 def preprocess_mask(mask, batch_size: int = 1):
     if not isinstance(mask, torch.Tensor):
         # preprocess mask
-        if isinstance(mask, PIL.Image.Image) or isinstance(mask, np.ndarray):
+        if isinstance(mask, (PIL.Image.Image, np.ndarray)):
             mask = [mask]
 
         if isinstance(mask, list):
