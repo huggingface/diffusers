@@ -96,12 +96,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
-        # Define whether input is continuous or discrete depending on configuration
-        self.is_input_continuous = (in_channels is not None) and (patch_size is None)
-        self.is_input_vectorized = num_vector_embeds is not None
-        self.is_input_patches = in_channels is not None and patch_size is not None
-
         # Validate inputs.
         if patch_size is not None:
             if norm_type not in ["ada_norm", "ada_norm_zero", "ada_norm_single"]:
@@ -113,16 +107,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     f"When using a `patch_size` and this `norm_type` ({norm_type}), `num_embeds_ada_norm` cannot be None."
                 )
 
-        if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
-            deprecation_message = (
-                f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
-                " incorrectly set to `'layer_norm'`. Make sure to set `norm_type` to `'ada_norm'` in the config."
-                " Please make sure to update the config accordingly as leaving `norm_type` might led to incorrect"
-                " results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it"
-                " would be very nice if you could open a Pull request for the `transformer/config.json` file"
-            )
-            deprecate("norm_type!=num_embeds_ada_norm", "1.0.0", deprecation_message, standard_warn=False)
-            norm_type = "ada_norm"
+        # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
+        # Define whether input is continuous or discrete depending on configuration
+        self.is_input_continuous = (in_channels is not None) and (patch_size is None)
+        self.is_input_vectorized = num_vector_embeds is not None
+        self.is_input_patches = in_channels is not None and patch_size is not None
 
         if self.is_input_continuous and self.is_input_vectorized:
             raise ValueError(
@@ -140,6 +129,17 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 f" {patch_size}. Make sure that `in_channels`, `num_vector_embeds` or `num_patches` is not None."
             )
 
+        if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
+            deprecation_message = (
+                f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
+                " incorrectly set to `'layer_norm'`. Make sure to set `norm_type` to `'ada_norm'` in the config."
+                " Please make sure to update the config accordingly as leaving `norm_type` might led to incorrect"
+                " results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it"
+                " would be very nice if you could open a Pull request for the `transformer/config.json` file"
+            )
+            deprecate("norm_type!=num_embeds_ada_norm", "1.0.0", deprecation_message, standard_warn=False)
+            norm_type = "ada_norm"
+
         # Set some common variables used across the board.
         self.use_linear_projection = use_linear_projection
         self.interpolation_scale = interpolation_scale
@@ -150,6 +150,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.in_channels = in_channels
         self.out_channels = in_channels if out_channels is None else out_channels
         self.gradient_checkpointing = False
+
+        if use_additional_conditions is None:
+            if norm_type == "ada_norm_single" and sample_size == 128:
+                use_additional_conditions = True
+            else:
+                use_additional_conditions = False
+        self.use_additional_conditions = use_additional_conditions
 
         # 2. Initialize the right blocks.
         # These functions follow a common structure:
