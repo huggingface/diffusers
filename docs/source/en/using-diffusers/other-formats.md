@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Diffusion models are saved in various file types and organized in different layouts. Diffusers stores model weights as safetensors files in a multifolder layout and it also supports loading files (like safetensors and ckpt files) from a single file layout which is commonly used in the diffusion ecosystem.
+Diffusion models are saved in various file types and organized in different layouts. Diffusers stores model weights as safetensors files in *Diffusers-multifolder* layout and it also supports loading files (like safetensors and ckpt files) from a *single-file* layout which is commonly used in the diffusion ecosystem.
 
 Each layout has its own benefits and use cases, and this guide will show you how to load the different files and layouts, and how to convert them.
 
@@ -22,10 +22,10 @@ Each layout has its own benefits and use cases, and this guide will show you how
 
 PyTorch model weights are typically saved with Python's [pickle](https://docs.python.org/3/library/pickle.html) utility as ckpt or bin files. However, pickle is not secure and pickled files may contain malicious code that can be executed. This vulnerability is a serious concern given the popularity of model sharing. To address this security issue, the [Safetensors](https://hf.co/docs/safetensors) library was developed as a secure alternative to pickle, which saves models as safetensors files.
 
-### Safetensors
+### safetensors
 
 > [!TIP]
-> Learn more about the design decisions and why Safetensors is the preferred file format for saving and loading model weights in the [Safetensors audited as really safe and becoming the default](https://blog.eleuther.ai/safetensors-security-audit/) blog post.
+> Learn more about the design decisions and why safetensor files are preferred for saving and loading model weights in the [Safetensors audited as really safe and becoming the default](https://blog.eleuther.ai/safetensors-security-audit/) blog post.
 
 [Safetensors](https://hf.co/docs/safetensors) is a safe and fast file format for securely storing and loading tensors. Safetensors restricts the header size to limit certain types of attacks, supports lazy loading (useful for distributed setups), and has generally faster loading speeds.
 
@@ -35,10 +35,10 @@ Make sure you have the [Safetensors](https://hf.co/docs/safetensors) library ins
 !pip install safetensors
 ```
 
-Safetensor stores weights in a safetensors file. Diffusers loads safetensors files by default if they're available and the Safetensors library is installed. There are two ways safetensors files can be organized:
+Safetensors stores weights in a safetensors file. Diffusers loads safetensors files by default if they're available and the Safetensors library is installed. There are two ways safetensors files can be organized:
 
-1. all the model weights may be saved in a single file (check out the [WarriorMama777/OrangeMixs](https://hf.co/WarriorMama777/OrangeMixs/tree/main/Models/AbyssOrangeMix) repository as an example)
-2. there may be several separate safetensors files, one for each pipeline component (text encoder, UNet, VAE), organized in subfolders (check out the [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5/tree/main) repository as an example)
+1. Diffusers-multifolder layout: there may be several separate safetensors files, one for each pipeline component (text encoder, UNet, VAE), organized in subfolders (check out the [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5/tree/main) repository as an example)
+2. single-file layout: all the model weights may be saved in a single file (check out the [WarriorMama777/OrangeMixs](https://hf.co/WarriorMama777/OrangeMixs/tree/main/Models/AbyssOrangeMix) repository as an example)
 
 <hfoptions id="safetensors">
 <hfoption id="multifolder">
@@ -124,11 +124,11 @@ pipeline = StableDiffusionPipeline.from_single_file(
 
 ## Storage layout
 
-There are two ways model files are organized, either in a multifolder layout or in a single file layout. Diffusers uses the multifolder layout by default where each component file (text encoder, UNet, VAE) is stored in a separate subfolder. Diffusers also supports loading models from a single file layout where all the components are bundled together.
+There are two ways model files are organized, either in a Diffusers-multifolder layout or in a single-file layout. The Diffusers-multifolder layout is the default, and each component file (text encoder, UNet, VAE) is stored in a separate subfolder. Diffusers also supports loading models from a single-file layout where all the components are bundled together.
 
-### Multifolder
+### Diffusers-multifolder
 
-The multifolder layout is the default storage layout for Diffusers. Each component's (text encoder, UNet, VAE) weights are stored in a separate subfolder. The weights can be stored as safetensors or ckpt files.
+The Diffusers-multifolder layout is the default storage layout for Diffusers. Each component's (text encoder, UNet, VAE) weights are stored in a separate subfolder. The weights can be stored as safetensors or ckpt files.
 
 <div class="flex flex-row gap-4">
   <div class="flex-1">
@@ -141,7 +141,7 @@ The multifolder layout is the default storage layout for Diffusers. Each compone
   </div>
 </div>
 
-To load from a multifolder layout, use the [`~DiffusionPipeline.from_pretrained`] method.
+To load from Diffusers-multifolder layout, use the [`~DiffusionPipeline.from_pretrained`] method.
 
 ```py
 from diffusers import DiffusionPipeline
@@ -154,7 +154,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 ).to("cuda")
 ```
 
-Benefits of using the multifolder layout include:
+Benefits of using the Diffusers-multifolder layout include:
 
 1. Faster to load each component file individually or in parallel.
 2. Reduced memory usage because you only load the components you need. For example, models like [SDXL Turbo](https://hf.co/stabilityai/sdxl-turbo), [SDXL Lightning](https://hf.co/ByteDance/SDXL-Lightning), and [Hyper-SD](https://hf.co/ByteDance/Hyper-SD) have the same components except for the UNet. You can reuse their shared components with the [`~DiffusionPipeline.from_pipe`] method without consuming any additional memory (take a look at the [Reuse a pipeline](./loading#reuse-a-pipeline) guide) and only load the UNet. This way, you don't need to download redundant components and unnecessarily use more memory.
@@ -213,15 +213,15 @@ Benefits of using the multifolder layout include:
 
 5. More visibility and information about a model's components, which are stored in a [config.json](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/unet/config.json) file in each component subfolder.
 
-### Single file
+### Single-file
 
-The single file layout stores all the model weights in a single file. All the model components (text encoder, UNet, VAE) weights are kept together instead of separately in subfolders. This can be a safetensors or ckpt file.
+The single-file layout stores all the model weights in a single file. All the model components (text encoder, UNet, VAE) weights are kept together instead of separately in subfolders. This can be a safetensors or ckpt file.
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/single-file-layout.png"/>
 </div>
 
-To load from a single file layout, use the [`~loaders.FromSingleFileMixin.from_single_file`] method.
+To load from a single-file layout, use the [`~loaders.FromSingleFileMixin.from_single_file`] method.
 
 ```py
 import torch
@@ -235,9 +235,9 @@ pipeline = StableDiffusionXLPipeline.from_single_file(
 ).to("cuda")
 ```
 
-Benefits of using a single file layout include:
+Benefits of using a single-file layout include:
 
-1. Easy compatibility with diffusion interfaces such as [ComfyUI](https://github.com/comfyanonymous/ComfyUI) or [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) which commonly use a single file layout.
+1. Easy compatibility with diffusion interfaces such as [ComfyUI](https://github.com/comfyanonymous/ComfyUI) or [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) which commonly use a single-file layout.
 2. Easier to manage (download and share) a single file.
 
 ## Convert layout and files
@@ -247,15 +247,15 @@ Diffusers provides many scripts and methods to convert storage layouts and file 
 Take a look at the [diffusers/scripts](https://github.com/huggingface/diffusers/tree/main/scripts) collection to find a script that fits your conversion needs.
 
 > [!TIP]
-> Scripts that have "`to_diffusers`" appended at the end mean they convert a model to the multifolder format used by Diffusers. Each script has their own specific set of arguments for configuring the conversion, so make sure you check what arguments are available!
+> Scripts that have "`to_diffusers`" appended at the end mean they convert a model to the Diffusers-multifolder layout. Each script has their own specific set of arguments for configuring the conversion, so make sure you check what arguments are available!
 
-For example, to convert a Stable Diffusion XL model stored in Diffusers multifolder format to a single file type, run the [convert_diffusers_to_original_sdxl.py](https://github.com/huggingface/diffusers/blob/main/scripts/convert_diffusers_to_original_sdxl.py) script. Provide the path to the model to convert, and the path to save the converted model to. You can optionally specify whether you want to save the model as a safetensors file and whether to save the model in half-precision.
+For example, to convert a Stable Diffusion XL model stored in Diffusers-multifolder layout to a single-file layout, run the [convert_diffusers_to_original_sdxl.py](https://github.com/huggingface/diffusers/blob/main/scripts/convert_diffusers_to_original_sdxl.py) script. Provide the path to the model to convert, and the path to save the converted model to. You can optionally specify whether you want to save the model as a safetensors file and whether to save the model in half-precision.
 
 ```bash
 python convert_diffusers_to_original_sdxl.py --model_path path/to/model/to/convert --checkpoint_path path/to/save/model/to --use_safetensors
 ```
 
-You can also save a model to the multifolder format with the [`~DiffusionPipeline.save_pretrained`] method. This creates a directory for you if it doesn't already exist, and it also saves the files as a safetensors file by default.
+You can also save a model to Diffusers-multifolder layout with the [`~DiffusionPipeline.save_pretrained`] method. This creates a directory for you if it doesn't already exist, and it also saves the files as a safetensors file by default.
 
 ```py
 from diffusers import StableDiffusionXLPipeline
@@ -266,4 +266,4 @@ pipeline = StableDiffusionXLPipeline.from_single_file(
 pipeline.save_pretrained()
 ```
 
-Lastly, there are also Spaces, such as [SD To Diffusers](https://hf.co/spaces/diffusers/sd-to-diffusers) and [SD-XL To Diffusers](https://hf.co/spaces/diffusers/sdxl-to-diffusers), that provide a more user-friendly interface for converting models to the multifolder format. This is the easiest and most convenient option for converting layouts, and it'll open a PR on your model repository with the converted files. However, this option is not as reliable as running a script, and the Space may fail for more complicated models.
+Lastly, there are also Spaces, such as [SD To Diffusers](https://hf.co/spaces/diffusers/sd-to-diffusers) and [SD-XL To Diffusers](https://hf.co/spaces/diffusers/sdxl-to-diffusers), that provide a more user-friendly interface for converting models to Diffusers-multifolder layout. This is the easiest and most convenient option for converting layouts, and it'll open a PR on your model repository with the converted files. However, this option is not as reliable as running a script, and the Space may fail for more complicated models.
