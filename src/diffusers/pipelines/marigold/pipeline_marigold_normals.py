@@ -383,8 +383,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             for i in range(0, num_images * ensemble_size, batch_size):
                 batch_image_latent = image_latent[i : i + batch_size]  # [B,4,h,w]
                 batch_pred_latent = pred_latent[i : i + batch_size]  # [B,4,h,w]
-                bsize = batch_image_latent.shape[0]
-                text = batch_empty_text_embedding[:bsize]  # [B,2,1024]
+                effective_batch_size = batch_image_latent.shape[0]
+                text = batch_empty_text_embedding[:effective_batch_size]  # [B,2,1024]
 
                 self.scheduler.set_timesteps(num_inference_steps, device=device)
 
@@ -394,7 +394,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                     batch_pred_latent = self.scheduler.step(
                         noise, t, batch_pred_latent, generator=generator
                     ).prev_sample  # [B,4,h,w]
-                    progress_bar.update(bsize)
+                    progress_bar.update(effective_batch_size)
 
                 pred_latents.append(batch_pred_latent)
 
