@@ -180,6 +180,7 @@ class StableDiffusionInstructPix2PixPipeline(
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
         r"""
@@ -415,6 +416,7 @@ class StableDiffusionInstructPix2PixPipeline(
                     t,
                     encoder_hidden_states=prompt_embeds,
                     added_cond_kwargs=added_cond_kwargs,
+                    cross_attention_kwargs=cross_attention_kwargs,
                     return_dict=False,
                 )[0]
 
