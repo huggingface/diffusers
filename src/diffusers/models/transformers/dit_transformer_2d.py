@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import deprecate, is_torch_version, logging
+from ...utils import is_torch_version, logging
 from ..attention import BasicTransformerBlock
 from ..embeddings import PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -35,7 +35,7 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
     Parameters:
         num_attention_heads (int, optional, defaults to 16): The number of heads to use for multi-head attention.
         attention_head_dim (int, optional, defaults to 72): The number of channels in each head.
-        in_channels (int, optional): The number of channels in the input.
+        in_channels (int, defaults to 4): The number of channels in the input.
         out_channels (int, optional):
             The number of channels in the output. Specify this parameter if the output channel number differs from the
             input.
@@ -43,21 +43,17 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
         dropout (float, optional, defaults to 0.0): The dropout probability to use within the Transformer blocks.
         norm_num_groups (int, optional, defaults to 32):
             Number of groups for group normalization within Transformer blocks.
-        cross_attention_dim (int, optional):
-            The dimensionality for cross-attention layers, typically matching the encoder's hidden dimension.
         attention_bias (bool, optional, defaults to True):
             Configure if the Transformer blocks' attention should contain a bias parameter.
-        sample_size (int, optional):
+        sample_size (int, defaults to 32):
             The width of the latent images (specify if the input is discrete). This parameter is fixed during training.
-        patch_size (int, optional):
+        patch_size (int, defaults to 2):
             Size of the patches the model processes, relevant for architectures working on non-sequential data.
         activation_fn (str, optional, defaults to "gelu-approximate"):
             Activation function to use in feed-forward networks within Transformer blocks.
         num_embeds_ada_norm (int, optional, defaults to 1000):
             Number of embeddings for AdaLayerNorm, fixed during training and affects the maximum denoising steps during
             inference.
-        only_cross_attention (bool, optional, defaults to False):
-            Indicates if only cross-attention layers should be used, ignoring self-attention layers.
         upcast_attention (bool, optional, defaults to False):
             If true, upcasts the attention mechanism dimensions for potentially improved performance.
         norm_type (str, optional, defaults to "ada_norm_zero"):
@@ -66,10 +62,6 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
             If true, enables element-wise affine parameters in the normalization layers.
         norm_eps (float, optional, defaults to 1e-5):
             A small constant added to the denominator in normalization layers to prevent division by zero.
-        use_linear_projection (bool, optional, defaults to False):
-            Deprecated argument. Will be removed in a future version.
-        num_vector_embeds (bool, optional, defaults to False):
-            Deprecated argument. Will be removed in a future version.
     """
 
     _supports_gradient_checkpointing = True
@@ -79,42 +71,24 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
         self,
         num_attention_heads: int = 16,
         attention_head_dim: int = 72,
-        in_channels: Optional[int] = None,
+        in_channels: int = 4,
         out_channels: Optional[int] = None,
         num_layers: int = 28,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
-        cross_attention_dim: Optional[int] = None,
         attention_bias: bool = True,
-        sample_size: Optional[int] = None,
-        patch_size: Optional[int] = None,
+        sample_size: int = 32,
+        patch_size: int = 2,
         activation_fn: str = "gelu-approximate",
         num_embeds_ada_norm: Optional[int] = 1000,
-        only_cross_attention: bool = False,
         upcast_attention: bool = False,
         norm_type: str = "ada_norm_zero",
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-5,
-        use_linear_projection: str = False,
-        num_vector_embeds: bool = False,
     ):
         super().__init__()
 
         # Validate inputs.
-        deprecation_message = f"`use_linear_projection` is not a valid argument for {self.__class__.__name__}. Please update the configuration of this model to remove this argument. This argument will be removed from the class constructor in a future version."
-        deprecate("use_linear_projection", "1.0.0", deprecation_message)
-        deprecation_message = f"`num_vector_embeds` is not a valid argument for {self.__class__.__name__}. Please update the configuration of this model to remove this argument. This argument will be removed from the class constructor in a future version."
-        deprecate("num_vector_embeds", "1.0.0", deprecation_message)
-
-        if sample_size is None:
-            raise ValueError(f"{self.__class__.__name__} over patched input must provide `sample_size`.")
-
-        if in_channels is None and patch_size is None:
-            raise ValueError(
-                f"Has to define `in_channels`: {in_channels}, or patch_size:"
-                f" {patch_size}. Make sure that `in_channels`, and `patch_size` are not None."
-            )
-
         if norm_type != "ada_norm_zero":
             raise NotImplementedError(
                 f"Forward pass is not implemented when `patch_size` is not None and `norm_type` is '{norm_type}'."
@@ -150,11 +124,9 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
                     self.config.num_attention_heads,
                     self.config.attention_head_dim,
                     dropout=self.config.dropout,
-                    cross_attention_dim=self.config.cross_attention_dim,
                     activation_fn=self.config.activation_fn,
                     num_embeds_ada_norm=self.config.num_embeds_ada_norm,
                     attention_bias=self.config.attention_bias,
-                    only_cross_attention=self.config.only_cross_attention,
                     upcast_attention=self.config.upcast_attention,
                     norm_type=norm_type,
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
