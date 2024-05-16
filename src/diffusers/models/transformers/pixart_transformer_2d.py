@@ -20,9 +20,9 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import deprecate, is_torch_version, logging
 from ..attention import BasicTransformerBlock
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
+from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
-from .transformer_2d_utils import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
