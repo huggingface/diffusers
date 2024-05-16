@@ -1903,7 +1903,7 @@ class PipelineTesterMixin:
                 )
 
                 if step_index == cutoff_step:
-                    callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
+                    callback_kwargs[self.tensor_inputs[0]] = torch.zeros_like(callback_kwargs[self.tensor_inputs[0]])
                 return callback_kwargs
 
         # check both args none
@@ -1913,6 +1913,11 @@ class PipelineTesterMixin:
         # check both args with values
         with self.assertRaises(ValueError):
             _wrong_official_callback = ChangeTensorCallback(cutoff_step_ratio=0.5, cutoff_step_index=1)
+
+        # If the pipeline is image to image, set the strength and steps so we have 2 steps
+        if "strength" in inputs:
+            inputs["strength"] = 0.5
+            inputs["num_inference_steps"] = 4
 
         # check with cutoff_step_ratio
         callback_change_tensor_ratio = ChangeTensorCallback(cutoff_step_ratio=0.5)
