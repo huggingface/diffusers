@@ -759,7 +759,7 @@ class PromptDataset(Dataset):
 
 
 def model_has_vae(args):
-    config_file_name = os.path.join("vae", AutoencoderKL.config_name)
+    config_file_name = Path("vae", AutoencoderKL.config_name).as_posix()
     if os.path.isdir(args.pretrained_model_name_or_path):
         config_file_name = os.path.join(args.pretrained_model_name_or_path, config_file_name)
         return os.path.isfile(config_file_name)
