@@ -236,7 +236,15 @@ class StableDiffusionXLControlNetPipeline(
         "feature_extractor",
         "image_encoder",
     ]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    _callback_tensor_inputs = [
+        "latents",
+        "prompt_embeds",
+        "negative_prompt_embeds",
+        "add_text_embeds",
+        "add_time_ids",
+        "negative_pooled_prompt_embeds",
+        "negative_add_time_ids",
+    ]
 
     def __init__(
         self,
