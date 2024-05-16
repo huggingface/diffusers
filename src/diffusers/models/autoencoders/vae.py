@@ -36,11 +36,12 @@ class DecoderOutput(BaseOutput):
     Output of decoding method.
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)`):
             The decoded output sample from the last layer of the model.
     """
 
-    sample: torch.FloatTensor
+    sample: torch.Tensor
+    commit_loss: Optional[torch.FloatTensor] = None
 
 
 class Encoder(nn.Module):
@@ -136,7 +137,7 @@ class Encoder(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, sample: torch.Tensor) -> torch.Tensor:
         r"""The forward method of the `Encoder` class."""
 
         sample = self.conv_in(sample)
@@ -282,9 +283,9 @@ class Decoder(nn.Module):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
-        latent_embeds: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        sample: torch.Tensor,
+        latent_embeds: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         r"""The forward method of the `Decoder` class."""
 
         sample = self.conv_in(sample)
@@ -367,7 +368,7 @@ class UpSample(nn.Module):
         self.out_channels = out_channels
         self.deconv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
 
-    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         r"""The forward method of the `UpSample` class."""
         x = torch.relu(x)
         x = self.deconv(x)
@@ -416,7 +417,7 @@ class MaskConditionEncoder(nn.Module):
 
         self.layers = nn.Sequential(*layers)
 
-    def forward(self, x: torch.FloatTensor, mask=None) -> torch.FloatTensor:
+    def forward(self, x: torch.Tensor, mask=None) -> torch.Tensor:
         r"""The forward method of the `MaskConditionEncoder` class."""
         out = {}
         for l in range(len(self.layers)):
@@ -533,11 +534,11 @@ class MaskConditionDecoder(nn.Module):
 
     def forward(
         self,
-        z: torch.FloatTensor,
-        image: Optional[torch.FloatTensor] = None,
-        mask: Optional[torch.FloatTensor] = None,
-        latent_embeds: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        z: torch.Tensor,
+        image: Optional[torch.Tensor] = None,
+        mask: Optional[torch.Tensor] = None,
+        latent_embeds: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         r"""The forward method of the `MaskConditionDecoder` class."""
         sample = z
         sample = self.conv_in(sample)
@@ -711,7 +712,7 @@ class VectorQuantizer(nn.Module):
         back = torch.gather(used[None, :][inds.shape[0] * [0], :], 1, inds)
         return back.reshape(ishape)
 
-    def forward(self, z: torch.FloatTensor) -> Tuple[torch.FloatTensor, torch.FloatTensor, Tuple]:
+    def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, Tuple]:
         # reshape z -> (batch, height, width, channel) and flatten
         z = z.permute(0, 2, 3, 1).contiguous()
         z_flattened = z.view(-1, self.vq_embed_dim)
@@ -730,7 +731,7 @@ class VectorQuantizer(nn.Module):
             loss = torch.mean((z_q.detach() - z) ** 2) + self.beta * torch.mean((z_q - z.detach()) ** 2)
 
         # preserve gradients
-        z_q: torch.FloatTensor = z + (z_q - z).detach()
+        z_q: torch.Tensor = z + (z_q - z).detach()
 
         # reshape back to match original input shape
         z_q = z_q.permute(0, 3, 1, 2).contiguous()
@@ -745,7 +746,7 @@ class VectorQuantizer(nn.Module):
 
         return z_q, loss, (perplexity, min_encodings, min_encoding_indices)
 
-    def get_codebook_entry(self, indices: torch.LongTensor, shape: Tuple[int, ...]) -> torch.FloatTensor:
+    def get_codebook_entry(self, indices: torch.LongTensor, shape: Tuple[int, ...]) -> torch.Tensor:
         # shape specifying (batch, height, width, channel)
         if self.remap is not None:
             indices = indices.reshape(shape[0], -1)  # add batch axis
@@ -753,7 +754,7 @@ class VectorQuantizer(nn.Module):
             indices = indices.reshape(-1)  # flatten again
 
         # get quantized latent vectors
-        z_q: torch.FloatTensor = self.embedding(indices)
+        z_q: torch.Tensor = self.embedding(indices)
 
         if shape is not None:
             z_q = z_q.view(shape)
@@ -776,7 +777,7 @@ class DiagonalGaussianDistribution(object):
                 self.mean, device=self.parameters.device, dtype=self.parameters.dtype
             )
 
-    def sample(self, generator: Optional[torch.Generator] = None) -> torch.FloatTensor:
+    def sample(self, generator: Optional[torch.Generator] = None) -> torch.Tensor:
         # make sure sample is on the same device as the parameters and has same dtype
         sample = randn_tensor(
             self.mean.shape,
@@ -873,7 +874,7 @@ class EncoderTiny(nn.Module):
         self.layers = nn.Sequential(*layers)
         self.gradient_checkpointing = False
 
-    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         r"""The forward method of the `EncoderTiny` class."""
         if self.training and self.gradient_checkpointing:
 
@@ -956,7 +957,7 @@ class DecoderTiny(nn.Module):
         self.layers = nn.Sequential(*layers)
         self.gradient_checkpointing = False
 
-    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         r"""The forward method of the `DecoderTiny` class."""
         # Clamp.
         x = torch.tanh(x / 3) * 3

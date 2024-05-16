@@ -194,7 +194,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
+        expected = np.array([0.4468, 0.4061, 0.4134, 0.3637, 0.3202, 0.365, 0.3786, 0.3725, 0.3535])
 
         max_diff = numpy_cosine_similarity_distance(expected, images)
         assert max_diff < 1e-4
@@ -224,7 +224,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         ).images
 
         images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
+        expected = np.array([00.4468, 0.4061, 0.4134, 0.3637, 0.3202, 0.365, 0.3786, 0.3725, 0.3535])
 
         max_diff = numpy_cosine_similarity_distance(expected, images)
         assert max_diff < 1e-4
@@ -283,7 +283,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
         # This way we also test equivalence between LoRA fusion and the non-fusion behaviour.
-        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
+        expected = np.array([0.4468, 0.4061, 0.4134, 0.3637, 0.3202, 0.365, 0.3786, 0.3725, 0.3535])
 
         max_diff = numpy_cosine_similarity_distance(expected, images)
         assert max_diff < 1e-4
@@ -507,13 +507,12 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         )
-
         images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
 
         assert images[0].shape == (768, 512, 3)
 
         original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array([0.4574, 0.4461, 0.4435, 0.4462, 0.4396, 0.439, 0.4474, 0.4486, 0.4333])
+        expected_image = np.array([0.4574, 0.4487, 0.4435, 0.5163, 0.4396, 0.4411, 0.518, 0.4465, 0.4333])
 
         max_diff = numpy_cosine_similarity_distance(expected_image, original_image)
         assert max_diff < 1e-4

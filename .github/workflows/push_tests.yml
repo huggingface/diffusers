@@ -56,6 +56,7 @@ jobs:
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
       fail-fast: false
+      max-parallel: 8
       matrix:
         module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
     runs-on: [single-gpu, nvidia-gpu, t4, ci]
@@ -124,7 +125,7 @@ jobs:
         shell: bash
     strategy:
       matrix:
-        module: [models, schedulers, lora, others]
+        module: [models, schedulers, lora, others, single_file]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
@@ -425,6 +426,7 @@ jobs:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install timm
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports
