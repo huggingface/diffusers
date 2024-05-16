@@ -46,7 +46,7 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
         attention_bias (bool, optional, defaults to True):
             Configure if the Transformer blocks' attention should contain a bias parameter.
         sample_size (int, defaults to 32):
-            The width of the latent images (specify if the input is discrete). This parameter is fixed during training.
+            The width of the latent images. This parameter is fixed during training.
         patch_size (int, defaults to 2):
             Size of the patches the model processes, relevant for architectures working on non-sequential data.
         activation_fn (str, optional, defaults to "gelu-approximate"):
