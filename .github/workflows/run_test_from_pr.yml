@@ -1,0 +1,56 @@
+name: Run (SLOW) desired tests on our runner from a PR (applicable to GPUs only at the moment)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number: 
+        description: 'PR number'
+        required: true
+      docker_image:
+        default: 'diffusers/diffusers-pytorch-cuda'
+        description: 'Name of the Docker image'
+        required: true
+      test_command:
+        description: 'Test command to run (e.g.: `pytest tests/pipelines/dit/`). Any valid pytest command can be provided.'
+        required: true
+
+env:
+  IS_GITHUB_CI: "1"
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  HF_HOME: /mnt/cache
+  DIFFUSERS_IS_CI: yes
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8
+  RUN_SLOW: yes
+
+jobs:
+  run_tests:
+    name: "Run a test on our runner from a PR"
+    runs-on: [single-gpu, nvidia-gpu, "t4", ci]
+    container:
+      image: ${{ github.event.inputs.docker_image }}
+      options: --gpus all --privileged --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+
+    steps:
+      - name: NVIDIA-SMI
+        run: |
+          nvidia-smi
+
+      - uses: actions/checkout@v3
+      - name: Install `gh`
+        run: | 
+            : # see https://github.com/cli/cli/blob/trunk/docs/install_linux.md#debian-ubuntu-linux-raspberry-pi-os-apt 
+            (type -p wget >/dev/null || (apt update && apt-get install wget -y)) \
+            && mkdir -p -m 755 /etc/apt/keyrings \
+            && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+            && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+            && apt update \
+            && apt install gh -y
+      
+      - name: Checkout the PR branch
+        run: |
+          gh pr checkout ${{ github.event.inputs.pr_number }}
+      
+      - name: Run tests
+        run: ${{ github.event.inputs.test_command }}
