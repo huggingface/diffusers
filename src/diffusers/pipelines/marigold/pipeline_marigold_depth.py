@@ -386,7 +386,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         )  # [B,1024,2]
 
         # 5. Denoising loop. Model invocation: self.unet
-        clean_latent = []
+        pred_latents = []
 
         with self.progress_bar(total=num_images * ensemble_size * num_inference_steps) as progress_bar:
             for i in range(0, num_images * ensemble_size, batch_size):
@@ -405,13 +405,20 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                     ).prev_sample  # [B,4,h,w]
                     progress_bar.update(bsize)
 
-                clean_latent.append(batch_pred_latent)
+                pred_latents.append(batch_pred_latent)
 
-                del batch_image_latent, batch_pred_latent, text, batch_latent, noise
+        pred_latent = torch.cat(pred_latents, dim=0)  # [N*E,4,h,w]
 
-        pred_latent = torch.cat(clean_latent, dim=0)  # [N*E,4,h,w]
-
-        del clean_latent, image_latent, batch_empty_text_embedding
+        del (
+            pred_latents,
+            image_latent,
+            batch_empty_text_embedding,
+            batch_image_latent,
+            batch_pred_latent,
+            text,
+            batch_latent,
+            noise,
+        )
 
         # 6. Decode prediction from latent into pixel space. Model invocation: self.vae.decoder
         prediction = torch.cat(
