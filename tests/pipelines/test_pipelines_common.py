@@ -29,7 +29,12 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
-from diffusers.callbacks import PipelineCallback
+from diffusers.callbacks import (
+    IPAdapterScaleCutoffCallback,
+    PipelineCallback,
+    SDCFGCutoffCallback,
+    SDXLCFGCutoffCallback,
+)
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
@@ -841,6 +846,50 @@ class PipelineKarrasSchedulerTesterMixin:
                 inputs["num_inference_steps"] = 2
 
         assert check_same_shape(outputs)
+
+
+class OficialCallbacksTesterMixin:
+    """
+    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
+    It provides a set of common tests for pipelines that support official callbacks.
+    """
+
+    @property
+    def original_pipeline_class(self):
+        if "xl" in self.pipeline_class.__name__.lower():
+            original_pipeline_class = StableDiffusionXLPipeline
+        else:
+            original_pipeline_class = StableDiffusionPipeline
+
+        return original_pipeline_class
+
+    def test_official_callback_cfg_cutoff(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if "guidance_scale" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        if self.original_pipeline_class == StableDiffusionPipeline:
+            official_callback = SDCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=1)
+        elif self.original_pipeline_class == StableDiffusionXLPipeline:
+            official_callback = SDXLCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=1)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        # If the pipeline is image to image, set the strength and steps so we have 2 steps
+        if "strength" in inputs:
+            inputs["strength"] = 0.5
+            inputs["num_inference_steps"] = 4
+
+        inputs["callback_on_step_end"] = official_callback
+        _ = pipe(**inputs)[0]
+
+        assert pipe.guidance_scale == 0.0
 
 
 @require_torch

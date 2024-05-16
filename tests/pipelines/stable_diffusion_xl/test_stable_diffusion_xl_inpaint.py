@@ -48,14 +48,23 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    OficialCallbacksTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
 class StableDiffusionXLInpaintPipelineFastTests(
-    IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+    unittest.TestCase,
+    OficialCallbacksTesterMixin,
 ):
     pipeline_class = StableDiffusionXLInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
