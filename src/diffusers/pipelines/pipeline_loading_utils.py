@@ -27,7 +27,6 @@ from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
 from .. import __version__
-from ..models import DiTTransformer2DModel, PixArtTransformer2DModel
 from ..utils import (
     FLAX_WEIGHTS_NAME,
     ONNX_EXTERNAL_WEIGHTS_NAME,
@@ -88,15 +87,6 @@ LOADABLE_CLASSES = {
 ALL_IMPORTABLE_CLASSES = {}
 for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
-
-
-# Define a remapping dictionary to use the updated Transformer2D variant instead of the
-# monolithic `Transformer2DModel` class.
-REMAPPING = {
-    "DiTPipeline": {"Transformer2DModel": DiTTransformer2DModel},
-    "PixArtAlphaPipeline": {"Transformer2DModel": PixArtTransformer2DModel},
-    "PixArtSigmaPipeline": {"Transformer2DModel": PixArtTransformer2DModel},
-}
 
 
 def is_safetensors_compatible(filenames, variant=None, passed_components=None) -> bool:
@@ -652,15 +642,6 @@ def load_sub_model(
             f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
         )
 
-    if pipeline_class.__name__ in REMAPPING:
-        if class_obj.__name__ in REMAPPING[pipeline_class.__name__]:
-            obj = REMAPPING[pipeline_class.__name__][class_obj.__name__]
-            logger.info(
-                f"Changing `{name}` object of `{pipeline_class.__name__}` to be of `{obj.__name__}` type from `{class_obj.__name__}` type."
-                " Note that this doesn't affect the final results. It would be great to reserialize the pipeline with the updated components"
-                " and submit a PR to underlying repository on the Hugging Face Hub."
-            )
-            class_obj = REMAPPING[pipeline_class.__name__][class_obj.__name__]
     load_method = getattr(class_obj, load_method_name)
 
     # add kwargs to loading method
