@@ -478,7 +478,10 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         return image_latent, pred_latent
 
     def decode_prediction(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
-        assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.vae.config.latent_channels  # [B,4,h,w]
+        if pred_latent.dim() != 4 or pred_latent.shape[1] != self.vae.config.latent_channels:
+            raise ValueError(
+                f"Expecting 4D tensor of shape [B,{self.vae.config.latent_channels},H,W]; got {pred_latent.shape}."
+            )
 
         prediction = self.vae.decode(pred_latent / self.vae.config.scaling_factor, return_dict=False)[0]  # [B,3,H,W]
 
@@ -493,7 +496,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         return prediction  # [B,3,H,W]
 
     def encode_image(self, image: torch.FloatTensor) -> torch.FloatTensor:
-        assert image.dim() == 4 and image.shape[1] == 3  # [B,3,H,W]
+        if image.dim() != 4 or image.shape[1] != 3:
+            raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {image.shape}.")
 
         h = self.vae.encoder(image)
         moments = self.vae.quant_conv(h)
@@ -516,7 +520,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
     @staticmethod
     def normalize_normals(normals: torch.FloatTensor, eps: float = 1e-6) -> torch.FloatTensor:
-        assert normals.dim() == 4
+        if normals.dim() != 4 or normals.shape[1] != 3:
+            raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {normals.shape}.")
 
         norm = torch.norm(normals, dim=1, keepdim=True)
         normals /= norm.clamp(min=eps)
@@ -527,8 +532,10 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
     def ensemble_normals(
         normals: torch.FloatTensor, output_uncertainty: bool, reduction: str = "closest"
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
-        assert normals.dim() == 4 and normals.shape[1] == 3  # [E,3,H,W]
-        assert reduction in ("closest", "mean")
+        if normals.dim() != 4 or normals.shape[1] != 3:
+            raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {normals.shape}.")
+        if reduction not in ("closest", "mean"):
+            raise ValueError(f"Unrecognized reduction method: {reduction}.")
 
         mean_normals = normals.mean(dim=0, keepdim=True)  # [1,3,H,W]
         mean_normals = MarigoldNormalsPipeline.normalize_normals(mean_normals)  # [1,3,H,W]

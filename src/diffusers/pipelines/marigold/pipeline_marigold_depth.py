@@ -73,7 +73,7 @@ class MarigoldDepthOutput(BaseOutput):
     Output class for Marigold monocular depth prediction pipeline.
 
     Args:
-        prediction (`torch.FloatTensor`, `np.ndarray`):
+        prediction (`np.ndarray`, `torch.FloatTensor`):
             Predicted depth maps, with values in the range [0, 1]. For types `np.ndarray` or `torch.FloatTensor`, the
             shape is always $numimages \times 1 \times height \times width$.
         uncertainty (`None`, `np.ndarray`, `torch.FloatTensor`):
@@ -83,7 +83,7 @@ class MarigoldDepthOutput(BaseOutput):
             latentheight \times latentwidth$.
     """
 
-    prediction: Union[torch.FloatTensor, np.ndarray]
+    prediction: Union[np.ndarray, torch.FloatTensor]
     uncertainty: Union[None, np.ndarray, torch.FloatTensor]
     latent: Union[None, torch.FloatTensor]
 
@@ -442,11 +442,11 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         if match_input_resolution:
             prediction = self.image_processor.resize_antialias(
                 prediction, original_resolution, resample_method_output, is_aa=False
-            )  # [1,1,H,W]
+            )  # [N,1,H,W]
             if uncertainty is not None and output_uncertainty:
                 uncertainty = self.image_processor.resize_antialias(
                     uncertainty, original_resolution, resample_method_output, is_aa=False
-                )  # [1,1,H,W]
+                )  # [N,1,H,W]
 
         if output_prediction_format == "np":
             prediction = prediction.cpu().numpy()
@@ -486,7 +486,10 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         return image_latent, pred_latent
 
     def decode_prediction(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
-        assert pred_latent.dim() == 4 and pred_latent.shape[1] == self.vae.config.latent_channels  # [B,4,h,w]
+        if pred_latent.dim() != 4 or pred_latent.shape[1] != self.vae.config.latent_channels:
+            raise ValueError(
+                f"Expecting 4D tensor of shape [B,{self.vae.config.latent_channels},H,W]; got {pred_latent.shape}."
+            )
 
         prediction = self.vae.decode(pred_latent / self.vae.config.scaling_factor, return_dict=False)[0]  # [B,3,H,W]
 
@@ -497,7 +500,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         return prediction  # [B,1,H,W]
 
     def encode_image(self, image: torch.FloatTensor) -> torch.FloatTensor:
-        assert image.dim() == 4 and image.shape[1] == 3  # [B,3,H,W]
+        if image.dim() != 4 or image.shape[1] != 3:
+            raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {image.shape}.")
 
         h = self.vae.encoder(image)
         moments = self.vae.quant_conv(h)
@@ -530,7 +534,11 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
         import scipy
 
-        assert depth.dim() == 4 and depth.shape[1] == 1
+        if depth.dim() != 4 or depth.shape[1] != 1:
+            raise ValueError(f"Expecting 4D tensor of shape [B,1,H,W]; got {depth.shape}.")
+        if reduction not in ("mean", "median"):
+            raise ValueError(f"Unrecognized reduction method: {reduction}.")
+
         ensemble_size = depth.shape[0]
 
         depth_to_align = depth.to(torch.float32)
@@ -538,12 +546,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             depth_to_align = MarigoldImageProcessor.resize_to_max_edge(depth_to_align, max_res, "nearest-exact")
 
         def align_depth(depth: torch.FloatTensor, s: np.ndarray, t: np.ndarray) -> torch.FloatTensor:
-            assert (
-                depth.dim() == 4
-                and isinstance(s, np.ndarray)
-                and isinstance(t, np.ndarray)
-                and len(s) == len(t) == ensemble_size
-            )
             s = torch.from_numpy(s).to(depth).view(ensemble_size, 1, 1, 1)
             t = torch.from_numpy(t).to(depth).view(ensemble_size, 1, 1, 1)
             out = depth * s + t
@@ -562,7 +564,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 if return_uncertainty:
                     uncertainty = torch.median(torch.abs(depth_aligned - prediction), dim=0, keepdim=True).values
             else:
-                assert False
+                raise ValueError(f"Unrecognized reduction method: {reduction}.")
             return prediction, uncertainty
 
         def cost_fn(st: np.ndarray) -> float:

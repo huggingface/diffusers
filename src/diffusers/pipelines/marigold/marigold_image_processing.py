@@ -24,8 +24,15 @@ class MarigoldImageProcessor(ConfigMixin):
         super().__init__()
 
     @staticmethod
-    def resize_antialias(image: torch.Tensor, size: Tuple[int, int], mode: str, is_aa: bool = None) -> torch.Tensor:
-        assert image.dim() == 4 and isinstance(is_aa, bool)
+    def resize_antialias(
+        image: torch.Tensor, size: Tuple[int, int], mode: str, is_aa: Optional[bool] = None
+    ) -> torch.Tensor:
+        if not torch.is_tensor(image):
+            raise ValueError(f"Invalid input type={type(image)}.")
+        if not torch.is_floating_point(image):
+            raise ValueError(f"Invalid input dtype={image.dtype}.")
+        if image.dim() != 4:
+            raise ValueError(f"Invalid input dimensions; shape={image.shape}.")
 
         antialias = is_aa and mode in ("bilinear", "bicubic")
         image = F.interpolate(image, size, mode=mode, antialias=antialias)
@@ -34,7 +41,12 @@ class MarigoldImageProcessor(ConfigMixin):
 
     @staticmethod
     def resize_to_max_edge(image: torch.Tensor, max_edge_sz: int, mode: str) -> torch.Tensor:
-        assert image.dim() == 4
+        if not torch.is_tensor(image):
+            raise ValueError(f"Invalid input type={type(image)}.")
+        if not torch.is_floating_point(image):
+            raise ValueError(f"Invalid input dtype={image.dtype}.")
+        if image.dim() != 4:
+            raise ValueError(f"Invalid input dimensions; shape={image.shape}.")
 
         h, w = image.shape[-2:]
         max_orig = max(h, w)
@@ -50,7 +62,12 @@ class MarigoldImageProcessor(ConfigMixin):
 
     @staticmethod
     def pad_image(image: torch.Tensor, align: int) -> Tuple[torch.Tensor, Tuple[int, int]]:
-        assert image.dim() == 4
+        if not torch.is_tensor(image):
+            raise ValueError(f"Invalid input type={type(image)}.")
+        if not torch.is_floating_point(image):
+            raise ValueError(f"Invalid input dtype={image.dtype}.")
+        if image.dim() != 4:
+            raise ValueError(f"Invalid input dimensions; shape={image.shape}.")
 
         h, w = image.shape[-2:]
         ph, pw = -h % align, -w % align
@@ -61,7 +78,12 @@ class MarigoldImageProcessor(ConfigMixin):
 
     @staticmethod
     def unpad_image(image: torch.Tensor, padding: Tuple[int, int]) -> torch.Tensor:
-        assert image.dim() == 4
+        if not torch.is_tensor(image):
+            raise ValueError(f"Invalid input type={type(image)}.")
+        if not torch.is_floating_point(image):
+            raise ValueError(f"Invalid input dtype={image.dtype}.")
+        if image.dim() != 4:
+            raise ValueError(f"Invalid input dimensions; shape={image.shape}.")
 
         ph, pw = padding
         uh = None if ph == 0 else -ph
@@ -111,7 +133,10 @@ class MarigoldImageProcessor(ConfigMixin):
 
     @staticmethod
     def check_image_values_range(image: torch.FloatTensor) -> None:
-        assert torch.is_floating_point(image)
+        if not torch.is_tensor(image):
+            raise ValueError(f"Invalid input type={type(image)}.")
+        if not torch.is_floating_point(image):
+            raise ValueError(f"Invalid input dtype={image.dtype}.")
 
         val_min = image.min().item()
         val_max = image.max().item()
