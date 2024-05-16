@@ -1621,7 +1621,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
         return numpy_to_pil(images)
 
-    def progress_bar(self, iterable=None, total=None):
+    def progress_bar(self, iterable=None, total=None, desc=None, leave=True):
         if not hasattr(self, "_progress_bar_config"):
             self._progress_bar_config = {}
         elif not isinstance(self._progress_bar_config, dict):
@@ -1629,10 +1629,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
             )
 
+        progress_bar_config = dict(**self._progress_bar_config)
+        progress_bar_config["desc"] = progress_bar_config.get("desc", desc)
+        progress_bar_config["leave"] = progress_bar_config.get("leave", leave)
         if iterable is not None:
-            return tqdm(iterable, **self._progress_bar_config)
+            return tqdm(iterable, **progress_bar_config)
         elif total is not None:
-            return tqdm(total=total, **self._progress_bar_config)
+            return tqdm(total=total, **progress_bar_config)
         else:
             raise ValueError("Either `total` or `iterable` has to be defined.")
 

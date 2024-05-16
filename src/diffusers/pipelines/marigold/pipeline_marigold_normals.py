@@ -379,24 +379,23 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         # 5. Denoising loop. Model invocation: self.unet
         pred_latents = []
 
-        with self.progress_bar(total=num_images * ensemble_size * num_inference_steps) as progress_bar:
-            for i in range(0, num_images * ensemble_size, batch_size):
-                batch_image_latent = image_latent[i : i + batch_size]  # [B,4,h,w]
-                batch_pred_latent = pred_latent[i : i + batch_size]  # [B,4,h,w]
-                effective_batch_size = batch_image_latent.shape[0]
-                text = batch_empty_text_embedding[:effective_batch_size]  # [B,2,1024]
+        for i in self.progress_bar(
+            range(0, num_images * ensemble_size, batch_size), leave=True, desc="Marigold predictions..."
+        ):
+            batch_image_latent = image_latent[i : i + batch_size]  # [B,4,h,w]
+            batch_pred_latent = pred_latent[i : i + batch_size]  # [B,4,h,w]
+            effective_batch_size = batch_image_latent.shape[0]
+            text = batch_empty_text_embedding[:effective_batch_size]  # [B,2,1024]
 
-                self.scheduler.set_timesteps(num_inference_steps, device=device)
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
+            for t in self.progress_bar(self.scheduler.timesteps, leave=False, desc="Diffusion steps..."):
+                batch_latent = torch.cat([batch_image_latent, batch_pred_latent], dim=1)  # [B,8,h,w]
+                noise = self.unet(batch_latent, t, encoder_hidden_states=text, return_dict=False)[0]  # [B,4,h,w]
+                batch_pred_latent = self.scheduler.step(
+                    noise, t, batch_pred_latent, generator=generator
+                ).prev_sample  # [B,4,h,w]
 
-                for t in self.scheduler.timesteps:
-                    batch_latent = torch.cat([batch_image_latent, batch_pred_latent], dim=1)  # [B,8,h,w]
-                    noise = self.unet(batch_latent, t, encoder_hidden_states=text, return_dict=False)[0]  # [B,4,h,w]
-                    batch_pred_latent = self.scheduler.step(
-                        noise, t, batch_pred_latent, generator=generator
-                    ).prev_sample  # [B,4,h,w]
-                    progress_bar.update(effective_batch_size)
-
-                pred_latents.append(batch_pred_latent)
+            pred_latents.append(batch_pred_latent)
 
         pred_latent = torch.cat(pred_latents, dim=0)  # [N*E,4,h,w]
 
