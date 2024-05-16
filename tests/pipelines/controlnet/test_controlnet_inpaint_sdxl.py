@@ -142,10 +142,10 @@ class ControlNetPipelineSDXLFastTests(
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
+        torch.manual_seed(0)
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        torch.manual_seed(0)
         image_encoder_config = CLIPVisionConfig(
             hidden_size=32,
             image_size=224,
