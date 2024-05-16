@@ -49,7 +49,7 @@ One of the simplest ways to speed up inference is to place the pipeline on a GPU
 pipeline = pipeline.to("cuda")
 ```
 
-To make sure you can use the same image and improve on it, use a [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) and set a seed for [reproducibility](./using-diffusers/reproducibility):
+To make sure you can use the same image and improve on it, use a [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) and set a seed for [reproducibility](./using-diffusers/reusing_seeds):
 
 ```python
 import torch

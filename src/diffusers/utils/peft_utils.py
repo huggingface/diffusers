@@ -64,9 +64,11 @@ def recurse_remove_peft_layers(model):
             module_replaced = False
 
             if isinstance(module, LoraLayer) and isinstance(module, torch.nn.Linear):
-                new_module = torch.nn.Linear(module.in_features, module.out_features, bias=module.bias is not None).to(
-                    module.weight.device
-                )
+                new_module = torch.nn.Linear(
+                    module.in_features,
+                    module.out_features,
+                    bias=module.bias is not None,
+                ).to(module.weight.device)
                 new_module.weight = module.weight
                 if module.bias is not None:
                     new_module.bias = module.bias
@@ -110,6 +112,9 @@ def scale_lora_layers(model, weight):
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
+    if weight == 1.0:
+        return
+
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
             module.scale_layer(weight)
@@ -128,6 +133,9 @@ def unscale_lora_layers(model, weight: Optional[float] = None):
             value.
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
+
+    if weight == 1.0:
+        return
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
@@ -238,7 +246,13 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
         for layer_name, weight_ in weight_for_adapter.items():
             if layer_name in module_name:
                 return weight_
-        raise RuntimeError(f"No LoRA weight found for module {module_name}.")
+
+        parts = module_name.split(".")
+        # e.g. key = "down_blocks.1.attentions.0"
+        key = f"{parts[0]}.{parts[1]}.attentions.{parts[3]}"
+        block_weight = weight_for_adapter.get(key, 1.0)
+
+        return block_weight
 
     # iterate over each adapter, make it active and set the corresponding scaling weight
     for adapter_name, weight in zip(adapter_names, weights):

@@ -20,6 +20,7 @@ import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin, UNet2DConditionLoadersMixin
+from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ..activations import get_activation
 from ..attention_processor import (
@@ -59,14 +60,16 @@ class UNet2DConditionOutput(BaseOutput):
     The output of [`UNet2DConditionModel`].
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)`):
             The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
     """
 
-    sample: torch.FloatTensor = None
+    sample: torch.Tensor = None
 
 
-class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin):
+class UNet2DConditionModel(
+    ModelMixin, ConfigMixin, FromOriginalModelMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin
+):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
     shaped output.
@@ -161,6 +164,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["BasicTransformerBlock", "ResnetBlock2D", "CrossAttnUpBlock2D"]
 
     @register_to_config
     def __init__(
@@ -1038,7 +1042,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
@@ -1056,10 +1060,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         The [`UNet2DConditionModel`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The noisy input tensor with the following shape `(batch, channel, height, width)`.
-            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
-            encoder_hidden_states (`torch.FloatTensor`):
+            timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             class_labels (`torch.Tensor`, *optional*, defaults to `None`):
                 Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.

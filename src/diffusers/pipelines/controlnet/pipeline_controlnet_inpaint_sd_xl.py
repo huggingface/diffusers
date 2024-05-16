@@ -27,6 +27,7 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import (
     FromSingleFileMixin,
@@ -151,7 +152,12 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 
 class StableDiffusionXLControlNetInpaintPipeline(
-    DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLLoraLoaderMixin, FromSingleFileMixin, IPAdapterMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    StableDiffusionXLLoraLoaderMixin,
+    FromSingleFileMixin,
+    IPAdapterMixin,
+    TextualInversionLoaderMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
@@ -160,6 +166,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     The pipeline also inherits the following loading methods:
+        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
         - [`~loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
         - [`~loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
@@ -255,10 +262,10 @@ class StableDiffusionXLControlNetInpaintPipeline(
         do_classifier_free_guidance: bool = True,
         negative_prompt: Optional[str] = None,
         negative_prompt_2: Optional[str] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
     ):
@@ -284,17 +291,17 @@ class StableDiffusionXLControlNetInpaintPipeline(
             negative_prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+            pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
                 If not provided, pooled text embeddings will be generated from `prompt` input argument.
-            negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
@@ -880,7 +887,12 @@ class StableDiffusionXLControlNetInpaintPipeline(
         return_noise=False,
         return_image_latents=False,
     ):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -1146,13 +1158,13 @@ class StableDiffusionXLControlNetInpaintPipeline(
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[List[torch.FloatTensor]] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
+        pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -1167,7 +1179,9 @@ class StableDiffusionXLControlNetInpaintPipeline(
         aesthetic_score: float = 6.0,
         negative_aesthetic_score: float = 2.5,
         clip_skip: Optional[int] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         **kwargs,
     ):
@@ -1239,23 +1253,23 @@ class StableDiffusionXLControlNetInpaintPipeline(
             negative_prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
-            ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
+            ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
                 Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
                 IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
                 contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
                 provided, embeddings are computed from the `ip_adapter_image` input argument.
-            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+            pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
                 If not provided, pooled text embeddings will be generated from `prompt` input argument.
-            negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
@@ -1267,7 +1281,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
             generator (`torch.Generator`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
@@ -1306,11 +1320,11 @@ class StableDiffusionXLControlNetInpaintPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
+                A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
+                each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
+                DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`. `callback_kwargs` will include a
+                list of all tensors as specified by `callback_on_step_end_tensor_inputs`.
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
@@ -1339,6 +1353,9 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 "1.0.0",
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
             )
+
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
@@ -1719,7 +1736,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
                     mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
-                if ip_adapter_image is not None:
+                if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
 
                 if num_channels_unet == 9:

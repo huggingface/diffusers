@@ -8,7 +8,6 @@ from ...models import Kandinsky3UNet, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
     deprecate,
-    is_accelerate_available,
     logging,
     replace_example_docstring,
 )
@@ -72,20 +71,6 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
             tokenizer=tokenizer, text_encoder=text_encoder, unet=unet, scheduler=scheduler, movq=movq
         )
 
-    def remove_all_hooks(self):
-        if is_accelerate_available():
-            from accelerate.hooks import remove_hook_from_module
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        for model in [self.text_encoder, self.unet, self.movq]:
-            if model is not None:
-                remove_hook_from_module(model, recurse=True)
-
-        self.unet_offload_hook = None
-        self.text_encoder_offload_hook = None
-        self.final_offload_hook = None
-
     def process_embeds(self, embeddings, attention_mask, cut_context):
         if cut_context:
             embeddings[attention_mask == 0] = torch.zeros_like(embeddings[attention_mask == 0])
@@ -102,11 +87,11 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         num_images_per_prompt=1,
         device=None,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         _cut_context=False,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        negative_attention_mask: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        negative_attention_mask: Optional[torch.Tensor] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -124,16 +109,16 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            attention_mask (`torch.FloatTensor`, *optional*):
+            attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask. Must provide if passing `prompt_embeds` directly.
-            negative_attention_mask (`torch.FloatTensor`, *optional*):
+            negative_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated negative attention mask. Must provide if passing `negative_prompt_embeds` directly.
         """
         if prompt is not None and negative_prompt is not None:
@@ -349,10 +334,10 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         height: Optional[int] = 1024,
         width: Optional[int] = 1024,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        negative_attention_mask: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        negative_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         latents=None,
@@ -395,16 +380,16 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            attention_mask (`torch.FloatTensor`, *optional*):
+            attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask. Must provide if passing `prompt_embeds` directly.
-            negative_attention_mask (`torch.FloatTensor`, *optional*):
+            negative_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated negative attention mask. Must provide if passing `negative_prompt_embeds` directly.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
@@ -413,7 +398,7 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.

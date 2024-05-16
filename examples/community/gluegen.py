@@ -205,7 +205,7 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         language_adapter: TranslatorNoLN = None,
-        tensor_norm: torch.FloatTensor = None,
+        tensor_norm: torch.Tensor = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -231,7 +231,7 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
         num_token: int,
         dim: int,
         dim_out: int,
-        tensor_norm: torch.FloatTensor,
+        tensor_norm: torch.Tensor,
         mult: int = 2,
         depth: int = 5,
     ):
@@ -242,7 +242,7 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
         )
         self.language_adapter.load_state_dict(torch.load(model_path))
 
-    def _adapt_language(self, prompt_embeds: torch.FloatTensor):
+    def _adapt_language(self, prompt_embeds: torch.Tensor):
         prompt_embeds = prompt_embeds / 3
         prompt_embeds = self.language_adapter(prompt_embeds) * (self.tensor_norm / 2)
         return prompt_embeds
@@ -254,8 +254,8 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
     ):
@@ -275,10 +275,10 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -500,7 +500,12 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
                 )
 
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -530,7 +535,7 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
                 data type of the generated embeddings
 
         Returns:
-            `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
+            `torch.Tensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
         """
         assert len(w.shape) == 1
         w = w * 1000.0
@@ -589,9 +594,9 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -630,14 +635,14 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
