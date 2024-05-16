@@ -156,7 +156,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         ensembling_kwargs: Optional[Dict[str, Any]],
         latents: Optional[torch.FloatTensor],
         generator: Optional[Union[torch.Generator, List[torch.Generator]]],
-        output_prediction_format: str,
+        output_type: str,
     ) -> None:
         if num_inference_steps is None:
             raise ValueError("`num_inference_steps` is not specified and could not be resolved from the model config.")
@@ -194,8 +194,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             )
         if batch_size < 1:
             raise ValueError("`batch_size` must be positive.")
-        if output_prediction_format not in ["pt", "np"]:
-            raise ValueError("`output_prediction_format` must be one of `pt` or `np`.")
+        if output_type not in ["pt", "np"]:
+            raise ValueError("`output_type` must be one of `pt` or `np`.")
         if latents is not None and generator is not None:
             raise ValueError("`latents` and `generator` cannot be used together.")
         if ensembling_kwargs is not None:
@@ -270,7 +270,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         ensembling_kwargs: Optional[Dict[str, Any]] = None,
         latents: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        output_prediction_format: str = "np",
+        output_type: str = "np",
         output_uncertainty: bool = True,
         output_latent: bool = False,
         **kwargs,
@@ -320,7 +320,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 function call's output.
             generator (`torch.Generator`, or `List[torch.Generator]`, *optional*, defaults to `None`):
                 Random number generator object to ensure reproducibility.
-            output_prediction_format (`str`, *optional*, defaults to `"np"`):
+            output_type (`str`, *optional*, defaults to `"np"`):
                 Preferred format of the output's `prediction` and the optional `uncertainty` fields. The accepted
                 values are: `"np"` (numpy array) or `"pt"` (torch tensor).
             output_uncertainty (`bool`, *optional*, defaults to `True`):
@@ -362,7 +362,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             ensembling_kwargs,
             latents,
             generator,
-            output_prediction_format,
+            output_type,
         )
 
         # 2. Prepare empty text conditioning. Model invocation: self.tokenizer, self.text_encoder
@@ -448,7 +448,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                     uncertainty, original_resolution, resample_method_output, is_aa=False
                 )  # [N,1,H,W]
 
-        if output_prediction_format == "np":
+        if output_type == "np":
             prediction = prediction.cpu().numpy()
             if uncertainty is not None and output_uncertainty:
                 uncertainty = uncertainty.cpu().numpy()
