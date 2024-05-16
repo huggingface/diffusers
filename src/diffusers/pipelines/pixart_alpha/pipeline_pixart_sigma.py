@@ -23,7 +23,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import PixArtImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel
-from ...schedulers import DPMSolverMultistepScheduler
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BACKENDS_MAPPING,
     deprecate,
@@ -203,7 +203,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         text_encoder: T5EncoderModel,
         vae: AutoencoderKL,
         transformer: Transformer2DModel,
-        scheduler: DPMSolverMultistepScheduler,
+        scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
 
