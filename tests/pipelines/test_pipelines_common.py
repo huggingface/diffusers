@@ -30,7 +30,6 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.callbacks import (
-    IPAdapterScaleCutoffCallback,
     PipelineCallback,
     SDCFGCutoffCallback,
     SDXLCFGCutoffCallback,
