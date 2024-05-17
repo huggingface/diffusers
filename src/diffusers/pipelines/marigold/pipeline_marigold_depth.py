@@ -17,6 +17,7 @@
 # Marigold project website: https://marigoldmonodepth.github.io
 # --------------------------------------------------------------------------
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -120,6 +121,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         default_denoising_steps: Optional[int] = None,
         default_processing_resolution: Optional[int] = None,
+        scale_invariant: Optional[bool] = True,
+        shift_invariant: Optional[bool] = True,
     ):
         super().__init__()
 
@@ -133,12 +136,16 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         self.register_to_config(
             default_denoising_steps=default_denoising_steps,
             default_processing_resolution=default_processing_resolution,
+            scale_invariant=scale_invariant,
+            shift_invariant=shift_invariant,
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
         self.default_denoising_steps = default_denoising_steps
         self.default_processing_resolution = default_processing_resolution
+        self.scale_invariant = scale_invariant
+        self.shift_invariant = shift_invariant
 
         self.empty_text_embedding = None
 
@@ -295,10 +302,10 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             match_input_resolution (`bool`, *optional*, defaults to `True`):
                 When enabled, the output prediction is resized to match the input dimensions. When disabled, the longer
                 side of the output will equal to `processing_resolution`.
-            resample_method_input: (`str`, *optional*, defaults to `"bilinear"`):
+            resample_method_input (`str`, *optional*, defaults to `"bilinear"`):
                 Resampling method used to resize input images to `processing_resolution`. The accepted values are:
                 `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
-            resample_method_output: (`str`, *optional*, defaults to `"bilinear"`):
+            resample_method_output (`str`, *optional*, defaults to `"bilinear"`):
                 Resampling method used to resize output predictions to match the input resolution. The accepted values
                 are `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
             batch_size (`int`, *optional*, defaults to `1`):
@@ -438,7 +445,13 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         if ensemble_size > 1:
             prediction = prediction.reshape(num_images, ensemble_size, *prediction.shape[1:])  # [N,E,1,PH,PW]
             prediction = [
-                self.ensemble_depth(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
+                self.ensemble_depth(
+                    prediction[i],
+                    self.scale_invariant,
+                    self.shift_invariant,
+                    output_uncertainty,
+                    **(ensembling_kwargs or {}),
+                )
                 for i in range(num_images)
             ]  # [ [[1,1,PH,PW], [1,1,PH,PW]], ... ]
             prediction, uncertainty = zip(*prediction)  # [[1,1,PH,PW], ... ], [[1,1,PH,PW], ... ]
@@ -531,30 +544,83 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     @staticmethod
     def ensemble_depth(
         depth: torch.FloatTensor,
-        output_uncertainty: bool,
+        scale_invariant: bool = True,
+        shift_invariant: bool = True,
+        output_uncertainty: bool = False,
         reduction: str = "median",
         regularizer_strength: float = 0.02,
         max_iter: int = 2,
         tol: float = 1e-3,
         max_res: int = 1024,
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
-        import scipy
+        """
+        Ensembles depth maps represented by the `depth` tensor with expected shape `(B, 1, H, W)`, where B is the
+        number of ensemble members for a given prediction of size `(H x W)`. Even though the function is designed for
+        depth maps, it can also be used with disparity maps as long as the input tensor values are non-negative. The
+        alignment happens when the predictions have one or more degrees of freedom, that is when they are either
+        affine-invariant (`scale_invariant=True` and `shift_invariant=True`), or just scale-invariant (only
+        `scale_invariant=True`). For absolute predictions (`scale_invariant=False` and `shift_invariant=False`)
+        alignment is skipped and only ensembling is performed.
 
+        Args:
+            depth (`torch.FloatTensor`):
+                Input ensemble depth maps.
+            scale_invariant (`bool`, *optional*, defaults to `True`):
+                Whether to treat predictions as scale-invariant.
+            shift_invariant (`bool`, *optional*, defaults to `True`):
+                Whether to treat predictions as shift-invariant.
+            output_uncertainty (`bool`, *optional*, defaults to `False`):
+                Whether to output uncertainty map of shape `(1, 1, H, W)`.
+            reduction (`str`, *optional*, defaults to `"median"`):
+                Reduction method used to ensemble aligned predictions. The accepted values are: `"mean"` and
+                `"median"`.
+            regularizer_strength (`float`, *optional*, defaults to `0.02`):
+                Strength of the regularizer that pulls the aligned predictions to the unit range from 0 to 1.
+            max_iter (`int`, *optional*, defaults to `2`):
+                Maximum number of the alignment solver steps. Refer to `scipy.optimize.minimize` function, `options`
+                argument.
+            tol (`float`, *optional*, defaults to `1e-3`):
+                Alignment solver tolerance. The solver stops when the tolerance is reached.
+            max_res (`int`, *optional*, defaults to `1024`):
+                Resolution of downsampled predictions used to compute the alignment parameters.
+        Returns:
+            A tensor of aligned and ensembled depth maps and optionally a tensor of uncertainties of the same shape:
+            `(1, 1, H, W)`.
+        """
         if depth.dim() != 4 or depth.shape[1] != 1:
             raise ValueError(f"Expecting 4D tensor of shape [B,1,H,W]; got {depth.shape}.")
         if reduction not in ("mean", "median"):
             raise ValueError(f"Unrecognized reduction method: {reduction}.")
+        if not scale_invariant and shift_invariant:
+            raise ValueError("Pure shift-invariant ensembling is not supported.")
 
-        ensemble_size = depth.shape[0]
+        def init_param(depth: torch.FloatTensor):
+            init_min = depth.reshape(ensemble_size, -1).min(dim=1).values
+            init_max = depth.reshape(ensemble_size, -1).max(dim=1).values
 
-        depth_to_align = depth.to(torch.float32)
-        if max_res is not None and max(depth_to_align.shape[2:]) > max_res:
-            depth_to_align = MarigoldImageProcessor.resize_to_max_edge(depth_to_align, max_res, "nearest-exact")
+            if scale_invariant and shift_invariant:
+                init_s = 1.0 / (init_max - init_min).clamp(min=1e-6)
+                init_t = -init_s * init_min
+                param = torch.cat((init_s, init_t)).cpu().numpy()
+            elif scale_invariant:
+                init_s = 1.0 / init_max.clamp(min=1e-6)
+                param = init_s.cpu().numpy()
+            else:
+                raise ValueError("Unrecognized alignment.")
 
-        def align_depth(depth: torch.FloatTensor, s: np.ndarray, t: np.ndarray) -> torch.FloatTensor:
-            s = torch.from_numpy(s).to(depth).view(ensemble_size, 1, 1, 1)
-            t = torch.from_numpy(t).to(depth).view(ensemble_size, 1, 1, 1)
-            out = depth * s + t
+            return param
+
+        def align(depth: torch.FloatTensor, param: np.ndarray) -> torch.FloatTensor:
+            if scale_invariant and shift_invariant:
+                s, t = np.split(param, 2)
+                s = torch.from_numpy(s).to(depth).view(ensemble_size, 1, 1, 1)
+                t = torch.from_numpy(t).to(depth).view(ensemble_size, 1, 1, 1)
+                out = depth * s + t
+            elif scale_invariant:
+                s = torch.from_numpy(param).to(depth).view(ensemble_size, 1, 1, 1)
+                out = depth * s
+            else:
+                raise ValueError("Unrecognized alignment.")
             return out
 
         def ensemble(
@@ -573,10 +639,9 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 raise ValueError(f"Unrecognized reduction method: {reduction}.")
             return prediction, uncertainty
 
-        def cost_fn(st: np.ndarray) -> float:
+        def cost_fn(param: np.ndarray, depth: torch.FloatTensor) -> float:
             cost = 0.0
-            s, t = np.split(st, 2)
-            depth_aligned = align_depth(depth_to_align, s, t)
+            depth_aligned = align(depth, param)
 
             for i, j in torch.combinations(torch.arange(ensemble_size)):
                 diff = depth_aligned[i] - depth_aligned[j]
@@ -590,26 +655,42 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
             return cost
 
-        init_min = depth_to_align.reshape(ensemble_size, -1).min(dim=1).values
-        init_max = depth_to_align.reshape(ensemble_size, -1).max(dim=1).values
-        init_s = 1.0 / (init_max - init_min).clamp(min=1e-6)
-        init_t = -init_s * init_min
-        init_st = torch.cat((init_s, init_t)).cpu().numpy()
+        def compute_param(depth: torch.FloatTensor):
+            import scipy
 
-        res = scipy.optimize.minimize(
-            cost_fn,
-            init_st,
-            method="BFGS",
-            tol=tol,
-            options={"maxiter": max_iter, "disp": False},
-        )
-        s, t = np.split(res.x, 2)
+            depth_to_align = depth.to(torch.float32)
+            if max_res is not None and max(depth_to_align.shape[2:]) > max_res:
+                depth_to_align = MarigoldImageProcessor.resize_to_max_edge(depth_to_align, max_res, "nearest-exact")
 
-        depth = align_depth(depth, s, t)
+            param = init_param(depth_to_align)
+
+            res = scipy.optimize.minimize(
+                partial(cost_fn, depth=depth_to_align),
+                param,
+                method="BFGS",
+                tol=tol,
+                options={"maxiter": max_iter, "disp": False},
+            )
+
+            return res.x
+
+        requires_aligning = scale_invariant or shift_invariant
+        ensemble_size = depth.shape[0]
+
+        if requires_aligning:
+            param = compute_param(depth)
+            print(param)
+            depth = align(depth, param)
+
         depth, uncertainty = ensemble(depth, return_uncertainty=output_uncertainty)
 
-        depth_min = depth.min()
         depth_max = depth.max()
+        if scale_invariant and shift_invariant:
+            depth_min = depth.min()
+        elif scale_invariant:
+            depth_min = 0
+        else:
+            raise ValueError("Unrecognized alignment.")
         depth_range = (depth_max - depth_min).clamp(min=1e-6)
         depth = (depth - depth_min) / depth_range
         if output_uncertainty:
