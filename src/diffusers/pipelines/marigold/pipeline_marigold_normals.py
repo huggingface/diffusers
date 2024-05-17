@@ -103,6 +103,21 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             Text-encoder, for empty text embedding.
         tokenizer (`CLIPTokenizer`):
             CLIP tokenizer.
+        default_denoising_steps (`int`, *optional*):
+            The minimum number of denoising diffusion steps that are required to produce a prediction of reasonable
+            quality with the given model. This value must be set in the model config. When the pipeline is called
+            without explicitly setting `num_inference_steps`, the default value is used. This is required to ensure
+            reasonable results with various model flavors compatible with the pipeline, such as those relying on very
+            short denoising schedules (`LCMScheduler`) and those with full diffusion schedules (`DDIMScheduler`).
+        default_processing_resolution (`int`, *optional*):
+            The recommended value of the `processing_resolution` parameter of the pipeline. This value must be set in
+            the model config. When the pipeline is called without explicitly setting `processing_resolution`, the
+            default value is used. This is required to ensure reasonable results with various model flavors trained
+            with varying optimal processing resolution values.
+        use_full_z_range (`bool`, *optional*):
+            A model property specifying whether the predicted normal maps utilize the full range of the Z dimension, or
+            only its positive half. This value must be set in the model config. NB: overriding this value is not
+            supported.
     """
 
     model_cpu_offload_seq = "text_encoder->vae.encoder->unet->vae.decoder"
