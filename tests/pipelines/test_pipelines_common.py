@@ -1887,6 +1887,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         inputs["callback_on_step_end"] = test_callback
         inputs["output_type"] = "latent"
+        inputs["num_inference_steps"] = 2  # because test_stable_diffusion_panorama sets it to 1
         output = pipe(**inputs)[0]
 
         # create a change tensor callback
