@@ -53,7 +53,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             attention_head_dim=2,
             num_attention_heads=2,
             in_channels=4,
-            out_channels=4,
+            out_channels=8,
             attention_bias=True,
             activation_fn="gelu-approximate",
             num_embeds_ada_norm=1000,
@@ -91,7 +91,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (1, 2, 2, 3))
-        expected_slice = np.array([0.6689, 0.4009, 0.5277, 0.5988])
+        expected_slice = np.array([0.485, 0.6022, 0.5567, 0.6807])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
