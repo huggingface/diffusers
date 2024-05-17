@@ -1,0 +1,1 @@
+from .pipeline_lumina import LuminaText2ImgPipeline
