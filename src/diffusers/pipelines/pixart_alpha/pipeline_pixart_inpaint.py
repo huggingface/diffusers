@@ -1,4 +1,4 @@
-# Copyright 2023 PixArt-Alpha Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 PixArt-Alpha Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,13 +16,14 @@ import html
 import inspect
 import re
 import urllib.parse as ul
+import PIL.Image
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 from transformers import T5EncoderModel, T5Tokenizer
 
-from ...image_processor import VaeImageProcessor, PipelineImageInput
+from ...image_processor import VaeImageProcessor, PipelineImageInput, PixArtImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
@@ -48,24 +49,16 @@ if is_ftfy_available():
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import PIL
-        >>> import requests
         >>> import torch
-        >>> from io import BytesIO
 
+        >>> import diffusers
         >>> from diffusers import PixArtAlphaInpaintPipeline
-
-
-        >>> def download_image(url):
-        ...     response = requests.get(url)
-        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
-
 
         >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
         >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
 
-        >>> init_image = download_image(img_url).resize((512, 512))
-        >>> mask_image = download_image(mask_url).resize((512, 512))
+        >>> init_image = diffusers.utils.load_image(img_url).resize((1024, 1024))
+        >>> mask_image = diffusers.utils.load_image(mask_url).resize((1024, 1024))
 
         >>> pipe = PixArtAlphaInpaintPipeline.from_pretrained(
         ...     "PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16
@@ -263,7 +256,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
         )
@@ -277,7 +270,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
             masked_feature = emb * mask[:, None, :, None]
             return masked_feature, emb.shape[2]
 
-    # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
+    # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.encode_prompt
     def encode_prompt(
             self,
             prompt: Union[str, List[str]],
@@ -290,6 +283,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
             prompt_attention_mask: Optional[torch.FloatTensor] = None,
             negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
             clean_caption: bool = False,
+            max_sequence_length: int = 120,
             **kwargs,
     ):
         r"""
@@ -316,6 +310,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
                 string.
             clean_caption (bool, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
+            max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
         """
 
         if "mask_feature" in kwargs:
@@ -333,7 +328,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         # See Section 3.1. of the paper.
-        max_length = 120
+        max_length = max_sequence_length
 
         if prompt_embeds is None:
             prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
@@ -436,18 +431,27 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Adapted from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.check_inputs
     def check_inputs(
             self,
             prompt,
+            image,
+            mask_image,
             height,
             width,
+            strength,
             negative_prompt,
             callback_steps,
+            output_type,
             prompt_embeds=None,
             negative_prompt_embeds=None,
             prompt_attention_mask=None,
             negative_prompt_attention_mask=None,
+            padding_mask_crop=None,
     ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+        
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
@@ -502,6 +506,19 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
                     f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
                     f" {negative_prompt_attention_mask.shape}."
                 )
+        
+        if padding_mask_crop is not None:
+            if not isinstance(image, PIL.Image.Image):
+                raise ValueError(
+                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                )
+            if not isinstance(mask_image, PIL.Image.Image):
+                raise ValueError(
+                    f"The mask image should be a PIL image when inpainting mask crop, but is of type"
+                    f" {type(mask_image)}."
+                )
+            if output_type != "pil":
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
@@ -689,38 +706,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents, noise, image_latents
 
-    @staticmethod
-    def classify_height_width_bin(height: int, width: int, ratios: dict) -> Tuple[int, int]:
-        """Returns binned height and width."""
-        ar = float(height / width)
-        closest_ratio = min(ratios.keys(), key=lambda ratio: abs(float(ratio) - ar))
-        default_hw = ratios[closest_ratio]
-        return int(default_hw[0]), int(default_hw[1])
-
-    @staticmethod
-    def resize_and_crop_tensor(samples: torch.Tensor, new_width: int, new_height: int) -> torch.Tensor:
-        orig_height, orig_width = samples.shape[2], samples.shape[3]
-
-        # Check if resizing is needed
-        if orig_height != new_height or orig_width != new_width:
-            ratio = max(new_height / orig_height, new_width / orig_width)
-            resized_width = int(orig_width * ratio)
-            resized_height = int(orig_height * ratio)
-
-            # Resize
-            samples = F.interpolate(
-                samples, size=(resized_height, resized_width), mode="bilinear", align_corners=False
-            )
-
-            # Center Crop
-            start_x = (resized_width - new_width) // 2
-            end_x = start_x + new_width
-            start_y = (resized_height - new_height) // 2
-            end_y = start_y + new_height
-            samples = samples[:, :, start_y:end_y, start_x:end_x]
-
-        return samples
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
@@ -735,6 +721,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
 
         return image_latents
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
         self, mask, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
@@ -797,6 +784,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
             callback_steps: int = 1,
             clean_caption: bool = True,
             use_resolution_binning: bool = True,
+            max_sequence_length: int = 120,
             **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
@@ -886,6 +874,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
                 `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images, they are resized back to
                 the requested resolution. Useful for generating non-square images.
+            max_sequence_length (`int` defaults to 120): Maximum sequence length to use with the `prompt`.
 
         Examples:
 
@@ -905,18 +894,23 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
                 ASPECT_RATIO_1024_BIN if self.transformer.config.sample_size == 128 else ASPECT_RATIO_512_BIN
             )
             orig_height, orig_width = height, width
-            height, width = self.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
+            height, width = self.image_processor.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
 
         self.check_inputs(
             prompt,
+            image,
+            mask_image,
             height,
             width,
+            strength,
             negative_prompt,
             callback_steps,
+            output_type,
             prompt_embeds,
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
+            padding_mask_crop=None,
         )
 
         # 2. Default height and width to transformer
@@ -951,6 +945,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             clean_caption=clean_caption,
+            max_sequence_length=max_sequence_length,
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
@@ -1081,7 +1076,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             if use_resolution_binning:
-                image = self.resize_and_crop_tensor(image, orig_width, orig_height)
+                image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
         else:
             image = latents
 
