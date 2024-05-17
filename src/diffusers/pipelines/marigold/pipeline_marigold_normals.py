@@ -366,8 +366,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="pt",
             )
-            text_input_ids = text_inputs.input_ids.to(self.text_encoder.device)
-            self.empty_text_embedding = self.text_encoder(text_input_ids)[0].to(self.dtype)  # [1,2,1024]
+            text_input_ids = text_inputs.input_ids.to(device)
+            self.empty_text_embedding = self.text_encoder(text_input_ids)[0]  # [1,2,1024]
 
         # 3. Preprocessing input image
         image, padding, original_resolution = self.image_processor.preprocess(
