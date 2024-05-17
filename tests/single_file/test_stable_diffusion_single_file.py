@@ -82,6 +82,7 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
         assert pipe.vae.config.scaling_factor == new_scaling_factor
 
 
+@slow
 class StableDiffusion21PipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
