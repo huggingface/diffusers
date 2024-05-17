@@ -401,7 +401,9 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_512_without_resolution_binning(self):
         generator = torch.manual_seed(0)
 
-        transformer = Transformer2DModel.from_pretrained(self.ckpt_id_512, subfolder="transformer", torch_dtype=torch.float16)
+        transformer = Transformer2DModel.from_pretrained(
+            self.ckpt_id_512, subfolder="transformer", torch_dtype=torch.float16
+        )
         pipe = PixArtSigmaPipeline.from_pretrained(
             self.ckpt_id_1024, transformer=transformer, torch_dtype=torch.float16
         )
@@ -420,8 +422,6 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
             output_type="np",
         ).images
         image_slice = image[0, -3:, -3:, -1]
-        flat = image_slice.flatten().tolist()
-        print(", ".join([str(round(x, 4)) for x in flat]))
 
         generator = torch.manual_seed(0)
         no_res_bin_image = pipe(
