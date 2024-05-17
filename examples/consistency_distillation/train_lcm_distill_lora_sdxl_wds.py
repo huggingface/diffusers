@@ -1358,7 +1358,7 @@ def main(args):
                 # estimates to predict the data point in the augmented PF-ODE trajectory corresponding to the next ODE
                 # solver timestep.
                 with torch.no_grad():
-                    if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
+                    if torch.backends.mps.is_available() or "playground" in args.pretrained_teacher_model:
                         autocast_ctx = nullcontext()
                     else:
                         autocast_ctx = torch.autocast(accelerator.device.type)
