@@ -239,14 +239,14 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         if generator is not None:
             device = self._execution_device
             if isinstance(generator, torch.Generator):
-                if generator.device != device:
+                if generator.device.type != device.type:
                     raise ValueError("`generator` device differs from the pipeline's device.")
             elif isinstance(generator, list):
                 if len(generator) != num_images * ensemble_size:
                     raise ValueError(
                         "The number generators must match the total number of ensemble members for all input images."
                     )
-                if not all(g.device == device for g in generator):
+                if not all(g.device.type == device.type for g in generator):
                     raise ValueError("At least one of the `generator` devices differs from the pipeline's device.")
             else:
                 raise ValueError(f"Unsupported generator type: {type(generator)}.")
