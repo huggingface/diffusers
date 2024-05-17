@@ -69,6 +69,10 @@
     title: Prompt techniques
   title: Inference techniques
 - sections:
+  - local: advanced_inference/outpaint
+    title: Outpainting
+  title: Advanced inference
+- sections:
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
   - local: using-diffusers/sdxl_turbo
