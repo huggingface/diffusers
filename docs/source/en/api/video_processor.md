@@ -16,4 +16,6 @@ The [`VideoProcessor`] provides a unified API for video pipelines to prepare inp
 
 ## VideoProcessor
 
-[[autodoc]] video_processor.VideoProcessor
+[[autodoc]] video_processor.VideoProcessor.preprocess_video
+
+[[autodoc]] video_processor.VideoProcessor.postprocess_video
