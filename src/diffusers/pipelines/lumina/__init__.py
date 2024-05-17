@@ -1,1 +1,1 @@
-from .pipeline_lumina import LuminaText2ImgPipeline
+from .pipeline_lumina_t2i import LuminaText2ImgPipeline
