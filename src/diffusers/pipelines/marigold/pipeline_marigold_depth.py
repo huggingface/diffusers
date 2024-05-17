@@ -374,7 +374,16 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         # 2. Prepare empty text conditioning. Model invocation: self.tokenizer, self.text_encoder
         if self.empty_text_embedding is None:
-            self.encode_empty_text()
+            prompt = ""
+            text_inputs = self.tokenizer(
+                prompt,
+                padding="do_not_pad",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_input_ids = text_inputs.input_ids.to(self.text_encoder.device)
+            self.empty_text_embedding = self.text_encoder(text_input_ids)[0].to(self.dtype)  # [1,2,1024]
 
         # 3. Preprocessing input image
         image, padding, original_resolution = self.image_processor.preprocess(
@@ -528,18 +537,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         latent = mean * self.vae.config.scaling_factor
 
         return latent  # [B,4,h,w]
-
-    def encode_empty_text(self) -> None:
-        prompt = ""
-        text_inputs = self.tokenizer(
-            prompt,
-            padding="do_not_pad",
-            max_length=self.tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids.to(self.text_encoder.device)
-        self.empty_text_embedding = self.text_encoder(text_input_ids)[0].to(self.dtype)  # [1,2,1024]
 
     @staticmethod
     def ensemble_depth(
