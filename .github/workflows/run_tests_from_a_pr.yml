@@ -56,5 +56,7 @@ jobs:
           python -m uv pip install peft
       
       - name: Run tests
+        env: 
+            PY_TEST: ${{ github.event.inputs.test }}
         run: |
-          pytest ${{ github.event.inputs.test }}
+          pytest $PY_TEST
