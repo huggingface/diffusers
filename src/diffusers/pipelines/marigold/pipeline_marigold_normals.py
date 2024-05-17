@@ -131,7 +131,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         default_denoising_steps: Optional[int] = None,
         default_processing_resolution: Optional[int] = None,
-        use_full_z_range: Optional[bool] = None,
+        use_full_z_range: Optional[bool] = True,
     ):
         super().__init__()
 
@@ -307,10 +307,10 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             match_input_resolution (`bool`, *optional*, defaults to `True`):
                 When enabled, the output prediction is resized to match the input dimensions. When disabled, the longer
                 side of the output will equal to `processing_resolution`.
-            resample_method_input: (`str`, *optional*, defaults to `"bilinear"`):
+            resample_method_input (`str`, *optional*, defaults to `"bilinear"`):
                 Resampling method used to resize input images to `processing_resolution`. The accepted values are:
                 `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
-            resample_method_output: (`str`, *optional*, defaults to `"bilinear"`):
+            resample_method_output (`str`, *optional*, defaults to `"bilinear"`):
                 Resampling method used to resize output predictions to match the input resolution. The accepted values
                 are `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
             batch_size (`int`, *optional*, defaults to `1`):
@@ -343,7 +343,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             `MarigoldNormalsOutput`: Output class instance for Marigold monocular normals prediction pipeline.
         """
 
-        # 0. Resolving variables
+        # 0. Resolving variables.
         device = self._execution_device
         dtype = self.dtype
 
@@ -351,12 +351,13 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         if (isinstance(image, np.ndarray) or torch.is_tensor(image)) and image.ndim == 4:
             num_images = image.shape[0]
 
+        # Model-specific optimal default values leading to fast and reasonable results.
         if num_inference_steps is None:
             num_inference_steps = self.default_denoising_steps
         if processing_resolution is None:
             processing_resolution = self.default_processing_resolution
 
-        # 1. Checking inputs
+        # 1. Check inputs.
         self.check_inputs(
             image,
             num_inference_steps,
@@ -371,7 +372,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             output_type,
         )
 
-        # 2. Prepare empty text conditioning. Model invocation: self.tokenizer, self.text_encoder
+        # 2. Prepare empty text conditioning.
+        # Model invocation: self.tokenizer, self.text_encoder.
         if self.empty_text_embedding is None:
             prompt = ""
             text_inputs = self.tokenizer(
@@ -384,12 +386,28 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             text_input_ids = text_inputs.input_ids.to(device)
             self.empty_text_embedding = self.text_encoder(text_input_ids)[0]  # [1,2,1024]
 
-        # 3. Preprocessing input image
+        # 3. Preprocess input images. This function loads input image or images of compatible dimensions `(H, W)`,
+        # optionally downsamples them to the `processing_resolution` `(PH, PW)`, where
+        # `max(PH, PW) == processing_resolution`, and pads the dimensions to `(PPH, PPW)` such that these values are
+        # divisible by the latent space downscaling factor (typically 8 in Stable Diffusion). The default value `None`
+        # of `processing_resolution` resolves to the optimal value from the model config. It is a recommended mode of
+        # operation and leads to the most reasonable results. Using the native image resolution or any other processing
+        # resolution can lead to loss of either fine details or global context in the output predictions.
         image, padding, original_resolution = self.image_processor.preprocess(
             image, processing_resolution, resample_method_input, check_input, device, dtype
         )  # [N,3,PPH,PPW]
 
-        # 4. Encode input image into latent space. Model invocation: self.vae.encoder
+        # 4. Encode input image into latent space. At this step, each of the `N` input images is represented with `E`
+        # ensemble members. Each ensemble member is an independent diffused prediction, just initialized independently.
+        # Latents of each such predictions across all input images and all ensemble members are represented in the
+        # `pred_latent` variable. The variable `image_latent` is of the same shape: it contains each input image encoded
+        # into latent space and replicated `E` times. The latents can be either generated (see `generator` to ensure
+        # reproducibility), or passed explicitly via the `latents` argument. The latter can be set outside the pipeline
+        # code. For example, in the Marigold-LCM video processing demo, the latents initialization of a frame is taken
+        # as a convex combination of the latents output of the pipeline for the previous frame and a newly-sampled
+        # noise. This behavior can be achieved by setting the `output_latent` argument to `True`. The latent space
+        # dimensions are `(h, w)`. Encoding into latent space happens in batches of size `batch_size`.
+        # Model invocation: self.vae.encoder.
         image_latent, pred_latent = self.prepare_latent(
             image, latents, generator, ensemble_size, batch_size
         )  # [N*E,4,h,w], [N*E,4,h,w]
@@ -400,7 +418,12 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             batch_size, 1, 1
         )  # [B,1024,2]
 
-        # 5. Denoising loop. Model invocation: self.unet
+        # 5. Process the denoising loop. All `N * E` latents are processed sequentially in batches of size `batch_size`.
+        # The unet model takes concatenated latent spaces of the input image and the predicted modality as an input, and
+        # outputs noise for the predicted modality's latent space. The number of denoising diffusion steps is defined by
+        # `num_inference_steps`. It is either set directly, or resolves to the optimal value specific to the loaded
+        # model.
+        # Model invocation: self.unet.
         pred_latents = []
 
         for i in self.progress_bar(
@@ -434,7 +457,9 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             noise,
         )
 
-        # 6. Decode prediction from latent into pixel space. Model invocation: self.vae.decoder
+        # 6. Decode predictions from latent into pixel space. The resulting `N * E` predictions have shape `(PPH, PPW)`,
+        # which requires slight postprocessing. Decoding into pixel space happens in batches of size `batch_size`.
+        # Model invocation: self.vae.decoder.
         prediction = torch.cat(
             [
                 self.decode_prediction(pred_latent[i : i + batch_size])
@@ -446,9 +471,14 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         if not output_latent:
             pred_latent = None
 
-        # 7. Postprocess predictions
+        # 7. Remove padding. The output shape is (PH, PW).
         prediction = self.image_processor.unpad_image(prediction, padding)  # [N*E,3,PH,PW]
 
+        # 8. Ensemble and compute uncertainty (when `output_uncertainty` is set). This code treats each of the `N`
+        # groups of `E` ensemble predictions independently. For each group it computes an ensembled prediction of shape
+        # `(PH, PW)` and an optional uncertainty map of the same dimensions. After computing this pair of outputs for
+        # each group independently, it stacks them respectively into batches of `N` almost final predictions and
+        # uncertainty maps.
         uncertainty = None
         if ensemble_size > 1:
             prediction = prediction.reshape(num_images, ensemble_size, *prediction.shape[1:])  # [N,E,3,PH,PW]
@@ -460,6 +490,11 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             prediction = torch.cat(prediction, dim=0)  # [N,3,PH,PW]
             uncertainty = torch.cat(uncertainty, dim=0)  # [N,1,PH,PW]
 
+        # 9. If `match_input_resolution` is set, the output prediction and the uncertainty are upsampled to match the
+        # input resolution `(H, W)`. This step may introduce upsampling artifacts, and therefore can be disabled.
+        # After upsampling, the native resolution normal maps are renormalized to unit length to reduce the artifacts.
+        # Depending on the downstream use-case, upsampling can be also chosen based on the tolerated artifacts by
+        # setting the `resample_method_output` parameter (e.g., to `"nearest"`).
         if match_input_resolution:
             prediction = self.image_processor.resize_antialias(
                 prediction, original_resolution, resample_method_output, is_aa=False
@@ -470,6 +505,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                     uncertainty, original_resolution, resample_method_output, is_aa=False
                 )  # [N,1,H,W]
 
+        # 10. Prepare the final outputs.
         if output_type == "np":
             prediction = prediction.cpu().numpy()
             if uncertainty is not None and output_uncertainty:
