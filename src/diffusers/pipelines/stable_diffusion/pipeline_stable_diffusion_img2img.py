@@ -117,6 +117,7 @@ def retrieve_timesteps(
     device: Optional[Union[str, torch.device]] = None,
     timesteps: Optional[List[int]] = None,
     sigmas: Optional[List[float]] = None,
+    strength: Optional[float] = None,
     **kwargs,
 ):
     """
@@ -165,7 +166,10 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
     else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        if "strength" in set(inspect.signature(scheduler.set_timesteps).parameters.keys()):
+            scheduler.set_timesteps(num_inference_steps, strength=strength, device=device, **kwargs)
+        else:
+            scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
@@ -1035,10 +1039,9 @@ class StableDiffusionImg2ImgPipeline(
         image = self.image_processor.preprocess(image)
 
         # 5. set timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas
-        )
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps, strength=strength)
+        if "strength" not in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys()):
+            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
