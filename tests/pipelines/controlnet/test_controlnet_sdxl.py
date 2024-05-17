@@ -51,6 +51,7 @@ from ..pipeline_params import (
 )
 from ..test_pipelines_common import (
     IPAdapterTesterMixin,
+    OficialCallbacksTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
@@ -68,6 +69,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
     PipelineTesterMixin,
     SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
+    OficialCallbacksTesterMixin,
 ):
     pipeline_class = StableDiffusionXLControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS

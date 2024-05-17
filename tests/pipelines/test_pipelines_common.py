@@ -1860,6 +1860,8 @@ class PipelineTesterMixin:
     def test_official_callback(self):
         sig = inspect.signature(self.pipeline_class.__call__)
         has_callback_step_end = "callback_on_step_end" in sig.parameters
+        has_mask_image = "has_mask_image" in sig.parameters
+        has_strength = "strength" in sig.parameters
 
         if not (has_callback_step_end):
             return
@@ -1915,7 +1917,7 @@ class PipelineTesterMixin:
             _wrong_official_callback = ChangeTensorCallback(cutoff_step_ratio=0.5, cutoff_step_index=1)
 
         # If the pipeline is image to image, set the strength and steps so we have 2 steps
-        if "strength" in inputs:
+        if has_strength and not has_mask_image:
             inputs["strength"] = 0.5
             inputs["num_inference_steps"] = 4
 
