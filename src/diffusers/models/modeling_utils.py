@@ -33,7 +33,6 @@ from .. import __version__
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
-    SAFETENSORS_FILE_EXTENSION,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     _add_variant,
@@ -44,6 +43,12 @@ from ..utils import (
     logging,
 )
 from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
+from .model_loading_utils import (
+    _determine_device_map,
+    _load_state_dict_into_model,
+    load_model_dict_into_meta,
+    load_state_dict,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -57,8 +62,6 @@ else:
 
 if is_accelerate_available():
     import accelerate
-    from accelerate.utils import set_module_tensor_to_device
-    from accelerate.utils.versions import is_torch_version
 
 
 def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
@@ -99,94 +102,6 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
         return first_tuple[1].dtype
 
 
-def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None):
-    """
-    Reads a checkpoint file, returning properly formatted errors if they arise.
-    """
-    try:
-        file_extension = os.path.basename(checkpoint_file).split(".")[-1]
-        if file_extension == SAFETENSORS_FILE_EXTENSION:
-            return safetensors.torch.load_file(checkpoint_file, device="cpu")
-        else:
-            weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
-            return torch.load(
-                checkpoint_file,
-                map_location="cpu",
-                **weights_only_kwarg,
-            )
-    except Exception as e:
-        try:
-            with open(checkpoint_file) as f:
-                if f.read().startswith("version"):
-                    raise OSError(
-                        "You seem to have cloned a repository without having git-lfs installed. Please install "
-                        "git-lfs and run `git lfs install` followed by `git lfs pull` in the folder "
-                        "you cloned."
-                    )
-                else:
-                    raise ValueError(
-                        f"Unable to locate the file {checkpoint_file} which is necessary to load this pretrained "
-                        "model. Make sure you have saved the model properly."
-                    ) from e
-        except (UnicodeDecodeError, ValueError):
-            raise OSError(
-                f"Unable to load weights from checkpoint file for '{checkpoint_file}' " f"at '{checkpoint_file}'. "
-            )
-
-
-def load_model_dict_into_meta(
-    model,
-    state_dict: OrderedDict,
-    device: Optional[Union[str, torch.device]] = None,
-    dtype: Optional[Union[str, torch.dtype]] = None,
-    model_name_or_path: Optional[str] = None,
-) -> List[str]:
-    device = device or torch.device("cpu")
-    dtype = dtype or torch.float32
-
-    accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
-
-    unexpected_keys = []
-    empty_state_dict = model.state_dict()
-    for param_name, param in state_dict.items():
-        if param_name not in empty_state_dict:
-            unexpected_keys.append(param_name)
-            continue
-
-        if empty_state_dict[param_name].shape != param.shape:
-            model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""
-            raise ValueError(
-                f"Cannot load {model_name_or_path_str}because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
-            )
-
-        if accepts_dtype:
-            set_module_tensor_to_device(model, param_name, device, value=param, dtype=dtype)
-        else:
-            set_module_tensor_to_device(model, param_name, device, value=param)
-    return unexpected_keys
-
-
-def _load_state_dict_into_model(model_to_load, state_dict: OrderedDict) -> List[str]:
-    # Convert old format to new format if needed from a PyTorch state_dict
-    # copy state_dict so _load_from_state_dict can modify it
-    state_dict = state_dict.copy()
-    error_msgs = []
-
-    # PyTorch's `_load_from_state_dict` does not copy parameters in a module's descendants
-    # so we need to apply the function recursively.
-    def load(module: torch.nn.Module, prefix: str = ""):
-        args = (state_dict, prefix, {}, True, [], [], error_msgs)
-        module._load_from_state_dict(*args)
-
-        for name, child in module._modules.items():
-            if child is not None:
-                load(child, prefix + name + ".")
-
-    load(model_to_load)
-
-    return error_msgs
-
-
 class ModelMixin(torch.nn.Module, PushToHubMixin):
     r"""
     Base class for all models.
@@ -201,6 +116,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
     _supports_gradient_checkpointing = False
     _keys_to_ignore_on_load_unexpected = None
+    _no_split_modules = None
 
     def __init__(self):
         super().__init__()
@@ -246,6 +162,36 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         if self._supports_gradient_checkpointing:
             self.apply(partial(self._set_gradient_checkpointing, value=False))
+
+    def set_use_npu_flash_attention(self, valid: bool) -> None:
+        r"""
+        Set the switch for the npu flash attention.
+        """
+
+        def fn_recursive_set_npu_flash_attention(module: torch.nn.Module):
+            if hasattr(module, "set_use_npu_flash_attention"):
+                module.set_use_npu_flash_attention(valid)
+
+            for child in module.children():
+                fn_recursive_set_npu_flash_attention(child)
+
+        for module in self.children():
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_npu_flash_attention(module)
+
+    def enable_npu_flash_attention(self) -> None:
+        r"""
+        Enable npu flash attention from torch_npu
+
+        """
+        self.set_use_npu_flash_attention(True)
+
+    def disable_npu_flash_attention(self) -> None:
+        r"""
+        disable npu flash attention from torch_npu
+
+        """
+        self.set_use_npu_flash_attention(False)
 
     def set_use_memory_efficient_attention_xformers(
         self, valid: bool, attention_op: Optional[Callable] = None
@@ -421,9 +367,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -505,7 +451,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
         from_flax = kwargs.pop("from_flax", False)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
         local_files_only = kwargs.pop("local_files_only", None)
@@ -560,6 +506,36 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
+        # change device_map into a map if we passed an int, a str or a torch.device
+        if isinstance(device_map, torch.device):
+            device_map = {"": device_map}
+        elif isinstance(device_map, str) and device_map not in ["auto", "balanced", "balanced_low_0", "sequential"]:
+            try:
+                device_map = {"": torch.device(device_map)}
+            except RuntimeError:
+                raise ValueError(
+                    "When passing device_map as a string, the value needs to be a device name (e.g. cpu, cuda:0) or "
+                    f"'auto', 'balanced', 'balanced_low_0', 'sequential' but found {device_map}."
+                )
+        elif isinstance(device_map, int):
+            if device_map < 0:
+                raise ValueError(
+                    "You can't pass device_map as a negative int. If you want to put the model on the cpu, pass device_map = 'cpu' "
+                )
+            else:
+                device_map = {"": device_map}
+
+        if device_map is not None:
+            if low_cpu_mem_usage is None:
+                low_cpu_mem_usage = True
+            elif not low_cpu_mem_usage:
+                raise ValueError("Passing along a `device_map` requires `low_cpu_mem_usage=True`")
+
+        if low_cpu_mem_usage:
+            if device_map is not None and not is_torch_version(">=", "1.10"):
+                # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
+                raise ValueError("`low_cpu_mem_usage` and `device_map` require PyTorch >= 1.10.")
+
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
 
@@ -582,10 +558,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             token=token,
             revision=revision,
             subfolder=subfolder,
-            device_map=device_map,
-            max_memory=max_memory,
-            offload_folder=offload_folder,
-            offload_state_dict=offload_state_dict,
             user_agent=user_agent,
             **kwargs,
         )
@@ -690,6 +662,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
+                    device_map = _determine_device_map(model, device_map, max_memory, torch_dtype)
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
@@ -880,6 +853,45 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
 
         return model, missing_keys, unexpected_keys, mismatched_keys, error_msgs
+
+    @classmethod
+    def _get_signature_keys(cls, obj):
+        parameters = inspect.signature(obj.__init__).parameters
+        required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
+        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
+        expected_modules = set(required_parameters.keys()) - {"self"}
+
+        return expected_modules, optional_parameters
+
+    # Adapted from `transformers` modeling_utils.py
+    def _get_no_split_modules(self, device_map: str):
+        """
+        Get the modules of the model that should not be spit when using device_map. We iterate through the modules to
+        get the underlying `_no_split_modules`.
+
+        Args:
+            device_map (`str`):
+                The device map value. Options are ["auto", "balanced", "balanced_low_0", "sequential"]
+
+        Returns:
+            `List[str]`: List of modules that should not be split
+        """
+        _no_split_modules = set()
+        modules_to_check = [self]
+        while len(modules_to_check) > 0:
+            module = modules_to_check.pop(-1)
+            # if the module does not appear in _no_split_modules, we also check the children
+            if module.__class__.__name__ not in _no_split_modules:
+                if isinstance(module, ModelMixin):
+                    if module._no_split_modules is None:
+                        raise ValueError(
+                            f"{module.__class__.__name__} does not support `device_map='{device_map}'`. To implement support, the model "
+                            "class needs to implement the `_no_split_modules` attribute."
+                        )
+                    else:
+                        _no_split_modules = _no_split_modules | set(module._no_split_modules)
+                modules_to_check += list(module.children())
+        return list(_no_split_modules)
 
     @property
     def device(self) -> torch.device:

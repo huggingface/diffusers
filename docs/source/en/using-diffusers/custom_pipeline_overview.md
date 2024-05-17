@@ -16,11 +16,19 @@ specific language governing permissions and limitations under the License.
 
 ## Community pipelines
 
+> [!TIP] Take a look at GitHub Issue [#841](https://github.com/huggingface/diffusers/issues/841) for more context about why we're adding community pipelines to help everyone easily share their work without being slowed down.
+
 Community pipelines are any [`DiffusionPipeline`] class that are different from the original paper implementation (for example, the [`StableDiffusionControlNetPipeline`] corresponds to the [Text-to-Image Generation with ControlNet Conditioning](https://arxiv.org/abs/2302.05543) paper). They provide additional functionality or extend the original implementation of a pipeline.
 
 There are many cool community pipelines like [Marigold Depth Estimation](https://github.com/huggingface/diffusers/tree/main/examples/community#marigold-depth-estimation) or [InstantID](https://github.com/huggingface/diffusers/tree/main/examples/community#instantid-pipeline), and you can find all the official community pipelines [here](https://github.com/huggingface/diffusers/tree/main/examples/community).
 
-There are two types of community pipelines, those stored on the Hugging Face Hub and those stored on Diffusers GitHub repository. Hub pipelines are completely customizable (scheduler, models, pipeline code, etc.) while Diffusers GitHub pipelines are only limited to custom pipeline code. Refer to this [table](./contribute_pipeline#share-your-pipeline) for a more detailed comparison of Hub vs GitHub community pipelines.
+There are two types of community pipelines, those stored on the Hugging Face Hub and those stored on Diffusers GitHub repository. Hub pipelines are completely customizable (scheduler, models, pipeline code, etc.) while Diffusers GitHub pipelines are only limited to custom pipeline code.
+
+|                | GitHub community pipeline                                                                                        | HF Hub community pipeline                                                                 |
+|----------------|------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| usage          | same                                                                                                             | same                                                                                      |
+| review process | open a Pull Request on GitHub and undergo a review process from the Diffusers team before merging; may be slower | upload directly to a Hub repository without any review; this is the fastest workflow      |
+| visibility     | included in the official Diffusers repository and documentation                                                  | included on your HF Hub profile and relies on your own usage/promotion to gain visibility |
 
 <hfoptions id="community">
 <hfoption id="Hub pipelines">
@@ -160,6 +168,97 @@ out_lpw
     <figcaption class="mt-2 text-center text-sm text-gray-500">Stable Diffusion</figcaption>
   </div>
 </div>
+
+## Example community pipelines
+
+Community pipelines are a really fun and creative way to extend the capabilities of the original pipeline with new and unique features. You can find all community pipelines in the [diffusers/examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) folder with inference and training examples for how to use them.
+
+This section showcases a couple of the community pipelines and hopefully it'll inspire you to create your own (feel free to open a PR for your community pipeline and ping us for a review)!
+
+> [!TIP]
+> The [`~DiffusionPipeline.from_pipe`] method is particularly useful for loading community pipelines because many of them don't have pretrained weights and add a feature on top of an existing pipeline like Stable Diffusion or Stable Diffusion XL. You can learn more about the [`~DiffusionPipeline.from_pipe`] method in the [Load with from_pipe](custom_pipeline_overview#load-with-from_pipe) section.
+
+<hfoptions id="community">
+<hfoption id="Marigold">
+
+[Marigold](https://marigoldmonodepth.github.io/) is a depth estimation diffusion pipeline that uses the rich existing and inherent visual knowledge in diffusion models. It takes an input image and denoises and decodes it into a depth map. Marigold performs well even on images it hasn't seen before.
+
+```py
+import torch
+from PIL import Image
+from diffusers import DiffusionPipeline
+from diffusers.utils import load_image
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "prs-eth/marigold-lcm-v1-0",
+    custom_pipeline="marigold_depth_estimation",
+    torch_dtype=torch.float16,
+    variant="fp16",
+)
+
+pipeline.to("cuda")
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/community-marigold.png")
+output = pipeline(
+    image,
+    denoising_steps=4,
+    ensemble_size=5,
+    processing_res=768,
+    match_input_res=True,
+    batch_size=0,
+    seed=33,
+    color_map="Spectral",
+    show_progress_bar=True,
+)
+depth_colored: Image.Image = output.depth_colored
+depth_colored.save("./depth_colored.png")
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/community-marigold.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">original image</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/marigold-depth.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">colorized depth image</figcaption>
+  </div>
+</div>
+
+</hfoption>
+<hfoption id="HD-Painter">
+
+[HD-Painter](https://hf.co/papers/2312.14091) is a high-resolution inpainting pipeline. It introduces a *Prompt-Aware Introverted Attention (PAIntA)* layer to better align a prompt with the area to be inpainted, and *Reweighting Attention Score Guidance (RASG)* to keep the latents more prompt-aligned and within their trained domain to generate realistc images.
+
+```py
+import torch
+from diffusers import DiffusionPipeline, DDIMScheduler
+from diffusers.utils import load_image
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "Lykon/dreamshaper-8-inpainting",
+    custom_pipeline="hd_painter"
+)
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hd-painter.jpg")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hd-painter-mask.png")
+prompt = "football"
+image = pipeline(prompt, init_image, mask_image, use_rasg=True, use_painta=True, generator=torch.manual_seed(0)).images[0]
+image
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hd-painter.jpg"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">original image</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hd-painter-output.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
+  </div>
+</div>
+
+</hfoption>
+</hfoptions>
 
 ## Community components
 
