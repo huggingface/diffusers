@@ -77,7 +77,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["BasicTransformerBlock"]
+    _no_split_modules = ["BasicTransformerBlock", "PatchEmbed"]
 
     @register_to_config
     def __init__(
@@ -312,10 +312,12 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
                 )
 
         # 3. Output
-        shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
+        shift, scale = (
+            self.scale_shift_table[None] + embedded_timestep[:, None].to(self.scale_shift_table.device)
+        ).chunk(2, dim=1)
         hidden_states = self.norm_out(hidden_states)
         # Modulation
-        hidden_states = hidden_states * (1 + scale) + shift
+        hidden_states = hidden_states * (1 + scale.to(hidden_states.device)) + shift.to(hidden_states.device)
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.squeeze(1)
 
