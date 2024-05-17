@@ -1905,7 +1905,8 @@ class PipelineTesterMixin:
                     else int(pipeline.num_timesteps * cutoff_step_ratio)
                 )
 
-                if step_index == cutoff_step:
+                # has to be >= because in stable_diffusion_img2img and stable_diffusion_inpaint there's one more timestep
+                if step_index >= cutoff_step:
                     callback_kwargs[self.tensor_inputs[0]] = torch.zeros_like(callback_kwargs[self.tensor_inputs[0]])
                 return callback_kwargs
 
