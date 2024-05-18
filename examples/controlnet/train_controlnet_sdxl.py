@@ -728,6 +728,13 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
             prompt_embeds = prompt_embeds.hidden_states[-2]
             bs_embed, seq_len, _ = prompt_embeds.shape
             prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
+
+            # Among diffusion models, SDXL uniquely relies on a zeroed uncond space.
+            # This is in contrast to earlier Stable Diffusion 1.x/2.x models which used an encoded empty string.
+            for i, caption in enumerate(captions):
+                if caption == "":
+                    prompt_embeds[i] = torch.zeros_like(prompt_embeds[i])
+
             prompt_embeds_list.append(prompt_embeds)
 
     prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
@@ -1211,7 +1218,6 @@ def main(args):
                     controlnet_cond=controlnet_image,
                     return_dict=False,
                 )
-
                 # Predict the noise residual
                 model_pred = unet(
                     noisy_latents,
