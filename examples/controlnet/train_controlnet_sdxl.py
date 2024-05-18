@@ -1218,6 +1218,7 @@ def main(args):
                     controlnet_cond=controlnet_image,
                     return_dict=False,
                 )
+
                 # Predict the noise residual
                 model_pred = unet(
                     noisy_latents,
