@@ -182,6 +182,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor],
         generator: Optional[Union[torch.Generator, List[torch.Generator]]],
         output_type: str,
+        output_uncertainty: bool,
     ) -> None:
         if num_inference_steps is None:
             raise ValueError("`num_inference_steps` is not specified and could not be resolved from the model config.")
@@ -193,6 +194,11 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             logger.warning(
                 "`ensemble_size` == 2 results are similar to no ensembling (1); "
                 "consider increasing the value to at least 3."
+            )
+        if ensemble_size == 1 and output_uncertainty:
+            raise ValueError(
+                "Computing uncertainty by setting `output_uncertainty=True` also requires setting `ensemble_size` "
+                "greater than 1."
             )
         if processing_resolution is None:
             raise ValueError(
@@ -293,7 +299,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         latents: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: str = "np",
-        output_uncertainty: bool = True,
+        output_uncertainty: bool = False,
         output_latent: bool = False,
         **kwargs,
     ) -> MarigoldNormalsOutput:
@@ -314,7 +320,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             ensemble_size (`int`, defaults to `1`):
                 Number of ensemble predictions. Recommended values are 5 and higher for better precision, or 1 for
                 faster inference.
-            processing_resolution (`int`, *optional*, defaults to None):
+            processing_resolution (`int`, *optional*, defaults to `None`):
                 Effective processing resolution. When set to `0`, matches the larger input image dimension. This
                 produces crisper predictions, but may also lead to the overall loss of global context. The default
                 value `None` resolves to the optimal value from the model config.
@@ -341,7 +347,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"np"`):
                 Preferred format of the output's `prediction` and the optional `uncertainty` fields. The accepted
                 values are: `"np"` (numpy array) or `"pt"` (torch tensor).
-            output_uncertainty (`bool`, *optional*, defaults to `True`):
+            output_uncertainty (`bool`, *optional*, defaults to `False`):
                 When enabled, the output's `uncertainty` field contains the predictive uncertainty map, provided that
                 the `ensemble_size` argument is set to a value above 2.
             output_latent (`bool`, *optional*, defaults to `False`):
@@ -382,6 +388,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             latents,
             generator,
             output_type,
+            output_uncertainty,
         )
 
         # 2. Prepare empty text conditioning.

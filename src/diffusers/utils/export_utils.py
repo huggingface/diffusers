@@ -306,6 +306,8 @@ def visualize_depth(
         img = PIL.Image.fromarray(img.cpu().numpy())
         return img
 
+    if depth is None or isinstance(depth, list) and any(o is None for o in depth):
+        raise ValueError("Input depth is `None`")
     if isinstance(depth, np.ndarray) or torch.is_tensor(depth):
         if depth.ndim == 2:
             return visualize_depth_one(depth)
@@ -343,6 +345,8 @@ def export_depth_to_16bit_png(
         img = PIL.Image.fromarray(img, mode="I;16")
         return img
 
+    if depth is None or isinstance(depth, list) and any(o is None for o in depth):
+        raise ValueError("Input depth is `None`")
     if isinstance(depth, np.ndarray) or torch.is_tensor(depth):
         if depth.ndim == 2:
             return export_depth_to_16bit_png_one(depth)
@@ -414,6 +418,8 @@ def visualize_normals(
         img = PIL.Image.fromarray(img)
         return img
 
+    if normals is None or isinstance(normals, list) and any(o is None for o in normals):
+        raise ValueError("Input normals is `None`")
     if isinstance(normals, np.ndarray) or torch.is_tensor(normals):
         if normals.ndim == 3:
             return visualize_normals_one(normals)
@@ -472,10 +478,7 @@ def visualize_uncertainty(
         return img
 
     if uncertainty is None or isinstance(uncertainty, list) and any(o is None for o in uncertainty):
-        raise ValueError(
-            "Input is `None`; did you obtain it from a pipeline like `MarigoldDepthPipeline`? If so, make sure to "
-            "specify the `output_uncertainty=True` and an `ensemble_size` of at least 3."
-        )
+        raise ValueError("Input uncertainty is `None`")
     if isinstance(uncertainty, np.ndarray) or torch.is_tensor(uncertainty):
         if uncertainty.ndim in (2, 3):
             return visualize_uncertainty_one(uncertainty)
