@@ -105,6 +105,11 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             Text-encoder, for empty text embedding.
         tokenizer (`CLIPTokenizer`):
             CLIP tokenizer.
+        prediction_type (`str`, *optional*):
+            Type of predictions made by the model.
+        use_full_z_range (`bool`, *optional*):
+            Whether the normals predicted by this model utilize the full range of the Z dimension, or only its positive
+            half.
         default_denoising_steps (`int`, *optional*):
             The minimum number of denoising diffusion steps that are required to produce a prediction of reasonable
             quality with the given model. This value must be set in the model config. When the pipeline is called
@@ -116,13 +121,10 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             the model config. When the pipeline is called without explicitly setting `processing_resolution`, the
             default value is used. This is required to ensure reasonable results with various model flavors trained
             with varying optimal processing resolution values.
-        use_full_z_range (`bool`, *optional*):
-            A model property specifying whether the predicted normal maps utilize the full range of the Z dimension, or
-            only its positive half. This value must be set in the model config. NB: overriding this value is not
-            supported.
     """
 
     model_cpu_offload_seq = "text_encoder->vae.encoder->unet->vae.decoder"
+    supported_prediction_types = ("normals",)
 
     def __init__(
         self,
@@ -131,11 +133,18 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         scheduler: Union[DDIMScheduler, LCMScheduler],
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
+        prediction_type: Optional[str] = None,
+        use_full_z_range: Optional[bool] = True,
         default_denoising_steps: Optional[int] = None,
         default_processing_resolution: Optional[int] = None,
-        use_full_z_range: Optional[bool] = True,
     ):
         super().__init__()
+
+        if prediction_type not in self.supported_prediction_types:
+            logger.warning(
+                f"Potentially unsupported `prediction_type='{prediction_type}'`; supported values: "
+                f"{self.supported_prediction_types}."
+            )
 
         self.register_modules(
             unet=unet,
