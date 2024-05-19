@@ -537,7 +537,10 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             ]  # [ [[1,1,PH,PW], [1,1,PH,PW]], ... ]
             prediction, uncertainty = zip(*prediction)  # [[1,1,PH,PW], ... ], [[1,1,PH,PW], ... ]
             prediction = torch.cat(prediction, dim=0)  # [N,1,PH,PW]
-            uncertainty = torch.cat(uncertainty, dim=0)  # [N,1,PH,PW]
+            if output_uncertainty:
+                uncertainty = torch.cat(uncertainty, dim=0)  # [N,1,PH,PW]
+            else:
+                uncertainty = None
 
         # 9. If `match_input_resolution` is set, the output prediction and the uncertainty are upsampled to match the
         # input resolution `(H, W)`. This step may introduce upsampling artifacts, and therefore can be disabled.
