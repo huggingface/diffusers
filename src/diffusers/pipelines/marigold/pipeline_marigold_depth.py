@@ -735,7 +735,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         if requires_aligning:
             param = compute_param(depth)
-            print(param)
             depth = align(depth, param)
 
         depth, uncertainty = ensemble(depth, return_uncertainty=output_uncertainty)
