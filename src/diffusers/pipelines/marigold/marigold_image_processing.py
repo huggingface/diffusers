@@ -7,6 +7,7 @@ from PIL import Image
 
 from ... import ConfigMixin
 from ...configuration_utils import register_to_config
+from ...image_processor import PipelineImageInput
 from ...utils import CONFIG_NAME, logging
 
 
@@ -20,6 +21,8 @@ class MarigoldImageProcessor(ConfigMixin):
     def __init__(
         self,
         vae_scale_factor: int = 8,
+        do_normalize: bool = True,
+        do_range_check: bool = True,
     ):
         super().__init__()
 
@@ -94,11 +97,15 @@ class MarigoldImageProcessor(ConfigMixin):
         return image
 
     @staticmethod
-    def load_image_canonical(image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Tuple[torch.Tensor, int]:
+    def load_image_canonical(
+        image: Union[torch.Tensor, np.ndarray, Image.Image],
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> Tuple[torch.Tensor, int]:
         if isinstance(image, Image.Image):
             image = np.array(image)
 
-        input_dtype_max = None
+        image_dtype_max = None
         if isinstance(image, np.ndarray):
             if np.issubdtype(image.dtype, np.integer) and not np.issubdtype(image.dtype, np.unsignedinteger):
                 raise ValueError(f"Input image dtype={image.dtype} cannot be a signed integer.")
@@ -107,29 +114,40 @@ class MarigoldImageProcessor(ConfigMixin):
             if np.issubdtype(image.dtype, bool):
                 raise ValueError(f"Input image dtype={image.dtype} cannot be boolean.")
             if np.issubdtype(image.dtype, np.unsignedinteger):
-                input_dtype_max = np.iinfo(image.dtype).max
+                image_dtype_max = np.iinfo(image.dtype).max
                 image = image.astype(np.float32)  # because torch does not have unsigned dtypes beyond torch.uint8
             image = torch.from_numpy(image)
 
-        if torch.is_tensor(image) and not torch.is_floating_point(image) and input_dtype_max is None:
+        if torch.is_tensor(image) and not torch.is_floating_point(image) and image_dtype_max is None:
             if image.dtype != torch.uint8:
                 raise ValueError(f"Image dtype={image.dtype} is not supported.")
-            input_dtype_max = 255
+            image_dtype_max = 255
+
+        if not torch.is_tensor(image):
+            raise ValueError(f"Input type unsupported: {type(image)}.")
 
         if image.dim() == 2:
-            image = image.unsqueeze(0).unsqueeze(0).repeat(1, 3, 1, 1)  # [1,3,H,W]
+            image = image[None, None]
         elif image.dim() == 3:
-            if image.shape[2] in (1, 3):
-                image = image.permute(2, 0, 1)  # [1|3,H,W]
-            if image.shape[0] == 1:
-                image = image.repeat(3, 1, 1)  # [3,H,W]
-            if image.shape[0] != 3:
-                raise ValueError(f"Input image is not 1- or 3-channel: {image.shape}.")
-            image = image.unsqueeze(0)  # [1,3,H,W]
-        elif image.dim() != 4:
-            raise ValueError("Input image is not a 2-, 3-, or 4-dimensional tensor.")
+            image = image[None]
+        elif image.dim() == 4:
+            pass
+        else:
+            raise ValueError("Input image is not 2-, 3-, or 4-dimensional.")
 
-        return image, input_dtype_max
+        if image.shape[3] in (1, 3):
+            image = image.permute(0, 3, 1, 2)  # [N,H,W,1|3] -> [N,1|3,H,W]
+        if image.shape[1] == 1:
+            image = image.repeat(1, 3, 1, 1)  # [N,1,H,W] -> [N,3,H,W]
+        if image.shape[1] != 3:
+            raise ValueError(f"Input image is not 1- or 3-channel: {image.shape}.")
+
+        image = image.to(device=device, dtype=dtype)
+
+        if image_dtype_max is not None:
+            image = image / image_dtype_max
+
+        return image
 
     @staticmethod
     def check_image_values_range(image: torch.FloatTensor) -> None:
@@ -137,39 +155,44 @@ class MarigoldImageProcessor(ConfigMixin):
             raise ValueError(f"Invalid input type={type(image)}.")
         if not torch.is_floating_point(image):
             raise ValueError(f"Invalid input dtype={image.dtype}.")
-
-        val_min = image.min().item()
-        val_max = image.max().item()
-
-        if val_min < -1.0 or val_max > 1.0:
-            raise ValueError("Input image data is partially outside of the [-1,1] range.")
-        if val_min >= 0.0:
-            logger.warning(
-                "Input image data is entirely in the [0,1] range; expecting [-1,1]. "
-                "This could be an issue with normalization"
-            )
+        if image.min().item() < 0.0 or image.max().item() > 1.0:
+            raise ValueError("Input image data is partially outside of the [0,1] range.")
 
     def preprocess(
         self,
-        image: Union[Image.Image, np.ndarray, torch.FloatTensor],
+        image: PipelineImageInput,
         processing_resolution: Optional[int] = None,
         resample_method_input: str = "bilinear",
-        check_input: bool = True,
         device: torch.device = torch.device("cpu"),
         dtype: torch.dtype = torch.float32,
     ):
-        image, input_dtype_max = self.load_image_canonical(image)  # [N,3,H,W]
+        if isinstance(image, list):
+            images = None
+            for i, img in enumerate(image):
+                img = self.load_image_canonical(img, device, dtype)  # [N,3,H,W]
+                if images is None:
+                    images = img
+                else:
+                    if images.shape[2:] != img.shape[2:]:
+                        raise ValueError(
+                            f"Input image[{i}] has incompatible dimensions {img.shape[2:]} with the previous images "
+                            f"{images.shape[2:]}"
+                        )
+                    images = torch.cat((images, img), dim=0)
+            image = images
+            del images
+        else:
+            image = self.load_image_canonical(image, device, dtype)  # [N,3,H,W]
 
-        image = image.to(device=device, dtype=dtype)
+        original_resolution = image.shape[2:]
 
-        original_resolution = image.shape[-2:]
-
-        if input_dtype_max is not None:
-            image = image * (2.0 / input_dtype_max) - 1.0
-        elif check_input:
+        if self.config.do_range_check:
             self.check_image_values_range(image)
 
-        if processing_resolution > 0:
+        if self.config.do_normalize:
+            image = image * 2.0 - 1.0
+
+        if processing_resolution is not None and processing_resolution > 0:
             image = self.resize_to_max_edge(image, processing_resolution, resample_method_input)  # [N,3,PH,PW]
 
         image, padding = self.pad_image(image, self.config.vae_scale_factor)  # [N,3,PPH,PPW]

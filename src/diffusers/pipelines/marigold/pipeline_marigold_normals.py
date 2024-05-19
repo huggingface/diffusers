@@ -24,6 +24,7 @@ import torch
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer
 
+from ...image_processor import PipelineImageInput
 from ...models import (
     AutoencoderKL,
     UNet2DConditionModel,
@@ -70,13 +71,14 @@ class MarigoldNormalsOutput(BaseOutput):
 
     Args:
         prediction (`np.ndarray`, `torch.FloatTensor`):
-            Predicted normals, with values in the range [-1, 1]. For types `np.ndarray` or `torch.FloatTensor`, the
-            shape is always $numimages \times 3 \times height \times width$.
+            Predicted normals, with values in the range [-1, 1]. The shape is always $numimages \times 3 \times height
+            \times width$, regardless whether the images were passed as a 4D array or a list.
         uncertainty (`None`, `np.ndarray`, `torch.FloatTensor`):
-            Uncertainty maps computed from the ensemble. The shape is $numimages \times 1 \times height \times width$.
+            Uncertainty maps computed from the ensemble, with values in the range [0, 1]. The shape is $numimages
+            \times 1 \times height \times width$.
         latent (`None`, `torch.FloatTensor`):
-            Latent features corresponding to the predictions. The shape is $numimages * numensemble \times 4 \times
-            latentheight \times latentwidth$.
+            Latent features corresponding to the predictions, compatible with the `latents` argument of the pipeline.
+            The shape is $numimages * numensemble \times 4 \times latentheight \times latentwidth$.
     """
 
     prediction: Union[np.ndarray, torch.FloatTensor]
@@ -160,7 +162,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        image: Union[Image.Image, np.ndarray, torch.FloatTensor],
+        image: PipelineImageInput,
         num_inference_steps: int,
         ensemble_size: int,
         processing_resolution: int,
@@ -270,7 +272,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[Image.Image, np.ndarray, torch.FloatTensor],
+        image: PipelineImageInput,
         num_inference_steps: Optional[int] = None,
         ensemble_size: int = 1,
         processing_resolution: Optional[int] = None,
@@ -278,7 +280,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         resample_method_input: str = "bilinear",
         resample_method_output: str = "bilinear",
         batch_size: int = 1,
-        check_input: bool = True,
         ensembling_kwargs: Optional[Dict[str, Any]] = None,
         latents: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -291,8 +292,12 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline.
 
         Args:
-            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`):
-                Input image or stacked images.
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`),
+                `List[torch.FloatTensor]`: An input image or images used as an input for the normals estimation task.
+                For arrays and tensors, the expected value range is between `[0, 1]`. Passing a batch of images is
+                possible by providing a four-dimensional array or a tensor. Additionally, a list of images of two- or
+                three-dimensional arrays or tensors can be passed. In the latter case, all list elements must have the
+                same width and height.
             num_inference_steps (`int`, *optional*, defaults to `None`):
                 Number of denoising diffusion steps during inference. The default value `None` results in automatic
                 selection. The number of steps should be at least 10 with the full Marigold models, and between 1 and 4
@@ -315,8 +320,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 are `"nearest"`, `"nearest-exact"`, `"bilinear"`, `"bicubic"`, or `"area"`.
             batch_size (`int`, *optional*, defaults to `1`):
                 Batch size; only matters when setting `ensemble_size` or passing a tensor of images.
-            check_input (`bool`, defaults to `False`):
-                Extra steps to validate compatibility of the inputs with the model.
             ensembling_kwargs (`dict`, *optional*, defaults to `None`)
                 Extra dictionary with arguments for precise ensembling control. The following options are available:
                 - reduction (`str`, *optional*, defaults to `"closest"`): Defines the ensembling function applied in
@@ -394,7 +397,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         # operation and leads to the most reasonable results. Using the native image resolution or any other processing
         # resolution can lead to loss of either fine details or global context in the output predictions.
         image, padding, original_resolution = self.image_processor.preprocess(
-            image, processing_resolution, resample_method_input, check_input, device, dtype
+            image, processing_resolution, resample_method_input, device, dtype
         )  # [N,3,PPH,PPW]
 
         # 4. Encode input image into latent space. At this step, each of the `N` input images is represented with `E`
@@ -586,6 +589,23 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
     def ensemble_normals(
         normals: torch.FloatTensor, output_uncertainty: bool, reduction: str = "closest"
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
+        """
+        Ensembles normals maps represented by the `normals` tensor with expected shape `(B, 3, H, W)`, where B is the
+        number of ensemble members for a given prediction of size `(H x W)`.
+
+        Args:
+            normals (`torch.FloatTensor`):
+                Input ensemble normals maps.
+            output_uncertainty (`bool`, *optional*, defaults to `False`):
+                Whether to output uncertainty map.
+            reduction (`str`, *optional*, defaults to `"closest"`):
+                Reduction method used to ensemble aligned predictions. The accepted values are: `"closest"` and
+                `"mean"`.
+
+        Returns:
+            A tensor of aligned and ensembled normals maps with shape `(1, 3, H, W)` and optionally a tensor of
+            uncertainties of shape `(1, 1, H, W)`.
+        """
         if normals.dim() != 4 or normals.shape[1] != 3:
             raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {normals.shape}.")
         if reduction not in ("closest", "mean"):
