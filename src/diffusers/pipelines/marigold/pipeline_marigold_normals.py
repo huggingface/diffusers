@@ -624,6 +624,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         mean_normals = MarigoldNormalsPipeline.normalize_normals(mean_normals)  # [1,3,H,W]
 
         sim_cos = (mean_normals * normals).sum(dim=1, keepdim=True)  # [E,1,H,W]
+        sim_cos = sim_cos.clamp(-1, 1)  # required to avoid NaN in uncertainty with fp16
 
         uncertainty = None
         if output_uncertainty:

@@ -426,3 +426,65 @@ def visualize_normals(
         return [visualize_normals_one(img, idx) for idx, img in enumerate(normals)]
     else:
         raise ValueError(f"Unexpected input type: {type(normals)}")
+
+
+def visualize_uncertainty(
+    uncertainty: Union[
+        np.ndarray,
+        torch.FloatTensor,
+        List[np.ndarray],
+        List[torch.FloatTensor],
+    ],
+    saturation_percentile=95,
+) -> Union[PIL.Image.Image, List[PIL.Image.Image]]:
+    """
+    Visualizes dense uncertainties, such as produced by `MarigoldDepthPipeline` or `MarigoldNormalsPipeline`.
+
+    Args:
+        uncertainty (`Union[np.ndarray, torch.FloatTensor, List[np.ndarray], List[torch.FloatTensor]]`):
+            Uncertainty maps.
+        saturation_percentile (`int`, *optional*, defaults to `95`):
+            Specifies the percentile uncertainty value visualized with maximum intensity.
+
+    Returns: `PIL.Image.Image` or `List[PIL.Image.Image]` with uncertainty visualization.
+    """
+
+    def visualize_uncertainty_one(img, idx=None):
+        prefix = "Uncertainty" + (f"[{idx}]" if idx else "")
+        if isinstance(img, np.ndarray) or torch.is_tensor(img):
+            if img.ndim == 2:
+                img = img[None]
+            if img.ndim != 3 or img.shape[0] != 1:
+                raise ValueError(f"{prefix}: unexpected shape={img.shape}.")
+            if isinstance(img, np.ndarray):
+                img = torch.from_numpy(img)
+            if not torch.is_floating_point(img):
+                raise ValueError(f"{prefix}: unexected dtype={img.dtype}.")
+            if img.min() < 0:
+                raise ValueError(f"{prefix}: unexected data range, min={img.min()}.")
+        else:
+            raise ValueError(f"{prefix}: unexpected type={type(img)}.")
+        img = img.squeeze(0).cpu().numpy()
+        saturation_value = np.percentile(img, saturation_percentile)
+        img = np.clip(img * 255 / saturation_value, 0, 255)
+        img = img.astype(np.uint8)
+        img = PIL.Image.fromarray(img)
+        return img
+
+    if uncertainty is None or isinstance(uncertainty, list) and any(o is None for o in uncertainty):
+        raise ValueError(
+            "Input is `None`; did you obtain it from a pipeline like `MarigoldDepthPipeline`? If so, make sure to "
+            "specify the `output_uncertainty=True` and an `ensemble_size` of at least 3."
+        )
+    if isinstance(uncertainty, np.ndarray) or torch.is_tensor(uncertainty):
+        if uncertainty.ndim in (2, 3):
+            return visualize_uncertainty_one(uncertainty)
+        if uncertainty.ndim == 4:
+            if uncertainty.shape[1] != 1:
+                raise ValueError(f"Unexpected input shape={uncertainty.shape}, expecting [N,1,H,W].")
+            return [visualize_uncertainty_one(img, idx) for idx, img in enumerate(uncertainty)]
+        raise ValueError(f"Unexpected input shape={uncertainty.shape}: expecting 2, 3, or 4 dimensions.")
+    elif isinstance(uncertainty, list):
+        return [visualize_uncertainty_one(img, idx) for idx, img in enumerate(uncertainty)]
+    else:
+        raise ValueError(f"Unexpected input type: {type(uncertainty)}")
