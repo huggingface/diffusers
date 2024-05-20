@@ -439,7 +439,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         # noise. This behavior can be achieved by setting the `output_latent` argument to `True`. The latent space
         # dimensions are `(h, w)`. Encoding into latent space happens in batches of size `batch_size`.
         # Model invocation: self.vae.encoder.
-        image_latent, pred_latent = self.prepare_latent(
+        image_latent, pred_latent = self.prepare_latents(
             image, latents, generator, ensemble_size, batch_size
         )  # [N*E,4,h,w], [N*E,4,h,w]
 
@@ -553,7 +553,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         return out
 
-    def prepare_latent(
+    # Copied from diffusers.pipelines.marigold.pipeline_marigold_depth.MarigoldDepthPipeline.prepare_latents
+    def prepare_latents(
         self,
         image: torch.FloatTensor,
         latents: Optional[torch.FloatTensor],
@@ -595,6 +596,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         return prediction  # [B,3,H,W]
 
+    # Copied from diffusers.pipelines.marigold.pipeline_marigold_depth.MarigoldDepthPipeline.encode_image
     def encode_image(self, image: torch.FloatTensor) -> torch.FloatTensor:
         if image.dim() != 4 or image.shape[1] != 3:
             raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {image.shape}.")

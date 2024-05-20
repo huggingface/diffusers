@@ -463,7 +463,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         # noise. This behavior can be achieved by setting the `output_latent` argument to `True`. The latent space
         # dimensions are `(h, w)`. Encoding into latent space happens in batches of size `batch_size`.
         # Model invocation: self.vae.encoder.
-        image_latent, pred_latent = self.prepare_latent(
+        image_latent, pred_latent = self.prepare_latents(
             image, latents, generator, ensemble_size, batch_size
         )  # [N*E,4,h,w], [N*E,4,h,w]
 
@@ -581,7 +581,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return out
 
-    def prepare_latent(
+    def prepare_latents(
         self,
         image: torch.FloatTensor,
         latents: Optional[torch.FloatTensor],
