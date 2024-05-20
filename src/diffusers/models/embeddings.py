@@ -876,8 +876,14 @@ class IPAdapterPlusImageProjection(nn.Module):
 
         x = self.proj_in(x)
 
-        for ln0, ln1, attn, ff in self.layers:
+        for l in self.layers:
             residual = latents
+
+            # make it torch.compile() compatible
+            comps = []
+            for i in l:
+                comps.append(i)
+            [ln0, ln1, attn, ff] = comps
 
             encoder_hidden_states = ln0(x)
             latents = ln1(latents)
