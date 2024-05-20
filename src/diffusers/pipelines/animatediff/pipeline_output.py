@@ -13,7 +13,7 @@ class AnimateDiffPipelineOutput(BaseOutput):
     r"""
      Output class for AnimateDiff pipelines.
 
-     Args:
+    Args:
          frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
              List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
              denoised

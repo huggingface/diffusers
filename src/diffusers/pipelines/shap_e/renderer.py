@@ -844,7 +844,7 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         transmittance(t[i + 1]) := transmittance(t[i]). 4) The last term is integration to infinity (e.g. [t[-1],
         math.inf]) that is evaluated by the void_model (i.e. we consider this space to be empty).
 
-        args:
+        Args:
             rays: [batch_size x ... x 2 x 3] origin and direction. sampler: disjoint volume integrals. n_samples:
             number of ts to sample. prev_model_outputs: model outputs from the previous rendering step, including
 

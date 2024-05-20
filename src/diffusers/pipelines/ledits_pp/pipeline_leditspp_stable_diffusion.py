@@ -1216,7 +1216,7 @@ class LEditsPPPipelineStableDiffusion(
         Paper](https://arxiv.org/abs/2301.12247). If the scheduler is set to [`~schedulers.DDIMScheduler`] the
         inversion proposed by [edit-friendly DPDM](https://arxiv.org/abs/2304.06140) will be performed instead.
 
-         Args:
+        Args:
             image (`PipelineImageInput`):
                 Input for the image(s) that are to be edited. Multiple input images have to default to the same aspect
                 ratio.

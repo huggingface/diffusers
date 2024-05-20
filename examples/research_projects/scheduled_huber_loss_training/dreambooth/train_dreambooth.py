@@ -762,7 +762,7 @@ def collate_fn(examples, with_prior_preservation=False):
 
 
 class PromptDataset(Dataset):
-    "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
+    """A simple dataset to prepare the prompts to generate class images on multiple GPUs."""
 
     def __init__(self, prompt, num_samples):
         self.prompt = prompt

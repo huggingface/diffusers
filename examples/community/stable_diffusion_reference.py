@@ -78,7 +78,7 @@ def torch_dfs(model: torch.nn.Module):
 class StableDiffusionReferencePipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
 ):
-    r""" "
+    r"""
     Pipeline for Stable Diffusion Reference.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
