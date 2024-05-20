@@ -124,7 +124,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             with varying optimal processing resolution values.
     """
 
-    model_cpu_offload_seq = "text_encoder->vae.encoder->unet->vae.decoder"
+    model_cpu_offload_seq = "text_encoder->unet"
+    _exclude_from_cpu_offload = ["vae"]
     supported_prediction_types = ("normals",)
 
     def __init__(
@@ -564,6 +565,9 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             prediction = prediction.cpu().numpy()
             if uncertainty is not None and output_uncertainty:
                 uncertainty = uncertainty.cpu().numpy()
+
+        # 11. Offload all models
+        self.maybe_free_model_hooks()
 
         out = MarigoldNormalsOutput(
             prediction=prediction,
