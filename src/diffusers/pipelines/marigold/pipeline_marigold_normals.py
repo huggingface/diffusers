@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 from PIL import Image
+from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import PipelineImageInput
@@ -295,6 +296,25 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                     raise ValueError("At least one of the `generator` devices differs from the pipeline's device.")
             else:
                 raise ValueError(f"Unsupported generator type: {type(generator)}.")
+
+    # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.progress_bar with added `desc` and `leave` flags.
+    def progress_bar(self, iterable=None, total=None, desc=None, leave=True):
+        if not hasattr(self, "_progress_bar_config"):
+            self._progress_bar_config = {}
+        elif not isinstance(self._progress_bar_config, dict):
+            raise ValueError(
+                f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
+            )
+
+        progress_bar_config = dict(**self._progress_bar_config)
+        progress_bar_config["desc"] = progress_bar_config.get("desc", desc)
+        progress_bar_config["leave"] = progress_bar_config.get("leave", leave)
+        if iterable is not None:
+            return tqdm(iterable, **progress_bar_config)
+        elif total is not None:
+            return tqdm(total=total, **progress_bar_config)
+        else:
+            raise ValueError("Either `total` or `iterable` has to be defined.")
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
