@@ -250,17 +250,30 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 raise ValueError("`ensembling_kwargs['reduction']` can be either `'mean'` or `'median'`.")
 
         # image checks
-        num_images = 1
-        if isinstance(image, np.ndarray) or torch.is_tensor(image):
-            H, W = image.shape[-2:]
-            if image.ndim not in (2, 3, 4):
-                raise ValueError(f"`image` has unsupported dimension or shape: {image.shape}.")
-            if image.ndim == 4:
-                num_images = image.shape[0]
-        elif isinstance(image, Image.Image):
-            W, H = image.size
-        else:
-            raise ValueError(f"Unsupported `image` type: {type(image)}.")
+        num_images = 0
+        W, H = None, None
+        if not isinstance(image, list):
+            image = [image]
+        for i, img in enumerate(image):
+            if isinstance(img, np.ndarray) or torch.is_tensor(img):
+                if img.ndim not in (2, 3, 4):
+                    raise ValueError(f"`image[{i}]` has unsupported dimensions or shape: {img.shape}.")
+                H_i, W_i = img.shape[-2:]
+                N_i = 1
+                if img.ndim == 4:
+                    N_i = img.shape[0]
+            elif isinstance(img, Image.Image):
+                W_i, H_i = img.size
+                N_i = 1
+            else:
+                raise ValueError(f"Unsupported `image[{i}]` type: {type(img)}.")
+            if W is None:
+                W, H = W_i, H_i
+            elif (W, H) != (W_i, H_i):
+                raise ValueError(
+                    f"Input `image[{i}]` has incompatible dimensions {(W_i, H_i)} with the previous images {(W, H)}"
+                )
+            num_images += N_i
 
         # latents checks
         if latents is not None:
@@ -317,7 +330,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         output_type: str = "np",
         output_uncertainty: bool = False,
         output_latent: bool = False,
-        **kwargs,
     ) -> MarigoldDepthOutput:
         """
         Function invoked when calling the pipeline.
