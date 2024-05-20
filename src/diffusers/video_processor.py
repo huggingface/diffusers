@@ -30,7 +30,7 @@ class VideoProcessor(VaeImageProcessor):
         Preprocesses input video(s).
 
         Args:
-            video:
+            video (`List[PIL.Image]`, `List[List[PIL.Image]]`, `torch.Tensor`, `np.array`, `List[torch.Tensor]`, `List[np.array]`):
                 The input video. It can be one of the following:
                 * List of the PIL images.
                 * List of list of PIL images.
