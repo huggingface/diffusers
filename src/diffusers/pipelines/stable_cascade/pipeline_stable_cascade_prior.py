@@ -460,7 +460,10 @@ class StableCascadePriorPipeline(DiffusionPipeline):
 
         # 0. Define commonly used variables
         device = self._execution_device
-        dtype = next(self.prior.parameters()).dtype
+        if getattr(self, "_autocast_dtype", None) is not None:
+            dtype = self._autocast_dtype
+        else:
+            dtype = next(self.prior.parameters()).dtype
         self._guidance_scale = guidance_scale
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
