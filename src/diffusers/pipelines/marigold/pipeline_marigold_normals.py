@@ -143,7 +143,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         if prediction_type not in self.supported_prediction_types:
             logger.warning(
-                f"Potentially unsupported `prediction_type='{prediction_type}'`; supported values: "
+                f"Potentially unsupported `prediction_type='{prediction_type}'`; values supported by the pipeline: "
                 f"{self.supported_prediction_types}."
             )
 
