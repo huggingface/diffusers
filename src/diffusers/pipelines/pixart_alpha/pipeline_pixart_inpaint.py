@@ -27,7 +27,6 @@ from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
-    deprecate,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -311,10 +310,6 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
             max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
         """
-
-        if "mask_feature" in kwargs:
-            deprecation_message = "The use of `mask_feature` is deprecated. It is no longer used in any computation and that doesn't affect the end results. It will be removed in a future version."
-            deprecate("mask_feature", "1.0.0", deprecation_message, standard_warn=False)
 
         if device is None:
             device = self._execution_device
@@ -882,9 +877,6 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
                 If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images
         """
-        if "mask_feature" in kwargs:
-            deprecation_message = "The use of `mask_feature` is deprecated. It is no longer used in any computation and that doesn't affect the end results. It will be removed in a future version."
-            deprecate("mask_feature", "1.0.0", deprecation_message, standard_warn=False)
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
