@@ -175,10 +175,10 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
-        self.default_denoising_steps = default_denoising_steps
-        self.default_processing_resolution = default_processing_resolution
         self.scale_invariant = scale_invariant
         self.shift_invariant = shift_invariant
+        self.default_denoising_steps = default_denoising_steps
+        self.default_processing_resolution = default_processing_resolution
 
         self.empty_text_embedding = None
 
@@ -299,18 +299,14 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         # generator checks
         if generator is not None:
-            device = self._execution_device
-            if isinstance(generator, torch.Generator):
-                if generator.device.type != device.type:
-                    raise ValueError("`generator` device differs from the pipeline's device.")
-            elif isinstance(generator, list):
+            if isinstance(generator, list):
                 if len(generator) != num_images * ensemble_size:
                     raise ValueError(
-                        "The number generators must match the total number of ensemble members for all input images."
+                        "The number of generators must match the total number of ensemble members for all input images."
                     )
-                if not all(g.device.type == device.type for g in generator):
-                    raise ValueError("At least one of the `generator` devices differs from the pipeline's device.")
-            else:
+                if not all(g.device.type == generator[0].device.type for g in generator):
+                    raise ValueError("`generator` device placement is not consistent in the list.")
+            elif not isinstance(generator, torch.Generator):
                 raise ValueError(f"Unsupported generator type: {type(generator)}.")
 
     # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.progress_bar with added `desc` and `leave` flags.
@@ -350,7 +346,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         output_type: str = "np",
         output_uncertainty: bool = False,
         output_latent: bool = False,
-    ) -> MarigoldDepthOutput:
+        return_dict: bool = True,
+    ):
         """
         Function invoked when calling the pipeline.
 
@@ -410,11 +407,16 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 When enabled, the output's `latent` field contains the latent codes corresponding to the predictions
                 within the ensemble. These codes can be saved, modified, and used for subsequent calls with the
                 `latents` argument.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.marigold.MarigoldDepthOutput`] instead of a plain tuple.
 
         Examples:
 
         Returns:
-            `MarigoldDepthOutput`: Output class instance for Marigold monocular depth prediction pipeline.
+            [`~pipelines.marigold.MarigoldDepthOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.marigold.MarigoldDepthOutput`] is returned, otherwise a
+                `tuple` is returned where the first element is the prediction, the second element is the uncertainty
+                (or `None`), and the third is the latent (or `None`).
         """
 
         # 0. Resolving variables.
@@ -596,13 +598,14 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         # 11. Offload all models
         self.maybe_free_model_hooks()
 
-        out = MarigoldDepthOutput(
+        if not return_dict:
+            return (prediction, uncertainty, pred_latent)
+
+        return MarigoldDepthOutput(
             prediction=prediction,
             uncertainty=uncertainty,
             latent=pred_latent,
         )
-
-        return out
 
     def prepare_latents(
         self,

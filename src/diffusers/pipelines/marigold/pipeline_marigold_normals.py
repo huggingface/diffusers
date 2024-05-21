@@ -155,16 +155,16 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
         )
         self.register_to_config(
+            use_full_z_range=use_full_z_range,
             default_denoising_steps=default_denoising_steps,
             default_processing_resolution=default_processing_resolution,
-            use_full_z_range=use_full_z_range,
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
+        self.use_full_z_range = use_full_z_range
         self.default_denoising_steps = default_denoising_steps
         self.default_processing_resolution = default_processing_resolution
-        self.use_full_z_range = use_full_z_range
 
         self.empty_text_embedding = None
 
@@ -283,18 +283,14 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         # generator checks
         if generator is not None:
-            device = self._execution_device
-            if isinstance(generator, torch.Generator):
-                if generator.device.type != device.type:
-                    raise ValueError("`generator` device differs from the pipeline's device.")
-            elif isinstance(generator, list):
+            if isinstance(generator, list):
                 if len(generator) != num_images * ensemble_size:
                     raise ValueError(
-                        "The number generators must match the total number of ensemble members for all input images."
+                        "The number of generators must match the total number of ensemble members for all input images."
                     )
-                if not all(g.device.type == device.type for g in generator):
-                    raise ValueError("At least one of the `generator` devices differs from the pipeline's device.")
-            else:
+                if not all(g.device.type == generator[0].device.type for g in generator):
+                    raise ValueError("`generator` device placement is not consistent in the list.")
+            elif not isinstance(generator, torch.Generator):
                 raise ValueError(f"Unsupported generator type: {type(generator)}.")
 
     # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.progress_bar with added `desc` and `leave` flags.
@@ -334,7 +330,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         output_type: str = "np",
         output_uncertainty: bool = False,
         output_latent: bool = False,
-    ) -> MarigoldNormalsOutput:
+        return_dict: bool = True,
+    ):
         """
         Function invoked when calling the pipeline.
 
@@ -386,11 +383,16 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 When enabled, the output's `latent` field contains the latent codes corresponding to the predictions
                 within the ensemble. These codes can be saved, modified, and used for subsequent calls with the
                 `latents` argument.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.marigold.MarigoldDepthOutput`] instead of a plain tuple.
 
         Examples:
 
         Returns:
-            `MarigoldNormalsOutput`: Output class instance for Marigold monocular normals prediction pipeline.
+            [`~pipelines.marigold.MarigoldNormalsOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.marigold.MarigoldNormalsOutput`] is returned, otherwise a
+                `tuple` is returned where the first element is the prediction, the second element is the uncertainty
+                (or `None`), and the third is the latent (or `None`).
         """
 
         # 0. Resolving variables.
@@ -568,13 +570,14 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         # 11. Offload all models
         self.maybe_free_model_hooks()
 
-        out = MarigoldNormalsOutput(
+        if not return_dict:
+            return (prediction, uncertainty, pred_latent)
+
+        return MarigoldNormalsOutput(
             prediction=prediction,
             uncertainty=uncertainty,
             latent=pred_latent,
         )
-
-        return out
 
     # Copied from diffusers.pipelines.marigold.pipeline_marigold_depth.MarigoldDepthPipeline.prepare_latents
     def prepare_latents(
