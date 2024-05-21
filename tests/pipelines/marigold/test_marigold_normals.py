@@ -31,7 +31,6 @@ from diffusers import (
     AutoencoderTiny,
     LCMScheduler,
     MarigoldNormalsPipeline,
-    MarigoldImageProcessor,
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
@@ -234,7 +233,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
         expected_image_fname = f"{out_basename}.png"
         expected_image_url = f"{self.url_output_basedir}/{expected_image_fname}"
 
-        vis = MarigoldImageProcessor.visualize_normals(out.prediction)[0]
+        vis = pipe.image_processor.visualize_normals(out.prediction)[0]
         if self.save_output:
             vis.save(expected_image_fname)
 

@@ -188,7 +188,6 @@ else:
     )
     _import_structure["marigold"].extend(
         [
-            "MarigoldImageProcessor",
             "MarigoldDepthPipeline",
             "MarigoldNormalsPipeline",
         ]
@@ -457,10 +456,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .marigold import (
-            MarigoldDepthOutput,
             MarigoldDepthPipeline,
-            MarigoldImageProcessor,
-            MarigoldNormalsOutput,
             MarigoldNormalsPipeline,
         )
         from .musicldm import MusicLDMPipeline
