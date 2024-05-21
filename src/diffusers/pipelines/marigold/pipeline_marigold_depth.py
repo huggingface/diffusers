@@ -61,10 +61,10 @@ Examples:
 >>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 >>> depth = pipe(image)
 
->>> vis = diffusers.utils.export_utils.visualize_depth(depth.prediction)
+>>> vis = diffusers.MarigoldImageProcessor.visualize_depth(depth.prediction)
 >>> vis[0].save("einstein_depth.png")
 
->>> depth_16bit = diffusers.utils.export_utils.export_depth_to_16bit_png(depth.prediction)
+>>> depth_16bit = diffusers.MarigoldImageProcessor.export_depth_to_16bit_png(depth.prediction)
 >>> depth_16bit[0].save("einstein_depth_16bit.png")
 ```
 """

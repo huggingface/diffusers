@@ -188,6 +188,7 @@ else:
     )
     _import_structure["marigold"].extend(
         [
+            "MarigoldImageProcessor"
             "MarigoldDepthPipeline",
             "MarigoldNormalsPipeline",
         ]
@@ -456,6 +457,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .marigold import (
+            MarigoldImageProcessor,
             MarigoldDepthOutput,
             MarigoldDepthPipeline,
             MarigoldNormalsOutput,

@@ -59,7 +59,7 @@ Examples:
 >>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 >>> normals = pipe(image)
 
->>> vis = diffusers.utils.export_utils.visualize_normals(normals.prediction)
+>>> vis = diffusers.MarigoldImageProcessor.visualize_normals(normals.prediction)
 >>> vis[0].save("einstein_normals.png")
 ```
 """

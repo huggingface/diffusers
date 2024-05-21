@@ -7,11 +7,13 @@ from ...utils import (
 
 
 _import_structure = {
+    "marigold_image_processing": ["MarigoldImageProcessor"],
     "pipeline_marigold_depth": ["MarigoldDepthOutput", "MarigoldDepthPipeline"],
     "pipeline_marigold_normals": ["MarigoldNormalsOutput", "MarigoldNormalsPipeline"],
 }
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
+    from .marigold_image_processing import MarigoldImageProcessor
     from .pipeline_marigold_depth import MarigoldDepthOutput, MarigoldDepthPipeline
     from .pipeline_marigold_normals import MarigoldNormalsOutput, MarigoldNormalsPipeline
 
