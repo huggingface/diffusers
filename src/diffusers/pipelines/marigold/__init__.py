@@ -21,8 +21,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["marigold_image_processing"] = (["MarigoldImageProcessor"],)
-    _import_structure["pipeline_marigold_depth"] = (["MarigoldDepthOutput", "MarigoldDepthPipeline"],)
+    _import_structure["marigold_image_processing"] = ["MarigoldImageProcessor"]
+    _import_structure["pipeline_marigold_depth"] = ["MarigoldDepthOutput", "MarigoldDepthPipeline"]
     _import_structure["pipeline_marigold_normals"] = ["MarigoldNormalsOutput", "MarigoldNormalsPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
