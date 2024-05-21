@@ -562,24 +562,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             **kwargs,
         )
 
-        # resolve remapping
-        if cls.__name__ == "Transformer2DModel":
-            # prevent circular imports
-            from ..models.transformers import DiTTransformer2DModel, PixArtTransformer2DModel
-
-            previous_class_name = cls.__name__
-            # DiT
-            if config["norm_type"] == "ada_norm_zero":
-                cls = DiTTransformer2DModel
-            # PixArt
-            elif config["norm_type"] == "ada_norm_single":
-                cls = PixArtTransformer2DModel
-
-            logger.info(
-                f"Changing class object to be of `{cls.__name__}` type from `{previous_class_name}` type."
-                " Note that this doesn't affect the final results."
-            )
-
         # load model
         model_file = None
         if from_flax:
@@ -1057,3 +1039,67 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             del module.key
             del module.value
             del module.proj_attn
+
+
+class LegacyModelMixin(ModelMixin):
+    r"""
+    A subclass of `ModelMixin` to resolve class mapping from legacy classes (like `Transformer2DModel`) to more
+    pipeline-specific classes (like `DiTTransformer2DModel`).
+    """
+
+    @classmethod
+    @validate_hf_hub_args
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", None)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+
+        # Load config if we don't provide a configuration
+        config_path = pretrained_model_name_or_path
+
+        user_agent = {
+            "diffusers": __version__,
+            "file_type": "model",
+            "framework": "pytorch",
+        }
+
+        # load config
+        config, _, _ = cls.load_config(
+            config_path,
+            cache_dir=cache_dir,
+            return_unused_kwargs=True,
+            return_commit_hash=True,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            **kwargs,
+        )
+        # resolve remapping
+        if cls.__name__ == "Transformer2DModel":
+            # prevent circular imports
+            from ..models.transformers import DiTTransformer2DModel, PixArtTransformer2DModel
+
+            previous_class_name = cls.__name__
+            # DiT
+            if config["norm_type"] == "ada_norm_zero":
+                cls = DiTTransformer2DModel
+            # PixArt
+            elif config["norm_type"] == "ada_norm_single":
+                cls = PixArtTransformer2DModel
+
+            logger.info(
+                f"Changing class object to be of `{cls.__name__}` type from `{previous_class_name}` type."
+                " Note that this doesn't affect the final results."
+            )
+
+        return super().from_pretrained(pretrained_model_name_or_path, **kwargs)

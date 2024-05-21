@@ -17,12 +17,12 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ...configuration_utils import ConfigMixin, register_to_config
+from ...configuration_utils import LegacyConfigMixin, register_to_config
 from ...utils import deprecate, is_torch_version, logging
 from ..attention import BasicTransformerBlock
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import LegacyModelMixin
 from ..normalization import AdaLayerNormSingle
 
 
@@ -34,7 +34,7 @@ class Transformer2DModelOutput(Transformer2DModelOutput):
     deprecate("Transformer2DModelOutput", "1.0.0", deprecation_message)
 
 
-class Transformer2DModel(ModelMixin, ConfigMixin):
+class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
     """
     A 2D Transformer model for image-like data.
 

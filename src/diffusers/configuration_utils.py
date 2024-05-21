@@ -706,3 +706,32 @@ def flax_register_to_config(cls):
 
     cls.__init__ = init
     return cls
+
+
+class LegacyConfigMixin(ConfigMixin):
+    r"""
+    A subclass of `ConfigMixin` to resolve class mapping from legacy classes (like `Transformer2DModel`) to more
+    pipeline-specific classes (like `DiTTransformer2DModel`).
+    """
+
+    @classmethod
+    def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
+        # resolve remapping
+        if cls.__name__ == "Transformer2DModel":
+            # prevent circular imports
+            from .models.transformers import DiTTransformer2DModel, PixArtTransformer2DModel
+
+            previous_class_name = cls.__name__
+            # DiT
+            if config["norm_type"] == "ada_norm_zero":
+                cls = DiTTransformer2DModel
+            # PixArt
+            elif config["norm_type"] == "ada_norm_single":
+                cls = PixArtTransformer2DModel
+
+            logger.info(
+                f"Changing class object to be of `{cls.__name__}` type from `{previous_class_name}` type."
+                " Note that this doesn't affect the final results."
+            )
+
+        return super().from_config(config, return_unused_kwargs, **kwargs)

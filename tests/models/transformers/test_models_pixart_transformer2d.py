@@ -92,6 +92,10 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
             expected_output_shape=(self.dummy_input[self.main_input_name].shape[0],) + self.output_shape
         )
 
+    def test_correct_class_remapping_from_config(self):
+        model = Transformer2DModel.from_config("PixArt-alpha/PixArt-XL-2-1024-MS", subfolder="transformer")
+        assert isinstance(model, PixArtTransformer2DModel)
+
     @slow
     def test_correct_class_remapping(self):
         model = Transformer2DModel.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", subfolder="transformer")
