@@ -305,6 +305,8 @@
       title: Personalized Image Animator (PIA)
     - local: api/pipelines/pixart
       title: PixArt-α
+    - local: api/pipelines/pixart_sigma
+      title: PixArt-Σ
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
