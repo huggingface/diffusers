@@ -39,7 +39,7 @@ jobs:
           python utils/print_env.py
       - name: Diffusers Benchmarking
         env:
-            HUGGING_FACE_HUB_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
+            HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
             BASE_PATH: benchmark_outputs
         run: |
           export TOTAL_GPU_MEMORY=$(python -c "import torch; print(torch.cuda.get_device_properties(0).total_memory / (1024**3))")
