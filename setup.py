@@ -261,7 +261,7 @@ setup(
     keywords="deep learning diffusion jax pytorch stable diffusion audioldm",
     license="Apache 2.0 License",
     author="The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/diffusers/graphs/contributors)",
-    author_email="yiyi@huggingface.co",
+    author_email="diffusers@huggingface.co",
     url="https://github.com/huggingface/diffusers",
     package_dir={"": "src"},
     packages=find_packages("src"),
