@@ -152,7 +152,7 @@ class MarigoldImageProcessor(ConfigMixin):
         return image
 
     @staticmethod
-    def check_image_values_range(image: torch.FloatTensor) -> None:
+    def check_image_values_range(image: torch.Tensor) -> None:
         if not torch.is_tensor(image):
             raise ValueError(f"Invalid input type={type(image)}.")
         if not torch.is_floating_point(image):
@@ -321,10 +321,10 @@ class MarigoldImageProcessor(ConfigMixin):
         depth: Union[
             PIL.Image.Image,
             np.ndarray,
-            torch.FloatTensor,
+            torch.Tensor,
             List[PIL.Image.Image],
             List[np.ndarray],
-            List[torch.FloatTensor],
+            List[torch.Tensor],
         ],
         val_min: float = 0.0,
         val_max: float = 1.0,
@@ -334,8 +334,8 @@ class MarigoldImageProcessor(ConfigMixin):
         Visualizes depth maps, such as predictions of the `MarigoldDepthPipeline`.
 
         Args:
-            depth (`Union[PIL.Image.Image, np.ndarray, torch.FloatTensor, List[PIL.Image.Image], List[np.ndarray],
-                List[torch.FloatTensor]]`): Depth maps.
+            depth (`Union[PIL.Image.Image, np.ndarray, torch.Tensor, List[PIL.Image.Image], List[np.ndarray],
+                List[torch.Tensor]]`): Depth maps.
             val_min (`float`, *optional*, defaults to `0.0`): Minimum value of the visualized depth range.
             val_max (`float`, *optional*, defaults to `0.0`): Maximum value of the visualized depth range.
             color_map (`str`, *optional*, defaults to `"Spectral"`): Color map used to convert a single-channel
@@ -386,7 +386,7 @@ class MarigoldImageProcessor(ConfigMixin):
 
     @staticmethod
     def export_depth_to_16bit_png(
-        depth: Union[np.ndarray, torch.FloatTensor, List[np.ndarray], List[torch.FloatTensor]],
+        depth: Union[np.ndarray, torch.Tensor, List[np.ndarray], List[torch.Tensor]],
         val_min: float = 0.0,
         val_max: float = 1.0,
     ) -> Union[PIL.Image.Image, List[PIL.Image.Image]]:
@@ -427,9 +427,9 @@ class MarigoldImageProcessor(ConfigMixin):
     def visualize_normals(
         normals: Union[
             np.ndarray,
-            torch.FloatTensor,
+            torch.Tensor,
             List[np.ndarray],
-            List[torch.FloatTensor],
+            List[torch.Tensor],
         ],
         flip_x: bool = False,
         flip_y: bool = False,
@@ -439,7 +439,7 @@ class MarigoldImageProcessor(ConfigMixin):
         Visualizes surface normals, such as predictions of the `MarigoldNormalsPipeline`.
 
         Args:
-            normals (`Union[np.ndarray, torch.FloatTensor, List[np.ndarray], List[torch.FloatTensor]]`):
+            normals (`Union[np.ndarray, torch.Tensor, List[np.ndarray], List[torch.Tensor]]`):
                 Surface normals.
             flip_x (`bool`, *optional*, defaults to `False`): Flips the X axis of the normals frame of reference.
                       Default direction is right.
@@ -499,9 +499,9 @@ class MarigoldImageProcessor(ConfigMixin):
     def visualize_uncertainty(
         uncertainty: Union[
             np.ndarray,
-            torch.FloatTensor,
+            torch.Tensor,
             List[np.ndarray],
-            List[torch.FloatTensor],
+            List[torch.Tensor],
         ],
         saturation_percentile=95,
     ) -> Union[PIL.Image.Image, List[PIL.Image.Image]]:
@@ -509,7 +509,7 @@ class MarigoldImageProcessor(ConfigMixin):
         Visualizes dense uncertainties, such as produced by `MarigoldDepthPipeline` or `MarigoldNormalsPipeline`.
 
         Args:
-            uncertainty (`Union[np.ndarray, torch.FloatTensor, List[np.ndarray], List[torch.FloatTensor]]`):
+            uncertainty (`Union[np.ndarray, torch.Tensor, List[np.ndarray], List[torch.Tensor]]`):
                 Uncertainty maps.
             saturation_percentile (`int`, *optional*, defaults to `95`):
                 Specifies the percentile uncertainty value visualized with maximum intensity.

@@ -71,20 +71,20 @@ class MarigoldNormalsOutput(BaseOutput):
     Output class for Marigold monocular normals prediction pipeline.
 
     Args:
-        prediction (`np.ndarray`, `torch.FloatTensor`):
+        prediction (`np.ndarray`, `torch.Tensor`):
             Predicted normals, with values in the range [-1, 1]. The shape is always $numimages \times 3 \times height
             \times width$, regardless whether the images were passed as a 4D array or a list.
-        uncertainty (`None`, `np.ndarray`, `torch.FloatTensor`):
+        uncertainty (`None`, `np.ndarray`, `torch.Tensor`):
             Uncertainty maps computed from the ensemble, with values in the range [0, 1]. The shape is $numimages
             \times 1 \times height \times width$.
-        latent (`None`, `torch.FloatTensor`):
+        latent (`None`, `torch.Tensor`):
             Latent features corresponding to the predictions, compatible with the `latents` argument of the pipeline.
             The shape is $numimages * numensemble \times 4 \times latentheight \times latentwidth$.
     """
 
-    prediction: Union[np.ndarray, torch.FloatTensor]
-    uncertainty: Union[None, np.ndarray, torch.FloatTensor]
-    latent: Union[None, torch.FloatTensor]
+    prediction: Union[np.ndarray, torch.Tensor]
+    uncertainty: Union[None, np.ndarray, torch.Tensor]
+    latent: Union[None, torch.Tensor]
 
 
 class MarigoldNormalsPipeline(DiffusionPipeline):
@@ -181,7 +181,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         resample_method_output: str,
         batch_size: int,
         ensembling_kwargs: Optional[Dict[str, Any]],
-        latents: Optional[torch.FloatTensor],
+        latents: Optional[torch.Tensor],
         generator: Optional[Union[torch.Generator, List[torch.Generator]]],
         output_type: str,
         output_uncertainty: bool,
@@ -264,7 +264,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         # latents checks
         if latents is not None:
             if not torch.is_tensor(latents):
-                raise ValueError("`latents` must be a torch.FloatTensor.")
+                raise ValueError("`latents` must be a torch.Tensor.")
             if not latents.dim() != 4:
                 raise ValueError(f"`latents` has unsupported dimensions or shape: {latents.shape}.")
 
@@ -330,7 +330,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         resample_method_output: str = "bilinear",
         batch_size: int = 1,
         ensembling_kwargs: Optional[Dict[str, Any]] = None,
-        latents: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
+        latents: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: str = "np",
         output_uncertainty: bool = False,
@@ -340,10 +340,10 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline.
 
         Args:
-            image (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`),
-                `List[torch.FloatTensor]`: An input image or images used as an input for the normals estimation task.
-                For arrays and tensors, the expected value range is between `[0, 1]`. Passing a batch of images is
-                possible by providing a four-dimensional array or a tensor. Additionally, a list of images of two- or
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`),
+                `List[torch.Tensor]`: An input image or images used as an input for the normals estimation task. For
+                arrays and tensors, the expected value range is between `[0, 1]`. Passing a batch of images is possible
+                by providing a four-dimensional array or a tensor. Additionally, a list of images of two- or
                 three-dimensional arrays or tensors can be passed. In the latter case, all list elements must have the
                 same width and height.
             num_inference_steps (`int`, *optional*, defaults to `None`):
@@ -580,12 +580,12 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.marigold.pipeline_marigold_depth.MarigoldDepthPipeline.prepare_latents
     def prepare_latents(
         self,
-        image: torch.FloatTensor,
-        latents: Optional[torch.FloatTensor],
+        image: torch.Tensor,
+        latents: Optional[torch.Tensor],
         generator: Optional[torch.Generator],
         ensemble_size: int,
         batch_size: int,
-    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         image_latent = torch.cat(
             [self.encode_image(image[i : i + batch_size]) for i in range(0, image.shape[0], batch_size)], dim=0
         )  # [N,4,h,w]
@@ -602,7 +602,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         return image_latent, pred_latent
 
-    def decode_prediction(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
+    def decode_prediction(self, pred_latent: torch.Tensor) -> torch.Tensor:
         if pred_latent.dim() != 4 or pred_latent.shape[1] != self.vae.config.latent_channels:
             raise ValueError(
                 f"Expecting 4D tensor of shape [B,{self.vae.config.latent_channels},H,W]; got {pred_latent.shape}."
@@ -621,7 +621,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         return prediction  # [B,3,H,W]
 
     # Copied from diffusers.pipelines.marigold.pipeline_marigold_depth.MarigoldDepthPipeline.encode_image
-    def encode_image(self, image: torch.FloatTensor) -> torch.FloatTensor:
+    def encode_image(self, image: torch.Tensor) -> torch.Tensor:
         if image.dim() != 4 or image.shape[1] != 3:
             raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {image.shape}.")
 
@@ -633,7 +633,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         return latent  # [B,4,h,w]
 
     @staticmethod
-    def normalize_normals(normals: torch.FloatTensor, eps: float = 1e-6) -> torch.FloatTensor:
+    def normalize_normals(normals: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         if normals.dim() != 4 or normals.shape[1] != 3:
             raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {normals.shape}.")
 
@@ -644,14 +644,14 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
     @staticmethod
     def ensemble_normals(
-        normals: torch.FloatTensor, output_uncertainty: bool, reduction: str = "closest"
-    ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
+        normals: torch.Tensor, output_uncertainty: bool, reduction: str = "closest"
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Ensembles normals maps represented by the `normals` tensor with expected shape `(B, 3, H, W)`, where B is the
         number of ensemble members for a given prediction of size `(H x W)`.
 
         Args:
-            normals (`torch.FloatTensor`):
+            normals (`torch.Tensor`):
                 Input ensemble normals maps.
             output_uncertainty (`bool`, *optional*, defaults to `False`):
                 Whether to output uncertainty map.

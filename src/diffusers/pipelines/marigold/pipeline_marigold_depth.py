@@ -76,20 +76,20 @@ class MarigoldDepthOutput(BaseOutput):
     Output class for Marigold monocular depth prediction pipeline.
 
     Args:
-        prediction (`np.ndarray`, `torch.FloatTensor`):
+        prediction (`np.ndarray`, `torch.Tensor`):
             Predicted depth maps, with values in the range [0, 1]. The shape is always $numimages \times 1 \times
             height \times width$, regardless whether the images were passed as a 4D array or a list.
-        uncertainty (`None`, `np.ndarray`, `torch.FloatTensor`):
+        uncertainty (`None`, `np.ndarray`, `torch.Tensor`):
             Uncertainty maps computed from the ensemble, with values in the range [0, 1]. The shape is $numimages
             \times 1 \times height \times width$.
-        latent (`None`, `torch.FloatTensor`):
+        latent (`None`, `torch.Tensor`):
             Latent features corresponding to the predictions, compatible with the `latents` argument of the pipeline.
             The shape is $numimages * numensemble \times 4 \times latentheight \times latentwidth$.
     """
 
-    prediction: Union[np.ndarray, torch.FloatTensor]
-    uncertainty: Union[None, np.ndarray, torch.FloatTensor]
-    latent: Union[None, torch.FloatTensor]
+    prediction: Union[np.ndarray, torch.Tensor]
+    uncertainty: Union[None, np.ndarray, torch.Tensor]
+    latent: Union[None, torch.Tensor]
 
 
 class MarigoldDepthPipeline(DiffusionPipeline):
@@ -195,7 +195,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         resample_method_output: str,
         batch_size: int,
         ensembling_kwargs: Optional[Dict[str, Any]],
-        latents: Optional[torch.FloatTensor],
+        latents: Optional[torch.Tensor],
         generator: Optional[Union[torch.Generator, List[torch.Generator]]],
         output_type: str,
         output_uncertainty: bool,
@@ -280,7 +280,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         # latents checks
         if latents is not None:
             if not torch.is_tensor(latents):
-                raise ValueError("`latents` must be a torch.FloatTensor.")
+                raise ValueError("`latents` must be a torch.Tensor.")
             if not latents.dim() != 4:
                 raise ValueError(f"`latents` has unsupported dimensions or shape: {latents.shape}.")
 
@@ -346,7 +346,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         resample_method_output: str = "bilinear",
         batch_size: int = 1,
         ensembling_kwargs: Optional[Dict[str, Any]] = None,
-        latents: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
+        latents: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: str = "np",
         output_uncertainty: bool = False,
@@ -356,8 +356,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline.
 
         Args:
-            image (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`),
-                `List[torch.FloatTensor]`: An input image or images used as an input for the depth estimation task. For
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`),
+                `List[torch.Tensor]`: An input image or images used as an input for the depth estimation task. For
                 arrays and tensors, the expected value range is between `[0, 1]`. Passing a batch of images is possible
                 by providing a four-dimensional array or a tensor. Additionally, a list of images of two- or
                 three-dimensional arrays or tensors can be passed. In the latter case, all list elements must have the
@@ -607,12 +607,12 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
     def prepare_latents(
         self,
-        image: torch.FloatTensor,
-        latents: Optional[torch.FloatTensor],
+        image: torch.Tensor,
+        latents: Optional[torch.Tensor],
         generator: Optional[torch.Generator],
         ensemble_size: int,
         batch_size: int,
-    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         image_latent = torch.cat(
             [self.encode_image(image[i : i + batch_size]) for i in range(0, image.shape[0], batch_size)], dim=0
         )  # [N,4,h,w]
@@ -629,7 +629,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return image_latent, pred_latent
 
-    def decode_prediction(self, pred_latent: torch.FloatTensor) -> torch.FloatTensor:
+    def decode_prediction(self, pred_latent: torch.Tensor) -> torch.Tensor:
         if pred_latent.dim() != 4 or pred_latent.shape[1] != self.vae.config.latent_channels:
             raise ValueError(
                 f"Expecting 4D tensor of shape [B,{self.vae.config.latent_channels},H,W]; got {pred_latent.shape}."
@@ -643,7 +643,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         return prediction  # [B,1,H,W]
 
-    def encode_image(self, image: torch.FloatTensor) -> torch.FloatTensor:
+    def encode_image(self, image: torch.Tensor) -> torch.Tensor:
         if image.dim() != 4 or image.shape[1] != 3:
             raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {image.shape}.")
 
@@ -656,7 +656,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
     @staticmethod
     def ensemble_depth(
-        depth: torch.FloatTensor,
+        depth: torch.Tensor,
         scale_invariant: bool = True,
         shift_invariant: bool = True,
         output_uncertainty: bool = False,
@@ -665,7 +665,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         max_iter: int = 2,
         tol: float = 1e-3,
         max_res: int = 1024,
-    ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Ensembles depth maps represented by the `depth` tensor with expected shape `(B, 1, H, W)`, where B is the
         number of ensemble members for a given prediction of size `(H x W)`. Even though the function is designed for
@@ -676,7 +676,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         alignment is skipped and only ensembling is performed.
 
         Args:
-            depth (`torch.FloatTensor`):
+            depth (`torch.Tensor`):
                 Input ensemble depth maps.
             scale_invariant (`bool`, *optional*, defaults to `True`):
                 Whether to treat predictions as scale-invariant.
@@ -707,7 +707,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         if not scale_invariant and shift_invariant:
             raise ValueError("Pure shift-invariant ensembling is not supported.")
 
-        def init_param(depth: torch.FloatTensor):
+        def init_param(depth: torch.Tensor):
             init_min = depth.reshape(ensemble_size, -1).min(dim=1).values
             init_max = depth.reshape(ensemble_size, -1).max(dim=1).values
 
@@ -723,7 +723,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
             return param
 
-        def align(depth: torch.FloatTensor, param: np.ndarray) -> torch.FloatTensor:
+        def align(depth: torch.Tensor, param: np.ndarray) -> torch.Tensor:
             if scale_invariant and shift_invariant:
                 s, t = np.split(param, 2)
                 s = torch.from_numpy(s).to(depth).view(ensemble_size, 1, 1, 1)
@@ -737,8 +737,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             return out
 
         def ensemble(
-            depth_aligned: torch.FloatTensor, return_uncertainty: bool = False
-        ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
+            depth_aligned: torch.Tensor, return_uncertainty: bool = False
+        ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
             uncertainty = None
             if reduction == "mean":
                 prediction = torch.mean(depth_aligned, dim=0, keepdim=True)
@@ -752,7 +752,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 raise ValueError(f"Unrecognized reduction method: {reduction}.")
             return prediction, uncertainty
 
-        def cost_fn(param: np.ndarray, depth: torch.FloatTensor) -> float:
+        def cost_fn(param: np.ndarray, depth: torch.Tensor) -> float:
             cost = 0.0
             depth_aligned = align(depth, param)
 
@@ -768,7 +768,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
             return cost
 
-        def compute_param(depth: torch.FloatTensor):
+        def compute_param(depth: torch.Tensor):
             import scipy
 
             depth_to_align = depth.to(torch.float32)
