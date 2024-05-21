@@ -68,6 +68,49 @@ image = pipeline(
   </div>
 </div>
 
+## Timestep spacing
+
+The way sample steps are selected in the schedule can affect the quality of the generated image, especially with respect to [rescaling the noise schedule](#rescale-noise-schedule), which can enable a model to generate much brighter or darker images. Diffusers provides three timestep spacing methods:
+
+- `leading` creates evenly spaced steps
+- `linspace` includes the first and last steps and evenly selects the remaining intermediate steps
+- `trailing` only includes the last step and evenly selects the remaining intermediate steps starting from the end
+
+It is recommended to use the `trailing` spacing method because it generates higher quality images with more details when there are fewer sample steps. But the difference in quality is not as obvious for more standard sample step values.
+
+```py
+import torch
+from diffusers import StableDiffusionXLPipeline, DPMSolverMultistepScheduler
+
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "SG161222/RealVisXL_V4.0",
+    torch_dtype=torch.float16,
+    variant="fp16",
+).to("cuda")
+pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, timestep_spacing="trailing")
+
+prompt = "A cinematic shot of a cute little black cat sitting on a pumpkin at night"
+generator = torch.Generator(device="cpu").manual_seed(2487854446)
+image = pipeline(
+    prompt=prompt,
+    negative_prompt="",
+    generator=generator,
+    num_inference_steps=5,
+).images[0]
+image
+```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/stevhliu/testing-images/resolve/main/trailing_spacing.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">trailing spacing after 5 steps</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/stevhliu/testing-images/resolve/main/leading_spacing.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">leading spacing after 5 steps</figcaption>
+  </div>
+</div>
+
 ## Sigmas
 
 The `sigmas` parameter is the amount of noise added at each timestep according to the timestep schedule. Like the `timesteps` parameter, you can customize the `sigmas` parameter to control how much noise is added at each step. When you use a custom `sigmas` value, the `timesteps` are calculated from the custom `sigmas` value and the default scheduler configuration is ignored.
