@@ -184,7 +184,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]],
         output_type: str,
         output_uncertainty: bool,
-    ) -> None:
+    ) -> int:
         if num_inference_steps is None:
             raise ValueError("`num_inference_steps` is not specified and could not be resolved from the model config.")
         if num_inference_steps < 1:
@@ -293,6 +293,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             elif not isinstance(generator, torch.Generator):
                 raise ValueError(f"Unsupported generator type: {type(generator)}.")
 
+        return num_images
+
     # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.progress_bar with added `desc` and `leave` flags.
     def progress_bar(self, iterable=None, total=None, desc=None, leave=True):
         if not hasattr(self, "_progress_bar_config"):
@@ -399,10 +401,6 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         device = self._execution_device
         dtype = self.dtype
 
-        num_images = 1
-        if (isinstance(image, np.ndarray) or torch.is_tensor(image)) and image.ndim == 4:
-            num_images = image.shape[0]
-
         # Model-specific optimal default values leading to fast and reasonable results.
         if num_inference_steps is None:
             num_inference_steps = self.default_denoising_steps
@@ -410,7 +408,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             processing_resolution = self.default_processing_resolution
 
         # 1. Check inputs.
-        self.check_inputs(
+        num_images = self.check_inputs(
             image,
             num_inference_steps,
             ensemble_size,
