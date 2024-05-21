@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Outpainting
 
-Outpainting extends an image beyond its original boundaries, allowing you to add, replace, or modify visual elements in an image while preserving the original image subject. Like with [inpainting](../using-diffusers/inpaint), you want to fill the white area (in this case, the area outside of the original image) with new visual elements while keeping the original image (represented by a mask of black pixels). There are a couple of ways to outpaint, such as with a [ControlNet](https://hf.co/blog/OzzyGT/outpainting-controlnet) or with [Differential Diffusion](https://hf.co/blog/OzzyGT/outpainting-differential-diffusion). 
+Outpainting extends an image beyond its original boundaries, allowing you to add, replace, or modify visual elements in an image while preserving the original image. Like [inpainting](../using-diffusers/inpaint), you want to fill the white area (in this case, the area outside of the original image) with new visual elements while keeping the original image (represented by a mask of black pixels). There are a couple of ways to outpaint, such as with a [ControlNet](https://hf.co/blog/OzzyGT/outpainting-controlnet) or with [Differential Diffusion](https://hf.co/blog/OzzyGT/outpainting-differential-diffusion).
 
 This guide will show you how to outpaint with an inpainting model, ControlNet, and a ZoeDepth estimator.
 
@@ -46,7 +46,7 @@ For example, remove the background from this image of a pair of shoes.
   </div>
 </div>
 
-[Stable Diffusion XL (SDXL)](../using-diffusers/sdxl) models work best with 1024x1024 images, but you can resize the image to any size as long as your hardware has enough memory to support it. The transparent background in the image should also be replaced with a white background. Create a function that scales and pastes the image onto a white background like the one below.
+[Stable Diffusion XL (SDXL)](../using-diffusers/sdxl) models work best with 1024x1024 images, but you can resize the image to any size as long as your hardware has enough memory to support it. The transparent background in the image should also be replaced with a white background. Create a function (like the one below) that scales and pastes the image onto a white background.
 
 ```py
 import random
@@ -90,9 +90,7 @@ original_image = Image.open(
 resized_img, white_bg_image = scale_and_paste(original_image)
 ```
 
-## Outpaint
-
-Once your image is ready, you can generate content in the white area around the shoes with [controlnet-inpaint-dreamer-sdxl](https://hf.co/destitech/controlnet-inpaint-dreamer-sdxl), a SDXL ControlNet trained for inpainting. To avoid adding unwanted extra details, use the ZoeDepth estimator to provide additional guidance during generator, and ensure the shoes remain consistent with the original image.
+To avoid adding unwanted extra details, use the ZoeDepth estimator to provide additional guidance during generation and to ensure the shoes remain consistent with the original image.
 
 ```py
 zoe = ZoeDetector.from_pretrained("lllyasviel/Annotators")
@@ -103,6 +101,10 @@ image_zoe
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/stevhliu/testing-images/resolve/main/zoedepth-jordan.png"/>
 </div>
+
+## Outpaint
+
+Once your image is ready, you can generate content in the white area around the shoes with [controlnet-inpaint-dreamer-sdxl](https://hf.co/destitech/controlnet-inpaint-dreamer-sdxl), a SDXL ControlNet trained for inpainting.
 
 Load the inpainting ControlNet, ZoeDepth model, VAE and pass them to the [`StableDiffusionXLControlNetPipeline`]. Then you can create an optional `generate_image` function (for convenience) to outpaint an initial image.
 
@@ -177,7 +179,7 @@ pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
 ).to("cuda")
 ```
 
-Prepare a mask for the final outpainted image. To create a more seamless transition between the original image and the outpainted background, it is helpful to blur the mask to help it blend better.
+Prepare a mask for the final outpainted image. To create a more natural transition between the original image and the outpainted background, blur the mask to help it blend better.
 
 ```py
 mask = Image.new("L", temp_image.size)
