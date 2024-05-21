@@ -155,9 +155,22 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -1, -3:, -3:]
 
         self.assertEqual(image.shape, (1, 3, 32, 32))
-        expected_slice = np.array([0.096745, 0.52338576, 0.14476392, -0.31546292, -0.25497344, -0.55777955, 0.68535185,  0.5657173,  -0.12631096])
+        expected_slice = np.array(
+            [
+                0.096745,
+                0.52338576,
+                0.14476392,
+                -0.31546292,
+                -0.25497344,
+                -0.55777955,
+                0.68535185,
+                0.5657173,
+                -0.12631096,
+            ]
+        )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
+
 
 @slow
 @require_torch_gpu
