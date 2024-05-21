@@ -847,7 +847,12 @@ class UNet2DConditionLoadersMixin:
             embed_dims = state_dict["proj_in.weight"].shape[1]
             output_dims = state_dict["proj_out.weight"].shape[0]
             hidden_dims = state_dict["latents"].shape[2]
-            heads = state_dict["layers.0.0.to_q.weight"].shape[0] // 64
+            attn_key_present = any("attn" in k for k in state_dict)
+            heads = (
+                state_dict["layers.0.attn.to_q.weight"].shape[0] // 64
+                if attn_key_present
+                else state_dict["layers.0.0.to_q.weight"].shape[0] // 64
+            )
 
             with init_context():
                 image_projection = IPAdapterPlusImageProjection(
