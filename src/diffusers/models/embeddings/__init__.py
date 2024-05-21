@@ -17,8 +17,6 @@ from .misc import (
     ImageTimeEmbedding,
     LabelEmbedding,
     PatchEmbed,
-    PixArtAlphaCombinedTimestepSizeEmbeddings,
-    PixArtAlphaTextProjection,
     SinusoidalPositionalEmbedding,
     TextImageProjection,
     TextImageTimeEmbedding,
@@ -26,3 +24,4 @@ from .misc import (
     TimestepEmbedding,
     Timesteps,
 )
+from .pixart import PixArtAlphaCombinedTimestepSizeEmbeddings, PixArtAlphaTextProjection
