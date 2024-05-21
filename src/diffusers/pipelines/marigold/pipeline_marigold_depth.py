@@ -134,8 +134,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             with varying optimal processing resolution values.
     """
 
-    model_cpu_offload_seq = "text_encoder->unet"
-    _exclude_from_cpu_offload = ["vae"]
+    model_cpu_offload_seq = "text_encoder->unet->vae"
     supported_prediction_types = ("depth", "disparity")
 
     def __init__(
@@ -614,7 +613,11 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         batch_size: int,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         image_latent = torch.cat(
-            [self.encode_image(image[i : i + batch_size]) for i in range(0, image.shape[0], batch_size)], dim=0
+            [
+                self.vae.encode(image[i : i + batch_size]).latent_dist.mode() * self.vae.config.scaling_factor
+                for i in range(0, image.shape[0], batch_size)
+            ],
+            dim=0,
         )  # [N,4,h,w]
         image_latent = image_latent.repeat_interleave(ensemble_size, dim=0)  # [N*E,4,h,w]
 
@@ -642,17 +645,6 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         prediction = (prediction + 1.0) / 2.0
 
         return prediction  # [B,1,H,W]
-
-    def encode_image(self, image: torch.Tensor) -> torch.Tensor:
-        if image.dim() != 4 or image.shape[1] != 3:
-            raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {image.shape}.")
-
-        h = self.vae.encoder(image)
-        moments = self.vae.quant_conv(h)
-        mean, logvar = torch.chunk(moments, 2, dim=1)
-        latent = mean * self.vae.config.scaling_factor
-
-        return latent  # [B,4,h,w]
 
     @staticmethod
     def ensemble_depth(
