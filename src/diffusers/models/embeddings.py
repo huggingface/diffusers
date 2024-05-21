@@ -843,26 +843,9 @@ class IPAdapterPlusImageProjection(nn.Module):
         self.proj_out = nn.Linear(hidden_dims, output_dims)
         self.norm_out = nn.LayerNorm(output_dims)
 
-        self.layers = nn.ModuleList([])
-        for _ in range(depth):
-            self.layers.append(
-                nn.ModuleList(
-                    [
-                        nn.LayerNorm(hidden_dims),
-                        nn.LayerNorm(hidden_dims),
-                        Attention(
-                            query_dim=hidden_dims,
-                            dim_head=dim_head,
-                            heads=heads,
-                            out_bias=False,
-                        ),
-                        nn.Sequential(
-                            nn.LayerNorm(hidden_dims),
-                            FeedForward(hidden_dims, hidden_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
-                        ),
-                    ]
-                )
-            )
+        self.layers = nn.ModuleList(
+            [IPAdapterPlusImageProjectionBlock(hidden_dims, dim_head, heads, ffn_ratio) for _ in range(depth)]
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
@@ -876,14 +859,9 @@ class IPAdapterPlusImageProjection(nn.Module):
 
         x = self.proj_in(x)
 
-        for ln0, ln1, attn, ff in self.layers:
+        for block in self.layers:
             residual = latents
-
-            encoder_hidden_states = ln0(x)
-            latents = ln1(latents)
-            encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
-            latents = attn(latents, encoder_hidden_states) + residual
-            latents = ff(latents) + latents
+            latents = block(x, latents, residual)
 
         latents = self.proj_out(latents)
         return self.norm_out(latents)
