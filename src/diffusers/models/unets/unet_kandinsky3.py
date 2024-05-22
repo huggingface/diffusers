@@ -31,7 +31,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class Kandinsky3UNetOutput(BaseOutput):
-    sample: torch.FloatTensor = None
+    sample: torch.Tensor = None
 
 
 class Kandinsky3EncoderProj(nn.Module):

@@ -176,7 +176,7 @@ If you want to learn more about how the training loop works, check out the [Unde
 
 Once you’ve made all your changes or you’re okay with the default configuration, you’re ready to launch the training script! 🚀
 
-Let’s train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate your own Pokémon. Set the environment variables `MODEL_NAME` and `DATASET_NAME` to the model and the dataset (either from the Hub or a local path). You should also specify a VAE other than the SDXL VAE (either from the Hub or a local path) with `VAE_NAME` to avoid numerical instabilities.
+Let’s train on the [Naruto BLIP captions](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) dataset to generate your own Naruto characters. Set the environment variables `MODEL_NAME` and `DATASET_NAME` to the model and the dataset (either from the Hub or a local path). You should also specify a VAE other than the SDXL VAE (either from the Hub or a local path) with `VAE_NAME` to avoid numerical instabilities.
 
 <Tip>
 
@@ -187,7 +187,7 @@ To monitor training progress with Weights & Biases, add the `--report_to=wandb` 
 ```bash
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
 export VAE_NAME="madebyollin/sdxl-vae-fp16-fix"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -211,7 +211,7 @@ accelerate launch train_text_to_image_sdxl.py \
   --validation_prompt="a cute Sundar Pichai creature" \
   --validation_epochs 5 \
   --checkpointing_steps=5000 \
-  --output_dir="sdxl-pokemon-model" \
+  --output_dir="sdxl-naruto-model" \
   --push_to_hub
 ```
 
@@ -226,9 +226,9 @@ import torch
 
 pipeline = DiffusionPipeline.from_pretrained("path/to/your/model", torch_dtype=torch.float16).to("cuda")
 
-prompt = "A pokemon with green eyes and red legs."
+prompt = "A naruto with green eyes and red legs."
 image = pipeline(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
-image.save("pokemon.png")
+image.save("naruto.png")
 ```
 
 </hfoption>
@@ -244,11 +244,11 @@ import torch_xla.core.xla_model as xm
 device = xm.xla_device()
 pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to(device)
 
-prompt = "A pokemon with green eyes and red legs."
+prompt = "A naruto with green eyes and red legs."
 start = time()
 image = pipeline(prompt, num_inference_steps=inference_steps).images[0]
 print(f'Compilation time is {time()-start} sec')
-image.save("pokemon.png")
+image.save("naruto.png")
 
 start = time()
 image = pipeline(prompt, num_inference_steps=inference_steps).images[0]

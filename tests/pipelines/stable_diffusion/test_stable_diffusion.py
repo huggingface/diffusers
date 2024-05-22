@@ -42,7 +42,6 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
-from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
@@ -259,6 +258,44 @@ class StableDiffusionPipelineFastTests(
         expected_slice = np.array([0.2368, 0.4900, 0.5019, 0.2723, 0.4473, 0.4578, 0.4551, 0.3532, 0.4133])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_ays(self):
+        from diffusers.schedulers import AysSchedules
+
+        timestep_schedule = AysSchedules["StableDiffusionTimesteps"]
+        sigma_schedule = AysSchedules["StableDiffusionSigmas"]
+
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 10
+        output = sd_pipe(**inputs).images
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = None
+        inputs["timesteps"] = timestep_schedule
+        output_ts = sd_pipe(**inputs).images
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = None
+        inputs["sigmas"] = sigma_schedule
+        output_sigmas = sd_pipe(**inputs).images
+
+        assert (
+            np.abs(output_sigmas.flatten() - output_ts.flatten()).max() < 1e-3
+        ), "ays timesteps and ays sigmas should have the same outputs"
+        assert (
+            np.abs(output.flatten() - output_ts.flatten()).max() > 1e-3
+        ), "use ays timesteps should have different outputs"
+        assert (
+            np.abs(output.flatten() - output_sigmas.flatten()).max() > 1e-3
+        ), "use ays sigmas should have different outputs"
 
     def test_stable_diffusion_prompt_embeds(self):
         components = self.get_dummy_components()
@@ -1004,7 +1041,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_intermediate_state(self):
         number_of_steps = 0
 
-        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+        def callback_fn(step: int, timestep: int, latents: torch.Tensor) -> None:
             callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
@@ -1257,8 +1294,8 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
 
     def test_download_from_hub(self):
         ckpt_paths = [
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
-            "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix_base.ckpt",
+            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
+            "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix.safetensors",
         ]
 
         for ckpt_path in ckpt_paths:
@@ -1271,7 +1308,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         assert image_out.shape == (512, 512, 3)
 
     def test_download_local(self):
-        ckpt_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.ckpt")
+        ckpt_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.safetensors")
         config_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-inference.yaml")
 
         pipe = StableDiffusionPipeline.from_single_file(
@@ -1283,62 +1320,6 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         image_out = pipe("test", num_inference_steps=1, output_type="np").images[0]
 
         assert image_out.shape == (512, 512, 3)
-
-    def test_download_ckpt_diff_format_is_same(self):
-        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
-
-        sf_pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
-        sf_pipe.scheduler = DDIMScheduler.from_config(sf_pipe.scheduler.config)
-        sf_pipe.unet.set_attn_processor(AttnProcessor())
-        sf_pipe.to("cuda")
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image_single_file = sf_pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
-
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.to("cuda")
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
-
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
-
-        assert max_diff < 1e-3
-
-    def test_single_file_component_configs(self):
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
-
-        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
-        single_file_pipe = StableDiffusionPipeline.from_single_file(ckpt_path, load_safety_checker=True)
-
-        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
-            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
-                continue
-            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
-
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
-        for param_name, param_value in single_file_pipe.unet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.unet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.vae.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.vae.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.safety_checker.config.to_dict().items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.safety_checker.config.to_dict()[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
 
 
 @nightly
