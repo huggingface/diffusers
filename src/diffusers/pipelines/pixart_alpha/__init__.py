@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_pixart_alpha"] = ["PixArtAlphaPipeline"]
     _import_structure["pipeline_pixart_sigma"] = ["PixArtSigmaPipeline"]
+    _import_structure["pipeline_pixart_inpaint"] = ["PixArtAlphaInpaintPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -39,6 +40,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ASPECT_RATIO_1024_BIN,
             PixArtAlphaPipeline,
         )
+        from .pipeline_pixart_inpaint import PixArtAlphaInpaintPipeline
         from .pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN, PixArtSigmaPipeline
 
 else:
