@@ -560,9 +560,9 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         # 10. Prepare the final outputs.
         if output_type == "np":
-            prediction = prediction.cpu().numpy()
+            prediction = self.image_processor.pt_to_numpy(prediction)  # [N,H,W,3]
             if uncertainty is not None and output_uncertainty:
-                uncertainty = uncertainty.cpu().numpy()
+                uncertainty = self.image_processor.pt_to_numpy(uncertainty)  # [N,H,W,1]
 
         # 11. Offload all models
         self.maybe_free_model_hooks()

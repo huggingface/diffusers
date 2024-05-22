@@ -16,6 +16,25 @@ from ...utils.import_utils import is_matplotlib_available
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+def expand_tensor_or_array(images: Union[torch.Tensor, np.ndarray]) -> Union[torch.Tensor, np.ndarray]:
+    """
+    Expand a tensor or array to a specified number of images.
+    """
+    if isinstance(images, np.ndarray):
+        if images.ndim == 2:  # [H, W] -> [1, H, W, 1]
+            images = images[None, ..., None]
+        if images.ndim == 3:  # [H, W, C] -> [1, H, W, C]
+            images = images[None]
+    elif isinstance(images, torch.Tensor):
+        if images.ndim == 2:  # [H,W] -> [1,1,H,W]
+            images = images[None, None]
+        elif images.ndim == 3:  # [1,H,W] -> [1,1,H,W]
+            images = images[None]
+    else:
+        raise ValueError(f"Unexpected input type: {type(images)}")
+    return images
+
+
 class MarigoldImageProcessor(ConfigMixin):
     config_name = CONFIG_NAME
 
@@ -101,13 +120,17 @@ class MarigoldImageProcessor(ConfigMixin):
     @staticmethod
     def load_image_canonical(
         image: Union[torch.Tensor, np.ndarray, Image.Image],
-        device: torch.device,
-        dtype: torch.dtype,
+        device: torch.device = torch.device("cpu"),
+        dtype: torch.dtype = torch.float32,
     ) -> Tuple[torch.Tensor, int]:
         if isinstance(image, Image.Image):
             image = np.array(image)
 
         image_dtype_max = None
+        if isinstance(image, (np.ndarray, torch.Tensor)):
+            image = expand_tensor_or_array(image)
+            if image.ndim != 4:
+                raise ValueError("Input image is not 2-, 3-, or 4-dimensional.")
         if isinstance(image, np.ndarray):
             if np.issubdtype(image.dtype, np.integer) and not np.issubdtype(image.dtype, np.unsignedinteger):
                 raise ValueError(f"Input image dtype={image.dtype} cannot be a signed integer.")
@@ -118,7 +141,7 @@ class MarigoldImageProcessor(ConfigMixin):
             if np.issubdtype(image.dtype, np.unsignedinteger):
                 image_dtype_max = np.iinfo(image.dtype).max
                 image = image.astype(np.float32)  # because torch does not have unsigned dtypes beyond torch.uint8
-            image = torch.from_numpy(image)
+            image = MarigoldImageProcessor.numpy_to_pt(image)
 
         if torch.is_tensor(image) and not torch.is_floating_point(image) and image_dtype_max is None:
             if image.dtype != torch.uint8:
@@ -128,17 +151,6 @@ class MarigoldImageProcessor(ConfigMixin):
         if not torch.is_tensor(image):
             raise ValueError(f"Input type unsupported: {type(image)}.")
 
-        if image.dim() == 2:
-            image = image[None, None]
-        elif image.dim() == 3:
-            image = image[None]
-        elif image.dim() == 4:
-            pass
-        else:
-            raise ValueError("Input image is not 2-, 3-, or 4-dimensional.")
-
-        if image.shape[3] in (1, 3):
-            image = image.permute(0, 3, 1, 2)  # [N,H,W,1|3] -> [N,1|3,H,W]
         if image.shape[1] == 1:
             image = image.repeat(1, 3, 1, 1)  # [N,1,H,W] -> [N,3,H,W]
         if image.shape[1] != 3:
@@ -369,16 +381,13 @@ class MarigoldImageProcessor(ConfigMixin):
 
         if depth is None or isinstance(depth, list) and any(o is None for o in depth):
             raise ValueError("Input depth is `None`")
-        if isinstance(depth, np.ndarray) or torch.is_tensor(depth):
-            if depth.ndim == 2:
-                return visualize_depth_one(depth)
-            if depth.ndim == 3:
-                return [visualize_depth_one(img, idx) for idx, img in enumerate(depth)]
-            if depth.ndim == 4:
-                if depth.shape[1] != 1:
-                    raise ValueError(f"Unexpected input shape={depth.shape}, expecting [N,1,H,W].")
-                return [visualize_depth_one(img[0], idx) for idx, img in enumerate(depth)]
-            raise ValueError(f"Unexpected input shape={depth.shape}: expecting 2, 3, or 4 dimensions.")
+        if isinstance(depth, (np.ndarray, torch.Tensor)):
+            depth = expand_tensor_or_array(depth)
+            if isinstance(depth, np.ndarray):
+                depth = MarigoldImageProcessor.numpy_to_pt(depth)  # [N,H,W,1] -> [N,1,H,W]
+            if not (depth.ndim == 4 and depth.shape[1] == 1):  # [N,1,H,W]
+                raise ValueError(f"Unexpected input shape={depth.shape}, expecting [N,1,H,W].")
+            return [visualize_depth_one(img[0], idx) for idx, img in enumerate(depth)]
         elif isinstance(depth, list):
             return [visualize_depth_one(img, idx) for idx, img in enumerate(depth)]
         else:
@@ -408,16 +417,13 @@ class MarigoldImageProcessor(ConfigMixin):
 
         if depth is None or isinstance(depth, list) and any(o is None for o in depth):
             raise ValueError("Input depth is `None`")
-        if isinstance(depth, np.ndarray) or torch.is_tensor(depth):
-            if depth.ndim == 2:
-                return export_depth_to_16bit_png_one(depth)
-            if depth.ndim == 3:
-                return [export_depth_to_16bit_png_one(img, idx) for idx, img in enumerate(depth)]
-            if depth.ndim == 4:
-                if depth.shape[1] != 1:
-                    raise ValueError(f"Unexpected input shape={depth.shape}, expecting [N,1,H,W].")
-                return [export_depth_to_16bit_png_one(img[0], idx) for idx, img in enumerate(depth)]
-            raise ValueError(f"Unexpected input shape={depth.shape}: expecting 2, 3, or 4 dimensions.")
+        if isinstance(depth, (np.ndarray, torch.Tensor)):
+            depth = expand_tensor_or_array(depth)
+            if isinstance(depth, np.ndarray):
+                depth = MarigoldImageProcessor.numpy_to_pt(depth)  # [N,H,W,1] -> [N,1,H,W]
+            if not (depth.ndim == 4 and depth.shape[1] == 1):
+                raise ValueError(f"Unexpected input shape={depth.shape}, expecting [N,1,H,W].")
+            return [export_depth_to_16bit_png_one(img[0], idx) for idx, img in enumerate(depth)]
         elif isinstance(depth, list):
             return [export_depth_to_16bit_png_one(img, idx) for idx, img in enumerate(depth)]
         else:
@@ -462,16 +468,6 @@ class MarigoldImageProcessor(ConfigMixin):
             )
 
         def visualize_normals_one(img, idx=None):
-            prefix = "Normals" + (f"[{idx}]" if idx else "")
-            if isinstance(img, np.ndarray) or torch.is_tensor(img):
-                if img.ndim != 3 or img.shape[0] != 3:
-                    raise ValueError(f"{prefix}: unexpected shape={img.shape}.")
-                if isinstance(img, np.ndarray):
-                    img = torch.from_numpy(img)
-                if not torch.is_floating_point(img):
-                    raise ValueError(f"{prefix}: unexected dtype={img.dtype}.")
-            else:
-                raise ValueError(f"{prefix}: unexpected type={type(img)}.")
             img = img.permute(1, 2, 0)
             if flip_vec is not None:
                 img *= flip_vec.to(img.device)
@@ -482,14 +478,13 @@ class MarigoldImageProcessor(ConfigMixin):
 
         if normals is None or isinstance(normals, list) and any(o is None for o in normals):
             raise ValueError("Input normals is `None`")
-        if isinstance(normals, np.ndarray) or torch.is_tensor(normals):
-            if normals.ndim == 3:
-                return visualize_normals_one(normals)
-            if normals.ndim == 4:
-                if normals.shape[1] != 3:
-                    raise ValueError(f"Unexpected input shape={normals.shape}, expecting [N,3,H,W].")
-                return [visualize_normals_one(img, idx) for idx, img in enumerate(normals)]
-            raise ValueError(f"Unexpected input shape={normals.shape}: expecting 3 or 4 dimensions.")
+        if isinstance(normals, (np.ndarray, torch.Tensor)):
+            normals = expand_tensor_or_array(normals)
+            if isinstance(normals, np.ndarray):
+                normals = MarigoldImageProcessor.numpy_to_pt(normals)  # [N,3,H,W]
+            if not (normals.ndim == 4 and normals.shape[1] == 3):
+                raise ValueError(f"Unexpected input shape={normals.shape}, expecting [N,3,H,W].")
+            return [visualize_normals_one(img, idx) for idx, img in enumerate(normals)]
         elif isinstance(normals, list):
             return [visualize_normals_one(img, idx) for idx, img in enumerate(normals)]
         else:
@@ -519,19 +514,8 @@ class MarigoldImageProcessor(ConfigMixin):
 
         def visualize_uncertainty_one(img, idx=None):
             prefix = "Uncertainty" + (f"[{idx}]" if idx else "")
-            if isinstance(img, np.ndarray) or torch.is_tensor(img):
-                if img.ndim == 2:
-                    img = img[None]
-                if img.ndim != 3 or img.shape[0] != 1:
-                    raise ValueError(f"{prefix}: unexpected shape={img.shape}.")
-                if isinstance(img, np.ndarray):
-                    img = torch.from_numpy(img)
-                if not torch.is_floating_point(img):
-                    raise ValueError(f"{prefix}: unexected dtype={img.dtype}.")
-                if img.min() < 0:
-                    raise ValueError(f"{prefix}: unexected data range, min={img.min()}.")
-            else:
-                raise ValueError(f"{prefix}: unexpected type={type(img)}.")
+            if img.min() < 0:
+                raise ValueError(f"{prefix}: unexected data range, min={img.min()}.")
             img = img.squeeze(0).cpu().numpy()
             saturation_value = np.percentile(img, saturation_percentile)
             img = np.clip(img * 255 / saturation_value, 0, 255)
@@ -541,15 +525,37 @@ class MarigoldImageProcessor(ConfigMixin):
 
         if uncertainty is None or isinstance(uncertainty, list) and any(o is None for o in uncertainty):
             raise ValueError("Input uncertainty is `None`")
-        if isinstance(uncertainty, np.ndarray) or torch.is_tensor(uncertainty):
-            if uncertainty.ndim in (2, 3):
-                return visualize_uncertainty_one(uncertainty)
-            if uncertainty.ndim == 4:
-                if uncertainty.shape[1] != 1:
-                    raise ValueError(f"Unexpected input shape={uncertainty.shape}, expecting [N,1,H,W].")
-                return [visualize_uncertainty_one(img, idx) for idx, img in enumerate(uncertainty)]
-            raise ValueError(f"Unexpected input shape={uncertainty.shape}: expecting 2, 3, or 4 dimensions.")
+        if isinstance(uncertainty, (np.ndarray, torch.Tensor)):
+            uncertainty = expand_tensor_or_array(uncertainty)
+            if isinstance(uncertainty, np.ndarray):
+                uncertainty = MarigoldImageProcessor.numpy_to_pt(uncertainty)  # [N,1,H,W]
+            if not (uncertainty.ndim == 4 and uncertainty.shape[1] == 1):
+                raise ValueError(f"Unexpected input shape={uncertainty.shape}, expecting [N,1,H,W].")
+            return [visualize_uncertainty_one(img, idx) for idx, img in enumerate(uncertainty)]
         elif isinstance(uncertainty, list):
             return [visualize_uncertainty_one(img, idx) for idx, img in enumerate(uncertainty)]
         else:
             raise ValueError(f"Unexpected input type: {type(uncertainty)}")
+
+    @staticmethod
+    def pt_to_numpy(images: torch.Tensor) -> np.ndarray:
+        """
+        Convert a PyTorch tensor to a NumPy image.
+        """
+        images = images.cpu().permute(0, 2, 3, 1).float().numpy()
+        return images
+
+    @staticmethod
+    def numpy_to_pt(images: np.ndarray) -> torch.Tensor:
+        """
+        Convert a NumPy image to a PyTorch tensor.
+        """
+        if np.issubdtype(images.dtype, np.integer) and not np.issubdtype(images.dtype, np.unsignedinteger):
+            raise ValueError(f"Input image dtype={images.dtype} cannot be a signed integer.")
+        if np.issubdtype(images.dtype, np.complexfloating):
+            raise ValueError(f"Input image dtype={images.dtype} cannot be complex.")
+        if np.issubdtype(images.dtype, bool):
+            raise ValueError(f"Input image dtype={images.dtype} cannot be boolean.")
+
+        images = torch.from_numpy(images.transpose(0, 3, 1, 2))
+        return images

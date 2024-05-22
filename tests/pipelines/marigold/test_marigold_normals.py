@@ -138,9 +138,6 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "output_type": "np",
         }
         return inputs
-    
-    def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
     def test_marigold_normals(self):
         device = "cpu"
@@ -152,9 +149,9 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).prediction
-        image_slice = image[0, -1, -3:, -3:]
+        image_slice = image[0, -3:, -3:, -1]
 
-        self.assertEqual(image.shape, (1, 3, 32, 32))
+        self.assertEqual(image.shape, (1, 32, 32, 3))
         expected_slice = np.array(
             [
                 0.096745,
