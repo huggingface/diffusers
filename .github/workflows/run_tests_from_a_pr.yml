@@ -26,10 +26,10 @@ env:
 jobs:
   run_tests:
     name: "Run a test on our runner from a PR"
-    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: ${{ github.event.inputs.docker_image }}
-      options: --gpus all --privileged --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+      options: --gpus 0 --privileged --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
 
     steps:
       - name: Validate test files input
