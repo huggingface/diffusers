@@ -139,9 +139,6 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
-    def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
-
     def test_marigold_depth(self):
         device = "cpu"
 
@@ -152,9 +149,9 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).prediction
-        image_slice = image[0, -1, -3:, -3:]
+        image_slice = image[0, -3:, -3:, -1]
 
-        self.assertEqual(image.shape, (1, 1, 32, 32))
+        self.assertEqual(image.shape, (1, 32, 32, 1))
         expected_slice = np.array(
             [0.45293128, 0.518393, 0.49851733, 0.4354669, 0.42731416, 0.41532582, 0.52293533, 0.48177803, 0.46273834]
         )
