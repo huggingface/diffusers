@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
-from torch import FloatTensor, nn
+from torch import Tensor, nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, is_torch_version, logging
@@ -54,12 +54,12 @@ class ControlNetXSOutput(BaseOutput):
     The output of [`UNetControlNetXSModel`].
 
     Args:
-        sample (`FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        sample (`Tensor` of shape `(batch_size, num_channels, height, width)`):
             The output of the `UNetControlNetXSModel`. Unlike `ControlNetOutput` this is NOT to be added to the base
             model output, but is already the final output.
     """
 
-    sample: FloatTensor = None
+    sample: Tensor = None
 
 
 class DownBlockControlNetXSAdapter(nn.Module):
@@ -1001,7 +1001,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        sample: FloatTensor,
+        sample: Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: Optional[torch.Tensor] = None,
@@ -1018,13 +1018,13 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         The [`ControlNetXSModel`] forward method.
 
         Args:
-            sample (`FloatTensor`):
+            sample (`Tensor`):
                 The noisy input tensor.
             timestep (`Union[torch.Tensor, float, int]`):
                 The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.
-            controlnet_cond (`FloatTensor`):
+            controlnet_cond (`Tensor`):
                 The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
             conditioning_scale (`float`, defaults to `1.0`):
                 How much the control model affects the base model outputs.
@@ -1402,16 +1402,16 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states_base: FloatTensor,
-        temb: FloatTensor,
-        encoder_hidden_states: Optional[FloatTensor] = None,
-        hidden_states_ctrl: Optional[FloatTensor] = None,
+        hidden_states_base: Tensor,
+        temb: Tensor,
+        encoder_hidden_states: Optional[Tensor] = None,
+        hidden_states_ctrl: Optional[Tensor] = None,
         conditioning_scale: Optional[float] = 1.0,
-        attention_mask: Optional[FloatTensor] = None,
+        attention_mask: Optional[Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[FloatTensor] = None,
+        encoder_attention_mask: Optional[Tensor] = None,
         apply_control: bool = True,
-    ) -> Tuple[FloatTensor, FloatTensor, Tuple[FloatTensor, ...], Tuple[FloatTensor, ...]]:
+    ) -> Tuple[Tensor, Tensor, Tuple[Tensor, ...], Tuple[Tensor, ...]]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1626,16 +1626,16 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states_base: FloatTensor,
-        temb: FloatTensor,
-        encoder_hidden_states: FloatTensor,
-        hidden_states_ctrl: Optional[FloatTensor] = None,
+        hidden_states_base: Tensor,
+        temb: Tensor,
+        encoder_hidden_states: Tensor,
+        hidden_states_ctrl: Optional[Tensor] = None,
         conditioning_scale: Optional[float] = 1.0,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        attention_mask: Optional[FloatTensor] = None,
-        encoder_attention_mask: Optional[FloatTensor] = None,
+        attention_mask: Optional[Tensor] = None,
+        encoder_attention_mask: Optional[Tensor] = None,
         apply_control: bool = True,
-    ) -> Tuple[FloatTensor, FloatTensor]:
+    ) -> Tuple[Tensor, Tensor]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1807,18 +1807,18 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: FloatTensor,
-        res_hidden_states_tuple_base: Tuple[FloatTensor, ...],
-        res_hidden_states_tuple_ctrl: Tuple[FloatTensor, ...],
-        temb: FloatTensor,
-        encoder_hidden_states: Optional[FloatTensor] = None,
+        hidden_states: Tensor,
+        res_hidden_states_tuple_base: Tuple[Tensor, ...],
+        res_hidden_states_tuple_ctrl: Tuple[Tensor, ...],
+        temb: Tensor,
+        encoder_hidden_states: Optional[Tensor] = None,
         conditioning_scale: Optional[float] = 1.0,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        attention_mask: Optional[FloatTensor] = None,
+        attention_mask: Optional[Tensor] = None,
         upsample_size: Optional[int] = None,
-        encoder_attention_mask: Optional[FloatTensor] = None,
+        encoder_attention_mask: Optional[Tensor] = None,
         apply_control: bool = True,
-    ) -> FloatTensor:
+    ) -> Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")

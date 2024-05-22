@@ -21,7 +21,9 @@ env:
 jobs:
   setup_torch_cuda_pipeline_matrix:
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
+    container:
+      image: diffusers/diffusers-pytorch-cpu
     outputs:
       pipeline_test_matrix: ${{ steps.fetch_pipeline_matrix.outputs.pipeline_test_matrix }}
     steps:
@@ -29,14 +31,13 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 2
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.8"
       - name: Install dependencies
         run: |
-          pip install -e .
-          pip install huggingface_hub
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+      - name: Environment
+        run: |
+          python utils/print_env.py
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
         run: |
@@ -55,12 +56,13 @@ jobs:
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
       fail-fast: false
+      max-parallel: 8
       matrix:
         module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
     runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0 --privileged
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0 --privileged
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
@@ -85,7 +87,7 @@ jobs:
           python utils/print_env.py
       - name: Slow PyTorch CUDA checkpoint tests on Ubuntu
         env:
-          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -114,16 +116,16 @@ jobs:
 
   torch_cuda_tests:
     name: Torch CUDA Tests
-    runs-on: docker-gpu
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0
     defaults:
       run:
         shell: bash
     strategy:
       matrix:
-        module: [models, schedulers, lora, others]
+        module: [models, schedulers, lora, others, single_file]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
@@ -142,7 +144,7 @@ jobs:
 
     - name: Run slow PyTorch CUDA tests
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -166,10 +168,10 @@ jobs:
 
   peft_cuda_tests:
     name: PEFT CUDA Tests
-    runs-on: docker-gpu
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0
     defaults:
       run:
         shell: bash
@@ -192,7 +194,7 @@ jobs:
 
     - name: Run slow PEFT CUDA tests
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -219,7 +221,7 @@ jobs:
     runs-on: docker-tpu
     container:
       image: diffusers/diffusers-flax-tpu
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --privileged
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --privileged
     defaults:
       run:
         shell: bash
@@ -241,7 +243,7 @@ jobs:
 
     - name: Run slow Flax TPU tests
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         python -m pytest -n 0 \
           -s -v -k "Flax" \
@@ -263,10 +265,10 @@ jobs:
 
   onnx_cuda_tests:
     name: ONNX CUDA Tests
-    runs-on: docker-gpu
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-onnxruntime-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --gpus 0
     defaults:
       run:
         shell: bash
@@ -288,7 +290,7 @@ jobs:
 
     - name: Run slow ONNXRuntime CUDA tests
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Onnx" \
@@ -311,11 +313,11 @@ jobs:
   run_torch_compile_tests:
     name: PyTorch Compile CUDA tests
 
-    runs-on: docker-gpu
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
 
     container:
       image: diffusers/diffusers-pytorch-compile-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
 
     steps:
     - name: Checkout diffusers
@@ -335,7 +337,7 @@ jobs:
         python utils/print_env.py
     - name: Run example tests on GPU
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
@@ -352,11 +354,11 @@ jobs:
   run_xformers_tests:
     name: PyTorch xformers CUDA tests
 
-    runs-on: docker-gpu
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
 
     container:
       image: diffusers/diffusers-pytorch-xformers-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
 
     steps:
     - name: Checkout diffusers
@@ -376,7 +378,7 @@ jobs:
         python utils/print_env.py
     - name: Run example tests on GPU
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "xformers" --make-reports=tests_torch_xformers_cuda tests/
     - name: Failure short reports
@@ -393,11 +395,11 @@ jobs:
   run_examples_tests:
     name: Examples PyTorch CUDA tests on Ubuntu
 
-    runs-on: docker-gpu
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
 
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
 
     steps:
     - name: Checkout diffusers
@@ -421,9 +423,10 @@ jobs:
 
     - name: Run example tests on GPU
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install timm
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports

@@ -123,6 +123,7 @@ def get_down_block(
             raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlockMotion")
         return CrossAttnDownBlockMotion(
             num_layers=num_layers,
+            transformer_layers_per_block=transformer_layers_per_block,
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
@@ -263,6 +264,7 @@ def get_up_block(
             raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlockMotion")
         return CrossAttnUpBlockMotion(
             num_layers=num_layers,
+            transformer_layers_per_block=transformer_layers_per_block,
             in_channels=in_channels,
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
@@ -421,13 +423,13 @@ class UNetMidBlock3DCrossAttn(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         num_frames: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         hidden_states = self.temp_convs[0](hidden_states, num_frames=num_frames)
         for attn, temp_attn, resnet, temp_conv in zip(
@@ -554,13 +556,13 @@ class CrossAttnDownBlock3D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         num_frames: int = 1,
         cross_attention_kwargs: Dict[str, Any] = None,
-    ) -> Union[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
 
@@ -661,10 +663,10 @@ class DownBlock3D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
         num_frames: int = 1,
-    ) -> Union[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
         output_states = ()
 
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
@@ -779,15 +781,15 @@ class CrossAttnUpBlock3D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         num_frames: int = 1,
         cross_attention_kwargs: Dict[str, Any] = None,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -901,12 +903,12 @@ class UpBlock3D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
         num_frames: int = 1,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -1018,12 +1020,12 @@ class DownBlockMotion(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
         num_frames: int = 1,
         *args,
         **kwargs,
-    ) -> Union[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -1184,14 +1186,14 @@ class CrossAttnDownBlockMotion(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         num_frames: int = 1,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        additional_residuals: Optional[torch.FloatTensor] = None,
+        additional_residuals: Optional[torch.Tensor] = None,
     ):
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -1367,16 +1369,16 @@ class CrossAttnUpBlockMotion(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
         num_frames: int = 1,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1528,14 +1530,14 @@ class UpBlockMotion(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
         upsample_size=None,
         num_frames: int = 1,
         *args,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -1709,14 +1711,14 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
         num_frames: int = 1,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1821,8 +1823,8 @@ class MidBlockTemporalDecoder(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        image_only_indicator: torch.FloatTensor,
+        hidden_states: torch.Tensor,
+        image_only_indicator: torch.Tensor,
     ):
         hidden_states = self.resnets[0](
             hidden_states,
@@ -1872,9 +1874,9 @@ class UpBlockTemporalDecoder(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        image_only_indicator: torch.FloatTensor,
-    ) -> torch.FloatTensor:
+        hidden_states: torch.Tensor,
+        image_only_indicator: torch.Tensor,
+    ) -> torch.Tensor:
         for resnet in self.resnets:
             hidden_states = resnet(
                 hidden_states,
@@ -1945,11 +1947,11 @@ class UNetMidBlockSpatioTemporal(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         hidden_states = self.resnets[0](
             hidden_states,
             temb,
@@ -2047,8 +2049,8 @@ class DownBlockSpatioTemporal(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
         flow: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
@@ -2166,9 +2168,9 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
         flow: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
@@ -2273,12 +2275,12 @@ class UpBlockSpatioTemporal(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
         flow: Optional[torch.Tensor] = None,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -2390,13 +2392,13 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
         flow: Optional[torch.Tensor] = None,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
