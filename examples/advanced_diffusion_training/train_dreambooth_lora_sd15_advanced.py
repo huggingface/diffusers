@@ -758,7 +758,7 @@ class TokenEmbeddingsHandler:
 
             idx += 1
 
-    # copied from train_dreambooth_lora_sdxl_advanced.py
+    # Copied from train_dreambooth_lora_sdxl_advanced.py
     def save_embeddings(self, file_path: str):
         assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
         tensors = {}
