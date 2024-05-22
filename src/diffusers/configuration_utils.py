@@ -45,6 +45,7 @@ from .utils import (
     http_user_agent,
     logging,
 )
+from .utils.hub_utils import _fetch_remapped_cls_from_config
 
 
 logger = logging.get_logger(__name__)
@@ -717,21 +718,6 @@ class LegacyConfigMixin(ConfigMixin):
     @classmethod
     def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
         # resolve remapping
-        if cls.__name__ == "Transformer2DModel":
-            # prevent circular imports
-            from .models.transformers import DiTTransformer2DModel, PixArtTransformer2DModel
+        remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-            previous_class_name = cls.__name__
-            # DiT
-            if config["norm_type"] == "ada_norm_zero":
-                cls = DiTTransformer2DModel
-            # PixArt
-            elif config["norm_type"] == "ada_norm_single":
-                cls = PixArtTransformer2DModel
-
-            logger.info(
-                f"Changing class object to be of `{cls.__name__}` type from `{previous_class_name}` type."
-                " Note that this doesn't affect the final results."
-            )
-
-        return super().from_config(config, return_unused_kwargs, **kwargs)
+        return remapped_class.from_config(config, return_unused_kwargs, **kwargs)

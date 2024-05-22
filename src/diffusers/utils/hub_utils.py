@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+import importlib
 import os
 import re
 import sys
@@ -67,6 +68,13 @@ logger = get_logger(__name__)
 
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
+
+_CLASS_REMAPPING_DICT = {
+    "Transformer2DModel": {
+        "ada_norm_zero": "DiTTransformer2DModel",
+        "ada_norm_single": "PixArtTransformer2DModel",
+    }
+}
 
 
 def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
@@ -391,6 +399,21 @@ def _get_model_file(
                 f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
                 f"containing a file named {weights_name}"
             )
+
+
+def _fetch_remapped_cls_from_config(config, old_class):
+    previous_class_name = old_class.__name__
+    remapped_class_name = _CLASS_REMAPPING_DICT.get(previous_class_name).get(config["norm_type"])
+
+    # load diffusers library to import compatible and original scheduler
+    diffusers_library = importlib.import_module(__name__.split(".")[0])
+    remapped_class = getattr(diffusers_library, remapped_class_name)
+    logger.info(
+        f"Changing class object to be of `{remapped_class_name}` type from `{previous_class_name}` type."
+        " Note that this doesn't affect the final results."
+    )
+
+    return remapped_class
 
 
 class PushToHubMixin:

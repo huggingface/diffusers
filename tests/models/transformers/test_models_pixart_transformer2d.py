@@ -92,8 +92,14 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
             expected_output_shape=(self.dummy_input[self.main_input_name].shape[0],) + self.output_shape
         )
 
-    def test_correct_class_remapping_from_config(self):
-        model = Transformer2DModel.from_config("PixArt-alpha/PixArt-XL-2-1024-MS", subfolder="transformer")
+    def test_correct_class_remapping_from_dict_config(self):
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = Transformer2DModel.from_config(init_dict)
+        assert isinstance(model, PixArtTransformer2DModel)
+
+    def test_correct_class_remapping_from_pretrained_config(self):
+        config = PixArtTransformer2DModel.load_config("PixArt-alpha/PixArt-XL-2-1024-MS", subfolder="transformer")
+        model = Transformer2DModel.from_config(config)
         assert isinstance(model, PixArtTransformer2DModel)
 
     @slow

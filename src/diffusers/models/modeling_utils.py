@@ -42,7 +42,12 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import (
+    PushToHubMixin,
+    _fetch_remapped_cls_from_config,
+    load_or_create_model_card,
+    populate_model_card,
+)
 from .model_loading_utils import (
     _determine_device_map,
     _load_state_dict_into_model,
@@ -1085,21 +1090,6 @@ class LegacyModelMixin(ModelMixin):
             **kwargs,
         )
         # resolve remapping
-        if cls.__name__ == "Transformer2DModel":
-            # prevent circular imports
-            from ..models.transformers import DiTTransformer2DModel, PixArtTransformer2DModel
+        remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-            previous_class_name = cls.__name__
-            # DiT
-            if config["norm_type"] == "ada_norm_zero":
-                cls = DiTTransformer2DModel
-            # PixArt
-            elif config["norm_type"] == "ada_norm_single":
-                cls = PixArtTransformer2DModel
-
-            logger.info(
-                f"Changing class object to be of `{cls.__name__}` type from `{previous_class_name}` type."
-                " Note that this doesn't affect the final results."
-            )
-
-        return super().from_pretrained(pretrained_model_name_or_path, **kwargs)
+        return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs)
