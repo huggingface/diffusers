@@ -937,7 +937,7 @@ def main():
                 repo_id=repo_id,
                 folder_path=args.output_dir,
                 commit_message="End of training",
-                ignore_patterns=["step_*", "epoch_*"],
+                ignore_patterns=["step_*", "epoch_*", "checkpoint-*"],
             )
 
         # Final inference
