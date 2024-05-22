@@ -851,8 +851,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
     @property
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
