@@ -140,6 +140,7 @@ ASPECT_RATIO_512_BIN = {
     "4.0": [1024.0, 256.0],
 }
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
@@ -156,8 +157,8 @@ def retrieve_timesteps(
         scheduler (`SchedulerMixin`):
             The scheduler to get timesteps from.
         num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used,
-            `timesteps` must be `None`.
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         timesteps (`List[int]`, *optional*):
@@ -184,6 +185,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -196,6 +198,7 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
 
 class PixArtAlphaInpaintPipeline(DiffusionPipeline):
     r"""
@@ -240,12 +243,12 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
 
     def __init__(
-            self,
-            tokenizer: T5Tokenizer,
-            text_encoder: T5EncoderModel,
-            vae: AutoencoderKL,
-            transformer: Transformer2DModel,
-            scheduler: DPMSolverMultistepScheduler,
+        self,
+        tokenizer: T5Tokenizer,
+        text_encoder: T5EncoderModel,
+        vae: AutoencoderKL,
+        transformer: Transformer2DModel,
+        scheduler: DPMSolverMultistepScheduler,
     ):
         super().__init__()
 
@@ -270,19 +273,19 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.encode_prompt
     def encode_prompt(
-            self,
-            prompt: Union[str, List[str]],
-            do_classifier_free_guidance: bool = True,
-            negative_prompt: str = "",
-            num_images_per_prompt: int = 1,
-            device: Optional[torch.device] = None,
-            prompt_embeds: Optional[torch.FloatTensor] = None,
-            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-            prompt_attention_mask: Optional[torch.FloatTensor] = None,
-            negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
-            clean_caption: bool = False,
-            max_sequence_length: int = 120,
-            **kwargs,
+        self,
+        prompt: Union[str, List[str]],
+        do_classifier_free_guidance: bool = True,
+        negative_prompt: str = "",
+        num_images_per_prompt: int = 1,
+        device: Optional[torch.device] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.FloatTensor] = None,
+        negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
+        clean_caption: bool = False,
+        max_sequence_length: int = 120,
+        **kwargs,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -338,9 +341,9 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
             untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
             if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                    text_input_ids, untruncated_ids
+                text_input_ids, untruncated_ids
             ):
-                removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_length - 1: -1])
+                removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_length - 1 : -1])
                 logger.warning(
                     "The following part of your input was truncated because CLIP can only handle sequences up to"
                     f" {max_length} tokens: {removed_text}"
@@ -427,21 +430,21 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
 
     # Adapted from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.check_inputs
     def check_inputs(
-            self,
-            prompt,
-            image,
-            mask_image,
-            height,
-            width,
-            strength,
-            negative_prompt,
-            callback_steps,
-            output_type,
-            prompt_embeds=None,
-            negative_prompt_embeds=None,
-            prompt_attention_mask=None,
-            negative_prompt_attention_mask=None,
-            padding_mask_crop=None,
+        self,
+        prompt,
+        image,
+        mask_image,
+        height,
+        width,
+        strength,
+        negative_prompt,
+        callback_steps,
+        output_type,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+        prompt_attention_mask=None,
+        negative_prompt_attention_mask=None,
+        padding_mask_crop=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -450,7 +453,7 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
-                callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
@@ -658,12 +661,21 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
         return caption.strip()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None,
-                        image=None,
-                        timestep=None,
-                        is_strength_max=True,
-                        return_image_latents=True,
-                        ):
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+        image=None,
+        timestep=None,
+        is_strength_max=True,
+        return_image_latents=True,
+    ):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -753,33 +765,33 @@ class PixArtAlphaInpaintPipeline(DiffusionPipeline):
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
-            self,
-            prompt: Union[str, List[str]] = None,
-            image: PipelineImageInput = None,
-            mask_image: PipelineImageInput = None,
-            strength: float = 1.0,
-            negative_prompt: str = "",
-            num_inference_steps: int = 20,
-            timesteps: List[int] = None,
-            guidance_scale: float = 4.5,
-            num_images_per_prompt: Optional[int] = 1,
-            height: Optional[int] = None,
-            width: Optional[int] = None,
-            eta: float = 0.0,
-            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-            latents: Optional[torch.FloatTensor] = None,
-            prompt_embeds: Optional[torch.FloatTensor] = None,
-            prompt_attention_mask: Optional[torch.FloatTensor] = None,
-            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-            negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
-            output_type: Optional[str] = "pil",
-            return_dict: bool = True,
-            callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-            callback_steps: int = 1,
-            clean_caption: bool = True,
-            use_resolution_binning: bool = True,
-            max_sequence_length: int = 120,
-            **kwargs,
+        self,
+        prompt: Union[str, List[str]] = None,
+        image: PipelineImageInput = None,
+        mask_image: PipelineImageInput = None,
+        strength: float = 1.0,
+        negative_prompt: str = "",
+        num_inference_steps: int = 20,
+        timesteps: List[int] = None,
+        guidance_scale: float = 4.5,
+        num_images_per_prompt: Optional[int] = 1,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        eta: float = 0.0,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
+        clean_caption: bool = True,
+        use_resolution_binning: bool = True,
+        max_sequence_length: int = 120,
+        **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
