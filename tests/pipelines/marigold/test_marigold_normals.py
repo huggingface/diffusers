@@ -17,10 +17,8 @@
 # Marigold project website: https://marigoldmonodepth.github.io
 # --------------------------------------------------------------------------
 import gc
-import os
 import random
 import unittest
-from typing import Any, Dict, Optional
 
 import numpy as np
 import torch
@@ -37,6 +35,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
+    print_tensor_test,
     require_torch_gpu,
     slow,
 )
@@ -117,6 +116,8 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "prediction_type": "normals",
+            "use_full_z_range": True,
         }
         return components
 
@@ -139,48 +140,155 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
-    def test_marigold_normals(self):
+    def _test_marigold_normals(
+        self,
+        generator_seed: int = 0,
+        expected_slice: np.ndarray = None,
+        atol: float = 1e-4,
+        **pipe_kwargs,
+    ):
         device = "cpu"
-
         components = self.get_dummy_components()
+
         pipe = self.pipeline_class(**components)
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).prediction
-        image_slice = image[0, -3:, -3:, -1]
+        pipe_inputs = self.get_dummy_inputs(device, seed=generator_seed)
+        pipe_inputs.update(**pipe_kwargs)
 
-        self.assertEqual(image.shape, (1, 32, 32, 3))
-        expected_slice = np.array(
-            [
-                0.096745,
-                0.52338576,
-                0.14476392,
-                -0.31546292,
-                -0.25497344,
-                -0.55777955,
-                0.68535185,
-                0.5657173,
-                -0.12631096,
-            ]
+        prediction = pipe(**pipe_inputs).prediction
+
+        print_tensor_test(prediction, limit_to_slices=True)
+        prediction_slice = prediction[0, -3:, -3:, -1].flatten()
+
+        if pipe_inputs.get("match_input_resolution", True):
+            self.assertEqual(prediction.shape, (1, 32, 32, 3), "Unexpected output resolution")
+        else:
+            self.assertTrue(prediction.shape[0] == 1 and prediction.shape[3] == 3, "Unexpected output dimensions")
+            self.assertEqual(
+                max(prediction.shape[1:3]),
+                pipe_inputs.get("processing_resolution", 768),
+                "Unexpected output resolution",
+            )
+
+        self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol))
+
+    def test_marigold_depth_dummy_defaults(self):
+        self._test_marigold_normals(
+            expected_slice=np.array([ 0.0967,  0.5234,  0.1448, -0.3155, -0.2550, -0.5578,  0.6854,  0.5657,        -0.1263]),
         )
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+
+    def test_marigold_depth_dummy_G0_S1_P32_E1_B1_M1(self):
+        self._test_marigold_normals(
+            generator_seed=0,
+            expected_slice=np.array([ 0.0967,  0.5234,  0.1448, -0.3155, -0.2550, -0.5578,  0.6854,  0.5657,        -0.1263]),
+            num_inference_steps=1,
+            processing_resolution=32,
+            ensemble_size=1,
+            batch_size=1,
+            match_input_resolution=True,
+        )
+
+    def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M1(self):
+        self._test_marigold_normals(
+            generator_seed=0,
+            expected_slice=np.array([-0.4128, -0.5918, -0.6540,  0.2446, -0.2687, -0.4607,  0.2935, -0.0483,        -0.2086]),
+            num_inference_steps=1,
+            processing_resolution=16,
+            ensemble_size=1,
+            batch_size=1,
+            match_input_resolution=True,
+        )
+
+    def test_marigold_depth_dummy_G2024_S1_P32_E1_B1_M1(self):
+        self._test_marigold_normals(
+            generator_seed=2024,
+            expected_slice=np.array([ 0.5731, -0.7631, -0.0199,  0.1609, -0.4628, -0.7044,  0.5761, -0.3471,        -0.4498]),
+            num_inference_steps=1,
+            processing_resolution=32,
+            ensemble_size=1,
+            batch_size=1,
+            match_input_resolution=True,
+        )
+
+    def test_marigold_depth_dummy_G0_S2_P32_E1_B1_M1(self):
+        self._test_marigold_normals(
+            generator_seed=0,
+            expected_slice=np.array([ 0.1017, -0.6823, -0.2533,  0.1988,  0.3389,  0.8478,  0.7757,  0.5220,         0.8668]),
+            num_inference_steps=2,
+            processing_resolution=32,
+            ensemble_size=1,
+            batch_size=1,
+            match_input_resolution=True,
+        )
+
+    def test_marigold_depth_dummy_G0_S1_P64_E1_B1_M1(self):
+        self._test_marigold_normals(
+            generator_seed=0,
+            expected_slice=np.array([-0.2391,  0.7969,  0.6224,  0.0698,  0.5669, -0.2167, -0.1362, -0.8945,        -0.5501]),
+            num_inference_steps=1,
+            processing_resolution=64,
+            ensemble_size=1,
+            batch_size=1,
+            match_input_resolution=True,
+        )
+
+    def test_marigold_depth_dummy_G0_S1_P32_E3_B1_M1(self):
+        self._test_marigold_normals(
+            generator_seed=0,
+            expected_slice=np.array([ 0.3826, -0.9634, -0.3835,  0.3514,  0.0691, -0.6182,  0.8709,  0.1590,        -0.2181]),
+            num_inference_steps=1,
+            processing_resolution=32,
+            ensemble_size=3,
+            ensembling_kwargs={"reduction": "mean"},
+            batch_size=1,
+            match_input_resolution=True,
+        )
+
+    def test_marigold_depth_dummy_G0_S1_P32_E4_B2_M1(self):
+        self._test_marigold_normals(
+            generator_seed=0,
+            expected_slice=np.array([ 0.2500, -0.3928, -0.2415,  0.1133,  0.2357, -0.4223,  0.9967,  0.4859,        -0.1282]),
+            num_inference_steps=1,
+            processing_resolution=32,
+            ensemble_size=4,
+            ensembling_kwargs={"reduction": "mean"},
+            batch_size=2,
+            match_input_resolution=True,
+        )
+
+    def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M0(self):
+        self._test_marigold_normals(
+            generator_seed=0,
+            expected_slice=np.array([ 0.9588,  0.3326, -0.0825, -0.0994, -0.3534, -0.4302,  0.3562,  0.4421,        -0.2086]),
+            num_inference_steps=1,
+            processing_resolution=16,
+            ensemble_size=1,
+            batch_size=1,
+            match_input_resolution=False,
+        )
+
+    def test_marigold_depth_dummy_no_num_inference_steps(self):
+        with self.assertRaises(ValueError) as e:
+            self._test_marigold_normals(
+                num_inference_steps=None,
+                expected_slice=np.array([0.0]),
+            )
+            self.assertIn("num_inference_steps", str(e))
+
+    def test_marigold_depth_dummy_no_processing_resolution(self):
+        with self.assertRaises(ValueError) as e:
+            self._test_marigold_normals(
+                processing_resolution=None,
+                expected_slice=np.array([0.0]),
+            )
+            self.assertIn("processing_resolution", str(e))
 
 
 @slow
 @require_torch_gpu
 class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
-    save_output: bool = True
-    enable_asserts: bool = True
-    model_id: str = "prs-eth/marigold-normals-lcm-v0-1"
-    url_input_basedir: str = "https://marigoldmonodepth.github.io/images"
-    url_output_basedir: str = (
-        "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/marigold"
-    )
-    progress_bar_kwargs = {"disable": True}
-
     def setUp(self):
         super().setUp()
         gc.collect()
@@ -195,243 +303,160 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
         self,
         is_fp16: bool = True,
         device: str = "cuda",
-        enable_model_cpu_offload: bool = False,
         generator_seed: int = 0,
-        num_inference_steps: int = 1,
-        processing_resolution: int = 768,
-        ensemble_size: int = 1,
-        ensembling_kwargs: Optional[Dict[str, Any]] = None,
-        batch_size: int = 1,
-        match_input_resolution: bool = True,
-        fname_input: str = "einstein.jpg",
+        expected_slice: np.ndarray = None,
+        model_id: str = "prs-eth/marigold-normals-lcm-v0-1",
+        image_url: str = "https://marigoldmonodepth.github.io/images/einstein.jpg",
         atol: float = 1e-4,
+        **pipe_kwargs,
     ):
-        out_basename = os.path.splitext(os.path.basename(fname_input))[0]
-        out_basename += "_" + self.model_id.replace("/", "-").replace("_", "-")
-
         from_pretrained_kwargs = {}
         if is_fp16:
             from_pretrained_kwargs["variant"] = "fp16"
             from_pretrained_kwargs["torch_dtype"] = torch.float16
-            out_basename += "_f16"
-        else:
-            out_basename += "_f32"
 
-        pipe = MarigoldNormalsPipeline.from_pretrained(self.model_id, **from_pretrained_kwargs)
-
-        if isinstance(self.progress_bar_kwargs, dict):
-            pipe.set_progress_bar_config(**self.progress_bar_kwargs)
-
-        if enable_model_cpu_offload:
+        pipe = MarigoldNormalsPipeline.from_pretrained(model_id, **from_pretrained_kwargs)
+        if device == "cuda":
             pipe.enable_model_cpu_offload()
-            out_basename += "_cpuoffl"
-        else:
-            pipe.to(device)
-            out_basename += "_" + str(device)
+        pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=device).manual_seed(generator_seed)
-        out_basename += f"_G{generator_seed}"
 
-        image_url = f"{self.url_input_basedir}/{fname_input}"
         image = load_image(image_url)
         width, height = image.size
 
-        out = pipe(
-            image,
-            num_inference_steps=num_inference_steps,
-            ensemble_size=ensemble_size,
-            processing_resolution=processing_resolution,
-            match_input_resolution=match_input_resolution,
-            resample_method_input="bilinear",
-            resample_method_output="bilinear",
-            batch_size=batch_size,
-            ensembling_kwargs=ensembling_kwargs,
-            latents=None,
-            generator=generator,
-            output_type="np",
-            output_uncertainty=False,
-            output_latent=False,
-        )
+        prediction = pipe(image, generator=generator, **pipe_kwargs).prediction
 
-        out_basename += f"_S{num_inference_steps}"
-        out_basename += f"_P{processing_resolution}"
-        out_basename += f"_E{ensemble_size}"
-        out_basename += f"_B{batch_size}"
-        out_basename += f"_M{int(match_input_resolution)}"
+        print_tensor_test(prediction, limit_to_slices=True)
+        prediction_slice = prediction[0, -3:, -3:, -1].flatten()
 
-        expected_image_fname = f"{out_basename}.png"
-        expected_image_url = f"{self.url_output_basedir}/{expected_image_fname}"
-
-        vis = pipe.image_processor.visualize_normals(out.prediction)[0]
-        if self.save_output:
-            vis.save(expected_image_fname)
-
-        # No asserts above this line!
-
-        if not self.enable_asserts:
-            return
-
-        if match_input_resolution:
-            self.assertEqual(out.prediction.shape[2:], (height, width), "Unexpected output resolution")
+        if pipe_kwargs.get("match_input_resolution", True):
+            self.assertEqual(prediction.shape, (1, height, width, 3), "Unexpected output resolution")
         else:
-            self.assertEqual(max(out.prediction.shape[2:]), processing_resolution, "Unexpected output resolution")
+            self.assertTrue(prediction.shape[0] == 1 and prediction.shape[3] == 3, "Unexpected output dimensions")
+            self.assertEqual(
+                max(prediction.shape[1:3]),
+                pipe_kwargs.get("processing_resolution", 768),
+                "Unexpected output resolution",
+            )
 
-        expected_image = np.array(load_image(expected_image_url))
-        vis = np.array(vis)
-        self.assertTrue(np.allclose(vis, expected_image, atol=atol))
+        self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol))
 
     def test_marigold_normals_einstein_f32_cpu_G0_S1_P32_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=False,
             device="cpu",
-            enable_model_cpu_offload=False,
             generator_seed=0,
+            expected_slice=np.array([0.8971, 0.8971, 0.8971, 0.8971, 0.8971, 0.8971, 0.8971, 0.8971, 0.8971]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=1,
             batch_size=1,
             match_input_resolution=True,
-            fname_input="einstein.jpg",
         )
 
     def test_marigold_normals_einstein_f32_cuda_G0_S1_P768_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=False,
             device="cuda",
-            enable_model_cpu_offload=False,
             generator_seed=0,
+            expected_slice=np.array([0.]),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=1,
             batch_size=1,
             match_input_resolution=True,
-            fname_input="einstein.jpg",
-        )
-
-    def test_marigold_normals_einstein_f32_cpuoffl_G0_S1_P768_E1_B1_M1(self):
-        self._test_marigold_normals(
-            is_fp16=False,
-            device="cuda",
-            enable_model_cpu_offload=True,
-            generator_seed=0,
-            num_inference_steps=1,
-            processing_resolution=768,
-            ensemble_size=1,
-            batch_size=1,
-            match_input_resolution=True,
-            fname_input="einstein.jpg",
         )
 
     def test_marigold_normals_einstein_f16_cuda_G0_S1_P768_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
             device="cuda",
-            enable_model_cpu_offload=False,
             generator_seed=0,
+            expected_slice=np.array([0.]),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=1,
             batch_size=1,
             match_input_resolution=True,
-            fname_input="einstein.jpg",
-        )
-
-    def test_marigold_normals_einstein_f16_cpuoffl_G0_S1_P768_E1_B1_M1(self):
-        self._test_marigold_normals(
-            is_fp16=True,
-            device="cuda",
-            enable_model_cpu_offload=True,
-            generator_seed=0,
-            num_inference_steps=1,
-            processing_resolution=768,
-            ensemble_size=1,
-            batch_size=1,
-            match_input_resolution=True,
-            fname_input="einstein.jpg",
         )
 
     def test_marigold_normals_einstein_f16_cuda_G2024_S1_P768_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
             device="cuda",
-            enable_model_cpu_offload=False,
             generator_seed=2024,
+            expected_slice=np.array([0.]),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=1,
             batch_size=1,
             match_input_resolution=True,
-            fname_input="einstein.jpg",
         )
 
     def test_marigold_normals_einstein_f16_cuda_G0_S2_P768_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
             device="cuda",
-            enable_model_cpu_offload=False,
             generator_seed=0,
+            expected_slice=np.array([0.]),
             num_inference_steps=2,
             processing_resolution=768,
             ensemble_size=1,
             batch_size=1,
             match_input_resolution=True,
-            fname_input="einstein.jpg",
         )
 
     def test_marigold_normals_einstein_f16_cuda_G0_S1_P512_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
             device="cuda",
-            enable_model_cpu_offload=False,
             generator_seed=0,
+            expected_slice=np.array([0.]),
             num_inference_steps=1,
             processing_resolution=512,
             ensemble_size=1,
             batch_size=1,
             match_input_resolution=True,
-            fname_input="einstein.jpg",
         )
 
     def test_marigold_normals_einstein_f16_cuda_G0_S1_P768_E3_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
             device="cuda",
-            enable_model_cpu_offload=False,
             generator_seed=0,
+            expected_slice=np.array([0.]),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=3,
             ensembling_kwargs={"reduction": "mean"},
             batch_size=1,
             match_input_resolution=True,
-            fname_input="einstein.jpg",
         )
 
     def test_marigold_normals_einstein_f16_cuda_G0_S1_P768_E4_B2_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
             device="cuda",
-            enable_model_cpu_offload=False,
             generator_seed=0,
+            expected_slice=np.array([0.]),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=4,
             ensembling_kwargs={"reduction": "mean"},
             batch_size=2,
             match_input_resolution=True,
-            fname_input="einstein.jpg",
         )
 
     def test_marigold_normals_einstein_f16_cuda_G0_S1_P512_E1_B1_M0(self):
         self._test_marigold_normals(
             is_fp16=True,
             device="cuda",
-            enable_model_cpu_offload=False,
             generator_seed=0,
+            expected_slice=np.array([0.]),
             num_inference_steps=1,
             processing_resolution=512,
             ensemble_size=1,
             batch_size=1,
             match_input_resolution=False,
-            fname_input="einstein.jpg",
         )
