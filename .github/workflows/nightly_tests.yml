@@ -81,7 +81,7 @@ jobs:
 
       - name: Nightly PyTorch CUDA checkpoint (pipelines) tests
         env:
-          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -141,7 +141,7 @@ jobs:
     - name: Run nightly PyTorch CUDA tests for non-pipeline modules
       if: ${{ matrix.module != 'examples'}}
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -154,7 +154,7 @@ jobs:
     - name: Run nightly example tests with Torch
       if: ${{ matrix.module == 'examples' }}
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -211,7 +211,7 @@ jobs:
 
     - name: Run nightly LoRA tests with PEFT and Torch
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -269,7 +269,7 @@ jobs:
 
     - name: Run nightly Flax TPU tests
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         python -m pytest -n 0 \
           -s -v -k "Flax" \
@@ -324,7 +324,7 @@ jobs:
 
     - name: Run nightly ONNXRuntime CUDA tests
       env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Onnx" \
@@ -390,7 +390,7 @@ jobs:
         shell: arch -arch arm64 bash {0}
         env:
           HF_HOME: /System/Volumes/Data/mnt/cache
-          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           ${CONDA_RUN} python -m pytest -n 1 -s -v --make-reports=tests_torch_mps \
             --report-log=tests_torch_mps.log \

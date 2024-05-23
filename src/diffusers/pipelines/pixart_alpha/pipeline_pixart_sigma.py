@@ -23,7 +23,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import PixArtImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel
-from ...schedulers import DPMSolverMultistepScheduler
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BACKENDS_MAPPING,
     deprecate,
@@ -203,7 +203,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         text_encoder: T5EncoderModel,
         vae: AutoencoderKL,
         transformer: Transformer2DModel,
-        scheduler: DPMSolverMultistepScheduler,
+        scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
 
@@ -214,7 +214,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.encode_prompt
+    # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.encode_prompt with 120->300
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -227,7 +227,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         clean_caption: bool = False,
-        max_sequence_length: int = 120,
+        max_sequence_length: int = 300,
         **kwargs,
     ):
         r"""
@@ -254,7 +254,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                 string.
             clean_caption (`bool`, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
-            max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
+            max_sequence_length (`int`, defaults to 300): Maximum sequence length to use for the prompt.
         """
 
         if "mask_feature" in kwargs:
@@ -707,7 +707,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
                 `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images, they are resized back to
                 the requested resolution. Useful for generating non-square images.
-            max_sequence_length (`int` defaults to 120): Maximum sequence length to use with the `prompt`.
+            max_sequence_length (`int` defaults to 300): Maximum sequence length to use with the `prompt`.
 
         Examples:
 
