@@ -597,6 +597,11 @@ class LoraLoaderMixin:
                         if is_peft_version("<", "0.9.0"):
                             lora_config_kwargs.pop("use_dora")
                 lora_config = LoraConfig(**lora_config_kwargs)
+                target_modules = lora_config_kwargs.get("target_modules")
+                print(f"{target_modules[:5]=}")
+                for k in target_modules:
+                    if "projection" in k:
+                        print(f"From load_lora_into_text_encoder: {k}")
 
                 # adapter_name
                 if adapter_name is None:

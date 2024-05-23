@@ -226,6 +226,8 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
             diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
             diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
             diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+            diffusers_name = diffusers_name.replace("text.projection", "text_projection")
+
             if "self_attn" in diffusers_name:
                 if lora_name.startswith(("lora_te_", "lora_te1_")):
                     te_state_dict[diffusers_name] = state_dict.pop(key)
@@ -243,6 +245,11 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
                 else:
                     te2_state_dict[diffusers_name] = state_dict.pop(key)
                     te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+            # OneTrainer specificity
+            elif "text_projection" in diffusers_name and lora_name.startswith("lora_te2_"):
+                print(f"{diffusers_name=}, {key=}")
+                te2_state_dict[diffusers_name] = state_dict.pop(key)
+                te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
             if (is_te_dora_lora or is_te2_dora_lora) and lora_name.startswith(("lora_te_", "lora_te1_", "lora_te2_")):
                 dora_scale_key_to_replace_te = (
