@@ -16,25 +16,6 @@ from ...utils.import_utils import is_matplotlib_available
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def expand_tensor_or_array(images: Union[torch.Tensor, np.ndarray]) -> Union[torch.Tensor, np.ndarray]:
-    """
-    Expand a tensor or array to a specified number of images.
-    """
-    if isinstance(images, np.ndarray):
-        if images.ndim == 2:  # [H, W] -> [1, H, W, 1]
-            images = images[None, ..., None]
-        if images.ndim == 3:  # [H, W, C] -> [1, H, W, C]
-            images = images[None]
-    elif isinstance(images, torch.Tensor):
-        if images.ndim == 2:  # [H,W] -> [1,1,H,W]
-            images = images[None, None]
-        elif images.ndim == 3:  # [1,H,W] -> [1,1,H,W]
-            images = images[None]
-    else:
-        raise ValueError(f"Unexpected input type: {type(images)}")
-    return images
-
-
 class MarigoldImageProcessor(ConfigMixin):
     config_name = CONFIG_NAME
 
@@ -46,6 +27,48 @@ class MarigoldImageProcessor(ConfigMixin):
         do_range_check: bool = True,
     ):
         super().__init__()
+
+    @staticmethod
+    def expand_tensor_or_array(images: Union[torch.Tensor, np.ndarray]) -> Union[torch.Tensor, np.ndarray]:
+        """
+        Expand a tensor or array to a specified number of images.
+        """
+        if isinstance(images, np.ndarray):
+            if images.ndim == 2:  # [H,W] -> [1,H,W,1]
+                images = images[None, ..., None]
+            if images.ndim == 3:  # [H,W,C] -> [1,H,W,C]
+                images = images[None]
+        elif isinstance(images, torch.Tensor):
+            if images.ndim == 2:  # [H,W] -> [1,1,H,W]
+                images = images[None, None]
+            elif images.ndim == 3:  # [1,H,W] -> [1,1,H,W]
+                images = images[None]
+        else:
+            raise ValueError(f"Unexpected input type: {type(images)}")
+        return images
+
+    @staticmethod
+    def pt_to_numpy(images: torch.Tensor) -> np.ndarray:
+        """
+        Convert a PyTorch tensor to a NumPy image.
+        """
+        images = images.cpu().permute(0, 2, 3, 1).float().numpy()
+        return images
+
+    @staticmethod
+    def numpy_to_pt(images: np.ndarray) -> torch.Tensor:
+        """
+        Convert a NumPy image to a PyTorch tensor.
+        """
+        if np.issubdtype(images.dtype, np.integer) and not np.issubdtype(images.dtype, np.unsignedinteger):
+            raise ValueError(f"Input image dtype={images.dtype} cannot be a signed integer.")
+        if np.issubdtype(images.dtype, np.complexfloating):
+            raise ValueError(f"Input image dtype={images.dtype} cannot be complex.")
+        if np.issubdtype(images.dtype, bool):
+            raise ValueError(f"Input image dtype={images.dtype} cannot be boolean.")
+
+        images = torch.from_numpy(images.transpose(0, 3, 1, 2))
+        return images
 
     @staticmethod
     def resize_antialias(
@@ -128,7 +151,7 @@ class MarigoldImageProcessor(ConfigMixin):
 
         image_dtype_max = None
         if isinstance(image, (np.ndarray, torch.Tensor)):
-            image = expand_tensor_or_array(image)
+            image = MarigoldImageProcessor.expand_tensor_or_array(image)
             if image.ndim != 4:
                 raise ValueError("Input image is not 2-, 3-, or 4-dimensional.")
         if isinstance(image, np.ndarray):
@@ -382,7 +405,7 @@ class MarigoldImageProcessor(ConfigMixin):
         if depth is None or isinstance(depth, list) and any(o is None for o in depth):
             raise ValueError("Input depth is `None`")
         if isinstance(depth, (np.ndarray, torch.Tensor)):
-            depth = expand_tensor_or_array(depth)
+            depth = MarigoldImageProcessor.expand_tensor_or_array(depth)
             if isinstance(depth, np.ndarray):
                 depth = MarigoldImageProcessor.numpy_to_pt(depth)  # [N,H,W,1] -> [N,1,H,W]
             if not (depth.ndim == 4 and depth.shape[1] == 1):  # [N,1,H,W]
@@ -418,7 +441,7 @@ class MarigoldImageProcessor(ConfigMixin):
         if depth is None or isinstance(depth, list) and any(o is None for o in depth):
             raise ValueError("Input depth is `None`")
         if isinstance(depth, (np.ndarray, torch.Tensor)):
-            depth = expand_tensor_or_array(depth)
+            depth = MarigoldImageProcessor.expand_tensor_or_array(depth)
             if isinstance(depth, np.ndarray):
                 depth = MarigoldImageProcessor.numpy_to_pt(depth)  # [N,H,W,1] -> [N,1,H,W]
             if not (depth.ndim == 4 and depth.shape[1] == 1):
@@ -479,7 +502,7 @@ class MarigoldImageProcessor(ConfigMixin):
         if normals is None or isinstance(normals, list) and any(o is None for o in normals):
             raise ValueError("Input normals is `None`")
         if isinstance(normals, (np.ndarray, torch.Tensor)):
-            normals = expand_tensor_or_array(normals)
+            normals = MarigoldImageProcessor.expand_tensor_or_array(normals)
             if isinstance(normals, np.ndarray):
                 normals = MarigoldImageProcessor.numpy_to_pt(normals)  # [N,3,H,W]
             if not (normals.ndim == 4 and normals.shape[1] == 3):
@@ -526,7 +549,7 @@ class MarigoldImageProcessor(ConfigMixin):
         if uncertainty is None or isinstance(uncertainty, list) and any(o is None for o in uncertainty):
             raise ValueError("Input uncertainty is `None`")
         if isinstance(uncertainty, (np.ndarray, torch.Tensor)):
-            uncertainty = expand_tensor_or_array(uncertainty)
+            uncertainty = MarigoldImageProcessor.expand_tensor_or_array(uncertainty)
             if isinstance(uncertainty, np.ndarray):
                 uncertainty = MarigoldImageProcessor.numpy_to_pt(uncertainty)  # [N,1,H,W]
             if not (uncertainty.ndim == 4 and uncertainty.shape[1] == 1):
@@ -536,26 +559,3 @@ class MarigoldImageProcessor(ConfigMixin):
             return [visualize_uncertainty_one(img, idx) for idx, img in enumerate(uncertainty)]
         else:
             raise ValueError(f"Unexpected input type: {type(uncertainty)}")
-
-    @staticmethod
-    def pt_to_numpy(images: torch.Tensor) -> np.ndarray:
-        """
-        Convert a PyTorch tensor to a NumPy image.
-        """
-        images = images.cpu().permute(0, 2, 3, 1).float().numpy()
-        return images
-
-    @staticmethod
-    def numpy_to_pt(images: np.ndarray) -> torch.Tensor:
-        """
-        Convert a NumPy image to a PyTorch tensor.
-        """
-        if np.issubdtype(images.dtype, np.integer) and not np.issubdtype(images.dtype, np.unsignedinteger):
-            raise ValueError(f"Input image dtype={images.dtype} cannot be a signed integer.")
-        if np.issubdtype(images.dtype, np.complexfloating):
-            raise ValueError(f"Input image dtype={images.dtype} cannot be complex.")
-        if np.issubdtype(images.dtype, bool):
-            raise ValueError(f"Input image dtype={images.dtype} cannot be boolean.")
-
-        images = torch.from_numpy(images.transpose(0, 3, 1, 2))
-        return images
