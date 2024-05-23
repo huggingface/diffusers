@@ -152,7 +152,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
         info = {
             "🤗 Diffusers version": version,
-            "Platform": f"{platform.freedesktop_os_release().get('PRETTY_NAME', None)} - {platform.platform()}",
+            "Platform": platform.platform(),
             "Running on a notebook?": is_notebook_str,
             "Running on Google Colab?": is_google_colab_str,
             "Python version": platform.python_version(),
