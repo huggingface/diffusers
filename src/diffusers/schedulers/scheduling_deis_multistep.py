@@ -152,7 +152,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
@@ -170,13 +170,13 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             if algorithm_type in ["dpmsolver", "dpmsolver++"]:
                 self.register_to_config(algorithm_type="deis")
             else:
-                raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
+                raise NotImplementedError(f"{algorithm_type} is not implemented for {self.__class__}")
 
         if solver_type not in ["logrho"]:
             if solver_type in ["midpoint", "heun", "bh1", "bh2"]:
                 self.register_to_config(solver_type="logrho")
             else:
-                raise NotImplementedError(f"solver type {solver_type} does is not implemented for {self.__class__}")
+                raise NotImplementedError(f"solver type {solver_type} is not implemented for {self.__class__}")
 
         # setable values
         self.num_inference_steps = None

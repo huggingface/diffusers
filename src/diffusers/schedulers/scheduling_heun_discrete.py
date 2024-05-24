@@ -135,7 +135,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         elif beta_schedule == "exp":
             self.betas = betas_for_alpha_bar(num_train_timesteps, alpha_transform_type="exp")
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)

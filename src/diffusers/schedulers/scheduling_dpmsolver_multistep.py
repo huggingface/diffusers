@@ -229,7 +229,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         if rescale_betas_zero_snr:
             self.betas = rescale_zero_terminal_snr(self.betas)
@@ -256,13 +256,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             if algorithm_type == "deis":
                 self.register_to_config(algorithm_type="dpmsolver++")
             else:
-                raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
+                raise NotImplementedError(f"{algorithm_type} is not implemented for {self.__class__}")
 
         if solver_type not in ["midpoint", "heun"]:
             if solver_type in ["logrho", "bh1", "bh2"]:
                 self.register_to_config(solver_type="midpoint")
             else:
-                raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
+                raise NotImplementedError(f"{solver_type} is not implemented for {self.__class__}")
 
         if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"] and final_sigmas_type == "zero":
             raise ValueError(

@@ -119,7 +119,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             if solver_type in ["logrho", "bh1", "bh2"]:
                 self.register_to_config(solver_type="midpoint")
             else:
-                raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
+                raise NotImplementedError(f"{solver_type} is not implemented for {self.__class__}")
 
         if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"] and final_sigmas_type == "zero":
             raise ValueError(
