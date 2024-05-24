@@ -247,7 +247,6 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
                     te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
             # OneTrainer specificity
             elif "text_projection" in diffusers_name and lora_name.startswith("lora_te2_"):
-                print(f"{diffusers_name=}, {key=}")
                 te2_state_dict[diffusers_name] = state_dict.pop(key)
                 te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
@@ -277,7 +276,7 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
             network_alphas.update({new_name: alpha})
 
     if len(state_dict) > 0:
-        raise ValueError(f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}")
+        raise ValueError(f"The following keys have not been correctly renamed: \n\n {', '.join(state_dict.keys())}")
 
     logger.info("Kohya-style checkpoint detected.")
     unet_state_dict = {f"{unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
