@@ -102,93 +102,6 @@ class FP32_SiLU(nn.SiLU):
 
 from typing import Tuple, Union, Optional
 
-def reshape_for_broadcast(freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]], x: torch.Tensor, head_first=False):
-    """
-    Reshape frequency tensor for broadcasting it with another tensor.
-
-    This function reshapes the frequency tensor to have the same shape as the target tensor 'x'
-    for the purpose of broadcasting the frequency tensor during element-wise operations.
-
-    Args:
-        freqs_cis (Union[torch.Tensor, Tuple[torch.Tensor]]): Frequency tensor to be reshaped.
-        x (torch.Tensor): Target tensor for broadcasting compatibility.
-        head_first (bool): head dimension first (except batch dim) or not.
-
-    Returns:
-        torch.Tensor: Reshaped frequency tensor.
-
-    Raises:
-        AssertionError: If the frequency tensor doesn't match the expected shape.
-        AssertionError: If the target tensor 'x' doesn't have the expected number of dimensions.
-    """
-    ndim = x.ndim
-    assert 0 <= 1 < ndim
-
-    if isinstance(freqs_cis, tuple):
-        # freqs_cis: (cos, sin) in real space
-        if head_first:
-            assert freqs_cis[0].shape == (x.shape[-2], x.shape[-1]), f'freqs_cis shape {freqs_cis[0].shape} does not match x shape {x.shape}'
-            shape = [d if i == ndim - 2 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        else:
-            assert freqs_cis[0].shape == (x.shape[1], x.shape[-1]), f'freqs_cis shape {freqs_cis[0].shape} does not match x shape {x.shape}'
-            shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        return freqs_cis[0].view(*shape), freqs_cis[1].view(*shape)
-    else:
-        # freqs_cis: values in complex space
-        if head_first:
-            assert freqs_cis.shape == (x.shape[-2], x.shape[-1]), f'freqs_cis shape {freqs_cis.shape} does not match x shape {x.shape}'
-            shape = [d if i == ndim - 2 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        else:
-            assert freqs_cis.shape == (x.shape[1], x.shape[-1]), f'freqs_cis shape {freqs_cis.shape} does not match x shape {x.shape}'
-            shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        return freqs_cis.view(*shape)
-
-
-def rotate_half(x):
-    x_real, x_imag = x.float().reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
-    return torch.stack([-x_imag, x_real], dim=-1).flatten(3)
-
-def apply_rotary_emb(
-        xq: torch.Tensor,
-        xk: Optional[torch.Tensor],
-        freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
-        head_first: bool = False,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Apply rotary embeddings to input tensors using the given frequency tensor.
-
-    This function applies rotary embeddings to the given query 'xq' and key 'xk' tensors using the provided
-    frequency tensor 'freqs_cis'. The input tensors are reshaped as complex numbers, and the frequency tensor
-    is reshaped for broadcasting compatibility. The resulting tensors contain rotary embeddings and are
-    returned as real tensors.
-
-    Args:
-        xq (torch.Tensor): Query tensor to apply rotary embeddings. [B, S, H, D]
-        xk (torch.Tensor): Key tensor to apply rotary embeddings.   [B, S, H, D]
-        freqs_cis (Union[torch.Tensor, Tuple[torch.Tensor]]): Precomputed frequency tensor for complex exponentials.
-        head_first (bool): head dimension first (except batch dim) or not.
-
-    Returns:
-        Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
-
-    """
-    xk_out = None
-    if isinstance(freqs_cis, tuple):
-        cos, sin = reshape_for_broadcast(freqs_cis, xq, head_first)    # [S, D]
-        cos, sin = cos.to(xq.device), sin.to(xq.device)
-        xq_out = (xq.float() * cos + rotate_half(xq.float()) * sin).type_as(xq)
-        if xk is not None:
-            xk_out = (xk.float() * cos + rotate_half(xk.float()) * sin).type_as(xk)
-    else:
-        xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))  # [B, S, H, D//2]
-        freqs_cis = reshape_for_broadcast(freqs_cis, xq_, head_first).to(xq.device)   # [S, D//2] --> [1, S, 1, D//2]
-        xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3).type_as(xq)
-        if xk is not None:
-            xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))  # [B, S, H, D//2]
-            xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3).type_as(xk)
-
-    return xq_out, xk_out
-
 class HunyuanDiTAttentionPool(nn.Module):
     def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
         super().__init__()
@@ -223,147 +136,13 @@ class HunyuanDiTAttentionPool(nn.Module):
             need_weights=False
         )
         return x.squeeze(0)
-
-class HunyuanDiTCrossAttention(nn.Module):
-    """
-    Use QK Normalization.
-    """
-    def __init__(self,
-                 qdim,
-                 kdim,
-                 num_heads,
-                 qkv_bias=True,
-                 qk_norm=False,
-                 attn_drop=0.0,
-                 proj_drop=0.0,
-                 device=None,
-                 dtype=None,
-                 norm_layer=nn.LayerNorm,
-                 ):
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        super().__init__()
-        self.qdim = qdim
-        self.kdim = kdim
-        self.num_heads = num_heads
-        assert self.qdim % num_heads == 0, "self.qdim must be divisible by num_heads"
-        self.head_dim = self.qdim // num_heads
-        assert self.head_dim % 8 == 0 and self.head_dim <= 128, "Only support head_dim <= 128 and divisible by 8"
-        self.scale = self.head_dim ** -0.5
-
-        self.q_proj = nn.Linear(qdim, qdim, bias=qkv_bias, **factory_kwargs)
-        self.kv_proj = nn.Linear(kdim, 2 * qdim, bias=qkv_bias, **factory_kwargs)
-
-        # TODO: eps should be 1 / 65530 if using fp16
-        self.q_norm = norm_layer(self.head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        self.k_norm = norm_layer(self.head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.out_proj = nn.Linear(qdim, qdim, bias=qkv_bias, **factory_kwargs)
-        self.proj_drop = nn.Dropout(proj_drop)
-
-    def forward(self, x, y, freqs_cis_img=None):
-        """
-        Parameters
-        ----------
-        x: torch.Tensor
-            (batch, seqlen1, hidden_dim) (where hidden_dim = num heads * head dim)
-        y: torch.Tensor
-            (batch, seqlen2, hidden_dim2)
-        freqs_cis_img: torch.Tensor
-            (batch, hidden_dim // 2), RoPE for image
-        """
-        b, s1, c = x.shape     # [b, s1, D]
-        _, s2, c = y.shape     # [b, s2, 1024]
-
-        q = self.q_proj(x).view(b, s1, self.num_heads, self.head_dim)   # [b, s1, h, d]
-        kv = self.kv_proj(y).view(b, s2, 2, self.num_heads, self.head_dim)    # [b, s2, 2, h, d]
-        k, v = kv.unbind(dim=2) # [b, s, h, d]
-        q = self.q_norm(q)
-        k = self.k_norm(k)
-
-        # Apply RoPE if needed
-        if freqs_cis_img is not None:
-            qq, _ = apply_rotary_emb(q, None, freqs_cis_img)
-            assert qq.shape == q.shape, f'qq: {qq.shape}, q: {q.shape}'
-            q = qq
-
-        q = q * self.scale
-        q = q.transpose(-2, -3).contiguous()        # q ->  B, L1, H, C - B, H, L1, C
-        k = k.permute(0, 2, 3, 1).contiguous()      # k ->  B, L2, H, C - B, H, C, L2
-        attn = q @ k                                # attn -> B, H, L1, L2
-        attn = attn.softmax(dim=-1)                 # attn -> B, H, L1, L2
-        attn = self.attn_drop(attn)
-        x = attn @ v.transpose(-2, -3)              # v -> B, L2, H, C - B, H, L2, C    x-> B, H, L1, C
-        context = x.transpose(1, 2)                 # context -> B, H, L1, C - B, L1, H, C
-
-        context = context.contiguous().view(b, s1, -1)
-
-        out = self.out_proj(context)  # context.reshape - B, L1, -1
-        out = self.proj_drop(out)
-
-        out_tuple = (out,)
-
-        return out_tuple
-
-
-class HunyuanDiTAttention(nn.Module):
-    """
-    We rename some layer names to align with flash attention
-    """
-    def __init__(self, dim, num_heads, qkv_bias=True, qk_norm=False, attn_drop=0., proj_drop=0.,
-                 norm_layer=nn.LayerNorm,
-                 ):
-        super().__init__()
-        self.dim = dim
-        self.num_heads = num_heads
-        assert self.dim % num_heads == 0, 'dim should be divisible by num_heads'
-        self.head_dim = self.dim // num_heads
-        # This assertion is aligned with flash attention
-        assert self.head_dim % 8 == 0 and self.head_dim <= 128, "Only support head_dim <= 128 and divisible by 8"
-        self.scale = self.head_dim ** -0.5
-
-        # qkv --> Wqkv
-        self.Wqkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        # TODO: eps should be 1 / 65530 if using fp16
-        self.q_norm = norm_layer(self.head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        self.k_norm = norm_layer(self.head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.out_proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
-
-    def forward(self, x, freqs_cis_img=None):
-        B, N, C = x.shape
-        qkv = self.Wqkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)   # [3, b, h, s, d]
-        q, k, v = qkv.unbind(0)     # [b, h, s, d]
-        q = self.q_norm(q)          # [b, h, s, d]
-        k = self.k_norm(k)          # [b, h, s, d]
-
-        # Apply RoPE if needed
-        if freqs_cis_img is not None:
-            qq, kk = apply_rotary_emb(q, k, freqs_cis_img, head_first=True)
-            assert qq.shape == q.shape and kk.shape == k.shape, \
-                f'qq: {qq.shape}, q: {q.shape}, kk: {kk.shape}, k: {k.shape}'
-            q, k = qq, kk
-
-        q = q * self.scale
-        attn = q @ k.transpose(-2, -1)              # [b, h, s, d] @ [b, h, d, s]
-        attn = attn.softmax(dim=-1)                 # [b, h, s, s]
-        attn = self.attn_drop(attn)
-        x = attn @ v                                # [b, h, s, d]
-
-        x = x.transpose(1, 2).reshape(B, N, C)      # [b, s, h, d]
-        x = self.out_proj(x)
-        x = self.proj_drop(x)
-
-        out_tuple = (x,)
-
-        return out_tuple
 ### ==== end ====
+
 
 @maybe_allow_in_graph
 class HunyuanDiTBlock(nn.Module):
     r"""
     HunyuanDiT Transformer block. Allow skip connection and QKNorm
-
     Parameters:
         dim (`int`): The number of channels in the input and output.
         num_attention_heads (`int`): The number of heads to use for multi-head attention.
@@ -413,22 +192,38 @@ class HunyuanDiTBlock(nn.Module):
         super().__init__()
 
         # Define 3 blocks. Each block has its own normalization layer.
+        # NOTE: when new version comes, chech norm2 and norm 3
         # 1. Self-Attn
         self.norm1 = FP32_Layernorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
 
-        self.attn1 = HunyuanDiTAttention(dim, num_heads=num_attention_heads, qkv_bias=True, qk_norm=qk_norm)
+        from .attention_processor import HunyuanAttnProcessor2_0
+        self.attn1 = Attention(
+            query_dim=dim, 
+            cross_attention_dim=dim, 
+            dim_head = dim //num_attention_heads, 
+            heads = num_attention_heads,
+            qk_norm="layer_norm" if qk_norm else None, 
+            eps=1e-6, 
+            bias=True,
+            processor= HunyuanAttnProcessor2_0(),
+        )
 
         # 2. Cross-Attn
-        self.norm3 = FP32_Layernorm(dim, norm_eps, norm_elementwise_affine)
-
-        self.attn2 = HunyuanDiTCrossAttention(dim, text_dim, num_heads=num_attention_heads, qkv_bias=True, qk_norm=qk_norm)
-
-        # 3. Feed-forward
         self.norm2 = FP32_Layernorm(dim, norm_eps, norm_elementwise_affine)
 
-        ### NOTE: do not switch norm2 and norm3, otherwise will load wrong key when using pretrained model!
+        self.attn2 = Attention(
+            query_dim=dim,
+            cross_attention_dim=text_dim,
+            dim_head = dim // num_attention_heads,
+            heads = num_attention_heads,
+            qk_norm="layer_norm" if qk_norm else None,
+            eps=1e-6,
+            bias=True,
+            processor= HunyuanAttnProcessor2_0(),
+        )
+        # 3. Feed-forward
+        self.norm3 = FP32_Layernorm(dim, norm_eps, norm_elementwise_affine)
 
-        #print('mlp hidden dim:', ff_inner_dim)
         self.ff = FeedForward(
             dim,
             dropout=dropout, ### 0.0
@@ -475,28 +270,27 @@ class HunyuanDiTBlock(nn.Module):
             cat = torch.cat([hidden_states, skip], dim=-1)
             cat = self.skip_norm(cat)
             hidden_states = self.skip_linear(cat)
-        
-        #print('x:', hidden_states[0])
+
         # 1. Self-Attention
         norm_hidden_states = self.norm1(hidden_states) ### checked: self.norm1 is correct
         shift_msa = self.default_modulation(timestep).unsqueeze(dim=1)
-        attn_inputs = (norm_hidden_states + shift_msa, freq_cis_img,)
-        attn_output = self.attn1(*attn_inputs)[0]
+        attn_output = self.attn1(
+            norm_hidden_states + shift_msa,
+            temb = freq_cis_img,
+        )
         hidden_states = hidden_states + attn_output
-        #print('x:', hidden_states[0])
 
         # 2. Cross-Attention
-        cross_inputs = (
-            self.norm3(hidden_states), encoder_hidden_states, freq_cis_img
+        hidden_states = hidden_states + self.attn2(
+            self.norm2(hidden_states),
+            encoder_hidden_states = encoder_hidden_states,
+            temb = freq_cis_img,
         )
-        hidden_states = hidden_states + self.attn2(*cross_inputs)[0]
-        #print('x:', hidden_states[0])
 
-        # FFN Layer ### NOTE: do not switch norm2 and norm3, otherwise will load wrong key when using pretrained model!
-        mlp_inputs = self.norm2(hidden_states)
+        # FFN Layer ### TODO: switch norm2 and norm3 in the state dict
+        mlp_inputs = self.norm3(hidden_states)
         hidden_states = hidden_states + self.ff(mlp_inputs)
-        #print('x:', hidden_states[0])
-        
+
         return hidden_states
 
 @maybe_allow_in_graph

@@ -388,7 +388,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             A scheduler to be used in combination with HunyuanDiT to denoise the encoded image latents.
     """
 
-    model_cpu_offload_seq = "text_encoder->embedder_t5->tokenizer->tokenizer_t5->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->embedder_t5->transformer->vae"
     _optional_components = ["safety_checker", "feature_extractor", "embedder_t5", "tokenizer_t5"]
     _exclude_from_cpu_offload = ["safety_checker"]
 
@@ -402,23 +402,10 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             safety_checker: StableDiffusionSafetyChecker,
             feature_extractor: CLIPImageProcessor,
             requires_safety_checker: bool = True,
-            progress_bar_config: Dict[str, Any] = None,
             embedder_t5=T5EncoderModel,
             tokenizer_t5=MT5Tokenizer,
-            infer_mode='torch',
     ):
         super().__init__()
-
-        # ========================================================
-        self.infer_mode = infer_mode
-
-        # ========================================================
-        if progress_bar_config is None:
-            progress_bar_config = {}
-        if not hasattr(self, '_progress_bar_config'):
-            self._progress_bar_config = {}
-        self._progress_bar_config.update(progress_bar_config)
-        # ========================================================
         
         self.register_modules(
             vae=vae,
@@ -433,33 +420,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         )
 
         self.text_encoder.pooler.to_empty(device='cpu') ### workaround for the meta device in pooler...
-
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file"
-            )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
-                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
-                " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
-                " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
-            )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["clip_sample"] = False
-            scheduler._internal_dict = FrozenDict(new_config)
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -480,37 +440,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
-    def _encode_prompt(
-            self,
-            prompt,
-            device,
-            num_images_per_prompt,
-            do_classifier_free_guidance,
-            negative_prompt=None,
-            prompt_embeds: Optional[torch.FloatTensor] = None,
-            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-            lora_scale: Optional[float] = None,
-    ):
-        deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
-        deprecate("_encode_prompt()", "1.0.0", deprecation_message, standard_warn=False)
-
-        prompt_embeds_tuple = self.encode_prompt(
-            prompt=prompt,
-            device=device,
-            num_images_per_prompt=num_images_per_prompt,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            negative_prompt=negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=lora_scale,
-        )
-
-        # concatenate for backwards comp
-        prompt_embeds = torch.cat([prompt_embeds_tuple[1], prompt_embeds_tuple[0]])
-
-        return prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
@@ -683,31 +612,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
 
         return prompt_embeds, negative_prompt_embeds, attention_mask, uncond_attention_mask
 
-    def _convert_to_rgb(self, image):
-        return image.convert('RGB')
-
-    def image_transform(self, image_size=224):
-        transform = T.Compose([
-            T.Resize((image_size, image_size), interpolation=T.InterpolationMode.BICUBIC),
-            self._convert_to_rgb,
-            T.ToTensor(),
-            T.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-        ])
-        return transform
-
-    def encode_img(self, img, device, do_classifier_free_guidance):
-        img = img[0]    # TODO: support batch processing
-        image_preprocess = self.image_transform(224)
-        img_for_clip = image_preprocess(img)
-        
-        img_for_clip = img_for_clip.unsqueeze(0)
-        img_clip_embedding = self.img_encoder(img_for_clip.to(device)).to(dtype=torch.float16)
-        
-        if do_classifier_free_guidance:
-            negative_img_clip_embedding = torch.zeros_like(img_clip_embedding)
-        return img_clip_embedding, negative_img_clip_embedding
-
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
@@ -722,18 +626,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
         return image, has_nsfw_concept
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
-    def decode_latents(self, latents):
-        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
-        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
-
-        latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -852,7 +744,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             guidance_rescale: float = 0.0,
             image_meta_size: Optional[torch.LongTensor] = None,
             style: Optional[torch.LongTensor] = None,
-            progress: bool = True,
             use_fp16: bool = False,
             freqs_cis_img: Optional[tuple] = None,
             learn_sigma: bool = True,
@@ -1056,24 +947,20 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                     ims = image_meta_size if image_meta_size is not None else None
 
                 # predict the noise residual
-                if self.infer_mode in ["fa", "torch"]:
-                    noise_pred = self.transformer(
-                        latent_model_input,
-                        t_expand,
-                        encoder_hidden_states=prompt_embeds,
-                        text_embedding_mask=attention_mask,
-                        encoder_hidden_states_t5=prompt_embeds_t5,
-                        text_embedding_mask_t5=attention_mask_t5,
-                        image_meta_size=ims,
-                        style=style,
-                        cos_cis_img=freqs_cis_img[0],
-                        sin_cis_img=freqs_cis_img[1],
-                        return_dict=False,
-                    )
-                elif self.infer_mode == "trt":
-                    raise NotImplementedError("TensorRT model is not supported yet.")
-                else:
-                    raise ValueError("[ERROR] invalid inference mode! please check your config file")
+                noise_pred = self.transformer(
+                    latent_model_input,
+                    t_expand,
+                    encoder_hidden_states=prompt_embeds,
+                    text_embedding_mask=attention_mask,
+                    encoder_hidden_states_t5=prompt_embeds_t5,
+                    text_embedding_mask_t5=attention_mask_t5,
+                    image_meta_size=ims,
+                    style=style,
+                    cos_cis_img=freqs_cis_img[0],
+                    sin_cis_img=freqs_cis_img[1],
+                    return_dict=False,
+                )
+
                 if learn_sigma:
                     noise_pred, _ = noise_pred.chunk(2, dim=1)
 

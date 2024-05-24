@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2024 HunyuanDiT Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,27 +23,14 @@ from ...utils import BaseOutput, deprecate, is_torch_version, logging
 from ..attention import HunyuanDiTBlock, FP32_SiLU, FP32_Layernorm, HunyuanDiTAttentionPool, modulate
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
+from .transformer_2d import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
-@dataclass
-class Transformer2DModelOutput(BaseOutput):
-    """
-    The output of [`Transformer2DModel`].
-
-    Args:
-        sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
-            The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
-            distributions for the unnoised latent pixels.
-    """
-
-    sample: torch.Tensor
-
 import math
 from einops import repeat
-from timm.models.layers import to_2tuple
+
 class HunyuanDiTPatchEmbed(nn.Module):
     """ 2D Image to Patch Embedding
 
@@ -68,13 +55,15 @@ class HunyuanDiTPatchEmbed(nn.Module):
             bias=True,
     ):
         super().__init__()
+
         if isinstance(img_size, int):
-            img_size = to_2tuple(img_size)
+            img_size = (img_size, img_size)
         elif isinstance(img_size, (tuple, list)) and len(img_size) == 2:
             img_size = tuple(img_size)
         else:
             raise ValueError(f"img_size must be int or tuple/list of length 2. Got {img_size}")
-        patch_size = to_2tuple(patch_size)
+
+        patch_size = (patch_size, patch_size)
         self.img_size = img_size
         self.patch_size = patch_size
         self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
@@ -189,6 +178,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         learn_sigma: bool=True,
         text_dim: int=1024,
         norm_type: str = "layer_norm",
+        text_states_dim_t5: int = 2048,
+        text_len: int = 77,
+        text_len_t5: int = 256,
     ):
         super().__init__()
         self.depth = num_layers
@@ -199,9 +191,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         self.num_heads = num_attention_heads
         self.hidden_size = hidden_size
         self.text_states_dim = text_dim
-        self.text_states_dim_t5 = 2048
-        self.text_len = 77
-        self.text_len_t5 = 256 ### NOTE: These numbers are hardcoded for now, seems will not change in near future
+        self.text_states_dim_t5 = text_states_dim_t5
+        self.text_len = text_len
+        self.text_len_t5 = text_len_t5
         self.norm = norm_type
         self.inner_dim = num_attention_heads * attention_head_dim
 
