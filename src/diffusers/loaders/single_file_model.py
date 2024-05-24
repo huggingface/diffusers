@@ -167,7 +167,7 @@ class FromOriginalModelMixin:
             )
 
         resume_download = kwargs.pop("resume_download", None)
-        force_download = kwargs.pop("force_download", None)
+        force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         cache_dir = kwargs.pop("cache_dir", None)
