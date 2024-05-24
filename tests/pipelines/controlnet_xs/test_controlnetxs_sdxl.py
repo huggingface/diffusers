@@ -180,11 +180,11 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
-    # Copied from test_controlnet_sdxl.py
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
+    # Copied from test_controlnet_sdxl.py
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=2e-3)
 
@@ -192,8 +192,8 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
-    # Copied from test_controlnet_sdxl.py
     @require_torch_gpu
+    # Copied from test_controlnet_sdxl.py
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
         components = self.get_dummy_components()
