@@ -31,6 +31,7 @@ from ..utils import (
     is_transformers_available,
     is_xformers_available,
 )
+from ..utils.testing_utils import get_python_version
 from . import BaseDiffusersCLICommand
 
 
@@ -105,6 +106,11 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
             xformers_version = xformers.__version__
 
+        if get_python_version() >= (3, 10):
+            platform_info = f"{platform.freedesktop_os_release().get('PRETTY_NAME', None)} - {platform.platform()}"
+        else:
+            platform_info = platform.platform()
+
         is_notebook_str = "Yes" if is_notebook() else "No"
 
         is_google_colab_str = "Yes" if is_google_colab() else "No"
@@ -152,7 +158,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
         info = {
             "🤗 Diffusers version": version,
-            "Platform": f"{platform.freedesktop_os_release().get('PRETTY_NAME', None)} - {platform.platform()}",
+            "Platform": platform_info,
             "Running on a notebook?": is_notebook_str,
             "Running on Google Colab?": is_google_colab_str,
             "Python version": platform.python_version(),
