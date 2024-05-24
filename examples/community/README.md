@@ -4046,7 +4046,6 @@ import cv2
 import torch
 import numpy as np
 
-from diffusers.utils import export_to_video
 from diffusers import ControlNetModel,DDIMScheduler, DiffusionPipeline
 import sys
 gmflow_dir = "/path/to/gmflow"
@@ -4073,15 +4072,15 @@ def video_to_frame(video_path: str, interval: int):
     return res
 
 
-input_video_path = '/path/to/video'
-output_video_path = '/path/to/video'
+input_video_path = 'https://github.com/williamyang1991/FRESCO/raw/main/data/car-turn.mp4'
+output_video_path = 'car.gif'
 
+# You can use any fintuned SD here
+model_path = 'SG161222/Realistic_Vision_V2.0'
 
 prompt = 'a red car turns in the winter'
 a_prompt = ', RAW photo, subject, (high detailed skin:1.2), 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3, '
 n_prompt = '(deformed iris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, mutated hands and fingers:1.4), (deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, disconnected limbs, mutation, mutated, ugly, disgusting, amputation'
-model_path = 'SG161222/Realistic_Vision_V2.0'
-
 
 input_interval = 5
 frames = video_to_frame(
@@ -4101,8 +4100,6 @@ for frame in frames:
 controlnet = ControlNetModel.from_pretrained(
     "lllyasviel/sd-controlnet-canny").to('cuda')
 
-
-# You can use any fintuned SD here
 pipe = DiffusionPipeline.from_pretrained(
     model_path, controlnet=controlnet, custom_pipeline='fresco_v2v').to('cuda')
 pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
@@ -4121,8 +4118,8 @@ output_frames = pipe(
     negative_prompt=n_prompt
 ).images
 
-export_to_video(
-    output_frames, output_video_path, 5)
+output_frames[0].save(output_video_path, save_all=True,
+                 append_images=output_frames[1:], duration=100, loop=0)
 
 ```
 

@@ -20,6 +20,7 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
+import torch.utils.model_zoo
 from einops import rearrange, repeat
 from gmflow.gmflow import GMFlow
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
