@@ -108,11 +108,11 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             The threshold value for dynamic thresholding. Valid only when `thresholding=True` and
             `algorithm_type="dpmsolver++"`.
         algorithm_type (`str`, defaults to `dpmsolver++`):
-            Algorithm type for the solver; can be `dpmsolver` or `dpmsolver++`. The `dpmsolver` type implements the
-            algorithms in the [DPMSolver](https://huggingface.co/papers/2206.00927) paper, and the `dpmsolver++` type
-            implements the algorithms in the [DPMSolver++](https://huggingface.co/papers/2211.01095) paper. It is
-            recommended to use `dpmsolver++` or `sde-dpmsolver++` with `solver_order=2` for guided sampling like in
-            Stable Diffusion.
+            Algorithm type for the solver; can be `dpmsolver` or `dpmsolver++` or `sde-dpmsolver` or `sde-dpmsolver++`.
+            The `dpmsolver` type implements the algorithms in the [DPMSolver](https://huggingface.co/papers/2206.00927)
+            paper, and the `dpmsolver++` type implements the algorithms in the [DPMSolver++](https://huggingface.co/papers/2211.01095)
+            paper. It is recommended to use `dpmsolver++` or `sde-dpmsolver++` with `solver_order=2` for guided sampling
+            like in Stable Diffusion.
         solver_type (`str`, defaults to `midpoint`):
             Solver type for the second-order solver; can be `midpoint` or `heun`. The solver type slightly affects the
             sample quality, especially for a small number of steps. It is recommended to use `midpoint` solvers.
@@ -553,8 +553,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         *args,
         sample: torch.Tensor = None,
+        noise: Optional[torch.Tensor] = None,
         **kwargs,
-        noise: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
         """
         One step for the first-order DPMSolver (equivalent to DDIM).
@@ -624,8 +624,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         model_output_list: List[torch.Tensor],
         *args,
         sample: torch.Tensor = None,
+        noise: Optional[torch.Tensor] = None,
         **kwargs,
-        noise: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
         """
         One step for the second-order singlestep DPMSolver that computes the solution at time `prev_timestep` from the
@@ -856,8 +856,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         *args,
         sample: torch.Tensor = None,
         order: int = None,
+        noise: Optional[torch.Tensor] = None,
         **kwargs,
-        noise: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
         """
         One step for the singlestep DPMSolver.
@@ -1007,7 +1007,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         if order == 1:
             self.sample = sample
 
-        prev_sample = self.singlestep_dpm_solver_update(self.model_outputs, sample=self.sample, order=order)
+        prev_sample = self.singlestep_dpm_solver_update(self.model_outputs, sample=self.sample, order=order, noise=noise)
 
         # upon completion increase step index by one, noise=noise
         self._step_index += 1
