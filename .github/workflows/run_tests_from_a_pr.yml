@@ -34,13 +34,24 @@ jobs:
     steps:
       - name: Validate test files input
         id: validate_test_files
+        env: 
+          PY_TEST: ${{ github.event.inputs.test }}
         run: |
-          if [[ ! "${{ github.event.inputs.test }}" =~ ^[a-zA-Z0-9_/.-\ ]+$ ]]; then
-            echo "Invalid characters detected in test files input"
+          if [[ ! "$PY_TEST" =~ ^tests/ ]]; then
+            echo "Error: The input string must start with 'tests/'."
             exit 1
           fi
-          echo ${{ github.event.inputs.test }}
-      
+          
+          if [[ ! "$PY_TEST" =~ ^tests/(models|pipelines) ]]; then
+            echo "Error: The input string must contain either 'models' or 'pipelines' after 'tests/'."
+            exit 1
+          fi
+          
+          if [[ "$PY_TEST" == *";"* ]]; then
+            echo "Error: The input string must not contain ';'."
+            exit 1
+          fi
+          echo "$PY_TEST"
 
       - name: Checkout PR branch
         uses: actions/checkout@v4
