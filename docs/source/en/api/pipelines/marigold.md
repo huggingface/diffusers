@@ -30,13 +30,6 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
-Sample output with Marigold:
-
-TODO
-
-## Notes
-
-TODO
 
 ## MarigoldDepthPipeline
 [[autodoc]] MarigoldDepthPipeline
