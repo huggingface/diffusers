@@ -35,7 +35,6 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
-    print_tensor_test,
     require_torch_gpu,
     slow,
 )
@@ -159,7 +158,6 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         prediction = pipe(**pipe_inputs).prediction
 
-        print_tensor_test(prediction, limit_to_slices=True)
         prediction_slice = prediction[0, -3:, -3:, -1].flatten()
 
         if pipe_inputs.get("match_input_resolution", True):
@@ -327,7 +325,6 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
 
         prediction = pipe(image, generator=generator, **pipe_kwargs).prediction
 
-        print_tensor_test(prediction, limit_to_slices=True)
         prediction_slice = prediction[0, -3:, -3:, -1].flatten()
 
         if pipe_kwargs.get("match_input_resolution", True):
