@@ -716,14 +716,14 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             assert noise is not None
             if self.config.solver_type == "midpoint":
                 x_t = (
-                    (sigma_t / sigma_s0 * torch.exp(-h)) * sample
+                    (sigma_t / sigma_s1 * torch.exp(-h)) * sample
                     + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
                     + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
                     + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
                 )
             elif self.config.solver_type == "heun":
                 x_t = (
-                    (sigma_t / sigma_s0 * torch.exp(-h)) * sample
+                    (sigma_t / sigma_s1 * torch.exp(-h)) * sample
                     + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
                     + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
                     + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
@@ -732,14 +732,14 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             assert noise is not None
             if self.config.solver_type == "midpoint":
                 x_t = (
-                    (alpha_t / alpha_s0) * sample
+                    (alpha_t / alpha_s1) * sample
                     - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * D0
                     - (sigma_t * (torch.exp(h) - 1.0)) * D1
                     + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
                 )
             elif self.config.solver_type == "heun":
                 x_t = (
-                    (alpha_t / alpha_s0) * sample
+                    (alpha_t / alpha_s1) * sample
                     - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * D0
                     - 2.0 * (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
                     + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
