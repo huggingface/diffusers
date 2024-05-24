@@ -30,17 +30,19 @@ class VideoProcessor(VaeImageProcessor):
         Preprocesses input video(s).
 
         Args:
-            video: The input video. It can be one of the following:
+            video (`List[PIL.Image]`, `List[List[PIL.Image]]`, `torch.Tensor`, `np.array`, `List[torch.Tensor]`, `List[np.array]`):
+                The input video. It can be one of the following:
                 * List of the PIL images.
                 * List of list of PIL images.
-                * 4D Torch tensors (expected shape for each tensor: (num_frames, num_channels, height, width)).
-                * 4D NumPy arrays (expected shape for each array: (num_frames, height, width, num_channels)).
-                * List of 4D Torch tensors (expected shape for each tensor: (num_frames, num_channels, height, width)).
-                * List of 4D NumPy arrays (expected shape for each array: (num_frames, height, width, num_channels)).
-                * 5D NumPy arrays: expected shape for each array: (batch_size, num_frames, height, width,
-                  num_channels).
-                * 5D Torch tensors: expected shape for each array: (batch_size, num_frames, num_channels, height,
-                  width).
+                * 4D Torch tensors (expected shape for each tensor `(num_frames, num_channels, height, width)`).
+                * 4D NumPy arrays (expected shape for each array `(num_frames, height, width, num_channels)`).
+                * List of 4D Torch tensors (expected shape for each tensor `(num_frames, num_channels, height,
+                  width)`).
+                * List of 4D NumPy arrays (expected shape for each array `(num_frames, height, width, num_channels)`).
+                * 5D NumPy arrays: expected shape for each array `(batch_size, num_frames, height, width,
+                  num_channels)`.
+                * 5D Torch tensors: expected shape for each array `(batch_size, num_frames, num_channels, height,
+                  width)`.
             height (`int`, *optional*, defaults to `None`):
                 The height in preprocessed frames of the video. If `None`, will use the `get_default_height_width()` to
                 get default height.

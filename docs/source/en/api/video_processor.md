@@ -12,4 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # Video Processor
 
-The `VideoProcessor` provides a unified API for video pipelines to prepare inputs for VAE encoding and post-processing outputs once they're decoded. The class inherits [`VaeImageProcessor`] so it includes transformations such as resizing, normalization, and conversion between PIL Image, PyTorch, and NumPy arrays.
+The [`VideoProcessor`] provides a unified API for video pipelines to prepare inputs for VAE encoding and post-processing outputs once they're decoded. The class inherits [`VaeImageProcessor`] so it includes transformations such as resizing, normalization, and conversion between PIL Image, PyTorch, and NumPy arrays.
+
+## VideoProcessor
+
+[[autodoc]] video_processor.VideoProcessor.preprocess_video
+
+[[autodoc]] video_processor.VideoProcessor.postprocess_video
