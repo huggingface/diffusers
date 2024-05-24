@@ -158,9 +158,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
     ):
-        if algorithm_type == "dpmsolver":
-            deprecation_message = "algorithm_type `dpmsolver` is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
-            deprecate("algorithm_types=dpmsolver", "1.0.0", deprecation_message)
+        if algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
+            deprecation_message = f"algorithm_type {algorithm_type} is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
+            deprecate("algorithm_types dpmsolver and sde-dpmsolver", "1.0.0", deprecation_message)
 
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -198,7 +198,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             else:
                 raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 
-        if algorithm_type != "dpmsolver++" and final_sigmas_type == "zero":
+        if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"] and final_sigmas_type == "zero":
             raise ValueError(
                 f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithm_type` {algorithm_type}. Please chooose `sigma_min` instead."
             )
