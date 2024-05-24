@@ -340,8 +340,8 @@ class FromSingleFileMixin:
             deprecate("original_config_file", "1.0.0", deprecation_message)
             original_config = original_config_file
 
-        resume_download = kwargs.pop("resume_download", False)
-        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", None)
+        force_download = kwargs.pop("force_download", None)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         cache_dir = kwargs.pop("cache_dir", None)
