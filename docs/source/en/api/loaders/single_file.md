@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Loading Pipelines and Models via `from_single_file`
 
-The `from_single_file` method allows you to load supported pipelines using a single checkpoint file as opposed to using the Diffusers' multiple folders format. This is useful if you are working with Stable Diffusion Web UI's (such as A1111) that rely on a single file format to distribute all the components of a model.
+The `from_single_file` method allows you to load supported pipelines using a single checkpoint file as opposed to Diffusers' multiple folders format. This is useful if you are working with Stable Diffusion Web UI's (such as A1111) that rely on a single file format to distribute all the components of a model.
 
 The `from_single_file` method also supports loading models in their originally distributed format. This means that supported models that have been finetuned with other services can be loaded directly into Diffusers model objects and pipelines.
 
