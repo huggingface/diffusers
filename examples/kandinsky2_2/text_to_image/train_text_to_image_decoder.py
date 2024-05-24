@@ -896,7 +896,6 @@ def main():
         images = []
         if args.validation_prompts is not None:
             logger.info("Running inference for collecting generated images...")
-            pipeline = pipeline.to(accelerator.device)
             pipeline.torch_dtype = weight_dtype
             pipeline.set_progress_bar_config(disable=True)
             pipeline.enable_model_cpu_offload()

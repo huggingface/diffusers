@@ -243,7 +243,6 @@ class I2VGenXLPipelineSlowTests(unittest.TestCase):
 
     def test_i2vgen_xl(self):
         pipe = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
-        pipe = pipe.to(torch_device)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
         image = load_image(
