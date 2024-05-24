@@ -12,9 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Loading Pipelines and Models via `from_single_file`
 
-The `from_single_file` method allows you to load supported pipelines using a single checkpoint file as opposed to the folder format used by Diffusers. This is useful if you are working with many of the Stable Diffusion Web UI's (such as A1111) that extensively rely on a single file to distribute all the components of a diffusion model.
+The `from_single_file` method allows you to load supported pipelines using a single checkpoint file as opposed to Diffusers' multiple folders format. This is useful if you are working with Stable Diffusion Web UI's (such as A1111) that rely on a single file format to distribute all the components of a model.
 
-The `from_single_file` method also supports loading models in their originally distributed format. This means that supported models that have been finetuned with other services can be loaded directly into supported Diffusers model objects and pipelines.
+The `from_single_file` method also supports loading models in their originally distributed format. This means that supported models that have been finetuned with other services can be loaded directly into Diffusers model objects and pipelines.
 
 ## Pipelines that currently support `from_single_file` loading
 
@@ -59,7 +59,7 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path)
 
 ## Setting components in a Pipeline using `from_single_file`
 
-Swap components of the pipeline by passing them directly to the `from_single_file` method. e.g If you would like use a different scheduler than the pipeline default.
+Set components of a pipeline by passing them directly to the `from_single_file` method. For example, here we are swapping out the pipeline's default scheduler with the `DDIMScheduler`.
 
 ```python
 from diffusers import StableDiffusionXLPipeline, DDIMScheduler
@@ -71,13 +71,15 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, scheduler=scheduler
 
 ```
 
+Here we are passing in a ControlNet model to the `StableDiffusionControlNetPipeline`.
+
 ```python
-from diffusers import StableDiffusionPipeline, ControlNetModel
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 
 ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
 
-controlnet = ControlNetModel.from_pretrained("https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors")
-pipe = StableDiffusionPipeline.from_single_file(ckpt_path, controlnet=controlnet)
+controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
+pipe = StableDiffusionControlNetPipeline.from_single_file(ckpt_path, controlnet=controlnet)
 
 ```
 
@@ -93,7 +95,7 @@ model = StableCascadeUNet.from_single_file(ckpt_path)
 
 ## Using a Diffusers model repository to configure single file loading
 
-Under the hood, `from_single_file` will try to determine a model repository to use to configure the components of the pipeline. You can also pass in a repository id to the `config` argument of the `from_single_file` method to explicitly set the repository to use.
+Under the hood, `from_single_file` will try to automatically determine a model repository to use to configure the components of a pipeline. You can also explicitly set the model repository to configure the pipeline with the `config` argument.
 
 ```python
 from diffusers import StableDiffusionXLPipeline
@@ -105,9 +107,19 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, config=repo_id)
 
 ```
 
+In the example above, since we explicitly passed `repo_id="segmind/SSD-1B"` to the `config` argument, it will use this [configuration file](https://huggingface.co/segmind/SSD-1B/blob/main/unet/config.json) from the `unet` subfolder in `"segmind/SSD-1B"` to configure the `unet` component of the pipeline; Similarly, it will use the `config.json` file from `vae` subfolder to configure the `vae` model, `config.json` file from `text_encoder` folder to configure `text_encoder` and so on.
+
+<Tip>
+
+Most of the time you do not need to explicitly set a `config` argument. `from_single_file` will automatically map the checkpoint to the appropriate model repository. However, this option can be useful in cases where model components in the checkpoint might have been changed from what was originally distributed, or in cases where a checkpoint file might not have the necessary metadata to correctly determine the configuration to use for the pipeline.
+
+</Tip>
+
 ## Override configuration options when using single file loading
 
-Override the default model or pipeline configuration options when using `from_single_file` by passing in the relevant arguments directly to the `from_single_file` method. Any argument that is supported by the model or pipeline class can be configured in this way:
+Override the default model or pipeline configuration options by providing the relevant arguments directly to the `from_single_file` method. Any argument supported by the model or pipeline class can be configured in this way:
+
+### Setting a pipeline configuration option
 
 ```python
 from diffusers import StableDiffusionXLInstructPix2PixPipeline
@@ -117,6 +129,8 @@ pipe = StableDiffusionXLInstructPix2PixPipeline.from_single_file(ckpt_path, conf
 
 ```
 
+### Setting a model configuration option
+
 ```python
 from diffusers import UNet2DConditionModel
 
@@ -124,10 +138,6 @@ ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blo
 model = UNet2DConditionModel.from_single_file(ckpt_path, upcast_attention=True)
 
 ```
-
-In the example above, since we explicitly passed `repo_id="segmind/SSD-1B"`, it will use this [configuration file](https://huggingface.co/segmind/SSD-1B/blob/main/unet/config.json) from the "unet" subfolder in `"segmind/SSD-1B"` to configure the unet component included in the checkpoint; Similarly, it will use the `config.json` file from `"vae"` subfolder to configure the vae model, `config.json` file from text_encoder folder to configure text_encoder and so on.
-
-Note that most of the time you do not need to explicitly a `config` argument, `from_single_file` will automatically map the checkpoint to a repo id (we will discuss this in more details in next section). However, this can be useful in cases where model components might have been changed from what was originally distributed or in cases where a checkpoint file might not have the necessary metadata to correctly determine the configuration to use for the pipeline.
 
 <Tip>
 
@@ -137,9 +147,11 @@ To learn more about how to load single file weights, see the [Load different Sta
 
 ## Working with local files
 
-As of `diffusers>=0.28.0` the `from_single_file` method will attempt to configure a pipeline or model by first inferring the model type from the checkpoint file and then using the model type to determine the appropriate model repo configuration to use from the Hugging Face Hub. For example, any single file checkpoint based on the Stable Diffusion XL base model will use the [`stabilityai/stable-diffusion-xl-base-1.0`](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) model repo to configure the pipeline.
+As of `diffusers>=0.28.0` the `from_single_file` method will attempt to configure a pipeline or model by first inferring the model type from the keys in the checkpoint file. This inferred model type is then used to determine the appropriate model repository on the Hugging Face Hub to configure the model or pipeline.
 
-If you are working in an environment with restricted internet access, it is recommended to download the config files and checkpoints for the model to your preferred directory and pass the local paths to the `pretrained_model_link_or_path` and `config` arguments of the `from_single_file` method.
+For example, any single file checkpoint based on the Stable Diffusion XL base model will use the [`stabilityai/stable-diffusion-xl-base-1.0`](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) model repository to configure the pipeline.
+
+If you are working in an environment with restricted internet access, it is recommended that you download the config files and checkpoints for the model to your preferred directory and pass the local paths to the `pretrained_model_link_or_path` and `config` arguments of the `from_single_file` method.
 
 ```python
 from huggingface_hub import hf_hub_download, snapshot_download
@@ -211,13 +223,14 @@ pipe = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, conf
 ```
 
 <Tip>
-Disabling symlinking means that the `huggingface_hub` caching mechanism has no way to determine whether a file has already been downloaded to the local directory. This means that the `hf_hub_download` and `snapshot_download` functions will download files to the local directory each time they are executed. If you are disabling symlinking, it is recommended that you separate the model download and loading steps to avoid downloading the same file multiple times.
+
+As of `huggingface_hub>=0.23.0` the `local_dir_use_symlinks` argument isn't necessary for the `hf_hub_download` and `snapshot_download` functions.
 
 </Tip>
 
 ## Using the original configuration file of a model
 
-If you would like to configure the parameters of the model components in the pipeline using the orignal YAML configuration file, you can pass a local path or url to the original configuration file to the `original_config` argument of the `from_single_file` method.
+If you would like to configure the model components in a pipeline using the orignal YAML configuration file, you can pass a local path or url to the original configuration file via the `original_config` argument.
 
 ```python
 from diffusers import StableDiffusionXLPipeline
@@ -229,13 +242,12 @@ original_config = "https://raw.githubusercontent.com/Stability-AI/generative-mod
 pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, original_config=original_config)
 ```
 
-In the example above, the `original_config` file is only used to configure the parameters of the individual model components of the pipeline. For example it will be used to configure parameters such as the `in_channels` of the `vae` model and `unet` model. It is not used to determine the type of component objects in the pipeline.
-
-
 <Tip>
-When using `original_config` with local_files_only=True`, Diffusers will attempt to infer the components based on the type signatures of pipeline class, rather than attempting to fetch the pipeline config from the Hugging Face Hub. This is to prevent backwards breaking changes in existing code that might not be able to connect to the internet to fetch the necessary pipeline config files.
 
-This is not as reliable as providing a path to a local config repo and might lead to errors when configuring the pipeline. To avoid this, please run the pipeline with `local_files_only=False` once to download the appropriate pipeline config files to the local cache.
+When using `original_config` with `local_files_only=True`, Diffusers will attempt to infer the components of the pipeline based on the type signatures of pipeline class, rather than attempting to fetch the configuration files from a model repository on the Hugging Face Hub. This is to prevent backward breaking changes in existing code that might not be able to connect to the internet to fetch the necessary configuration files.
+
+This is not as reliable as providing a path to a local model repository using the `config` argument and might lead to errors when configuring the pipeline. To avoid this, please run the pipeline with `local_files_only=False` once to download the appropriate pipeline configuration files to the local cache.
+
 </Tip>
 
 
