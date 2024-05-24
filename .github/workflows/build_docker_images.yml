@@ -25,17 +25,17 @@ jobs:
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
-      
+
       - name: Check out code
         uses: actions/checkout@v3
-      
+
       - name: Find Changed Dockerfiles
         id: file_changes
         uses: jitterbit/get-changed-files@v1
         with:
           format: 'space-delimited'
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Build Changed Docker Images
         run: |
           CHANGED_FILES="${{ steps.file_changes.outputs.all }}"
@@ -52,7 +52,7 @@ jobs:
   build-and-push-docker-images:
     runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
     if: github.event_name != 'pull_request'
-    
+
     permissions:
       contents: read
       packages: write
@@ -69,6 +69,7 @@ jobs:
           - diffusers-flax-tpu
           - diffusers-onnxruntime-cpu
           - diffusers-onnxruntime-cuda
+          - diffusers-doc-builder
 
     steps:
       - name: Checkout repository
