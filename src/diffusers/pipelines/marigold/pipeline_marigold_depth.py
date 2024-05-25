@@ -612,13 +612,22 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         ensemble_size: int,
         batch_size: int,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        def retrieve_latents(encoder_output):
+            if hasattr(encoder_output, "latent_dist"):
+                return encoder_output.latent_dist.mode()
+            elif hasattr(encoder_output, "latents"):
+                return encoder_output.latents
+            else:
+                raise AttributeError("Could not access latents of provided encoder_output")
+
         image_latent = torch.cat(
             [
-                self.vae.encode(image[i : i + batch_size]).latent_dist.mode() * self.vae.config.scaling_factor
+                retrieve_latents(self.vae.encode(image[i : i + batch_size]))
                 for i in range(0, image.shape[0], batch_size)
             ],
             dim=0,
         )  # [N,4,h,w]
+        image_latent = image_latent * self.vae.config.scaling_factor
         image_latent = image_latent.repeat_interleave(ensemble_size, dim=0)  # [N*E,4,h,w]
 
         pred_latent = latents
