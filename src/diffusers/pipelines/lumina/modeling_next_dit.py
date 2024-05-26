@@ -24,7 +24,7 @@ from ...models import ModelMixin
 from ...models.transformers.transformer_2d import Transformer2DModelOutput
 from ...utils import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.get_logger(__name__)
 
 
 def modulate(x, shift, scale):
@@ -127,7 +127,7 @@ class TimestepEmbedder(nn.Module):
         return t_emb
 
 
-class ParallelLabelEmbedder(nn.Module):
+class LabelEmbedder(nn.Module):
     r"""Embeds class labels into vector representations. Also handles label
     dropout for classifier-free guidance.
     """
@@ -165,7 +165,7 @@ class ParallelLabelEmbedder(nn.Module):
 
 
 #############################################################################
-#                               Core NextDiT Model                              #
+#                               Core NextFlagDiffuserTransformer2DModel Model                              #
 #############################################################################
 
 
@@ -191,8 +191,8 @@ class Attention(nn.Module):
         """
         super().__init__()
         self.n_kv_heads = n_heads if n_kv_heads is None else n_kv_heads
-        self.n_heads = n_heads
-        self.n_rep = self.n_heads // self.n_kv_heads
+        self.num_attention_heads = n_heads
+        self.n_rep = self.num_attention_heads // self.n_kv_heads
         self.head_dim = dim // n_heads
 
         self.wq = nn.Linear(dim, n_heads * self.head_dim, bias=False)
@@ -201,12 +201,12 @@ class Attention(nn.Module):
         if y_dim > 0:
             self.wk_y = nn.Linear(y_dim, self.n_kv_heads * self.head_dim, bias=False)
             self.wv_y = nn.Linear(y_dim, self.n_kv_heads * self.head_dim, bias=False)
-            self.gate = nn.Parameter(torch.zeros([self.n_heads]))
+            self.gate = nn.Parameter(torch.zeros([self.num_attention_heads]))
 
         self.wo = nn.Linear(n_heads * self.head_dim, dim, bias=False)
 
         if qk_norm:
-            self.q_norm = nn.LayerNorm(self.n_heads * self.head_dim)
+            self.q_norm = nn.LayerNorm(self.num_attention_heads * self.head_dim)
             self.k_norm = nn.LayerNorm(self.n_kv_heads * self.head_dim)
             if y_dim > 0:
                 self.ky_norm = nn.LayerNorm(self.n_kv_heads * self.head_dim)
@@ -309,7 +309,7 @@ class Attention(nn.Module):
         )
         if query_length == kv_seq_len:
             query_layer = index_first_axis(
-                query_layer.reshape(batch_size * kv_seq_len, self.n_heads, head_dim),
+                query_layer.reshape(batch_size * kv_seq_len, self.num_attention_heads, head_dim),
                 indices_k,
             )
             cu_seqlens_q = cu_seqlens_k
@@ -365,7 +365,7 @@ class Attention(nn.Module):
         xq = self.q_norm(xq)
         xk = self.k_norm(xk)
 
-        xq = xq.view(bsz, seqlen, self.n_heads, self.head_dim)
+        xq = xq.view(bsz, seqlen, self.num_attention_heads, self.head_dim)
         xk = xk.view(bsz, seqlen, self.n_kv_heads, self.head_dim)
         xv = xv.view(bsz, seqlen, self.n_kv_heads, self.head_dim)
 
@@ -418,7 +418,7 @@ class Attention(nn.Module):
                     xv.permute(0, 2, 1, 3),
                     attn_mask=x_mask.bool()
                     .view(bsz, 1, 1, seqlen)
-                    .expand(-1, self.n_heads, seqlen, -1),
+                    .expand(-1, self.num_attention_heads, seqlen, -1),
                 )
                 .permute(0, 2, 1, 3)
                 .to(dtype)
@@ -430,7 +430,7 @@ class Attention(nn.Module):
                 bsz, -1, self.n_kv_heads, self.head_dim
             )
             yv = self.wv_y(y).view(bsz, -1, self.n_kv_heads, self.head_dim)
-            n_rep = self.n_heads // self.n_kv_heads
+            n_rep = self.num_attention_heads // self.n_kv_heads
             if n_rep >= 1:
                 yk = yk.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
                 yv = yv.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
@@ -438,7 +438,7 @@ class Attention(nn.Module):
                 xq.permute(0, 2, 1, 3),
                 yk.permute(0, 2, 1, 3),
                 yv.permute(0, 2, 1, 3),
-                y_mask.view(bsz, 1, 1, -1).expand(bsz, self.n_heads, seqlen, -1),
+                y_mask.view(bsz, 1, 1, -1).expand(bsz, self.num_attention_heads, seqlen, -1),
             ).permute(0, 2, 1, 3)
             output_y = output_y * self.gate.tanh().view(1, 1, -1, 1)
             output = output + output_y
@@ -620,7 +620,7 @@ class TransformerBlock(nn.Module):
 
 class FinalLayer(nn.Module):
     """
-    The final layer of NextDiT.
+    The final layer of NextFlagDiffuserTransformer2DModel.
     """
 
     def __init__(self, hidden_size, patch_size, out_channels):
@@ -651,18 +651,20 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        patch_size: int = 2,
-        in_channels: int = 4,
-        dim: int = 4096,
-        n_layers: int = 32,
-        n_heads: int = 32,
-        n_kv_heads: Optional[int] = None,
+        patch_size: Optional[int] = 2,
+        in_channels: Optional[int] = None,
+        out_channels: Optional[int] = None,
+        hidden_size: int = 4096,
+        num_layers: int = 32,
+        num_attention_heads: int = 32,
+        num_kv_heads: Optional[int] = None,
         multiple_of: int = 256,
         ffn_dim_multiplier: Optional[float] = None,
+        norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         learn_sigma: bool = True,
         qk_norm: bool = False,
-        cap_feat_dim: int = 5120,
+        text_dim: int = 5120,
         rope_scaling_factor: float = 1.0,
         ntk_factor: float = 1.0,
     ) -> None:
@@ -671,51 +673,51 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
         self.in_channels = in_channels
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
         self.patch_size = patch_size
+        self.num_attention_heads = num_attention_heads
+        self.rope_scaling_factor = rope_scaling_factor
+        self.ntk_factor = ntk_factor
 
         self.x_embedder = nn.Linear(
             in_features=patch_size * patch_size * in_channels,
-            out_features=dim,
+            out_features=hidden_size,
             bias=True,
         )
         nn.init.constant_(self.x_embedder.bias, 0.0)
 
-        self.t_embedder = TimestepEmbedder(min(dim, 1024))
+        self.t_embedder = TimestepEmbedder(min(hidden_size, 1024))
         self.cap_embedder = nn.Sequential(
-            nn.LayerNorm(cap_feat_dim),
-            nn.Linear(cap_feat_dim, min(dim, 1024), bias=True),
+            nn.LayerNorm(text_dim),
+            nn.Linear(text_dim, min(hidden_size, 1024), bias=True),
         )
 
         self.layers = nn.ModuleList(
             [
                 TransformerBlock(
                     layer_id,
-                    dim,
-                    n_heads,
-                    n_kv_heads,
+                    hidden_size,
+                    num_attention_heads,
+                    num_kv_heads,
                     multiple_of,
                     ffn_dim_multiplier,
                     norm_eps,
                     qk_norm,
-                    cap_feat_dim,
+                    text_dim,
                 )
-                for layer_id in range(n_layers)
+                for layer_id in range(num_layers)
             ]
         )
-        self.final_layer = FinalLayer(dim, patch_size, self.out_channels)
+        self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
 
-        assert (dim // n_heads) % 4 == 0, "2d rope needs head dim to be divisible by 4"
-        self.dim = dim
-        self.n_heads = n_heads
-        self.freqs_cis = NextDiT.precompute_freqs_cis(
-            dim // n_heads,
+        assert (hidden_size // num_attention_heads) % 4 == 0, "2d rope needs head dim to be divisible by 4"
+        self.hidden_size = hidden_size
+        self.freqs_cis = NextFlagDiffuserTransformer2DModel.precompute_freqs_cis(
+            hidden_size // num_attention_heads,
             384,
             rope_scaling_factor=rope_scaling_factor,
             ntk_factor=ntk_factor,
         )
-        self.rope_scaling_factor = rope_scaling_factor
-        self.ntk_factor = ntk_factor
         # self.eol_token = nn.Parameter(torch.empty(dim))
-        self.pad_token = nn.Parameter(torch.empty(dim))
+        self.pad_token = nn.Parameter(torch.empty(hidden_size))
         # nn.init.normal_(self.eol_token, std=0.02)
         nn.init.normal_(self.pad_token, std=0.02)
 
@@ -839,7 +841,7 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
         unpatchify: bool = True,
     ):
         """
-        Forward pass of NextDiT.
+        Forward pass of NextFlagDiffuserTransformer2DModel.
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
@@ -904,7 +906,7 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
         proportional_attn: bool = False,
     ):
         # """
-        # Forward pass of NextDiT, but also batches the unconNextditional forward pass
+        # Forward pass of NextFlagDiffuserTransformer2DModel, but also batches the unconNextFlagDiffuserTransformer2DModelional forward pass
         # for classifier-free guidance.
         # """
         # # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
@@ -924,8 +926,8 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
                     f"override freqs_cis, rope_scaling {rope_scaling_factor}, ntk {ntk_factor}",
                     flush=True,
                 )
-                self.freqs_cis = NextDiT.precompute_freqs_cis(
-                    self.dim // self.n_heads,
+                self.freqs_cis = NextFlagDiffuserTransformer2DModel.precompute_freqs_cis(
+                    self.hidden_size // self.num_attention_heads,
                     384,
                     rope_scaling_factor=rope_scaling_factor,
                     ntk_factor=ntk_factor,
@@ -1026,7 +1028,7 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
 
 
 #############################################################################
-#                                 NextDiT Configs                               #
+#                                 NextFlagDiffuserTransformer2DModel Configs                               #
 #############################################################################
-def NextDiT_2B_patch2(**kwargs):
-    return NextDiT(patch_size=2, dim=2304, n_layers=24, n_heads=32, **kwargs)
+def NextFlagDiffuserTransformer2DModel_2B_patch2(**kwargs):
+    return NextFlagDiffuserTransformer2DModel(patch_size=2, dim=2304, num_layers=24, n_heads=32, **kwargs)
