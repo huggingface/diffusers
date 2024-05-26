@@ -372,7 +372,7 @@ class MarigoldImageProcessor(ConfigMixin):
             depth (`Union[PIL.Image.Image, np.ndarray, torch.Tensor, List[PIL.Image.Image], List[np.ndarray],
                 List[torch.Tensor]]`): Depth maps.
             val_min (`float`, *optional*, defaults to `0.0`): Minimum value of the visualized depth range.
-            val_max (`float`, *optional*, defaults to `0.0`): Maximum value of the visualized depth range.
+            val_max (`float`, *optional*, defaults to `1.0`): Maximum value of the visualized depth range.
             color_map (`str`, *optional*, defaults to `"Spectral"`): Color map used to convert a single-channel
                       depth prediction into colored representation.
 

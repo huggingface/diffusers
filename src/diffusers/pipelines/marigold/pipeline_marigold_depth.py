@@ -53,6 +53,7 @@ EXAMPLE_DOC_STRING = """
 Examples:
 ```py
 >>> import diffusers
+>>> import torch
 
 >>> pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
 ...     "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
