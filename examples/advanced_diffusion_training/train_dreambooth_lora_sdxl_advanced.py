@@ -2307,10 +2307,6 @@ def main(args):
 
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-                logger.info(
-                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
                 # create pipeline
                 if freeze_text_encoder:
                     text_encoder_one = text_encoder_cls_one.from_pretrained(
