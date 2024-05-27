@@ -878,9 +878,9 @@ class ModelTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
-        max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KiB as these test models are small.
+        max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         with tempfile.TemporaryDirectory() as tmp_dir:
-            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KIB")
+            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
             self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
 
             # Now check if the right number of shards exists. First, let's get the number of shards.

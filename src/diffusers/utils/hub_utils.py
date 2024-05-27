@@ -268,12 +268,17 @@ if cache_version < 1:
         )
 
 
-def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
+def _add_variant(weights_name: str, variant: Optional[str] = None, add_suffix_keyword: bool = False) -> str:
     if variant is not None:
         splits = weights_name.split(".")
         splits = splits[:-1] + [variant] + splits[-1:]
         weights_name = ".".join(splits)
-
+    if add_suffix_keyword:
+        weight_name_split = weights_name.split(".")
+        if len(weight_name_split) == 2:
+            weights_name = weight_name_split[0] + "{suffix}." + weight_name_split[1]
+        elif len(weight_name_split) == 3:
+            weights_name = weight_name_split[0] + "{suffix}" + "." + ".".join(weight_name_split[1:])
     return weights_name
 
 
@@ -372,7 +377,8 @@ def _get_model_file(
                 f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
             )
         except EntryNotFoundError:
-            if weights_name.endswith(".index.json"):
+            # This should correspond to a shard index file.
+            if "index" in weights_name and ".json" in weights_name and weights_name != "model_index.json":
                 return None
             else:
                 raise EnvironmentError(

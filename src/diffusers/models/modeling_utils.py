@@ -26,7 +26,7 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 
 import safetensors
 import torch
-from huggingface_hub import create_repo
+from huggingface_hub import create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
@@ -43,6 +43,7 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
+    is_huggingface_hub_version,
     is_torch_version,
     logging,
 )
@@ -52,7 +53,6 @@ from .model_loading_utils import (
     _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
-    shard_checkpoint,
 )
 
 
@@ -302,6 +302,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
+        if max_shard_size is not None:
+            if is_huggingface_hub_version("<", "0.23.2"):
+                raise ValueError("Please upgrade the version of Hugging Face Hub to serialize the model into shards.")
+
         os.makedirs(save_directory, exist_ok=True)
 
         if push_to_hub:
@@ -324,12 +328,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         state_dict = model_to_save.state_dict()
 
         weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
-        weights_name = _add_variant(weights_name, variant)
+        weights_name = _add_variant(weights_name, variant, add_suffix_keyword=True)
 
         # Save the model
-        # Adapted from
-        # https://github.com/huggingface/transformers/blob/d8f8a9cd61dddf170a18d0f13551baccbf3a2159/src/transformers/modeling_utils.py#L2562
-        shards, index = shard_checkpoint(state_dict, max_shard_size=max_shard_size, weights_name=weights_name)
+        state_dict_split = split_torch_state_dict_into_shards(
+            state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name
+        )
         # Clean the folder from a previous save
         for filename in os.listdir(save_directory):
             full_filename = os.path.join(save_directory, filename)
@@ -344,20 +348,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if (
                 filename.startswith(weights_no_suffix)
                 and os.path.isfile(full_filename)
-                and filename not in shards.keys()
+                and filename not in state_dict_split.filename_to_tensors.keys()
                 and is_main_process
                 and reg.fullmatch(filename_no_suffix) is not None
             ):
                 os.remove(full_filename)
 
         # Save the model
-        for shard_file, shard in shards.items():
+        for filename, tensors in state_dict_split.filename_to_tensors.items():
+            shard = {tensor: state_dict[tensor] for tensor in tensors}
             if safe_serialization:
                 # At some point we will need to deal better with save_function (used for TPU and other distributed
                 # joyfulness), but for now this enough.
-                safetensors.torch.save_file(shard, os.path.join(save_directory, shard_file), metadata={"format": "pt"})
+                safetensors.torch.save_file(shard, os.path.join(save_directory, filename), metadata={"format": "pt"})
             else:
-                torch.save(shard, Path(save_directory, shard_file).as_posix())
+                torch.save(shard, Path(save_directory, filename).as_posix())
+
+        index = None
+        if state_dict_split.is_sharded:
+            index = {
+                "metadata": state_dict_split.metadata,
+                "weight_map": state_dict_split.tensor_to_filename,
+            }
 
         if index is None:
             path_to_weights = Path(save_directory, weights_name).as_posix()
@@ -371,7 +383,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f.write(content)
             logger.info(
                 f"The model is bigger than the maximum size per checkpoint ({max_shard_size}) and is going to be "
-                f"split in {len(shards)} checkpoint shards. You can find where each parameters has been saved in the "
+                f"split in {len(state_dict_split.filename_to_tensors)} checkpoint shards. You can find where each parameters has been saved in the "
                 f"index located at {save_index_file}."
             )
 
