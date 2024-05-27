@@ -265,7 +265,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         if latents is not None:
             if not torch.is_tensor(latents):
                 raise ValueError("`latents` must be a torch.Tensor.")
-            if not latents.dim() != 4:
+            if latents.dim() != 4:
                 raise ValueError(f"`latents` has unsupported dimensions or shape: {latents.shape}.")
 
             if processing_resolution > 0:
