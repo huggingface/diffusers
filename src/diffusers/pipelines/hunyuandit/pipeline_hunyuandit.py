@@ -27,6 +27,8 @@ from transformers import T5EncoderModel, MT5Tokenizer, CLIPImageProcessor
 from transformers import BertModel, BertTokenizer
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models.lora import adjust_lora_scale_text_encoder
 
@@ -103,8 +105,7 @@ def _to_tuple(x):
     else:
         return x
 
-
-def get_fill_resize_and_crop(src, tgt):   
+def get_fill_resize_and_crop_tuple(src, tgt):   
     th, tw = _to_tuple(tgt)
     h, w = _to_tuple(src)
 
@@ -293,7 +294,7 @@ def calc_sizes(rope_img, patch_size, th, tw):
     elif rope_img.startswith('base'):
         # Interpolate based on a base size
         base_size = int(rope_img[4:]) // 8 // patch_size            # 512 as the base
-        start, stop = get_fill_resize_and_crop((th, tw), base_size)   # up-left and bottom-right in 32 by 32
+        start, stop = get_fill_resize_and_crop_tuple((th, tw), base_size)   # up-left and bottom-right in 32 by 32
         sub_args = [start, stop, (th, tw)]
     else:
         raise ValueError(f"Unknown rope_img: {rope_img}")
@@ -322,11 +323,12 @@ def calc_rope(height, width, patch_size, head_size):
     th = height // 8 // patch_size
     tw = width // 8 // patch_size
     base_size = 512 // 8 // patch_size
-    start, stop = get_fill_resize_and_crop((th, tw), base_size)
+    start, stop = get_fill_resize_and_crop_tuple((th, tw), base_size)
     sub_args = [start, stop, (th, tw)]
     rope = get_2d_rotary_pos_embed(head_size, *sub_args)
     return rope
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     """
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
@@ -339,28 +341,6 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
     noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
     return noise_cfg
-
-def preprocess(image):
-    deprecation_message = "The preprocess method is deprecated and will be removed in diffusers 1.0.0. Please use VaeImageProcessor.preprocess(...) instead"
-    deprecate("preprocess", "1.0.0", deprecation_message, standard_warn=False)
-    if isinstance(image, torch.Tensor):
-        return image
-    elif isinstance(image, PIL.Image.Image):
-        image = [image]
-
-    if isinstance(image[0], PIL.Image.Image):
-        w, h = image[0].size
-        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
-
-        image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
-        image = np.concatenate(image, axis=0)
-        image = np.array(image).astype(np.float32) / 255.0
-        image = image.transpose(0, 3, 1, 2)
-        image = 2.0 * image - 1.0
-        image = torch.from_numpy(image)
-    elif isinstance(image[0], torch.Tensor):
-        image = torch.cat(image, dim=0)
-    return image
 
 class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin):
     r"""
@@ -391,6 +371,15 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
     model_cpu_offload_seq = "text_encoder->embedder_t5->transformer->vae"
     _optional_components = ["safety_checker", "feature_extractor", "embedder_t5", "tokenizer_t5"]
     _exclude_from_cpu_offload = ["safety_checker"]
+    _callback_tensor_inputs = [
+        "latents",
+        "prompt_embeds",
+        "negative_prompt_embeds",
+        "add_text_embeds",
+        "add_time_ids",
+        "negative_pooled_prompt_embeds",
+        "negative_add_time_ids",
+    ]
 
     def __init__(
             self,
@@ -654,16 +643,22 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             negative_prompt=None,
             prompt_embeds=None,
             negative_prompt_embeds=None,
+            callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if (callback_steps is None) or (
-                callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
+            )
+        
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -722,8 +717,8 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
             self,
-            height: int,
-            width: int,
+            height: Optional[int] = None,
+            width: Optional[int] = None,
             prompt: Union[str, List[str]] = None,
             num_inference_steps: Optional[int] = 50,
             guidance_scale: Optional[float] = 5.0,
@@ -738,15 +733,14 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             negative_prompt_embeds_t5: Optional[torch.FloatTensor] = None,
             output_type: Optional[str] = "pil",
             return_dict: bool = True,
-            callback: Optional[Callable[[int, int, torch.FloatTensor, torch.FloatTensor], None]] = None,
-            callback_steps: int = 1,
+            callback_on_step_end: Optional[
+                Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            ] = None,
+            callback_on_step_end_tensor_inputs: List[str] = ["latents"],
             cross_attention_kwargs: Optional[Dict[str, Any]] = None,
             guidance_rescale: float = 0.0,
             image_meta_size: Optional[torch.LongTensor] = None,
-            style: Optional[torch.LongTensor] = None,
-            use_fp16: bool = False,
-            freqs_cis_img: Optional[tuple] = None,
-            learn_sigma: bool = True,
+            **kwargs
     ):
         r"""
         The call function to the pipeline for generation with HunyuanDiT.
@@ -818,27 +812,44 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
+        
+        callback = kwargs.pop("callback", None)
+        callback_steps = kwargs.pop("callback_steps", None)
+
+        if callback is not None:
+            deprecate(
+                "callback",
+                "1.0.0",
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+        if callback_steps is not None:
+            deprecate(
+                "callback_steps",
+                "1.0.0",
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds, callback_on_step_end_tensor_inputs,
         )
-        print(prompt)
-        print(negative_prompt)
 
         # 2. Calculate neccessary elements for HunyuanDiT
-        target_height = int((height // 16) * 16)
-        target_width = int((width // 16) * 16)
-        print(f"Align to 16: (height, width) = ({target_height}, {target_width})")
+        height = int((height // 16) * 16)
+        width = int((width // 16) * 16)
+        print(f"Align to 16: (height, width) = ({height}, {width})")
 
-        if not (target_height, target_width) in SUPPORTED_SHAPE:
-            target_width, target_height = map_to_standard_shapes(target_width, target_height)
-            height = int(target_height)
-            width = int(target_width)
-            print(f"Reshaped to (height, width)=({target_height}, {target_width})")
+        if not (height, width) in SUPPORTED_SHAPE:
+            width, height = map_to_standard_shapes(width, height)
+            height = int(height)
+            width = int(width)
+            print(f"Reshaped to (height, width)=({height}, {width})")
             print(f"Supported shapes are {SUPPORTED_SHAPE}")
 
-        freqs_cis_img = calc_rope(target_height, target_width, patch_size=self.transformer.config.patch_size, \
+        freqs_cis_img = calc_rope(height, width, patch_size=self.transformer.config.patch_size, \
                                   head_size=self.transformer.inner_dim // self.transformer.num_heads)
 
         # 3. Define call parameters
@@ -890,6 +901,11 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             attention_mask = torch.cat([uncond_attention_mask, attention_mask])
             prompt_embeds_t5 = torch.cat([negative_prompt_embeds_t5, prompt_embeds_t5])
             attention_mask_t5 = torch.cat([uncond_attention_mask_t5, attention_mask_t5])
+        
+        prompt_embeds = prompt_embeds.to(dtype=self.transformer.dtype)
+        attention_mask = attention_mask.to(dtype=self.transformer.dtype)
+        prompt_embeds_t5 = prompt_embeds_t5.to(dtype=self.transformer.dtype)
+        attention_mask_t5 = attention_mask_t5.to(dtype=self.transformer.dtype)
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -918,14 +934,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         # ========================================================================
         # Inner arguments: image_meta_size (Please refer to SDXL.)
         # ========================================================================
-        src_size_cond = (1024, 1024)
-        if isinstance(src_size_cond, int):
-            src_size_cond = [src_size_cond, src_size_cond]
-        if not isinstance(src_size_cond, (list, tuple)):
-            raise TypeError(f"`src_size_cond` must be a list or tuple, but got {type(src_size_cond)}")
-        if len(src_size_cond) != 2:
-            raise ValueError(f"`src_size_cond` must be a tuple of 2 integers, but got {len(src_size_cond)}")
-        size_cond = list(src_size_cond) + [target_width, target_height, 0, 0]
+        size_cond = [1024, 1024] + [width, height, 0, 0]
         image_meta_size = torch.as_tensor([size_cond] * 2 * batch_size, device=self._execution_device)
 
         # 8. Denoising loop
@@ -936,15 +945,10 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                 # expand scalar t to 1-D tensor to match the 1st dim of latent_model_input
-                t_expand = torch.tensor([t] * latent_model_input.shape[0], device=latent_model_input.device)
+                t_expand = torch.tensor([t] * latent_model_input.shape[0], device=latent_model_input.device).to(dtype=self.transformer.dtype)
 
-                if use_fp16:
-                    latent_model_input = latent_model_input.half()
-                    t_expand = t_expand.half()
-                    prompt_embeds = prompt_embeds.half()
-                    ims = image_meta_size.half() if image_meta_size is not None else None
-                else:
-                    ims = image_meta_size if image_meta_size is not None else None
+                ims = image_meta_size if image_meta_size is not None else None
+                ims = ims.to(self.transformer.dtype)
 
                 # predict the noise residual
                 noise_pred = self.transformer(
@@ -961,8 +965,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                     return_dict=False,
                 )
 
-                if learn_sigma:
-                    noise_pred, _ = noise_pred.chunk(2, dim=1)
+                noise_pred, _ = noise_pred.chunk(2, dim=1)
 
                 # perform guidance
                 if do_classifier_free_guidance:
