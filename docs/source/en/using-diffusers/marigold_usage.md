@@ -104,7 +104,7 @@ This can be achieved by changing the colormap. Matplotlib is required for this f
 !pip install -q matplotlib
 ```
 
-For the fast LCM version which works really well with this use case.
+For this task, the fast LCM version works really well.
 
 ```python
 import torch
