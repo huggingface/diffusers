@@ -163,7 +163,7 @@ jobs:
 
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt && mv test_corrections.txt reports
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
