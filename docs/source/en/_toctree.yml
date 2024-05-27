@@ -103,8 +103,7 @@
     title: Create a dataset for training
   - local: training/adapt_a_model
     title: Adapt a model to a new task
-  - isExpanded: false
-    sections:
+  - sections:
     - local: training/unconditional_training
       title: Unconditional image generation
     - local: training/text2image
@@ -122,8 +121,8 @@
     - local: training/instructpix2pix
       title: InstructPix2Pix
     title: Models
-  - isExpanded: false
-    sections:
+    isExpanded: false
+  - sections:
     - local: training/text_inversion
       title: Textual Inversion
     - local: training/dreambooth
@@ -137,6 +136,7 @@
     - local: training/ddpo
       title: Reinforcement learning training with DDPO
     title: Methods
+    isExpanded: false
   title: Training
 - sections:
   - local: optimization/fp16
@@ -183,8 +183,7 @@
     title: Evaluating Diffusion Models
   title: Conceptual Guides
 - sections:
-  - isExpanded: false
-    sections:
+  - sections:
     - local: api/configuration
       title: Configuration
     - local: api/logging
@@ -192,8 +191,8 @@
     - local: api/outputs
       title: Outputs
     title: Main Classes
-  - isExpanded: false
-    sections:
+    isExpanded: false
+  - sections:
     - local: api/loaders/ip_adapter
       title: IP-Adapter
     - local: api/loaders/lora
@@ -207,8 +206,8 @@
     - local: api/loaders/peft
       title: PEFT
     title: Loaders
-  - isExpanded: false
-    sections:
+    isExpanded: false
+  - sections:
     - local: api/models/overview
       title: Overview
     - local: api/models/unet
@@ -242,8 +241,8 @@
     - local: api/models/controlnet
       title: ControlNet
     title: Models
-  - isExpanded: false
-    sections:
+    isExpanded: false
+  - sections:
     - local: api/pipelines/overview
       title: Overview
     - local: api/pipelines/amused
@@ -371,8 +370,8 @@
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
     title: Pipelines
-  - isExpanded: false
-    sections:
+    isExpanded: false
+  - sections:
     - local: api/schedulers/overview
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
@@ -432,8 +431,8 @@
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
     title: Schedulers
-  - isExpanded: false
-    sections:
+    isExpanded: false
+  - sections:
     - local: api/internal_classes_overview
       title: Overview
     - local: api/attnprocessor
@@ -449,4 +448,5 @@
     - local: api/video_processor
       title: Video Processor
     title: Internal classes
+    isExpanded: false
   title: API
