@@ -93,6 +93,8 @@
     title: Trajectory Consistency Distillation-LoRA
   - local: using-diffusers/svd
     title: Stable Video Diffusion
+  - local: using-diffusers/marigold_usage
+    title: Marigold Computer Vision
   title: Specific pipeline examples
 - sections:
   - local: training/overview
@@ -299,6 +301,8 @@
       title: Latent Diffusion
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/marigold
+      title: Marigold
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
