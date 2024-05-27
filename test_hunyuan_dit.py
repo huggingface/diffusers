@@ -93,6 +93,70 @@ for i in range(num_layers):
     state_dict[f"blocks.{i}.norm3.weight"] = norm2_weight
     state_dict[f"blocks.{i}.norm3.bias"] = norm2_bias
 
+    # norm1 -> norm1.norm
+    # default_modulation.1 -> norm1.linear 
+    state_dict[f"blocks.{i}.norm1.norm.weight"] = state_dict[f"blocks.{i}.norm1.weight"]
+    state_dict[f"blocks.{i}.norm1.norm.bias"] = state_dict[f"blocks.{i}.norm1.bias"]
+    state_dict[f"blocks.{i}.norm1.linear.weight"] = state_dict[f"blocks.{i}.default_modulation.1.weight"]
+    state_dict[f"blocks.{i}.norm1.linear.bias"] = state_dict[f"blocks.{i}.default_modulation.1.bias"]
+    state_dict.pop(f"blocks.{i}.norm1.weight")
+    state_dict.pop(f"blocks.{i}.norm1.bias")
+    state_dict.pop(f"blocks.{i}.default_modulation.1.weight")
+    state_dict.pop(f"blocks.{i}.default_modulation.1.bias")
+
+# t_embedder -> time_embedding (`TimestepEmbedding`)
+state_dict["time_embedding.linear_1.bias"] = state_dict["t_embedder.mlp.0.bias"]
+state_dict["time_embedding.linear_1.weight"] = state_dict["t_embedder.mlp.0.weight"]
+state_dict["time_embedding.linear_2.bias"] = state_dict["t_embedder.mlp.2.bias"]
+state_dict["time_embedding.linear_2.weight"] = state_dict["t_embedder.mlp.2.weight"]
+
+state_dict.pop("t_embedder.mlp.0.bias")
+state_dict.pop("t_embedder.mlp.0.weight")
+state_dict.pop("t_embedder.mlp.2.bias")
+state_dict.pop("t_embedder.mlp.2.weight")
+
+# x_embedder -> pos_embd (`PatchEmbed`)
+state_dict["pos_embed.proj.weight"] = state_dict["x_embedder.proj.weight"]
+state_dict["pos_embed.proj.bias"] = state_dict["x_embedder.proj.bias"]
+state_dict.pop("x_embedder.proj.weight")
+state_dict.pop("x_embedder.proj.bias")
+
+# mlp_t5 -> text_embedder
+state_dict["text_embedder.linear_1.bias"] = state_dict["mlp_t5.0.bias"]
+state_dict["text_embedder.linear_1.weight"] = state_dict["mlp_t5.0.weight"]
+state_dict["text_embedder.linear_2.bias"] = state_dict["mlp_t5.2.bias"]
+state_dict["text_embedder.linear_2.weight"] = state_dict["mlp_t5.2.weight"]
+state_dict.pop("mlp_t5.0.bias")
+state_dict.pop("mlp_t5.0.weight")
+state_dict.pop("mlp_t5.2.bias")
+state_dict.pop("mlp_t5.2.weight")
+
+# extra_embedder -> extra_embedder
+state_dict["extra_embedder.linear_1.bias"] = state_dict["extra_embedder.0.bias"]
+state_dict["extra_embedder.linear_1.weight"] = state_dict["extra_embedder.0.weight"]
+state_dict["extra_embedder.linear_2.bias"] = state_dict["extra_embedder.2.bias"]
+state_dict["extra_embedder.linear_2.weight"] = state_dict["extra_embedder.2.weight"]
+state_dict.pop("extra_embedder.0.bias")
+state_dict.pop("extra_embedder.0.weight")
+state_dict.pop("extra_embedder.2.bias")
+state_dict.pop("extra_embedder.2.weight")
+
+# model.final_adaLN_modulation.1 -> norm_out.linear
+def swap_scale_shift(weight):
+    shift, scale = weight.chunk(2, dim=0)
+    new_weight = torch.cat([scale, shift], dim=0)
+    return new_weight
+state_dict["norm_out.linear.weight"] = swap_scale_shift(state_dict["final_adaLN_modulation.1.weight"])
+state_dict["norm_out.linear.bias"] = swap_scale_shift(state_dict["final_adaLN_modulation.1.bias"])
+state_dict.pop("final_adaLN_modulation.1.weight")
+state_dict.pop("final_adaLN_modulation.1.bias")
+
+# final_linear -> proj_out
+state_dict["proj_out.weight"] = state_dict["final_linear.weight"]
+state_dict["proj_out.bias"] = state_dict["final_linear.bias"]
+state_dict.pop("final_linear.weight")
+state_dict.pop("final_linear.bias")
+
 model.load_state_dict(state_dict)
 
 pipe = HunyuanDiTPipeline.from_pretrained("XCLiu/HunyuanDiT-0523", transformer=model, torch_dtype=torch.float32)
