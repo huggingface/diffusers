@@ -226,6 +226,7 @@ Pivotal tuning was enabled: {train_text_encoder_ti}.
 
 Special VAE used for training: {vae_path}.
 
+Please adhere to the licensing terms as described [here](https://huggingface.co/playgroundai/playground-v2.5-1024px-aesthetic/blob/main/LICENSE.md).
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
@@ -478,11 +479,6 @@ def parse_args(input_args=None):
         type=str,
         default="lora-dreambooth-model",
         help="The output directory where the model predictions and checkpoints will be written.",
-    )
-    parser.add_argument(
-        "--output_kohya_format",
-        action="store_true",
-        help="Flag to additionally generate final state dict in the Kohya format so that it becomes compatible with A111, Comfy, Kohya, etc.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
