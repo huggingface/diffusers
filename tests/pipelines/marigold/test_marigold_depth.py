@@ -74,7 +74,6 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
-        torch.manual_seed(0)
         scheduler = LCMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
@@ -160,6 +159,8 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         prediction = pipe(**pipe_inputs).prediction
 
         prediction_slice = prediction[0, -3:, -3:, -1].flatten()
+        prediction_slice_tmp = ", ".join([str(round(x, 4)) for x in prediction_slice.tolist()])
+        print(f"_test_marigold_depth: {prediction_slice_tmp}")
 
         if pipe_inputs.get("match_input_resolution", True):
             self.assertEqual(prediction.shape, (1, 32, 32, 1), "Unexpected output resolution")
