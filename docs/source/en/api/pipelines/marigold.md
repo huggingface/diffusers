@@ -15,11 +15,11 @@ specific language governing permissions and limitations under the License.
 ![marigold](https://marigoldmonodepth.github.io/images/teaser_collage_compressed.jpg)
 
 Marigold was proposed in [Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation](https://huggingface.co/papers/2312.02145), a CVPR 2024 Oral paper by [Bingxin Ke](http://www.kebingxin.com/), [Anton Obukhov](https://www.obukhov.ai/), [Shengyu Huang](https://shengyuh.github.io/), [Nando Metzger](https://nandometzger.github.io/), [Rodrigo Caye Daudt](https://rcdaudt.github.io/), and [Konrad Schindler](https://scholar.google.com/citations?user=FZuNgqIAAAAJ&hl=en). 
-In the nutshell, the idea is to repurpose the rich generative prior of Text-to-Image Latent Diffusion Models (LDMs) for traditional computer vision tasks. 
-Initially, this was done to fine-tune Stable Diffusion 2.1 for monocular depth estimation, as shown in the teaser above. 
+The idea is to repurpose the rich generative prior of Text-to-Image Latent Diffusion Models (LDMs) for traditional computer vision tasks. 
+Initially, this idea was explored to fine-tune Stable Diffusion for Monocular Depth Estimation, as shown in the teaser above. 
 Later, 
 - [Tianfu Wang](https://tianfwang.github.io/) trained the first Latent Consistency Model (LCM) of Marigold, which unlocked fast single-step inference;
-- [Kevin Qu](https://www.linkedin.com/in/kevin-qu-b3417621b/?locale=en_US) extended the approach to surface normals estimation;
+- [Kevin Qu](https://www.linkedin.com/in/kevin-qu-b3417621b/?locale=en_US) extended the approach to Surface Normals Estimation;
 - [Anton Obukhov](https://www.obukhov.ai/) contributed the pipelines and documentation into diffusers (enabled and supported by [YiYi Xu](https://yiyixuxu.github.io/) and [Sayak Paul](https://sayak.dev/)).
 
 The abstract from the paper is:
@@ -28,7 +28,7 @@ The abstract from the paper is:
 
 ## Available Pipelines
 
-Each pipeline supports one Computer Vision task, which takes an input RGB image as input, and produces a *prediction* of the modality of interest, such as a depth map of the input image. 
+Each pipeline supports one Computer Vision task, which takes an input RGB image as input and produces a *prediction* of the modality of interest, such as a depth map of the input image. 
 Currently, the following tasks are implemented:
 
 | Pipeline                                                                                                                                    | Predicted Modalities                                                                                             |                                                                       Demos                                                                        |
@@ -38,7 +38,7 @@ Currently, the following tasks are implemented:
 
 <Tip>
 Marigold is a universal diffusion-based framework for precise dense regression. 
-If you believe that an important dense prediction task (such as monocular depth or surface normals estimation) would benefit the community, consider voting for adding such functionality in a GitHub issue of diffusers.
+If you believe an important dense prediction task (such as monocular depth or surface normals estimation) would benefit the community, consider voting to add such functionality in a GitHub issue of diffusers.
 </Tip>
 
 
@@ -48,12 +48,12 @@ The original checkpoints can be found under the [PRS-ETH](https://huggingface.co
 These checkpoints are meant to work with diffusers pipelines and the [original codebase](https://github.com/prs-eth/marigold). 
 The original code can also be used to train new checkpoints.
 
-| Checkpoint                                                                                    | Modality | Comment                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|-----------------------------------------------------------------------------------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [prs-eth/marigold-v1-0](https://huggingface.co/prs-eth/marigold-v1-0)                         | Depth    | The first Marigold Depth checkpoint, which predicts *affine-invariant depth* maps. The performance of this checkpoint in benchmarks was studied in the original [paper](https://huggingface.co/papers/2312.02145). Designed to be used with the `DDIMScheduler` at inference, it requires at least 10 steps to get reliable predictions. Affine-invariant depth prediction has a range of values in each pixel between 0 (near plane) and 1 (far plane), both planes are chosen by the model as part of inference process. See `MarigoldImageProcessor` reference for visualization utilities. |
-| [prs-eth/marigold-lcm-v1-0](https://huggingface.co/prs-eth/marigold-lcm-v1-0)                 | Depth    | The fast Marigold Depth checkpoint, fine-tuned from `prs-eth/marigold-v1-0`. Designed to be used with the `LCMScheduler` at inference, it requires as little as 1 step to get reliable predictions. The prediction reliability saturates at 4 steps and declines after that.                                                                                                                                                                                                                                                                                                                   |
-| [prs-eth/marigold-normals-v0-1](https://huggingface.co/prs-eth/marigold-normals-v0-1)         | Normals  | A preview checkpoint for the Marigold Normals pipeline. Designed to be used with the `DDIMScheduler` at inference, it requires at least 10 steps to get reliable predictions. The surface normals predictions are unit-length 3D vectors with values in the range from -1 to 1. *This checkpoint will be phased out after the release of `v1-0` version.*                                                                                                                                                                                                                                      |
-| [prs-eth/marigold-normals-lcm-v0-1](https://huggingface.co/prs-eth/marigold-normals-lcm-v0-1) | Normals  | The fast Marigold Normals checkpoint, fine-tuned from `prs-eth/marigold-normals-v0-1`. Designed to be used with the `LCMScheduler` at inference, it requires as little as 1 steps to get reliable predictions. The prediction reliability saturates at 4 steps and declines after that. *This checkpoint will be phased out after the release of `v1-0` version.*                                                                                                                                                                                                                              |
+| Checkpoint                                                                                    | Modality | Comment                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+|-----------------------------------------------------------------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [prs-eth/marigold-v1-0](https://huggingface.co/prs-eth/marigold-v1-0)                         | Depth    | The first Marigold Depth checkpoint, which predicts *affine-invariant depth* maps. The performance of this checkpoint in benchmarks was studied in the original [paper](https://huggingface.co/papers/2312.02145). Designed to be used with the `DDIMScheduler` at inference, it requires at least 10 steps to get reliable predictions. Affine-invariant depth prediction has a range of values in each pixel between 0 (near plane) and 1 (far plane); both planes are chosen by the model as part of the inference process. See the `MarigoldImageProcessor` reference for visualization utilities. |
+| [prs-eth/marigold-lcm-v1-0](https://huggingface.co/prs-eth/marigold-lcm-v1-0)                 | Depth    | The fast Marigold Depth checkpoint, fine-tuned from `prs-eth/marigold-v1-0`. Designed to be used with the `LCMScheduler` at inference, it requires as little as 1 step to get reliable predictions. The prediction reliability saturates at 4 steps and declines after that.                                                                                                                                                                                                                                                                                                                           |
+| [prs-eth/marigold-normals-v0-1](https://huggingface.co/prs-eth/marigold-normals-v0-1)         | Normals  | A preview checkpoint for the Marigold Normals pipeline. Designed to be used with the `DDIMScheduler` at inference, it requires at least 10 steps to get reliable predictions. The surface normals predictions are unit-length 3D vectors with values in the range from -1 to 1. *This checkpoint will be phased out after the release of `v1-0` version.*                                                                                                                                                                                                                                              |
+| [prs-eth/marigold-normals-lcm-v0-1](https://huggingface.co/prs-eth/marigold-normals-lcm-v0-1) | Normals  | The fast Marigold Normals checkpoint, fine-tuned from `prs-eth/marigold-normals-v0-1`. Designed to be used with the `LCMScheduler` at inference, it requires as little as 1 step to get reliable predictions. The prediction reliability saturates at 4 steps and declines after that. *This checkpoint will be phased out after the release of `v1-0` version.*                                                                                                                                                                                                                                       |
 
 <Tip>
 
@@ -66,16 +66,15 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 Marigold pipelines were designed and tested only with `DDIMScheduler` and `LCMScheduler`. 
 Depending on the scheduler, the number of inference steps required to get reliable predictions varies, and there is no universal value that works best across schedulers.
 Because of that, the default value of `num_inference_steps` in the `__call__` method of the pipeline is set to `None` (see the API reference). 
-Unless set explicitly, it's value will be taken from the checkpoint configuration `model_index.json`. 
+Unless set explicitly, its value will be taken from the checkpoint configuration `model_index.json`. 
 This is done to ensure high-quality predictions when calling the pipeline with just the `image` argument. 
-See the API Discussion section to learn about various presets of the arguments. 
 
 </Tip>
 
 ## Usage Examples
 
-Most examples below are given for the depth prediction, but they can be universally applied with other supported modalities. 
-We showcase the predictions using the same input image of Albert Einstein, which was generated by Midjourney. 
+The examples below are mostly given for depth prediction, but they can be universally applied with other supported modalities. 
+We showcase the predictions using the same input image of Albert Einstein generated by Midjourney. 
 This makes it easier to compare visualizations of the predictions across various modalities and checkpoints.
 
 <table>
@@ -114,9 +113,9 @@ depth_16bit[0].save("einstein_depth_16bit.png")
 ```
 
 The visualization function for depth [`~pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_depth`] applies one of [matplotlib's colormaps](https://matplotlib.org/stable/users/explain/colors/colormaps.html) (`Spectral` by default) to map the predicted pixel values from a single-channel `[0, 1]` depth range into an RGB image. 
-With `Spectral` colormap, pixels with near depth are painted red, and far pixels are assigned blue color.
+With the `Spectral` colormap, pixels with near depth are painted red, and far pixels are assigned blue color.
 The 16-bit PNG file stores the single channel values mapped linearly from the `[0, 1]` range into `[0, 65535]`.
-Below are the raw and the visualized predictions; as can be seen, dark areas (moustache) are easier to distinguish in the visualization:
+Below are the raw and the visualized predictions; as can be seen, dark areas (mustache) are easier to distinguish in the visualization:
 
 <table>
     <tr>
@@ -178,14 +177,14 @@ Below is the visualized prediction:
 
 In this example, the nose tip almost certainly has a point on the surface, in which the surface normal vector points straight at the viewer, meaning that its coordinates are `[0, 0, 1]`.
 This vector maps to the RGB `[128, 128, 255]`, which corresponds to the violet-blue color.
-Similarly, a surface normal on the cheek in the right part of the image has a large `X` component, which increases red hue. 
-Points on the shoulders pointing up with large `Y` promote green color. 
+Similarly, a surface normal on the cheek in the right part of the image has a large `X` component, which increases the red hue. 
+Points on the shoulders pointing up with a large `Y` promote green color. 
 
 ### Speeding up inference
 
-The above quick start snippets are already optimized for speed: they load the LCM checkpoint, use `fp16` variant of weights and computation, and perform just one denoising diffusion step. 
+The above quick start snippets are already optimized for speed: they load the LCM checkpoint, use the `fp16` variant of weights and computation, and perform just one denoising diffusion step. 
 The `pipe(image)` call completes in 280ms on RTX 3090 GPU.
-Internally, the input image is encoded with the Stable Diffusion VAE encoder, then the U-Net performs one denoising step, and finally the prediction latent is decoded with the VAE decoder into pixel space.
+Internally, the input image is encoded with the Stable Diffusion VAE encoder, then the U-Net performs one denoising step, and finally, the prediction latent is decoded with the VAE decoder into pixel space.
 In this case, two out of three module calls are dedicated to converting between pixel and latent space of LDM.
 Because Marigold's latent space is compatible with the base Stable Diffusion, it is possible to speed up the pipeline call by more than 3x (85ms on RTX 3090) by using a [lightweight replacement of the SD VAE](autoencoder_tiny):
 
@@ -248,11 +247,11 @@ With the above speed optimizations, Marigold delivers predictions with more deta
 
 ## Maximizing Precision and Ensembling
 
-Marigold pipelines have a built-in ensembling mechanism that combines multiple predictions obtained from different random latents. 
-This is a brute-force way of improving precision of the predictions, capitalizing on the generative nature of diffusion.
+Marigold pipelines have a built-in ensembling mechanism combining multiple predictions from different random latents. 
+This is a brute-force way of improving the precision of predictions, capitalizing on the generative nature of diffusion.
 The ensembling path is activated automatically when the `ensemble_size` argument is set greater than `1`. 
 When aiming for maximum precision, it makes sense to adjust `num_inference_steps` simultaneously with `ensemble_size`. 
-The recommended values vary across checkpoints, but primarily depend on the scheduler type.
+The recommended values vary across checkpoints but primarily depend on the scheduler type.
 The effect of ensembling is particularly well-seen with surface normals:
 
 ```python
@@ -390,11 +389,11 @@ uncertainty[0].save("einstein_depth_uncertainty.png")
 
 The interpretation of uncertainty is easy: higher values (white) correspond to pixels, where the model struggles to make consistent predictions.
 Evidently, the depth model is the least confident around edges with discontinuity, where the object depth changes drastically.
-Surface normals model is the least confident in fine-grained structures, such as hair, and dark areas, such as collar.
+The surface normals model is the least confident in fine-grained structures, such as hair, and dark areas, such as the collar.
 
-## Frame-by-frame Video Processing with Consistency
+## Frame-by-frame Video Processing with Temporal Consistency
 
-Due to the generative nature of Marigold, each prediction is unique and defined by the random noise sampled for the latent initialization. 
+Due to Marigold's generative nature, each prediction is unique and defined by the random noise sampled for the latent initialization. 
 This becomes an obvious drawback compared to traditional end-to-end dense regression networks, as exemplified in the following videos:
 
 <div class="flex gap-4">
@@ -420,7 +419,7 @@ import torch
 
 device = "cuda"
 path_in = "obama.mp4"
-path_out = f"obama_depth.gif"
+path_out = "obama_depth.gif"
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
     "prs-eth/marigold-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
@@ -454,7 +453,7 @@ with imageio.get_reader(path_in) as reader:
 ```
 
 Here, the diffusion process starts from the given computed latent. 
-The pipeline sets `output_latent=True` to access `out.latent` and compute its contribution to the next frame's latent initialization.
+The pipeline sets `output_latent=True` to access `out.latent` and computes its contribution to the next frame's latent initialization.
 The result is much more stable now:
 
 <div class="flex gap-4">

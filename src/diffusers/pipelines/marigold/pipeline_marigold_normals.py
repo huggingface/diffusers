@@ -73,8 +73,8 @@ class MarigoldNormalsOutput(BaseOutput):
 
     Args:
         prediction (`np.ndarray`, `torch.Tensor`):
-            Predicted normals, with values in the range [-1, 1]. The shape is always $numimages \times 3 \times height
-            \times width$, regardless whether the images were passed as a 4D array or a list.
+            Predicted normals with values in the range [-1, 1]. The shape is always $numimages \times 3 \times height
+            \times width$, regardless of whether the images were passed as a 4D array or a list.
         uncertainty (`None`, `np.ndarray`, `torch.Tensor`):
             Uncertainty maps computed from the ensemble, with values in the range [0, 1]. The shape is $numimages
             \times 1 \times height \times width$.
@@ -648,7 +648,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         normals: torch.Tensor, output_uncertainty: bool, reduction: str = "closest"
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
-        Ensembles normals maps represented by the `normals` tensor with expected shape `(B, 3, H, W)`, where B is the
+        Ensembles the normals maps represented by the `normals` tensor with expected shape `(B, 3, H, W)`, where B is the
         number of ensemble members for a given prediction of size `(H x W)`.
 
         Args:
