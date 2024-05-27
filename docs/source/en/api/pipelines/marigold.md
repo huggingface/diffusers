@@ -36,11 +36,6 @@ Currently, the following tasks are implemented:
 | [MarigoldDepthPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/marigold/pipeline_marigold_depth.py)     | [Depth](https://en.wikipedia.org/wiki/Depth_map), [Disparity](https://en.wikipedia.org/wiki/Binocular_disparity) | [Fast Demo (LCM)](https://huggingface.co/spaces/prs-eth/marigold-lcm), [Slow Original Demo (DDIM)](https://huggingface.co/spaces/prs-eth/marigold) |
 | [MarigoldNormalsPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/marigold/pipeline_marigold_normals.py) | [Surface normals](https://en.wikipedia.org/wiki/Normal_mapping)                                                  |                                   [Fast Demo (LCM)](https://huggingface.co/spaces/prs-eth/marigold-normals-lcm)                                    |
 
-<Tip>
-Marigold is a universal diffusion-based framework for precise dense regression. 
-If you believe an important dense prediction task (such as monocular depth or surface normals estimation) would benefit the community, consider voting to add such functionality in a GitHub issue of diffusers.
-</Tip>
-
 
 ## Available Checkpoints
 
