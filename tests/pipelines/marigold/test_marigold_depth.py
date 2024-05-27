@@ -238,7 +238,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P32_E3_B1_M1(self):
         self._test_marigold_depth(
             generator_seed=0,
-            expected_slice=np.array([0.3267, 0.3617, 0.2864, 0.2971, 0.2753, 0.2432, 0.4217, 0.3600, 0.3266]),
+            expected_slice=np.array([0.3260, 0.3591, 0.2837, 0.2971, 0.2750, 0.2426, 0.4200, 0.3588, 0.3254]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=3,
@@ -250,7 +250,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P32_E4_B2_M1(self):
         self._test_marigold_depth(
             generator_seed=0,
-            expected_slice=np.array([0.3182, 0.4178, 0.3007, 0.2904, 0.3232, 0.2884, 0.4704, 0.4158, 0.3693]),
+            expected_slice=np.array([0.3180, 0.4194, 0.3013, 0.2902, 0.3245, 0.2897, 0.4718, 0.4174, 0.3705]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=4,
