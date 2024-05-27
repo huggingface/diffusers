@@ -103,15 +103,15 @@ These are LoRA adaption weights for {base_model}. The weights were fine-tuned on
 
 
 def log_validation(
-        pipeline,
-        args,
-        accelerator,
-        epoch,
+    pipeline,
+    args,
+    accelerator,
+    epoch,
 ):
     logger.info(
-                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f" {args.validation_prompt}."
+    )
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
     generator = torch.Generator(device=accelerator.device)
@@ -125,9 +125,7 @@ def log_validation(
 
     with autocast_ctx:
         for _ in range(args.num_validation_images):
-            images.append(
-                pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
-            )
+            images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
@@ -137,11 +135,12 @@ def log_validation(
             tracker.log(
                 {
                     "validation": [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                        for i, image in enumerate(images)
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
                     ]
                 }
             )
+    return images
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -947,7 +946,7 @@ def main():
                 #                 ]
                 #             }
                 #         )
-                log_validation(pipeline, args, accelerator, epoch)
+                images = log_validation(pipeline, args, accelerator, epoch)
 
                 del pipeline
                 torch.cuda.empty_cache()
@@ -1024,7 +1023,7 @@ def main():
             #                     ]
             #                 }
             #             )
-            log_validation(pipeline, args, accelerator, epoch)
+            images = log_validation(pipeline, args, accelerator, epoch)
 
     accelerator.end_training()
 
