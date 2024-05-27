@@ -160,6 +160,8 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         prediction = pipe(**pipe_inputs).prediction
 
         prediction_slice = prediction[0, -3:, -3:, -1].flatten()
+        from diffusers.utils.testing_utils import print_tensor_test
+        print_tensor_test(prediction_slice)
 
         if pipe_inputs.get("match_input_resolution", True):
             self.assertEqual(prediction.shape, (1, 32, 32, 1), "Unexpected output resolution")
