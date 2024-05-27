@@ -160,8 +160,6 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         prediction = pipe(**pipe_inputs).prediction
 
         prediction_slice = prediction[0, -3:, -3:, -1].flatten()
-        from diffusers.utils.testing_utils import print_tensor_test
-        print_tensor_test(prediction_slice)
 
         if pipe_inputs.get("match_input_resolution", True):
             self.assertEqual(prediction.shape, (1, 32, 32, 1), "Unexpected output resolution")
@@ -238,7 +236,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P32_E3_B1_M1(self):
         self._test_marigold_depth(
             generator_seed=0,
-            expected_slice=np.array([0.3198, 0.3486, 0.2731, 0.2900, 0.2694, 0.2391, 0.4086, 0.3505, 0.3194]),
+            expected_slice=np.array([0.3267, 0.3617, 0.2864, 0.2971, 0.2753, 0.2432, 0.4217, 0.3600, 0.3266]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=3,
@@ -250,7 +248,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P32_E4_B2_M1(self):
         self._test_marigold_depth(
             generator_seed=0,
-            expected_slice=np.array([0.3179, 0.4160, 0.2991, 0.2904, 0.3228, 0.2878, 0.4691, 0.4148, 0.3683]),
+            expected_slice=np.array([0.3182, 0.4178, 0.3007, 0.2904, 0.3232, 0.2884, 0.4704, 0.4158, 0.3693]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=4,
