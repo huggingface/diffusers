@@ -70,4 +70,4 @@ jobs:
         env: 
             PY_TEST: ${{ github.event.inputs.test }}
         run: |
-          pytest $PY_TEST
+          pytest "$PY_TEST"
