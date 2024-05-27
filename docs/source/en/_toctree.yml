@@ -93,6 +93,8 @@
     title: Trajectory Consistency Distillation-LoRA
   - local: using-diffusers/svd
     title: Stable Video Diffusion
+  - local: using-diffusers/marigold_usage
+    title: Marigold Computer Vision
   title: Specific pipeline examples
 - sections:
   - local: training/overview
