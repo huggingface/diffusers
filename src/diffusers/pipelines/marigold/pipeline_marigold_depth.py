@@ -78,8 +78,8 @@ class MarigoldDepthOutput(BaseOutput):
 
     Args:
         prediction (`np.ndarray`, `torch.Tensor`):
-            Predicted depth maps with values in the range [0, 1]. The shape is always $numimages \times 1 \times
-            height \times width$, regardless of whether the images were passed as a 4D array or a list.
+            Predicted depth maps with values in the range [0, 1]. The shape is always $numimages \times 1 \times height
+            \times width$, regardless of whether the images were passed as a 4D array or a list.
         uncertainty (`None`, `np.ndarray`, `torch.Tensor`):
             Uncertainty maps computed from the ensemble, with values in the range [0, 1]. The shape is $numimages
             \times 1 \times height \times width$.

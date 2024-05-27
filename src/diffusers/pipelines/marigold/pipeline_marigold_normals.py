@@ -648,8 +648,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         normals: torch.Tensor, output_uncertainty: bool, reduction: str = "closest"
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
-        Ensembles the normals maps represented by the `normals` tensor with expected shape `(B, 3, H, W)`, where B is the
-        number of ensemble members for a given prediction of size `(H x W)`.
+        Ensembles the normals maps represented by the `normals` tensor with expected shape `(B, 3, H, W)`, where B is
+        the number of ensemble members for a given prediction of size `(H x W)`.
 
         Args:
             normals (`torch.Tensor`):
