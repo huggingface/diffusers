@@ -2312,7 +2312,7 @@ def main(args):
                     f" {args.validation_prompt}."
                 )
                 # create pipeline
-                if not args.train_text_encoder:
+                if freeze_text_encoder:
                     text_encoder_one = text_encoder_cls_one.from_pretrained(
                         args.pretrained_model_name_or_path,
                         subfolder="text_encoder",
