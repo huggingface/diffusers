@@ -392,6 +392,82 @@ The interpretation of uncertainty is easy: higher values (white) correspond to p
 Evidently, the depth model is the least confident around edges with discontinuity, where the object depth changes drastically.
 Surface normals model is the least confident in fine-grained structures, such as hair, and dark areas, such as collar.
 
+## Frame-by-frame Video Processing with Consistency
+
+Due to the generative nature of Marigold, each prediction is unique and defined by the random noise sampled for the latent initialization. 
+This becomes an obvious drawback compared to traditional end-to-end dense regression networks, as exemplified in the following videos:
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama.gif"/>
+    <figcaption class="mt-1 text-center text-sm text-gray-500">Input video</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama_depth_independent.gif"/>
+    <figcaption class="mt-1 text-center text-sm text-gray-500">Marigold Depth applied to input video frames independently</figcaption>
+  </div>
+</div>
+
+To address this issue, it is possible to pass `latents` argument to the pipelines, which defines the starting point of diffusion.
+Empirically, we found that a convex combination of the very same starting point noise latent and the latent corresponding to the previous frame prediction give sufficiently smooth results, as implemented in the snippet below:
+
+```python
+import imageio
+from PIL import Image
+from tqdm import tqdm
+import diffusers
+import torch
+
+device = "cuda"
+path_in = "obama.mp4"
+path_out = f"obama_depth.gif"
+
+pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
+    "prs-eth/marigold-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
+).to(device)
+pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
+    "madebyollin/taesd", torch_dtype=torch.float16
+).to(device)
+pipe.set_progress_bar_config(disable=True)
+
+with imageio.get_reader(path_in) as reader:
+    size = reader.get_meta_data()['size']
+    last_frame_latent = None
+    latent_common = torch.randn(
+        (1, 4, 768 * size[1] // (8 * max(size)), 768 * size[0] // (8 * max(size)))
+    ).to(device=device, dtype=torch.float16)
+
+    out = []
+    for frame_id, frame in tqdm(enumerate(reader), desc="Processing Video"):
+        frame = Image.fromarray(frame)
+        latents = latent_common
+        if last_frame_latent is not None:
+            latents = 0.9 * latents + 0.1 * last_frame_latent
+
+        depth = pipe(
+			frame, match_input_resolution=False, latents=latents, output_latent=True,
+        )
+        last_frame_latent = depth.latent
+        out.append(pipe.image_processor.visualize_depth(depth.prediction)[0])
+
+    diffusers.utils.export_to_gif(out, path_out, fps=reader.get_meta_data()['fps'])
+```
+
+Here, the diffusion process starts from the given computed latent. 
+The pipeline sets `output_latent=True` to access `out.latent` and compute its contribution to the next frame's latent initialization.
+The result is much more stable now:
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama_depth_independent.gif"/>
+    <figcaption class="mt-1 text-center text-sm text-gray-500">Marigold Depth applied to input video frames independently</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama_depth_consistent.gif"/>
+    <figcaption class="mt-1 text-center text-sm text-gray-500">Marigold Depth with forced latents initialization</figcaption>
+  </div>
+</div>
+
 ## MarigoldDepthPipeline
 [[autodoc]] MarigoldDepthPipeline
 	- all
