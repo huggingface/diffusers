@@ -59,6 +59,8 @@
     title: Distributed inference with multiple GPUs
   - local: using-diffusers/merge_loras
     title: Merge LoRAs
+  - local: using-diffusers/scheduler_features
+    title: Scheduler features
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
