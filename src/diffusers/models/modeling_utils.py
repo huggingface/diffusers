@@ -343,9 +343,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 if not os.path.isfile(full_filename):
                     continue
                 else:
-                    filename_no_suffix = filename.replace(".bin", "").replace(".safetensors", "")
+                    weights_without_ext = weights_name.replace(".bin", "").replace(".safetensors", "")
+                    filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
                     # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                    if re.fullmatch(filename_no_suffix) is not None:
+                    if filename.startswith(weights_without_ext) and re.fullmatch(filename_without_ext) is not None:
                         os.remove(full_filename)
 
         # Save the model
@@ -632,7 +633,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 pretrained_model_name_or_path,
                 subfolder,
                 _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
-            ).as_posix()
+            )
             if index_file.is_file():
                 is_sharded = True
         else:
