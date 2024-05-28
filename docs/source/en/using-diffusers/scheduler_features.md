@@ -152,6 +152,8 @@ print(f" timesteps: {pipe.scheduler.timesteps}")
 
 > [!TIP]
 > Refer to the scheduler API [overview](../api/schedulers/overview) for a list of schedulers that support Karras sigmas.
+>
+> Karras sigmas should not be used for models that weren't trained with them. For example, the base Stable Diffusion XL model shouldn't use Karras sigmas but the [DreamShaperXL](https://hf.co/Lykon/dreamshaper-xl-1-0) model can since they are trained with Karras sigmas.
 
 Karras scheduler's use the timestep schedule and sigmas from the [Elucidating the Design Space of Diffusion-Based Generative Models](https://hf.co/papers/2206.00364) paper. This scheduler variant applies a smaller amount of noise per step as it approaches the end of the sampling process compared to other schedulers, and can increase the level of details in the generated image.
 
