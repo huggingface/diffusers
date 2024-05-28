@@ -396,7 +396,7 @@ The result is much more stable now:
   </div>
 </div>
 
-### Marigold for ControlNet
+## Marigold for ControlNet
 
 A very common application for depth prediction with diffusion models comes in conjunction with ControlNet.
 Depth crispness plays a crucial role in obtaining high-quality results from ControlNet.
