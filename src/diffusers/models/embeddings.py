@@ -161,7 +161,10 @@ class PatchEmbed(nn.Module):
             self.pos_embed = None
         elif pos_embed_type == "sincos":
             pos_embed = get_2d_sincos_pos_embed(
-                embed_dim, int(num_patches**0.5), base_size=self.base_size, interpolation_scale=self.interpolation_scale
+                embed_dim,
+                int(num_patches**0.5),
+                base_size=self.base_size,
+                interpolation_scale=self.interpolation_scale,
             )
             self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
         else:
@@ -194,32 +197,29 @@ class PatchEmbed(nn.Module):
 
         return (latent + pos_embed).to(latent.dtype)
 
+
 def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
     """
     This is a 2d version of precompute_freqs_cis, which is a RoPE for image tokens with 2d structure.
 
-    Parameters
-    ----------
-    embed_dim: int
+    Parameters ---------- embed_dim: int
         embedding dimension size
     start: int or tuple of int
-        If len(args) == 0, start is num; If len(args) == 1, start is start, args[0] is stop, step is 1;
-        If len(args) == 2, start is start, args[0] is stop, args[1] is num.
+        If len(args) == 0, start is num; If len(args) == 1, start is start, args[0] is stop, step is 1; If len(args) ==
+        2, start is start, args[0] is stop, args[1] is num.
     use_real: bool
         If True, return real part and imaginary part separately. Otherwise, return complex numbers.
 
-    Returns
-    -------
-    pos_embed: torch.Tensor
+    Returns ------- pos_embed: torch.Tensor
         [HW, D/2]
     """
     start, stop = crops_coords
-    grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32) 
+    grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
     grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
     grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)   # [2, W, H]
+    grid = np.stack(grid, axis=0)  # [2, W, H]
 
-    grid = grid.reshape([2, 1, *grid.shape[1:]])   
+    grid = grid.reshape([2, 1, *grid.shape[1:]])
     pos_embed = get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=use_real)
     return pos_embed
 
@@ -232,11 +232,11 @@ def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
     emb_w = get_1d_rotary_pos_embed(embed_dim // 2, grid[1].reshape(-1), use_real=use_real)  # (H*W, D/4)
 
     if use_real:
-        cos = torch.cat([emb_h[0], emb_w[0]], dim=1)    # (H*W, D/2)
-        sin = torch.cat([emb_h[1], emb_w[1]], dim=1)    # (H*W, D/2)
+        cos = torch.cat([emb_h[0], emb_w[0]], dim=1)  # (H*W, D/2)
+        sin = torch.cat([emb_h[1], emb_w[1]], dim=1)  # (H*W, D/2)
         return cos, sin
     else:
-        emb = torch.cat([emb_h, emb_w], dim=1)    # (H*W, D/2)
+        emb = torch.cat([emb_h, emb_w], dim=1)  # (H*W, D/2)
         return emb
 
 
@@ -244,9 +244,9 @@ def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float 
     """
     Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
 
-    This function calculates a frequency tensor with complex exponentials using the given dimension 'dim'
-    and the end index 'end'. The 'theta' parameter scales the frequencies.
-    The returned tensor contains complex values in complex64 data type.
+    This function calculates a frequency tensor with complex exponentials using the given dimension 'dim' and the end
+    index 'end'. The 'theta' parameter scales the frequencies. The returned tensor contains complex values in complex64
+    data type.
 
     Args:
         dim (int): Dimension of the frequency tensor.
@@ -274,32 +274,33 @@ def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float 
 
 
 def apply_rotary_emb(
-        x: torch.Tensor,
-        freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
+    x: torch.Tensor,
+    freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Apply rotary embeddings to input tensors using the given frequency tensor.
-    This function applies rotary embeddings to the given query 'xq' and key 'xk' tensors using the provided
-    frequency tensor 'freqs_cis'. The input tensors are reshaped as complex numbers, and the frequency tensor
-    is reshaped for broadcasting compatibility. The resulting tensors contain rotary embeddings and are
-    returned as real tensors.
     Args:
+    Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
+    to the given query 'xq' and key 'xk' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
+    reshaped as complex numbers, and the frequency tensor is reshaped for broadcasting compatibility. The resulting
+    tensors contain rotary embeddings and are returned as real tensors.
         xq (torch.Tensor): Query tensor to apply rotary embeddings. [B, H, S, D]
         xk (torch.Tensor): Key tensor to apply rotary embeddings.   [B, H, S, D]
-        freqs_cis (Union[torch.Tensor, Tuple[torch.Tensor]]): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
+        freqs_cis (Union[torch.Tensor, Tuple[torch.Tensor]]):
+            Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
     """
-    cos, sin = freqs_cis    # [S, D]
+    cos, sin = freqs_cis  # [S, D]
     cos = cos[None, None]
     sin = sin[None, None]
     cos, sin = cos.to(x.device), sin.to(x.device)
-    
+
     x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
     out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
 
     return out
+
 
 class TimestepEmbedding(nn.Module):
     def __init__(
@@ -918,6 +919,7 @@ class PixArtAlphaTextProjection(nn.Module):
         hidden_states = self.act_1(hidden_states)
         hidden_states = self.linear_2(hidden_states)
         return hidden_states
+
 
 # YiYi notes: combine PixArtAlphaTextProjection and HunYuanTextProjection?
 class HunYuanTextProjection(nn.Module):

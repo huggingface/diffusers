@@ -161,7 +161,7 @@ class Attention(nn.Module):
             self.spatial_norm = SpatialNorm(f_channels=query_dim, zq_channels=spatial_norm_dim)
         else:
             self.spatial_norm = None
-        
+
         if qk_norm is None:
             self.norm_q = None
             self.norm_k = None
@@ -1435,6 +1435,7 @@ class AttnProcessor2_0:
 
         return hidden_states
 
+
 class HunyuanAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
@@ -1503,9 +1504,9 @@ class HunyuanAttnProcessor2_0:
 
         # Apply RoPE if needed
         if rotary_emb is not None:
-            query = apply_rotary_emb(query,rotary_emb)
+            query = apply_rotary_emb(query, rotary_emb)
             if not attn.is_cross_attention:
-                key = apply_rotary_emb(key,rotary_emb)
+                key = apply_rotary_emb(key, rotary_emb)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
@@ -1530,6 +1531,7 @@ class HunyuanAttnProcessor2_0:
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
+
 
 class FusedAttnProcessor2_0:
     r"""
