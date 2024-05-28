@@ -240,12 +240,12 @@ pipeline_output = pipe(
     # denoising_steps=10,     # (optional) Number of denoising steps of each inference pass. Default: 10.
     # ensemble_size=10,       # (optional) Number of inference passes in the ensemble. Default: 10.
     # ------------------------------------------------
-    
+
     # ----- recommended setting for LCM version ------
     # denoising_steps=4,
     # ensemble_size=5,
     # -------------------------------------------------
-    
+
     # processing_res=768,     # (optional) Maximum resolution of processing. If set to 0: will not resize at all. Defaults to 768.
     # match_input_res=True,   # (optional) Resize depth prediction to match input resolution.
     # batch_size=0,           # (optional) Inference batch size, no bigger than `num_ensemble`. If set to 0, the script will automatically decide the proper batch size. Defaults to 0.
@@ -1032,7 +1032,7 @@ image = pipe().images[0]
 
 Make sure you have @crowsonkb's <https://github.com/crowsonkb/k-diffusion> installed:
 
-```
+```sh
 pip install k-diffusion
 ```
 
@@ -1854,13 +1854,13 @@ To use this pipeline, you need to:
 
 You can simply use pip to install IPEX with the latest version.
 
-```python
+```sh
 python -m pip install intel_extension_for_pytorch
 ```
 
 **Note:** To install a specific version, run with the following command:
 
-```
+```sh
 python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
 ```
 
@@ -1958,13 +1958,13 @@ To use this pipeline, you need to:
 
 You can simply use pip to install IPEX with the latest version.
 
-```python
+```sh
 python -m pip install intel_extension_for_pytorch
 ```
 
 **Note:** To install a specific version, run with the following command:
 
-```
+```sh
 python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
 ```
 
@@ -3010,8 +3010,8 @@ This code implements a pipeline for the Stable Diffusion model, enabling the div
 
 ### Sample Code
 
-```
-from from examples.community.regional_prompting_stable_diffusion import RegionalPromptingStableDiffusionPipeline
+```py
+from examples.community.regional_prompting_stable_diffusion import RegionalPromptingStableDiffusionPipeline
 pipe = RegionalPromptingStableDiffusionPipeline.from_single_file(model_path, vae=vae)
 
 rp_args = {
@@ -4131,7 +4131,7 @@ This implementation is based on [Diffusers](https://huggingface.co/docs/diffuser
 
 ## Example Usage
 
-```
+```py
 import os
 import torch
 
