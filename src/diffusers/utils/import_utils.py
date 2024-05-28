@@ -123,12 +123,10 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _inflect_available = False
 
-_huggingface_hub_available = importlib.util.find_spec("huggingface_hub") is not None
-try:
-    _huggingface_hub_version = importlib_metadata.version("huggingface_hub")
-    logger.debug(f"Successfully imported inflect version {_huggingface_hub_version}")
-except importlib_metadata.PackageNotFoundError:
-    _huggingface_hub_available = False
+
+# Since HF Hub is a required dependency.
+_huggingface_hub_version = importlib_metadata.version("huggingface_hub")
+logger.debug(f"Successfully imported inflect version {_huggingface_hub_version}")
 
 _unidecode_available = importlib.util.find_spec("unidecode") is not None
 try:
@@ -705,8 +703,6 @@ def is_huggingface_hub_version(operation: str, version: str):
         version (`str`):
             A version string
     """
-    if not _huggingface_hub_available:
-        return False
     return compare_versions(parse(_huggingface_hub_version), operation, version)
 
 

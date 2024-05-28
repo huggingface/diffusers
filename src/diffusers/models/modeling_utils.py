@@ -259,6 +259,52 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_memory_efficient_attention_xformers(False)
 
+    def _save_pretrained_legacy(self, state_dict, save_directory, weights_name, safe_serialization):
+        filepath = os.path.join(save_directory, weights_name)
+        if safe_serialization:
+            # At some point we will need to deal better with save_function (used for TPU and other distributed
+            # joyfulness), but for now this enough.
+            safetensors.torch.save_file(state_dict, filepath, metadata={"format": "pt"})
+        else:
+            torch.save(state_dict, filepath)
+
+    def _save_pretrained_sharded(
+        self, state_dict, is_main_process, save_directory, weights_name, max_shard_size, safe_serialization
+    ):
+        state_dict_split = split_torch_state_dict_into_shards(
+            state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name
+        )
+
+        # Clean the folder from a previous save
+        if is_main_process:
+            for filename in os.listdir(save_directory):
+                if filename in state_dict_split.filename_to_tensors.keys():
+                    continue
+                full_filename = os.path.join(save_directory, filename)
+                if not os.path.isfile(full_filename):
+                    continue
+                weights_without_ext = weights_name.replace(".bin", "").replace(".safetensors", "")
+                weights_without_ext = weights_without_ext.replace("{suffix}", "")
+                filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
+                # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
+                if (
+                    filename.startswith(weights_without_ext)
+                    and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
+                ):
+                    os.remove(full_filename)
+
+        for filename, tensors in state_dict_split.filename_to_tensors.items():
+            shard = {tensor: state_dict[tensor] for tensor in tensors}
+            filepath = os.path.join(save_directory, filename)
+            if safe_serialization:
+                # At some point we will need to deal better with save_function (used for TPU and other distributed
+                # joyfulness), but for now this enough.
+                safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
+            else:
+                torch.save(shard, filepath)
+
+        return state_dict_split
+
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
@@ -266,7 +312,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         save_function: Optional[Callable] = None,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
-        max_shard_size: Optional[Union[int, str]] = "5GB",
+        max_shard_size: Union[int, str] = "5GB",
         push_to_hub: bool = False,
         **kwargs,
     ):
@@ -289,7 +335,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
-            max_shard_size (`int` or `str`, *optional*, defaults to `"5GB"`):
+            max_shard_size (`int` or `str`, defaults to `"5GB"`):
                 The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size
                 lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5GB"`).
                 If expressed as an integer, the unit is bytes.
@@ -331,43 +377,21 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # Save the model
         state_dict_split = None
         if is_huggingface_hub_version(">=", "0.23.2"):
-            state_dict_split = split_torch_state_dict_into_shards(
-                state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name
+            state_dict_split = self._save_pretrained_sharded(
+                state_dict=state_dict,
+                is_main_process=is_main_process,
+                save_directory=save_directory,
+                weights_name=weights_name,
+                max_shard_size=max_shard_size,
+                safe_serialization=safe_serialization,
             )
-        # Clean the folder from a previous save
-        if is_main_process:
-            for filename in os.listdir(save_directory):
-                if filename in state_dict_split.filename_to_tensors.keys():
-                    continue
-                full_filename = os.path.join(save_directory, filename)
-                if not os.path.isfile(full_filename):
-                    continue
-                else:
-                    weights_without_ext = weights_name.replace(".bin", "").replace(".safetensors", "")
-                    filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
-                    # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                    if filename.startswith(weights_without_ext) and re.fullmatch(filename_without_ext) is not None:
-                        os.remove(full_filename)
-
-        # Save the model
-        if state_dict_split is not None:
-            for filename, tensors in state_dict_split.filename_to_tensors.items():
-                shard = {tensor: state_dict[tensor] for tensor in tensors}
-                filepath = os.path.join(save_directory, filename)
-                if safe_serialization:
-                    # At some point we will need to deal better with save_function (used for TPU and other distributed
-                    # joyfulness), but for now this enough.
-                    safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
-                else:
-                    torch.save(shard, filepath)
         else:
-            filepath = os.path.join(save_directory, weights_name)
-            if safe_serialization:
-                # At some point we will need to deal better with save_function (used for TPU and other distributed
-                # joyfulness), but for now this enough.
-                safetensors.torch.save_file(state_dict, filepath, metadata={"format": "pt"})
-            else:
-                torch.save(state_dict, filepath)
+            self._save_pretrained_legacy(
+                state_dict=state_dict,
+                save_directory=save_directory,
+                weights_name=weights_name,
+                safe_serialization=safe_serialization,
+            )
 
         if state_dict_split is not None and state_dict_split.is_sharded:
             index = {
@@ -637,12 +661,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if index_file.is_file():
                 is_sharded = True
         else:
-            index_file = Path(
+            index_file_in_repo = Path(
                 subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant)
             ).as_posix()
             index_file = _get_model_file(
                 pretrained_model_name_or_path,
-                weights_name=index_file,
+                weights_name=index_file_in_repo,
                 cache_dir=cache_dir,
                 force_download=force_download,
                 resume_download=resume_download,
@@ -718,8 +742,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         )
 
                 except IOError as e:
+                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
                     if not allow_pickle:
-                        logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
+                        raise
                     logger.warning(
                         "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
                     )

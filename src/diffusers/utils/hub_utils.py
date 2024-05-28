@@ -275,10 +275,9 @@ def _add_variant(weights_name: str, variant: Optional[str] = None, add_suffix_ke
         weights_name = ".".join(splits)
     if add_suffix_keyword:
         weight_name_split = weights_name.split(".")
-        if len(weight_name_split) == 2:
-            weights_name = weight_name_split[0] + "{suffix}." + weight_name_split[1]
-        elif len(weight_name_split) == 3:
-            weights_name = weight_name_split[0] + "{suffix}" + "." + ".".join(weight_name_split[1:])
+        if len(weight_name_split) in [2, 3]:
+            weights_name = weight_name_split[0] + "{suffix}." + ".".join(weight_name_split[1:])
+
     return weights_name
 
 
