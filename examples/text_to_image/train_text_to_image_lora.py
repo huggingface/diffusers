@@ -107,6 +107,7 @@ def log_validation(
     args,
     accelerator,
     epoch,
+    is_final_validation=False,
 ):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
@@ -128,13 +129,14 @@ def log_validation(
             images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
 
     for tracker in accelerator.trackers:
+        phase_name = "test" if is_final_validation else "validation"
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+            tracker.writer.add_images(phase_name, np_images, epoch, dataformats="NHWC")
         if tracker.name == "wandb":
             tracker.log(
                 {
-                    "validation": [
+                    phase_name: [
                         wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
                     ]
                 }
@@ -928,21 +930,6 @@ def main():
             safe_serialization=True,
         )
 
-        if args.push_to_hub:
-            save_model_card(
-                repo_id,
-                images=images,
-                base_model=args.pretrained_model_name_or_path,
-                dataset_name=args.dataset_name,
-                repo_folder=args.output_dir,
-            )
-            upload_folder(
-                repo_id=repo_id,
-                folder_path=args.output_dir,
-                commit_message="End of training",
-                ignore_patterns=["step_*", "epoch_*"],
-            )
-
         # Final inference
         # Load previous pipeline
         if args.validation_prompt is not None:
@@ -957,7 +944,22 @@ def main():
             pipeline.load_lora_weights(args.output_dir)
 
             # run inference
-            images = log_validation(pipeline, args, accelerator, epoch)
+            images = log_validation(pipeline, args, accelerator, epoch, is_final_validation=True)
+
+        if args.push_to_hub:
+            save_model_card(
+                repo_id,
+                images=images,
+                base_model=args.pretrained_model_name_or_path,
+                dataset_name=args.dataset_name,
+                repo_folder=args.output_dir,
+            )
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
     accelerator.end_training()
 
