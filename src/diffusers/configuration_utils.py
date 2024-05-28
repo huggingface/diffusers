@@ -37,6 +37,7 @@ from huggingface_hub.utils import (
 from requests import HTTPError
 
 from . import __version__
+from .models.model_loading_utils import _fetch_remapped_cls_from_config
 from .utils import (
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     DummyObject,
@@ -45,7 +46,6 @@ from .utils import (
     http_user_agent,
     logging,
 )
-from .utils.hub_utils import _fetch_remapped_cls_from_config
 
 
 logger = logging.get_logger(__name__)

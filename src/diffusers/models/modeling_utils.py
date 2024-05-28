@@ -44,12 +44,12 @@ from ..utils import (
 )
 from ..utils.hub_utils import (
     PushToHubMixin,
-    _fetch_remapped_cls_from_config,
     load_or_create_model_card,
     populate_model_card,
 )
 from .model_loading_utils import (
     _determine_device_map,
+    _fetch_remapped_cls_from_config,
     _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
