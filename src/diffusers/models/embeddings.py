@@ -280,12 +280,11 @@ def apply_rotary_emb(
     """
     Args:
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
-    to the given query 'xq' and key 'xk' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
+    to the given query 'xq' and key 'xk' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are:
     reshaped as complex numbers, and the frequency tensor is reshaped for broadcasting compatibility. The resulting
     tensors contain rotary embeddings and are returned as real tensors.
-        xq (torch.Tensor): Query tensor to apply rotary embeddings. [B, H, S, D]
-        xk (torch.Tensor): Key tensor to apply rotary embeddings.   [B, H, S, D]
-        freqs_cis (Union[torch.Tensor, Tuple[torch.Tensor]]):
+        xq (torch.Tensor): Query tensor to apply rotary embeddings. [B, H, S, D] xk (torch.Tensor): Key tensor to apply
+        rotary embeddings. [B, H, S, D] freqs_cis (Union[torch.Tensor, Tuple[torch.Tensor]]):
             Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.

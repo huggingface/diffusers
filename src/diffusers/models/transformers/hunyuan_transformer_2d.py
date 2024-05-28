@@ -102,13 +102,11 @@ class HunyuanDiTBlock(nn.Module):
     r"""
     Parameters:
     HunyuanDiT Transformer block. Allow skip connection and QKNorm
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        num_embeds_ada_norm (:
+        dim (`int`): The number of channels in the input and output. num_attention_heads (`int`): The number of heads
+        to use for multi-head attention. attention_head_dim (`int`): The number of channels in each head. dropout
+        (`float`, *optional*, defaults to 0.0): The dropout probability to use. cross_attention_dim (`int`,
+        *optional*): The size of the encoder_hidden_states vector for cross attention. activation_fn (`str`,
+        *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward. num_embeds_ada_norm (:
             obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
         attention_bias (:
             obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
