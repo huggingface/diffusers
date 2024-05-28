@@ -135,9 +135,6 @@ def _convert_non_diffusers_lora_to_diffusers(state_dict, unet_name="unet", text_
 
     Returns:
         `tuple`: A tuple containing the converted state dict and a dictionary of alphas.
-
-    Raises:
-        `ValueError`: If the provided state dict is not a Kohya LoRA state dict or if the `peft` version is too low.
     """
     unet_state_dict = {}
     te_state_dict = {}
