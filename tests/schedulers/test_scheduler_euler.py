@@ -49,12 +49,13 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
         for rescale_betas_zero_snr in [True, False]:
             self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
 
-    def test_full_loop_no_noise(self):
+    def full_loop(self, **config):
         scheduler_class = self.scheduler_classes[0]
-        scheduler_config = self.get_scheduler_config()
+        scheduler_config = self.get_scheduler_config(**config)
         scheduler = scheduler_class(**scheduler_config)
 
-        scheduler.set_timesteps(self.num_inference_steps)
+        num_inference_steps = self.num_inference_steps
+        scheduler.set_timesteps(num_inference_steps)
 
         generator = torch.manual_seed(0)
 
@@ -69,6 +70,64 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
 
             output = scheduler.step(model_output, t, sample, generator=generator)
             sample = output.prev_sample
+        return sample
+
+    def full_loop_custom_timesteps(self, **config):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(**config)
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = self.num_inference_steps
+        scheduler.set_timesteps(num_inference_steps)
+        timesteps = scheduler.timesteps
+        # reset the timesteps using `timesteps`
+        scheduler = scheduler_class(**scheduler_config)
+        scheduler.set_timesteps(num_inference_steps=None, timesteps=timesteps)
+
+        generator = torch.manual_seed(0)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample, generator=generator)
+            sample = output.prev_sample
+        return sample
+
+    def full_loop_custom_sigmas(self, **config):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(**config)
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = self.num_inference_steps
+        scheduler.set_timesteps(num_inference_steps)
+        sigmas = scheduler.sigmas
+        # reset the timesteps using `sigmas`
+        scheduler = scheduler_class(**scheduler_config)
+        scheduler.set_timesteps(num_inference_steps=None, sigmas=sigmas)
+
+        generator = torch.manual_seed(0)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample, generator=generator)
+            sample = output.prev_sample
+        return sample
+
+    def test_full_loop_no_noise(self):
+        sample = self.full_loop()
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
@@ -77,25 +136,7 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
         assert abs(result_mean.item() - 0.0131) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
-        scheduler_class = self.scheduler_classes[0]
-        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
-        scheduler = scheduler_class(**scheduler_config)
-
-        scheduler.set_timesteps(self.num_inference_steps)
-
-        generator = torch.manual_seed(0)
-
-        model = self.dummy_model()
-        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
-        sample = sample.to(torch_device)
-
-        for i, t in enumerate(scheduler.timesteps):
-            sample = scheduler.scale_model_input(sample, t)
-
-            model_output = model(sample, t)
-
-            output = scheduler.step(model_output, t, sample, generator=generator)
-            sample = output.prev_sample
+        sample = self.full_loop(prediction_type="v_prediction")
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
@@ -189,3 +230,36 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 57062.9297) < 1e-2, f" expected result sum 57062.9297, but get {result_sum}"
         assert abs(result_mean.item() - 74.3007) < 1e-3, f" expected result mean 74.3007, but get {result_mean}"
+
+    def test_custom_timesteps(self):
+        for prediction_type in ["epsilon", "sample", "v_prediction"]:
+            for interpolation_type in ["linear", "log_linear"]:
+                for final_sigmas_type in ["sigma_min", "zero"]:
+                    sample = self.full_loop(
+                        prediction_type=prediction_type,
+                        interpolation_type=interpolation_type,
+                        final_sigmas_type=final_sigmas_type,
+                    )
+                    sample_custom_timesteps = self.full_loop_custom_timesteps(
+                        prediction_type=prediction_type,
+                        interpolation_type=interpolation_type,
+                        final_sigmas_type=final_sigmas_type,
+                    )
+                    assert (
+                        torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5
+                    ), f"Scheduler outputs are not identical for prediction_type: {prediction_type}, interpolation_type: {interpolation_type} and final_sigmas_type: {final_sigmas_type}"
+
+    def test_custom_sigmas(self):
+        for prediction_type in ["epsilon", "sample", "v_prediction"]:
+            for final_sigmas_type in ["sigma_min", "zero"]:
+                sample = self.full_loop(
+                    prediction_type=prediction_type,
+                    final_sigmas_type=final_sigmas_type,
+                )
+                sample_custom_timesteps = self.full_loop_custom_sigmas(
+                    prediction_type=prediction_type,
+                    final_sigmas_type=final_sigmas_type,
+                )
+                assert (
+                    torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5
+                ), f"Scheduler outputs are not identical for prediction_type: {prediction_type} and final_sigmas_type: {final_sigmas_type}"

@@ -190,7 +190,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        ref_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        ref_image: Union[torch.Tensor, PIL.Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -201,14 +201,14 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
@@ -335,10 +335,10 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
         def hacked_basic_transformer_inner_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            attention_mask: Optional[torch.FloatTensor] = None,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
-            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            attention_mask: Optional[torch.Tensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
             timestep: Optional[torch.LongTensor] = None,
             cross_attention_kwargs: Dict[str, Any] = None,
             class_labels: Optional[torch.LongTensor] = None,
@@ -453,12 +453,12 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
         def hack_CrossAttnDownBlock2D_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            temb: Optional[torch.FloatTensor] = None,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
-            attention_mask: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            temb: Optional[torch.Tensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            attention_mask: Optional[torch.Tensor] = None,
             cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
         ):
             eps = 1e-6
 
@@ -549,14 +549,14 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
         def hacked_CrossAttnUpBlock2D_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-            temb: Optional[torch.FloatTensor] = None,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+            temb: Optional[torch.Tensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
             cross_attention_kwargs: Optional[Dict[str, Any]] = None,
             upsample_size: Optional[int] = None,
-            attention_mask: Optional[torch.FloatTensor] = None,
-            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
         ):
             eps = 1e-6
             # TODO(Patrick, William) - attention mask is not used

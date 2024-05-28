@@ -24,6 +24,7 @@ _import_structure = {
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
+    "marigold": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -114,6 +115,7 @@ else:
     _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
     _import_structure["animatediff"] = [
         "AnimateDiffPipeline",
+        "AnimateDiffSDXLPipeline",
         "AnimateDiffVideoToVideoPipeline",
     ]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
@@ -132,6 +134,12 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+        ]
+    )
+    _import_structure["controlnet_xs"].extend(
+        [
+            "StableDiffusionControlNetXSPipeline",
+            "StableDiffusionXLControlNetXSPipeline",
         ]
     )
     _import_structure["deepfloyd_if"] = [
@@ -178,10 +186,16 @@ else:
             "LEditsPPPipelineStableDiffusionXL",
         ]
     )
+    _import_structure["marigold"].extend(
+        [
+            "MarigoldDepthPipeline",
+            "MarigoldNormalsPipeline",
+        ]
+    )
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
-    _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline"]
+    _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_cascade"] = [
@@ -361,7 +375,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
         from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
-        from .animatediff import AnimateDiffPipeline, AnimateDiffVideoToVideoPipeline
+        from .animatediff import AnimateDiffPipeline, AnimateDiffSDXLPipeline, AnimateDiffVideoToVideoPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import (
             AudioLDM2Pipeline,
@@ -377,6 +391,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+        )
+        from .controlnet_xs import (
+            StableDiffusionControlNetXSPipeline,
+            StableDiffusionXLControlNetXSPipeline,
         )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
@@ -437,10 +455,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
+        from .marigold import (
+            MarigoldDepthPipeline,
+            MarigoldNormalsPipeline,
+        )
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
-        from .pixart_alpha import PixArtAlphaPipeline
+        from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_cascade import (

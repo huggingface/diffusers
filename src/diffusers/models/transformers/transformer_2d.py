@@ -35,12 +35,12 @@ class Transformer2DModelOutput(BaseOutput):
     The output of [`Transformer2DModel`].
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
             The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
             distributions for the unnoised latent pixels.
     """
 
-    sample: torch.FloatTensor
+    sample: torch.Tensor
 
 
 class Transformer2DModel(ModelMixin, ConfigMixin):
@@ -72,6 +72,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["BasicTransformerBlock"]
 
     @register_to_config
     def __init__(
@@ -100,6 +101,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         attention_type: str = "default",
         caption_channels: int = None,
         interpolation_scale: float = None,
+        use_additional_conditions: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -124,6 +126,12 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.in_channels = in_channels
         self.out_channels = in_channels if out_channels is None else out_channels
         self.gradient_checkpointing = False
+        if use_additional_conditions is None:
+            if norm_type == "ada_norm_single" and sample_size == 128:
+                use_additional_conditions = True
+            else:
+                use_additional_conditions = False
+        self.use_additional_conditions = use_additional_conditions
 
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
@@ -305,9 +313,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # PixArt-Alpha blocks.
         self.adaln_single = None
-        self.use_additional_conditions = False
         if self.config.norm_type == "ada_norm_single":
-            self.use_additional_conditions = self.config.sample_size == 128
             # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
             # additional conditions until we find better name
             self.adaln_single = AdaLayerNormSingle(
@@ -340,9 +346,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         The [`Transformer2DModel`] forward method.
 
         Args:
-            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
+            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.Tensor` of shape `(batch size, channel, height, width)` if continuous):
                 Input `hidden_states`.
-            encoder_hidden_states ( `torch.FloatTensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
+            encoder_hidden_states ( `torch.Tensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
             timestep ( `torch.LongTensor`, *optional*):
@@ -402,41 +408,18 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 1. Input
         if self.is_input_continuous:
-            batch, _, height, width = hidden_states.shape
+            batch_size, _, height, width = hidden_states.shape
             residual = hidden_states
-
-            hidden_states = self.norm(hidden_states)
-            if not self.use_linear_projection:
-                hidden_states = self.proj_in(hidden_states)
-                inner_dim = hidden_states.shape[1]
-                hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-            else:
-                inner_dim = hidden_states.shape[1]
-                hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-                hidden_states = self.proj_in(hidden_states)
-
+            hidden_states, inner_dim = self._operate_on_continuous_inputs(hidden_states)
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
             height, width = hidden_states.shape[-2] // self.patch_size, hidden_states.shape[-1] // self.patch_size
-            hidden_states = self.pos_embed(hidden_states)
-
-            if self.adaln_single is not None:
-                if self.use_additional_conditions and added_cond_kwargs is None:
-                    raise ValueError(
-                        "`added_cond_kwargs` cannot be None when using additional conditions for `adaln_single`."
-                    )
-                batch_size = hidden_states.shape[0]
-                timestep, embedded_timestep = self.adaln_single(
-                    timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
-                )
+            hidden_states, encoder_hidden_states, timestep, embedded_timestep = self._operate_on_patched_inputs(
+                hidden_states, encoder_hidden_states, timestep, added_cond_kwargs
+            )
 
         # 2. Blocks
-        if self.is_input_patches and self.caption_projection is not None:
-            batch_size = hidden_states.shape[0]
-            encoder_hidden_states = self.caption_projection(encoder_hidden_states)
-            encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
-
         for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
 
@@ -474,51 +457,116 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 3. Output
         if self.is_input_continuous:
-            if not self.use_linear_projection:
-                hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-                hidden_states = self.proj_out(hidden_states)
-            else:
-                hidden_states = self.proj_out(hidden_states)
-                hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-
-            output = hidden_states + residual
-        elif self.is_input_vectorized:
-            hidden_states = self.norm_out(hidden_states)
-            logits = self.out(hidden_states)
-            # (batch, self.num_vector_embeds - 1, self.num_latent_pixels)
-            logits = logits.permute(0, 2, 1)
-
-            # log(p(x_0))
-            output = F.log_softmax(logits.double(), dim=1).float()
-
-        if self.is_input_patches:
-            if self.config.norm_type != "ada_norm_single":
-                conditioning = self.transformer_blocks[0].norm1.emb(
-                    timestep, class_labels, hidden_dtype=hidden_states.dtype
-                )
-                shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
-                hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
-                hidden_states = self.proj_out_2(hidden_states)
-            elif self.config.norm_type == "ada_norm_single":
-                shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
-                hidden_states = self.norm_out(hidden_states)
-                # Modulation
-                hidden_states = hidden_states * (1 + scale) + shift
-                hidden_states = self.proj_out(hidden_states)
-                hidden_states = hidden_states.squeeze(1)
-
-            # unpatchify
-            if self.adaln_single is None:
-                height = width = int(hidden_states.shape[1] ** 0.5)
-            hidden_states = hidden_states.reshape(
-                shape=(-1, height, width, self.patch_size, self.patch_size, self.out_channels)
+            output = self._get_output_for_continuous_inputs(
+                hidden_states=hidden_states,
+                residual=residual,
+                batch_size=batch_size,
+                height=height,
+                width=width,
+                inner_dim=inner_dim,
             )
-            hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
-            output = hidden_states.reshape(
-                shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
+        elif self.is_input_vectorized:
+            output = self._get_output_for_vectorized_inputs(hidden_states)
+        elif self.is_input_patches:
+            output = self._get_output_for_patched_inputs(
+                hidden_states=hidden_states,
+                timestep=timestep,
+                class_labels=class_labels,
+                embedded_timestep=embedded_timestep,
+                height=height,
+                width=width,
             )
 
         if not return_dict:
             return (output,)
 
         return Transformer2DModelOutput(sample=output)
+
+    def _operate_on_continuous_inputs(self, hidden_states):
+        batch, _, height, width = hidden_states.shape
+        hidden_states = self.norm(hidden_states)
+
+        if not self.use_linear_projection:
+            hidden_states = self.proj_in(hidden_states)
+            inner_dim = hidden_states.shape[1]
+            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
+        else:
+            inner_dim = hidden_states.shape[1]
+            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
+            hidden_states = self.proj_in(hidden_states)
+
+        return hidden_states, inner_dim
+
+    def _operate_on_patched_inputs(self, hidden_states, encoder_hidden_states, timestep, added_cond_kwargs):
+        batch_size = hidden_states.shape[0]
+        hidden_states = self.pos_embed(hidden_states)
+        embedded_timestep = None
+
+        if self.adaln_single is not None:
+            if self.use_additional_conditions and added_cond_kwargs is None:
+                raise ValueError(
+                    "`added_cond_kwargs` cannot be None when using additional conditions for `adaln_single`."
+                )
+            timestep, embedded_timestep = self.adaln_single(
+                timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
+            )
+
+        if self.caption_projection is not None:
+            encoder_hidden_states = self.caption_projection(encoder_hidden_states)
+            encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
+
+        return hidden_states, encoder_hidden_states, timestep, embedded_timestep
+
+    def _get_output_for_continuous_inputs(self, hidden_states, residual, batch_size, height, width, inner_dim):
+        if not self.use_linear_projection:
+            hidden_states = (
+                hidden_states.reshape(batch_size, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
+            )
+            hidden_states = self.proj_out(hidden_states)
+        else:
+            hidden_states = self.proj_out(hidden_states)
+            hidden_states = (
+                hidden_states.reshape(batch_size, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
+            )
+
+        output = hidden_states + residual
+        return output
+
+    def _get_output_for_vectorized_inputs(self, hidden_states):
+        hidden_states = self.norm_out(hidden_states)
+        logits = self.out(hidden_states)
+        # (batch, self.num_vector_embeds - 1, self.num_latent_pixels)
+        logits = logits.permute(0, 2, 1)
+        # log(p(x_0))
+        output = F.log_softmax(logits.double(), dim=1).float()
+        return output
+
+    def _get_output_for_patched_inputs(
+        self, hidden_states, timestep, class_labels, embedded_timestep, height=None, width=None
+    ):
+        if self.config.norm_type != "ada_norm_single":
+            conditioning = self.transformer_blocks[0].norm1.emb(
+                timestep, class_labels, hidden_dtype=hidden_states.dtype
+            )
+            shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
+            hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
+            hidden_states = self.proj_out_2(hidden_states)
+        elif self.config.norm_type == "ada_norm_single":
+            shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
+            hidden_states = self.norm_out(hidden_states)
+            # Modulation
+            hidden_states = hidden_states * (1 + scale) + shift
+            hidden_states = self.proj_out(hidden_states)
+            hidden_states = hidden_states.squeeze(1)
+
+        # unpatchify
+        if self.adaln_single is None:
+            height = width = int(hidden_states.shape[1] ** 0.5)
+        hidden_states = hidden_states.reshape(
+            shape=(-1, height, width, self.patch_size, self.patch_size, self.out_channels)
+        )
+        hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
+        output = hidden_states.reshape(
+            shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
+        )
+        return output

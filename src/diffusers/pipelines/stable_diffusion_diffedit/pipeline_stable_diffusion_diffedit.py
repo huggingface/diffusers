@@ -53,7 +53,7 @@ class DiffEditInversionPipelineOutput(BaseOutput):
     Output class for Stable Diffusion pipelines.
 
     Args:
-        latents (`torch.FloatTensor`)
+        latents (`torch.Tensor`)
             inverted latents tensor
         images (`List[PIL.Image.Image]` or `np.ndarray`)
             List of denoised PIL images of length `num_timesteps * batch_size` or numpy array of shape `(num_timesteps,
@@ -61,7 +61,7 @@ class DiffEditInversionPipelineOutput(BaseOutput):
             diffusion pipeline.
     """
 
-    latents: torch.FloatTensor
+    latents: torch.Tensor
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
@@ -185,7 +185,7 @@ def preprocess(image):
 def preprocess_mask(mask, batch_size: int = 1):
     if not isinstance(mask, torch.Tensor):
         # preprocess mask
-        if isinstance(mask, PIL.Image.Image) or isinstance(mask, np.ndarray):
+        if isinstance(mask, (PIL.Image.Image, np.ndarray)):
             mask = [mask]
 
         if isinstance(mask, list):
@@ -381,8 +381,8 @@ class StableDiffusionDiffEditPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         **kwargs,
     ):
@@ -414,8 +414,8 @@ class StableDiffusionDiffEditPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
     ):
@@ -435,10 +435,10 @@ class StableDiffusionDiffEditPipeline(
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -740,7 +740,12 @@ class StableDiffusionDiffEditPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -826,15 +831,15 @@ class StableDiffusionDiffEditPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def generate_mask(
         self,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Union[torch.Tensor, PIL.Image.Image] = None,
         target_prompt: Optional[Union[str, List[str]]] = None,
         target_negative_prompt: Optional[Union[str, List[str]]] = None,
-        target_prompt_embeds: Optional[torch.FloatTensor] = None,
-        target_negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        target_prompt_embeds: Optional[torch.Tensor] = None,
+        target_negative_prompt_embeds: Optional[torch.Tensor] = None,
         source_prompt: Optional[Union[str, List[str]]] = None,
         source_negative_prompt: Optional[Union[str, List[str]]] = None,
-        source_prompt_embeds: Optional[torch.FloatTensor] = None,
-        source_negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        source_prompt_embeds: Optional[torch.Tensor] = None,
+        source_negative_prompt_embeds: Optional[torch.Tensor] = None,
         num_maps_per_mask: Optional[int] = 10,
         mask_encode_strength: Optional[float] = 0.5,
         mask_thresholding_ratio: Optional[float] = 3.0,
@@ -856,10 +861,10 @@ class StableDiffusionDiffEditPipeline(
             target_negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
-            target_prompt_embeds (`torch.FloatTensor`, *optional*):
+            target_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            target_negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            target_negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             source_prompt (`str` or `List[str]`, *optional*):
@@ -868,11 +873,11 @@ class StableDiffusionDiffEditPipeline(
             source_negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide semantic mask generation away from using DiffEdit. If not defined, you
                 need to pass `source_negative_prompt_embeds` or `source_image` instead.
-            source_prompt_embeds (`torch.FloatTensor`, *optional*):
+            source_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings to guide the semantic mask generation. Can be used to easily tweak text
                 inputs (prompt weighting). If not provided, text embeddings are generated from `source_prompt` input
                 argument.
-            source_negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            source_negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings to negatively guide the semantic mask generation. Can be used to easily
                 tweak text inputs (prompt weighting). If not provided, text embeddings are generated from
                 `source_negative_prompt` input argument.
@@ -1046,18 +1051,18 @@ class StableDiffusionDiffEditPipeline(
     def invert(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Union[torch.Tensor, PIL.Image.Image] = None,
         num_inference_steps: int = 50,
         inpaint_strength: float = 0.8,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         decode_latents: bool = False,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         lambda_auto_corr: float = 20.0,
@@ -1090,10 +1095,10 @@ class StableDiffusionDiffEditPipeline(
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             decode_latents (`bool`, *optional*, defaults to `False`):
@@ -1106,7 +1111,7 @@ class StableDiffusionDiffEditPipeline(
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
@@ -1284,8 +1289,8 @@ class StableDiffusionDiffEditPipeline(
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        image_latents: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
+        image_latents: Union[torch.Tensor, PIL.Image.Image] = None,
         inpaint_strength: Optional[float] = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
@@ -1293,12 +1298,12 @@ class StableDiffusionDiffEditPipeline(
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: int = None,
@@ -1314,7 +1319,7 @@ class StableDiffusionDiffEditPipeline(
                 repainted, while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a
                 single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
                 instead of 3, so the expected shape would be `(B, 1, H, W)`.
-            image_latents (`PIL.Image.Image` or `torch.FloatTensor`):
+            image_latents (`PIL.Image.Image` or `torch.Tensor`):
                 Partially noised image latents from the inversion process to be used as inputs for image generation.
             inpaint_strength (`float`, *optional*, defaults to 0.8):
                 Indicates extent to inpaint the masked area. Must be between 0 and 1. When `inpaint_strength` is 1, the
@@ -1338,14 +1343,14 @@ class StableDiffusionDiffEditPipeline(
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -1355,7 +1360,7 @@ class StableDiffusionDiffEditPipeline(
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
