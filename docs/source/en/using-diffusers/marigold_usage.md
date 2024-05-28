@@ -42,8 +42,8 @@ This makes it easier to compare visualizations of the predictions across various
   <div style="flex: 1 1 50%; max-width: 50%;">
     <img class="rounded-xl" src="https://marigoldmonodepth.github.io/images/einstein.jpg"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
-  Example input image for all Marigold pipelines
- </figcaption>
+      Example input image for all Marigold pipelines
+    </figcaption>
   </div>
 </div>
 
@@ -78,116 +78,14 @@ Below are the raw and the visualized predictions; as can be seen, dark areas (mu
   <div style="flex: 1 1 50%; max-width: 50%;">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_depth_16bit.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
-  Predicted depth (16-bit PNG)
- </figcaption>
+      Predicted depth (16-bit PNG)
+    </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_depth.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
-  Predicted depth visualization (Spectral)
- </figcaption>
-  </div>
-</div>
-
-### Depth Prediction with Controlnet
-
-The most common application for depth prediction with diffusion models comes in conjunction with ControlNet.
-
-For using the Depth ControlNet, we need to:
-
-- Invert the image.
-- Reduce the image brightness slightly.
-
-This can be achieved by changing the colormap. Matplotlib is required for this functionality. You can install it using the following command:
-
-```py
-!pip install -q matplotlib
-```
-
-For this task, the fast LCM version works really well.
-
-```python
-import torch
-
-from diffusers import MarigoldDepthPipeline
-from diffusers.utils import load_image
-
-pipe = MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-lcm-v1-0",
-    variant="fp16",
-    torch_dtype=torch.float16,
-    prediction_type="depth",
-).to("cuda")
-
-image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_depth_source.png")
-depth_result = pipe(image)
-
-offs = 0.3
-depth_image = pipe.image_processor.visualize_depth(offs + (1 - offs) * depth_result.prediction, color_map="binary")
-```
-
-<div class="flex gap-4">
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_depth_source.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">"Source image"</figcaption>
-  </div>
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_offs_0.3.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">"Predicted depth"</figcaption>
-  </div>
-</div>
-
-> [!TIP]
-> Now is a good time to free up some memory if you're running low!
->
-> ```py
-> pipeline=None
-> torch.cuda.empty_cache()
-> ```
-
-Following these steps, we can proceed to load the `ControlNetModel` and the `StableDiffusionXLControlNetPipeline` to generate the desired image.
-
-```python
-from diffusers import (
-    AutoencoderKL,
-    ControlNetModel,
-    DPMSolverMultistepScheduler,
-    MarigoldDepthPipeline,
-    StableDiffusionXLControlNetPipeline,
-)
-
-controlnet = ControlNetModel.from_pretrained(
-    "diffusers/controlnet-depth-sdxl-1.0",
-    torch_dtype=torch.float16,
-    variant="fp16",
-)
-
-pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-    "SG161222/RealVisXL_V4.0", torch_dtype=torch.float16, variant="fp16", controlnet=controlnet
-).to("cuda")
-
-pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
-
-prompt = "high quality photo of a sports bike, city"
-negative_prompt = ""
-
-image = pipe(
-    prompt=prompt,
-    negative_prompt="",
-    guidance_scale=6.5,
-    num_inference_steps=25,
-    image=depth_image,
-    controlnet_conditioning_scale=0.7,
-    control_guidance_end=0.7,
-).images[0]
-```
-
-<div class="flex gap-4" style="justify-content: center; width: 100%;">
-  <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_depth_result.png"/>
-    <figcaption class="mt-1 text-center text-sm text-gray-500">
-  high quality photo of a sports bike, city
- </figcaption>
+      Predicted depth visualization (Spectral)
+    </figcaption>
   </div>
 </div>
 
@@ -219,8 +117,8 @@ Below is the visualized prediction:
   <div style="flex: 1 1 50%; max-width: 50%;">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_normals.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
-  Predicted surface normals visualization
- </figcaption>
+      Predicted surface normals visualization
+    </figcaption>
   </div>
 </div>
 
@@ -246,7 +144,7 @@ Because Marigold's latent space is compatible with the base Stable Diffusion, it
   ).to("cuda")
   
 + pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
-+  "madebyollin/taesd", torch_dtype=torch.float16
++     "madebyollin/taesd", torch_dtype=torch.float16
 + ).cuda()
   
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -277,14 +175,14 @@ With the above speed optimizations, Marigold delivers predictions with more deta
   <div style="flex: 1 1 50%; max-width: 50%;">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_depth.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
-  Marigold LCM fp16 with Tiny AutoEncoder
- </figcaption>
+      Marigold LCM fp16 with Tiny AutoEncoder
+    </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/bfe7cb56ca1cc0811b328212472350879dfa7f8b/marigold/einstein_depthanything_large.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
-  Depth Anything Large
- </figcaption>
+      Depth Anything Large
+    </figcaption>
   </div>
 </div>
 
@@ -303,14 +201,14 @@ import diffusers
 model_path = "prs-eth/marigold-normals-v1-0"
 
 model_paper_kwargs = {
- diffusers.schedulers.DDIMScheduler: {
-  "num_inference_steps": 10,
-  "ensemble_size": 10,
- },
- diffusers.schedulers.LCMScheduler: {
-  "num_inference_steps": 4,
-  "ensemble_size": 5,
- }, 
+	diffusers.schedulers.DDIMScheduler: {
+		"num_inference_steps": 10,
+		"ensemble_size": 10,
+	},
+	diffusers.schedulers.LCMScheduler: {
+		"num_inference_steps": 4,
+		"ensemble_size": 5,
+	},	
 }
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -328,14 +226,14 @@ vis[0].save("einstein_normals.png")
   <div style="flex: 1 1 50%; max-width: 50%;">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_normals.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
-  Surface normals, no ensembling
- </figcaption>
+      Surface normals, no ensembling
+    </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_normals.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
-  Surface normals, with ensembling
- </figcaption>
+      Surface normals, with ensembling
+    </figcaption>
   </div>
 </div>
 
@@ -356,14 +254,14 @@ seed = 2024
 model_path = "prs-eth/marigold-v1-0"
 
 model_paper_kwargs = {
- diffusers.schedulers.DDIMScheduler: {
-  "num_inference_steps": 50,
-  "ensemble_size": 10,
- },
- diffusers.schedulers.LCMScheduler: {
-  "num_inference_steps": 4,
-  "ensemble_size": 10,
- }, 
+	diffusers.schedulers.DDIMScheduler: {
+		"num_inference_steps": 50,
+		"ensemble_size": 10,
+	},
+	diffusers.schedulers.LCMScheduler: {
+		"num_inference_steps": 4,
+		"ensemble_size": 10,
+	},	
 }
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -394,9 +292,9 @@ pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 depth = pipe(
- image,
- ensemble_size=10,  # any number greater than 1; higher values yield higher precision
- output_uncertainty=True,
+	image,
+	ensemble_size=10,  # any number greater than 1; higher values yield higher precision
+	output_uncertainty=True,
 )
 
 uncertainty = pipe.image_processor.visualize_uncertainty(depth.uncertainty)
@@ -407,14 +305,14 @@ uncertainty[0].save("einstein_depth_uncertainty.png")
   <div style="flex: 1 1 50%; max-width: 50%;">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_depth_uncertainty.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
-  Depth uncertainty
- </figcaption>
+      Depth uncertainty
+    </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_normals_uncertainty.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
-  Surface normals uncertainty
- </figcaption>
+      Surface normals uncertainty
+    </figcaption>
   </div>
 </div>
 
@@ -475,7 +373,7 @@ with imageio.get_reader(path_in) as reader:
             latents = 0.9 * latents + 0.1 * last_frame_latent
 
         depth = pipe(
-   frame, match_input_resolution=False, latents=latents, output_latent=True,
+			frame, match_input_resolution=False, latents=latents, output_latent=True
         )
         last_frame_latent = depth.latent
         out.append(pipe.image_processor.visualize_depth(depth.prediction)[0])
@@ -498,4 +396,71 @@ The result is much more stable now:
   </div>
 </div>
 
-Hopefully, you will find Marigold useful for solving your downstream tasks, be it a part of a more broad generative workflow, or a broader perception task, such as 3D reconstruction.
+### Marigold for ControlNet
+
+A very common application for depth prediction with diffusion models comes in conjunction with ControlNet.
+Depth crispness plays a crucial role in obtaining high-quality results from ControlNet.
+As seen in comparisons with other methods above, Marigold excels at that task.
+The snippet below demonstrates how to load an image, compute depth, and pass it into ControlNet in a compatible format:
+
+```python
+import torch
+import diffusers
+
+device = "cuda"
+generator = torch.Generator(device=device).manual_seed(2024)
+image = diffusers.utils.load_image(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_depth_source.png"
+)
+
+pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
+    "prs-eth/marigold-lcm-v1-0", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+
+depth_image = pipe(image, generator=generator).prediction
+depth_image = pipe.image_processor.visualize_depth(depth_image, color_map="binary")
+depth_image[0].save("motorcycle_controlnet_depth.png")
+
+controlnet = diffusers.ControlNetModel.from_pretrained(
+    "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipe = diffusers.StableDiffusionXLControlNetPipeline.from_pretrained(
+    "SG161222/RealVisXL_V4.0", torch_dtype=torch.float16, variant="fp16", controlnet=controlnet
+).to("cuda")
+pipe.scheduler = diffusers.DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
+
+controlnet_out = pipe(
+    prompt="high quality photo of a sports bike, city",
+    negative_prompt="",
+    guidance_scale=6.5,
+    num_inference_steps=25,
+    image=depth_image,
+    controlnet_conditioning_scale=0.7,
+    control_guidance_end=0.7,
+    generator=generator,
+).images
+controlnet_out[0].save("motorcycle_controlnet_out.png")
+```
+
+<div class="flex gap-4">
+  <div style="flex: 1 1 33%; max-width: 33%;">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_depth_source.png"/>
+    <figcaption class="mt-1 text-center text-sm text-gray-500">
+      Input image
+    </figcaption>
+  </div>
+  <div style="flex: 1 1 33%; max-width: 33%;">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/8e61e31f9feb7756c0404ceff26f3f0e5d3fe610/marigold/motorcycle_controlnet_depth.png"/>
+    <figcaption class="mt-1 text-center text-sm text-gray-500">
+      Depth in the format compatible with ControlNet
+    </figcaption>
+  </div>
+  <div style="flex: 1 1 33%; max-width: 33%;">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/8e61e31f9feb7756c0404ceff26f3f0e5d3fe610/marigold/motorcycle_controlnet_out.png"/>
+    <figcaption class="mt-1 text-center text-sm text-gray-500">
+      ControlNet generation, conditioned on depth and prompt: "high quality photo of a sports bike, city"
+    </figcaption>
+  </div>
+</div>
+
+Hopefully, you will find Marigold useful for solving your downstream tasks, be it a part of a more broad generative workflow, or a perception task, such as 3D reconstruction.
