@@ -122,10 +122,10 @@
   - local: using-diffusers/controlling_generation
     title: 제어된 생성
   - local: conceptual/contribution
-    title: 기여하기
+    title: 어떻게 기여하나요?
   - local: conceptual/ethical_guidelines
-    title: 윤리적 가이드라인
-  - local: in_translation
+    title: Diffusers의 윤리적 가이드라인
+  - local: conceptual/evaluation
     title: Diffusion Models 평가하기
   title: 개념 가이드
 - sections:
