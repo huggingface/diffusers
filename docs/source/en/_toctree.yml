@@ -93,6 +93,8 @@
     title: Trajectory Consistency Distillation-LoRA
   - local: using-diffusers/svd
     title: Stable Video Diffusion
+  - local: using-diffusers/marigold_usage
+    title: Marigold Computer Vision
   title: Specific pipeline examples
 - sections:
   - local: training/overview
@@ -295,6 +297,8 @@
       title: Latent Diffusion
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/marigold
+      title: Marigold
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
@@ -305,6 +309,8 @@
       title: Personalized Image Animator (PIA)
     - local: api/pipelines/pixart
       title: PixArt-α
+    - local: api/pipelines/pixart_sigma
+      title: PixArt-Σ
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion

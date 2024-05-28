@@ -420,7 +420,6 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipe.scheduler = DDIMScheduler.from_config(
             pipe.scheduler.config, timestep_spacing="trailing", rescale_betas_zero_snr=True
         )
-        pipe.to(torch_device)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
