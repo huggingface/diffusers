@@ -58,6 +58,8 @@ from .model_loading_utils import (
 
 logger = logging.get_logger(__name__)
 
+_REGEX_SHARD = re.compile(r"(.*?)-\d{5}-of-\d{5}")
+
 
 if is_torch_version(">=", "1.9.0"):
     _LOW_CPU_MEM_USAGE_DEFAULT = True
@@ -264,7 +266,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         save_function: Optional[Callable] = None,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
-        max_shard_size: Optional[Union[int, str]] = "10GB",
+        max_shard_size: Optional[Union[int, str]] = "5GB",
         push_to_hub: bool = False,
         **kwargs,
     ):
@@ -287,9 +289,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
-            max_shard_size (`int` or `str`, *optional*, defaults to `"10GB"`):
+            max_shard_size (`int` or `str`, *optional*, defaults to `"5GB"`):
                 The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size
-                lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5MB"`).
+                lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5GB"`).
                 If expressed as an integer, the unit is bytes.
             push_to_hub (`bool`, *optional*, defaults to `False`):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
@@ -301,10 +303,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
-
-        if max_shard_size is not None:
-            if is_huggingface_hub_version("<", "0.23.2"):
-                raise ValueError("Please upgrade the version of Hugging Face Hub to serialize the model into shards.")
 
         os.makedirs(save_directory, exist_ok=True)
 
@@ -331,52 +329,52 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         weights_name = _add_variant(weights_name, variant, add_suffix_keyword=True)
 
         # Save the model
-        state_dict_split = split_torch_state_dict_into_shards(
-            state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name
-        )
+        state_dict_split = None
+        if is_huggingface_hub_version(">=", "0.23.2"):
+            state_dict_split = split_torch_state_dict_into_shards(
+                state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name
+            )
         # Clean the folder from a previous save
-        for filename in os.listdir(save_directory):
-            full_filename = os.path.join(save_directory, filename)
-            # If we have a shard file that is not going to be replaced, we delete it, but only from the main process
-            # in distributed settings to avoid race conditions.
-            weights_no_suffix = weights_name.replace(".bin", "").replace(".safetensors", "")
-
-            # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-            filename_no_suffix = filename.replace(".bin", "").replace(".safetensors", "")
-            reg = re.compile(r"(.*?)-\d{5}-of-\d{5}")
-
-            if (
-                filename.startswith(weights_no_suffix)
-                and os.path.isfile(full_filename)
-                and filename not in state_dict_split.filename_to_tensors.keys()
-                and is_main_process
-                and reg.fullmatch(filename_no_suffix) is not None
-            ):
-                os.remove(full_filename)
+        if is_main_process:
+            for filename in os.listdir(save_directory):
+                if filename in state_dict_split.filename_to_tensors.keys():
+                    continue
+                full_filename = os.path.join(save_directory, filename)
+                if not os.path.isfile(full_filename):
+                    continue
+                else:
+                    filename_no_suffix = filename.replace(".bin", "").replace(".safetensors", "")
+                    # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
+                    if re.fullmatch(filename_no_suffix) is not None:
+                        os.remove(full_filename)
 
         # Save the model
-        for filename, tensors in state_dict_split.filename_to_tensors.items():
-            shard = {tensor: state_dict[tensor] for tensor in tensors}
+        if state_dict_split is not None:
+            for filename, tensors in state_dict_split.filename_to_tensors.items():
+                shard = {tensor: state_dict[tensor] for tensor in tensors}
+                filepath = os.path.join(save_directory, filename)
+                if safe_serialization:
+                    # At some point we will need to deal better with save_function (used for TPU and other distributed
+                    # joyfulness), but for now this enough.
+                    safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
+                else:
+                    torch.save(shard, filepath)
+        else:
+            filepath = os.path.join(save_directory, weights_name)
             if safe_serialization:
                 # At some point we will need to deal better with save_function (used for TPU and other distributed
                 # joyfulness), but for now this enough.
-                safetensors.torch.save_file(shard, os.path.join(save_directory, filename), metadata={"format": "pt"})
+                safetensors.torch.save_file(state_dict, filepath, metadata={"format": "pt"})
             else:
-                torch.save(shard, Path(save_directory, filename).as_posix())
+                torch.save(state_dict, filepath)
 
-        index = None
-        if state_dict_split.is_sharded:
+        if state_dict_split is not None and state_dict_split.is_sharded:
             index = {
                 "metadata": state_dict_split.metadata,
                 "weight_map": state_dict_split.tensor_to_filename,
             }
-
-        if index is None:
-            path_to_weights = Path(save_directory, weights_name).as_posix()
-            logger.info(f"Model weights saved in {path_to_weights}")
-        else:
             save_index_file = SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME
-            save_index_file = Path(save_directory, _add_variant(save_index_file, variant)).as_posix()
+            save_index_file = os.path.join(save_directory, _add_variant(save_index_file, variant))
             # Save the index as well
             with open(save_index_file, "w", encoding="utf-8") as f:
                 content = json.dumps(index, indent=2, sort_keys=True) + "\n"
@@ -386,6 +384,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"split in {len(state_dict_split.filename_to_tensors)} checkpoint shards. You can find where each parameters has been saved in the "
                 f"index located at {save_index_file}."
             )
+        else:
+            path_to_weights = os.path.join(save_directory, weights_name)
+            logger.info(f"Model weights saved in {path_to_weights}")
 
         if push_to_hub:
             # Create a new empty model card and eventually tag it
@@ -519,7 +520,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        subfolder = kwargs.pop("subfolder", "")
+        subfolder = kwargs.pop("subfolder", None) or ""
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
@@ -632,7 +633,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 subfolder,
                 _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
             ).as_posix()
-            if os.path.isfile(index_file):
+            if index_file.is_file():
                 is_sharded = True
         else:
             index_file = Path(
@@ -717,8 +718,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
                 except IOError as e:
                     if not allow_pickle:
-                        raise e
-                    pass
+                        logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
+                    logger.warning(
+                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
+                    )
+
             if model_file is None:
                 if not is_sharded:
                     model_file = _get_model_file(

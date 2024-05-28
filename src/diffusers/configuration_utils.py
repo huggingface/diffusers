@@ -349,7 +349,7 @@ class ConfigMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         _ = kwargs.pop("mirror", None)
-        subfolder = kwargs.pop("subfolder", "")
+        subfolder = kwargs.pop("subfolder", None) or ""
         user_agent = kwargs.pop("user_agent", {})
 
         user_agent = {**user_agent, "file_type": "config"}
