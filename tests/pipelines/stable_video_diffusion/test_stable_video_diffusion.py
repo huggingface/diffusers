@@ -534,7 +534,6 @@ class StableVideoDiffusionPipelineSlowTests(unittest.TestCase):
             variant="fp16",
             torch_dtype=torch.float16,
         )
-        pipe = pipe.to(torch_device)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
         image = load_image(
