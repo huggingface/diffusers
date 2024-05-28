@@ -12,53 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Controlling image quality
 
-The components of a diffusion model, like the UNet and scheduler, can be optimized to improve the quality of generated images leading to better image lighting and details. These techniques are especially useful if you don't have the resources to simply use a larger model for inference. You can enable these techniques during inference without any additional training.
+The components of a diffusion model, like the UNet and scheduler, can be optimized to improve the quality of generated images leading to better details. These techniques are especially useful if you don't have the resources to simply use a larger model for inference. You can enable these techniques during inference without any additional training.
 
 This guide will show you how to turn these techniques on in your pipeline and how to configure them to improve the quality of your generated images.
-
-## Lighting
-
-The Stable Diffusion models aren't very good at generating images that are very bright or dark because the scheduler doesn't start sampling from the last timestep and it doesn't enforce a zero signal-to-noise ratio (SNR). The [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://hf.co/papers/2305.08891) paper fixes these issues which are now available in some Diffusers schedulers.
-
-> [!TIP]
-> For inference, you need a model that has been trained with *v_prediction*. To train your own model with *v_prediction*, add the following flag to the [train_text_to_image.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) or [train_text_to_image_lora.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py) scripts.
->
-> ```bash
-> --prediction_type="v_prediction"
-> ```
-
-For example, load the [ptx0/pseudo-journey-v2](https://hf.co/ptx0/pseudo-journey-v2) checkpoint which was trained with `v_prediction` and the [`DDIMScheduler`]. Now you should configure the following parameters in the [`DDIMScheduler`].
-
-* `rescale_betas_zero_snr=True` to rescale the noise schedule to zero SNR
-* `timestep_spacing="trailing"` to start sampling from the last timestep
-
-Set `guidance_rescale` in the pipeline to prevent over-exposure. A lower value increases brightness but some of the details may appear washed out.
-
-```py
-from diffusers import DiffusionPipeline, DDIMScheduler
-
-pipeline = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", use_safetensors=True)
-
-pipeline.scheduler = DDIMScheduler.from_config(
-    pipeline.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
-)
-pipeline.to("cuda")
-prompt = "cinematic photo of a snowy mountain at night with the northern lights aurora borealis overhead, 35mm photograph, film, professional, 4k, highly detailed"
-generator = torch.Generator(device="cpu").manual_seed(23)
-image = pipeline(prompt, guidance_rescale=0.7, generator=generator).images[0]
-image
-```
-
-<div class="flex gap-4">
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/no-zero-snr.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">default Stable Diffusion v2-1 image</figcaption>
-  </div>
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/zero-snr.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">image with zero SNR and trailing timestep spacing enabled</figcaption>
-  </div>
-</div>
 
 ## Details
 
