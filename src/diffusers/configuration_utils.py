@@ -37,7 +37,6 @@ from huggingface_hub.utils import (
 from requests import HTTPError
 
 from . import __version__
-from .models.model_loading_utils import _fetch_remapped_cls_from_config
 from .utils import (
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     DummyObject,
@@ -717,6 +716,9 @@ class LegacyConfigMixin(ConfigMixin):
 
     @classmethod
     def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
+        # To prevent depedency import problem.
+        from .models.model_loading_utils import _fetch_remapped_cls_from_config
+
         # resolve remapping
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 

@@ -49,7 +49,6 @@ from ..utils.hub_utils import (
 )
 from .model_loading_utils import (
     _determine_device_map,
-    _fetch_remapped_cls_from_config,
     _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
@@ -1055,6 +1054,9 @@ class LegacyModelMixin(ModelMixin):
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+        # To prevent depedency import problem.
+        from .model_loading_utils import _fetch_remapped_cls_from_config
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", None)
