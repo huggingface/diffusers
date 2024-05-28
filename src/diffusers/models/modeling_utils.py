@@ -43,7 +43,6 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
-    is_huggingface_hub_version,
     is_torch_version,
     logging,
 )
@@ -259,52 +258,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_memory_efficient_attention_xformers(False)
 
-    def _save_pretrained_legacy(self, state_dict, save_directory, weights_name, safe_serialization):
-        filepath = os.path.join(save_directory, weights_name)
-        if safe_serialization:
-            # At some point we will need to deal better with save_function (used for TPU and other distributed
-            # joyfulness), but for now this enough.
-            safetensors.torch.save_file(state_dict, filepath, metadata={"format": "pt"})
-        else:
-            torch.save(state_dict, filepath)
-
-    def _save_pretrained_sharded(
-        self, state_dict, is_main_process, save_directory, weights_name, max_shard_size, safe_serialization
-    ):
-        state_dict_split = split_torch_state_dict_into_shards(
-            state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name
-        )
-
-        # Clean the folder from a previous save
-        if is_main_process:
-            for filename in os.listdir(save_directory):
-                if filename in state_dict_split.filename_to_tensors.keys():
-                    continue
-                full_filename = os.path.join(save_directory, filename)
-                if not os.path.isfile(full_filename):
-                    continue
-                weights_without_ext = weights_name.replace(".bin", "").replace(".safetensors", "")
-                weights_without_ext = weights_without_ext.replace("{suffix}", "")
-                filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
-                # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                if (
-                    filename.startswith(weights_without_ext)
-                    and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
-                ):
-                    os.remove(full_filename)
-
-        for filename, tensors in state_dict_split.filename_to_tensors.items():
-            shard = {tensor: state_dict[tensor] for tensor in tensors}
-            filepath = os.path.join(save_directory, filename)
-            if safe_serialization:
-                # At some point we will need to deal better with save_function (used for TPU and other distributed
-                # joyfulness), but for now this enough.
-                safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
-            else:
-                torch.save(shard, filepath)
-
-        return state_dict_split
-
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
@@ -375,25 +328,39 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         weights_name = _add_variant(weights_name, variant, add_suffix_keyword=True)
 
         # Save the model
-        state_dict_split = None
-        if is_huggingface_hub_version(">=", "0.23.2"):
-            state_dict_split = self._save_pretrained_sharded(
-                state_dict=state_dict,
-                is_main_process=is_main_process,
-                save_directory=save_directory,
-                weights_name=weights_name,
-                max_shard_size=max_shard_size,
-                safe_serialization=safe_serialization,
-            )
-        else:
-            self._save_pretrained_legacy(
-                state_dict=state_dict,
-                save_directory=save_directory,
-                weights_name=weights_name,
-                safe_serialization=safe_serialization,
-            )
+        state_dict_split = split_torch_state_dict_into_shards(
+            state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name
+        )
 
-        if state_dict_split is not None and state_dict_split.is_sharded:
+        # Clean the folder from a previous save
+        if is_main_process:
+            for filename in os.listdir(save_directory):
+                if filename in state_dict_split.filename_to_tensors.keys():
+                    continue
+                full_filename = os.path.join(save_directory, filename)
+                if not os.path.isfile(full_filename):
+                    continue
+                weights_without_ext = weights_name.replace(".bin", "").replace(".safetensors", "")
+                weights_without_ext = weights_without_ext.replace("{suffix}", "")
+                filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
+                # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
+                if (
+                    filename.startswith(weights_without_ext)
+                    and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
+                ):
+                    os.remove(full_filename)
+
+        for filename, tensors in state_dict_split.filename_to_tensors.items():
+            shard = {tensor: state_dict[tensor] for tensor in tensors}
+            filepath = os.path.join(save_directory, filename)
+            if safe_serialization:
+                # At some point we will need to deal better with save_function (used for TPU and other distributed
+                # joyfulness), but for now this enough.
+                safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
+            else:
+                torch.save(shard, filepath)
+
+        if state_dict_split.is_sharded:
             index = {
                 "metadata": state_dict_split.metadata,
                 "weight_map": state_dict_split.tensor_to_filename,

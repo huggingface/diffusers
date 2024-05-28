@@ -43,7 +43,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
     local_files_only = kwargs.pop("local_files_only", None)
     token = kwargs.pop("token", None)
     revision = kwargs.pop("revision", None)
-    subfolder = kwargs.pop("subfolder", None)
+    subfolder = kwargs.pop("subfolder", None) or ""
     weight_name = kwargs.pop("weight_name", None)
     use_safetensors = kwargs.pop("use_safetensors", None)
 
