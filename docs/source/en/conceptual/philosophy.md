@@ -70,7 +70,7 @@ The following design principles are followed:
 - Pipelines should be used **only** for inference.
 - Pipelines should be very readable, self-explanatory, and easy to tweak.
 - Pipelines should be designed to build on top of each other and be easy to integrate into higher-level APIs.
-- Pipelines are **not** intended to be feature-complete user interfaces. For future complete user interfaces one should rather have a look at [InvokeAI](https://github.com/invoke-ai/InvokeAI), [Diffuzers](https://github.com/abhishekkrthakur/diffuzers), and [lama-cleaner](https://github.com/Sanster/lama-cleaner).
+- Pipelines are **not** intended to be feature-complete user interfaces. For feature-complete user interfaces one should rather have a look at [InvokeAI](https://github.com/invoke-ai/InvokeAI), [Diffuzers](https://github.com/abhishekkrthakur/diffuzers), and [lama-cleaner](https://github.com/Sanster/lama-cleaner).
 - Every pipeline should have one and only one way to run it via a `__call__` method. The naming of the `__call__` arguments should be shared across all pipelines.
 - Pipelines should be named after the task they are intended to solve.
 - In almost all cases, novel diffusion pipelines shall be implemented in a new pipeline folder/file.
