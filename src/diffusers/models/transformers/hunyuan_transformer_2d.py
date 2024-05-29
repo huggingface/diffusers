@@ -346,7 +346,6 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
         self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
-        self.unpatchify_channels = self.out_channels
 
     def forward(
         self,
@@ -443,9 +442,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         
         # unpatchify: (N, out_channels, H, W)
         patch_size = self.pos_embed.patch_size
-        hidden_states = hidden_states.reshape(shape=(hidden_states.shape[0], height, width, patch_size, patch_size, self.unpatchify_channels))
+        hidden_states = hidden_states.reshape(shape=(hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels))
         hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
-        output = hidden_states.reshape(shape=(hidden_states.shape[0], self.unpatchify_channels, height * patch_size, width * patch_size))
+        output = hidden_states.reshape(shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size))
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
