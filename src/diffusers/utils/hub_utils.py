@@ -466,9 +466,9 @@ def _get_checkpoint_shard_files(
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
     allow_patterns = original_shard_filenames
     ignore_patterns = ["*.json", "*.md"]
-    model_files_info = model_info(pretrained_model_name_or_path)
-
     if not local_files_only:
+        # `model_info` call must guarded with the above condition.
+        model_files_info = model_info(pretrained_model_name_or_path)
         for shard_file in original_shard_filenames:
             shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
             if not shard_file_present:
