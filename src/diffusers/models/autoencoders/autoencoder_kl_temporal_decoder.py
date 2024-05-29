@@ -323,11 +323,13 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         Args:
             x (`torch.Tensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
+                Whether to return a [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] instead of a plain
+                tuple.
 
         Returns:
                 The latent representations of the encoded images. If `return_dict` is True, a
-                [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
+                [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is
+                returned.
         """
         h = self.encoder(x)
         moments = self.quant_conv(h)
