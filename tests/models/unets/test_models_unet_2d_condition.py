@@ -146,42 +146,64 @@ def create_ip_adapter_plus_state_dict(model):
     )
 
     ip_image_projection_state_dict = OrderedDict()
+    keys = [k for k in image_projection.state_dict() if "layers." in k]
+    print(keys)
     for k, v in image_projection.state_dict().items():
         if "2.to" in k:
             k = k.replace("2.to", "0.to")
-        elif "3.0.weight" in k:
-            k = k.replace("3.0.weight", "1.0.weight")
-        elif "3.0.bias" in k:
-            k = k.replace("3.0.bias", "1.0.bias")
-        elif "3.0.weight" in k:
-            k = k.replace("3.0.weight", "1.0.weight")
-        elif "3.1.net.0.proj.weight" in k:
-            k = k.replace("3.1.net.0.proj.weight", "1.1.weight")
-        elif "3.net.2.weight" in k:
-            k = k.replace("3.net.2.weight", "1.3.weight")
-        elif "layers.0.0" in k:
-            k = k.replace("layers.0.0", "layers.0.0.norm1")
-        elif "layers.0.1" in k:
-            k = k.replace("layers.0.1", "layers.0.0.norm2")
-        elif "layers.1.0" in k:
-            k = k.replace("layers.1.0", "layers.1.0.norm1")
-        elif "layers.1.1" in k:
-            k = k.replace("layers.1.1", "layers.1.0.norm2")
-        elif "layers.2.0" in k:
-            k = k.replace("layers.2.0", "layers.2.0.norm1")
-        elif "layers.2.1" in k:
-            k = k.replace("layers.2.1", "layers.2.0.norm2")
+        elif "layers.0.ln0" in k:
+            k = k.replace("layers.0.ln0", "layers.0.0.norm1")
+        elif "layers.0.ln1" in k:
+            k = k.replace("layers.0.ln1", "layers.0.0.norm2")
+        elif "layers.1.ln0" in k:
+            k = k.replace("layers.1.ln0", "layers.1.0.norm1")
+        elif "layers.1.ln1" in k:
+            k = k.replace("layers.1.ln1", "layers.1.0.norm2")
+        elif "layers.2.ln0" in k:
+            k = k.replace("layers.2.ln0", "layers.2.0.norm1")
+        elif "layers.2.ln1" in k:
+            k = k.replace("layers.2.ln1", "layers.2.0.norm2")
+        elif "layers.3.ln0" in k:
+            k = k.replace("layers.3.ln0", "layers.3.0.norm1")
+        elif "layers.3.ln1" in k:
+            k = k.replace("layers.3.ln1", "layers.3.0.norm2")
+        elif "to_q" in k:
+            parts = k.split(".")
+            parts[2] = "attn"
+            k = ".".join(parts)
+        elif "to_out.0" in k:
+            parts = k.split(".")
+            parts[2] = "attn"
+            k = ".".join(parts)
+            k = k.replace("to_out.0", "to_out")
+        else:
+            k = k.replace("0.ff.0", "0.1.0")
+            k = k.replace("0.ff.1.net.0.proj", "0.1.1")
+            k = k.replace("0.ff.1.net.2", "0.1.3")
 
-        if "norm_cross" in k:
-            ip_image_projection_state_dict[k.replace("norm_cross", "norm1")] = v
-        elif "layer_norm" in k:
-            ip_image_projection_state_dict[k.replace("layer_norm", "norm2")] = v
-        elif "to_k" in k:
+            k = k.replace("1.ff.0", "1.1.0")
+            k = k.replace("1.ff.1.net.0.proj", "1.1.1")
+            k = k.replace("1.ff.1.net.2", "1.1.3")
+
+            k = k.replace("2.ff.0", "2.1.0")
+            k = k.replace("2.ff.1.net.0.proj", "2.1.1")
+            k = k.replace("2.ff.1.net.2", "2.1.3")
+
+            k = k.replace("3.ff.0", "3.1.0")
+            k = k.replace("3.ff.1.net.0.proj", "3.1.1")
+            k = k.replace("3.ff.1.net.2", "3.1.3")
+
+        # if "norm_cross" in k:
+        #     ip_image_projection_state_dict[k.replace("norm_cross", "norm1")] = v
+        # elif "layer_norm" in k:
+        #     ip_image_projection_state_dict[k.replace("layer_norm", "norm2")] = v
+        if "to_k" in k:
+            parts = k.split(".")
+            parts[2] = "attn"
+            k = ".".join(parts)
             ip_image_projection_state_dict[k.replace("to_k", "to_kv")] = torch.cat([v, v], dim=0)
         elif "to_v" in k:
             continue
-        elif "to_out.0" in k:
-            ip_image_projection_state_dict[k.replace("to_out.0", "to_out")] = v
         else:
             ip_image_projection_state_dict[k] = v
 

@@ -847,7 +847,12 @@ class UNet2DConditionLoadersMixin:
             embed_dims = state_dict["proj_in.weight"].shape[1]
             output_dims = state_dict["proj_out.weight"].shape[0]
             hidden_dims = state_dict["latents"].shape[2]
-            heads = state_dict["layers.0.0.to_q.weight"].shape[0] // 64
+            attn_key_present = any("attn" in k for k in state_dict)
+            heads = (
+                state_dict["layers.0.attn.to_q.weight"].shape[0] // 64
+                if attn_key_present
+                else state_dict["layers.0.0.to_q.weight"].shape[0] // 64
+            )
 
             with init_context():
                 image_projection = IPAdapterPlusImageProjection(
@@ -860,26 +865,53 @@ class UNet2DConditionLoadersMixin:
 
             for key, value in state_dict.items():
                 diffusers_name = key.replace("0.to", "2.to")
-                diffusers_name = diffusers_name.replace("1.0.weight", "3.0.weight")
-                diffusers_name = diffusers_name.replace("1.0.bias", "3.0.bias")
-                diffusers_name = diffusers_name.replace("1.1.weight", "3.1.net.0.proj.weight")
-                diffusers_name = diffusers_name.replace("1.3.weight", "3.1.net.2.weight")
 
-                if "norm1" in diffusers_name:
-                    updated_state_dict[diffusers_name.replace("0.norm1", "0")] = value
-                elif "norm2" in diffusers_name:
-                    updated_state_dict[diffusers_name.replace("0.norm2", "1")] = value
-                elif "to_kv" in diffusers_name:
+                diffusers_name = diffusers_name.replace("0.0.norm1", "0.ln0")
+                diffusers_name = diffusers_name.replace("0.0.norm2", "0.ln1")
+                diffusers_name = diffusers_name.replace("1.0.norm1", "1.ln0")
+                diffusers_name = diffusers_name.replace("1.0.norm2", "1.ln1")
+                diffusers_name = diffusers_name.replace("2.0.norm1", "2.ln0")
+                diffusers_name = diffusers_name.replace("2.0.norm2", "2.ln1")
+                diffusers_name = diffusers_name.replace("3.0.norm1", "3.ln0")
+                diffusers_name = diffusers_name.replace("3.0.norm2", "3.ln1")
+
+                if "to_kv" in diffusers_name:
+                    parts = diffusers_name.split(".")
+                    parts[2] = "attn"
+                    diffusers_name = ".".join(parts)
                     v_chunk = value.chunk(2, dim=0)
                     updated_state_dict[diffusers_name.replace("to_kv", "to_k")] = v_chunk[0]
                     updated_state_dict[diffusers_name.replace("to_kv", "to_v")] = v_chunk[1]
+                elif "to_q" in diffusers_name:
+                    parts = diffusers_name.split(".")
+                    parts[2] = "attn"
+                    diffusers_name = ".".join(parts)
+                    updated_state_dict[diffusers_name] = value
                 elif "to_out" in diffusers_name:
+                    parts = diffusers_name.split(".")
+                    parts[2] = "attn"
+                    diffusers_name = ".".join(parts)
                     updated_state_dict[diffusers_name.replace("to_out", "to_out.0")] = value
                 else:
+                    diffusers_name = diffusers_name.replace("0.1.0", "0.ff.0")
+                    diffusers_name = diffusers_name.replace("0.1.1", "0.ff.1.net.0.proj")
+                    diffusers_name = diffusers_name.replace("0.1.3", "0.ff.1.net.2")
+
+                    diffusers_name = diffusers_name.replace("1.1.0", "1.ff.0")
+                    diffusers_name = diffusers_name.replace("1.1.1", "1.ff.1.net.0.proj")
+                    diffusers_name = diffusers_name.replace("1.1.3", "1.ff.1.net.2")
+
+                    diffusers_name = diffusers_name.replace("2.1.0", "2.ff.0")
+                    diffusers_name = diffusers_name.replace("2.1.1", "2.ff.1.net.0.proj")
+                    diffusers_name = diffusers_name.replace("2.1.3", "2.ff.1.net.2")
+
+                    diffusers_name = diffusers_name.replace("3.1.0", "3.ff.0")
+                    diffusers_name = diffusers_name.replace("3.1.1", "3.ff.1.net.0.proj")
+                    diffusers_name = diffusers_name.replace("3.1.3", "3.ff.1.net.2")
                     updated_state_dict[diffusers_name] = value
 
         if not low_cpu_mem_usage:
-            image_projection.load_state_dict(updated_state_dict)
+            image_projection.load_state_dict(updated_state_dict, strict=True)
         else:
             load_model_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
 
