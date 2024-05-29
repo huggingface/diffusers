@@ -856,13 +856,13 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             mid_block_additional_residual: (`torch.Tensor`, *optional*):
                 A tensor that if specified is added to the residual of the middle unet block.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_3d_condition.UNet3DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] instead of a plain
                 tuple.
 
         Returns:
-            [`~models.unet_3d_condition.UNet3DConditionOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_3d_condition.UNet3DConditionOutput`] is returned, otherwise
-                a `tuple` is returned where the first element is the sample tensor.
+            [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).

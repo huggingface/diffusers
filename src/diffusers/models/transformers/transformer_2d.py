@@ -377,8 +377,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 tuple.
 
         Returns:
-            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
-            `tuple` where the first element is the sample tensor.
+            If `return_dict` is True, an [`~models.transformers.transformer_2d.Transformer2DModelOutput`] is returned,
+            otherwise a `tuple` where the first element is the sample tensor.
         """
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
