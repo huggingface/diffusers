@@ -387,12 +387,16 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
         text_states_mask = text_embedding_mask.bool()  # 2,77
         text_states_t5_mask = text_embedding_mask_t5.bool()  # 2,256
-        b_t5, l_t5, c_t5 = encoder_hidden_states_t5.shape # 2,256,2048
+        b_t5, l_t5, c_t5 = encoder_hidden_states_t5.shape  # 2,256,2048
         encoder_hidden_states_t5 = self.text_embedder(encoder_hidden_states_t5.view(-1, c_t5))
-        encoder_hidden_states = torch.cat([encoder_hidden_states, encoder_hidden_states_t5.view(b_t5, l_t5, -1)], dim=1)  # 2,205，1024
+        encoder_hidden_states = torch.cat(
+            [encoder_hidden_states, encoder_hidden_states_t5.view(b_t5, l_t5, -1)], dim=1
+        )  # 2,205，1024
         clip_t5_mask = torch.cat([text_states_mask, text_states_t5_mask], dim=-1)
 
-        encoder_hidden_states = torch.where(clip_t5_mask.unsqueeze(2), encoder_hidden_states, self.text_embedding_padding.to(encoder_hidden_states))
+        encoder_hidden_states = torch.where(
+            clip_t5_mask.unsqueeze(2), encoder_hidden_states, self.text_embedding_padding.to(encoder_hidden_states)
+        )
 
         _, _, height, width = hidden_states.shape
         height, width = height // self.config.patch_size, width // self.config.patch_size
@@ -422,7 +426,11 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             if layer > self.config.num_layers // 2:
                 skip = skips.pop()
                 hidden_states = block(
-                    hidden_states, temb=temb, encoder_hidden_states=encoder_hidden_states, image_rotary_emb=image_rotary_emb, skip=skip
+                    hidden_states,
+                    temb=temb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    image_rotary_emb=image_rotary_emb,
+                    skip=skip,
                 )  # (N, L, D)
             else:
                 hidden_states = block(
@@ -439,12 +447,16 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         hidden_states = self.norm_out(hidden_states, temb.to(torch.float32))
         hidden_states = self.proj_out(hidden_states)
         # (N, L, patch_size ** 2 * out_channels)
-        
+
         # unpatchify: (N, out_channels, H, W)
         patch_size = self.pos_embed.patch_size
-        hidden_states = hidden_states.reshape(shape=(hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels))
+        hidden_states = hidden_states.reshape(
+            shape=(hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels)
+        )
         hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
-        output = hidden_states.reshape(shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size))
+        output = hidden_states.reshape(
+            shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
+        )
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
@@ -482,4 +494,3 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         nn.init.constant_(self.final_adaLN_modulation[-1].bias, 0)
         nn.init.constant_(self.final_linear.weight, 0)
         nn.init.constant_(self.final_linear.bias, 0)
-
