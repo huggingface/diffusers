@@ -29,10 +29,8 @@
     title: Load community pipelines and components
   - local: using-diffusers/schedulers
     title: Load schedulers and models
-  - local: using-diffusers/using_safetensors
-    title: Load safetensors
   - local: using-diffusers/other-formats
-    title: Load different Stable Diffusion formats
+    title: Model files and layouts
   - local: using-diffusers/loading_adapters
     title: Load adapters
   - local: using-diffusers/push_to_hub
