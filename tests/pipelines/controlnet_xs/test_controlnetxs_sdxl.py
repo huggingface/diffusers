@@ -151,7 +151,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         }
         return components
 
-    # copied from test_controlnet_sdxl.py
+    # Copied from test_controlnet_sdxl.py
     def get_dummy_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -176,24 +176,24 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
         return inputs
 
-    # copied from test_controlnet_sdxl.py
+    # Copied from test_controlnet_sdxl.py
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
-    # copied from test_controlnet_sdxl.py
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
+    # Copied from test_controlnet_sdxl.py
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=2e-3)
 
-    # copied from test_controlnet_sdxl.py
+    # Copied from test_controlnet_sdxl.py
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
-    # copied from test_controlnet_sdxl.py
     @require_torch_gpu
+    # Copied from test_controlnet_sdxl.py
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -222,7 +222,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
-    # copied from test_controlnet_sdxl.py
+    # Copied from test_controlnet_sdxl.py
     def test_stable_diffusion_xl_multi_prompts(self):
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components).to(torch_device)
@@ -276,7 +276,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
-    # copied from test_stable_diffusion_xl.py
+    # Copied from test_stable_diffusion_xl.py
     def test_stable_diffusion_xl_prompt_embeds(self):
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
@@ -315,11 +315,11 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1.1e-4
 
-    # copied from test_stable_diffusion_xl.py
+    # Copied from test_stable_diffusion_xl.py
     def test_save_load_optional_components(self):
         self._test_save_load_optional_components()
 
-    # copied from test_controlnetxs.py
+    # Copied from test_controlnetxs.py
     def test_to_dtype(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

@@ -294,7 +294,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
-    # copied from test_stable_diffusion_xl.py
+    # Copied from test_stable_diffusion_xl.py
     def test_stable_diffusion_xl_prompt_embeds(self):
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
@@ -375,7 +375,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    # copied from test_stable_diffusion_xl.py:test_stable_diffusion_two_xl_mixture_of_denoiser_fast
+    # Copied from test_stable_diffusion_xl.py:test_stable_diffusion_two_xl_mixture_of_denoiser_fast
     # with `StableDiffusionXLControlNetPipeline` instead of `StableDiffusionXLPipeline`
     def test_controlnet_sdxl_two_mixture_of_denoiser_fast(self):
         components = self.get_dummy_components()
