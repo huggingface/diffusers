@@ -654,7 +654,8 @@ class StableDiffusionControlNetPipeline(
             or is_compiled
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
-            self.check_image(image, prompt, prompt_embeds)
+            if not self.controlnet.config.empty_condition:
+                self.check_image(image, prompt, prompt_embeds)
         elif (
             isinstance(self.controlnet, MultiControlNetModel)
             or is_compiled
@@ -1146,7 +1147,7 @@ class StableDiffusionControlNetPipeline(
             )
 
         # 4. Prepare image
-        if isinstance(controlnet, ControlNetModel):
+        if isinstance(controlnet, ControlNetModel) and image:
             image = self.prepare_image(
                 image=image,
                 width=width,
@@ -1184,8 +1185,6 @@ class StableDiffusionControlNetPipeline(
 
             image = images
             height, width = image[0].shape[-2:]
-        else:
-            assert False
 
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(

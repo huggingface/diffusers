@@ -175,6 +175,8 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             TODO(Patrick) - unused parameter.
         addition_embed_type_num_heads (`int`, defaults to 64):
             The number of heads to use for the `TextTimeEmbedding` layer.
+        empty_condition (`bool`, defaults to `False`):
+            If given, the controlnet don't need condition.
     """
 
     _supports_gradient_checkpointing = True
@@ -219,6 +221,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
         global_pool_conditions: bool = False,
         addition_embed_type_num_heads: int = 64,
+        empty_condition: bool = False,
     ):
         super().__init__()
 
@@ -340,13 +343,14 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         elif addition_embed_type is not None:
             raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
-
-        # control net conditioning embedding
-        self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
-            conditioning_embedding_channels=block_out_channels[0],
-            block_out_channels=conditioning_embedding_out_channels,
-            conditioning_channels=conditioning_channels,
-        )
+        
+        if not empty_condition:
+            # control net conditioning embedding
+            self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
+                conditioning_embedding_channels=block_out_channels[0],
+                block_out_channels=conditioning_embedding_out_channels,
+                conditioning_channels=conditioning_channels,
+            )
 
         self.down_blocks = nn.ModuleList([])
         self.controlnet_down_blocks = nn.ModuleList([])
@@ -797,8 +801,9 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # 2. pre-process
         sample = self.conv_in(sample)
 
-        controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
-        sample = sample + controlnet_cond
+        if controlnet_cond:
+            controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
+            sample = sample + controlnet_cond
 
         # 3. down
         down_block_res_samples = (sample,)
