@@ -21,6 +21,7 @@ import unittest
 from collections import OrderedDict
 
 import torch
+from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from pytest import mark
 
@@ -1009,6 +1010,16 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_load_sharded_checkpoint_from_hub(self):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         loaded_model = self.model_class.from_pretrained("hf-internal-testing/unet2d-sharded-dummy", device_map="auto")
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    def test_load_sharded_checkpoint_from_hub_local(self):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
+        loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True, device_map="auto")
         new_output = loaded_model(**inputs_dict)
 
         assert loaded_model
