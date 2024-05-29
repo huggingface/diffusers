@@ -697,7 +697,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             pretrained_model_name_or_path,
                             index_file,
                             cache_dir=cache_dir,
-                            force_download=force_download,
                             proxies=proxies,
                             resume_download=resume_download,
                             local_files_only=local_files_only,
@@ -705,7 +704,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             user_agent=user_agent,
                             revision=revision,
                             subfolder=subfolder,
-                            commit_hash=commit_hash,
                         )
 
                 except IOError as e:
@@ -737,7 +735,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         pretrained_model_name_or_path,
                         index_file,
                         cache_dir=cache_dir,
-                        force_download=force_download,
                         proxies=proxies,
                         resume_download=resume_download,
                         local_files_only=local_files_only,
@@ -745,7 +742,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         user_agent=user_agent,
                         revision=revision,
                         subfolder=subfolder,
-                        commit_hash=commit_hash,
                     )
 
             if low_cpu_mem_usage:
