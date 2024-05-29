@@ -1452,7 +1452,7 @@ class HunyuanAttnProcessor2_0:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         from .embeddings import apply_rotary_emb
 
@@ -1503,10 +1503,10 @@ class HunyuanAttnProcessor2_0:
             key = attn.norm_k(key)
 
         # Apply RoPE if needed
-        if rotary_emb is not None:
-            query = apply_rotary_emb(query, rotary_emb)
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb)
             if not attn.is_cross_attention:
-                key = apply_rotary_emb(key, rotary_emb)
+                key = apply_rotary_emb(key, image_rotary_emb)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1

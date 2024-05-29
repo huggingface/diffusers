@@ -9,6 +9,10 @@ import safetensors.torch
 
 device = "cuda"
 model_config = HunyuanDiT2DModel.load_config("XCLiu/HunyuanDiT-0523", subfolder="transformer")
+# input_size -> sample_size, text_dim -> cross_attention_dim
+model_config["sample_size"] = model_config.pop("input_size")[0]
+model_config["cross_attention_dim"] = model_config.pop("text_dim")
+
 model = HunyuanDiT2DModel.from_config(model_config).to(device)
 
 ckpt_path = hf_hub_download(

@@ -646,7 +646,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         grid_width = width // 8 // self.transformer.config.patch_size
         base_size = 512 // 8 // self.transformer.config.patch_size
         grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_size)
-        rotary_emb = get_2d_rotary_pos_embed(
+        image_rotary_emb = get_2d_rotary_pos_embed(
             self.transformer.inner_dim // self.transformer.num_heads, grid_crops_coords, (grid_height, grid_width)
         )
 
@@ -761,9 +761,9 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                     text_embedding_mask_t5=attention_mask_t5,
                     image_meta_size=ims,
                     style=style,
-                    rotary_emb=rotary_emb,
+                    image_rotary_emb=image_rotary_emb,
                     return_dict=False,
-                )
+                )[0]
 
                 noise_pred, _ = noise_pred.chunk(2, dim=1)
 
