@@ -124,10 +124,6 @@ except importlib_metadata.PackageNotFoundError:
     _inflect_available = False
 
 
-# Since HF Hub is a required dependency.
-_huggingface_hub_version = importlib_metadata.version("huggingface_hub")
-logger.debug(f"Successfully imported inflect version {_huggingface_hub_version}")
-
 _unidecode_available = importlib.util.find_spec("unidecode") is not None
 try:
     _unidecode_version = importlib_metadata.version("unidecode")
@@ -692,18 +688,6 @@ def is_transformers_version(operation: str, version: str):
     if not _transformers_available:
         return False
     return compare_versions(parse(_transformers_version), operation, version)
-
-
-def is_huggingface_hub_version(operation: str, version: str):
-    """
-    Args:
-    Compares the current Hugging Face Hub version to a given reference with an operation.
-        operation (`str`):
-            A string representation of an operator, such as `">"` or `"<="`
-        version (`str`):
-            A version string
-    """
-    return compare_versions(parse(_huggingface_hub_version), operation, version)
 
 
 def is_accelerate_version(operation: str, version: str):
