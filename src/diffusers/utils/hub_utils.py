@@ -480,11 +480,11 @@ def _get_checkpoint_shard_files(
 
     # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
     # we don't have to catch them here. We have also dealt with EntryNotFoundError.
-    except HTTPError:
+    except HTTPError as e:
         raise EnvironmentError(
             f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
             " again after checking your internet connection."
-        )
+        ) from e
 
     return cached_folder, sharded_metadata
 
