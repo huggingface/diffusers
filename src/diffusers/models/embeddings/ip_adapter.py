@@ -48,6 +48,39 @@ class IPAdapterFaceIDImageProjection(nn.Module):
         return self.norm(x)
 
 
+class IPAdapterPlusImageProjectionBlock(nn.Module):
+    def __init__(
+        self,
+        embed_dims: int = 768,
+        dim_head: int = 64,
+        heads: int = 16,
+        ffn_ratio: float = 4,
+    ) -> None:
+        super().__init__()
+        from ..attention import FeedForward
+
+        self.ln0 = nn.LayerNorm(embed_dims)
+        self.ln1 = nn.LayerNorm(embed_dims)
+        self.attn = Attention(
+            query_dim=embed_dims,
+            dim_head=dim_head,
+            heads=heads,
+            out_bias=False,
+        )
+        self.ff = nn.Sequential(
+            nn.LayerNorm(embed_dims),
+            FeedForward(embed_dims, embed_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
+        )
+
+    def forward(self, x, latents, residual):
+        encoder_hidden_states = self.ln0(x)
+        latents = self.ln1(latents)
+        encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
+        latents = self.attn(latents, encoder_hidden_states) + residual
+        latents = self.ff(latents) + latents
+        return latents
+
+
 class IPAdapterPlusImageProjection(nn.Module):
     """Resampler of IP-Adapter Plus.
 
@@ -105,39 +138,6 @@ class IPAdapterPlusImageProjection(nn.Module):
 
         latents = self.proj_out(latents)
         return self.norm_out(latents)
-
-
-class IPAdapterPlusImageProjectionBlock(nn.Module):
-    def __init__(
-        self,
-        embed_dims: int = 768,
-        dim_head: int = 64,
-        heads: int = 16,
-        ffn_ratio: float = 4,
-    ) -> None:
-        super().__init__()
-        from ..attention import FeedForward
-
-        self.ln0 = nn.LayerNorm(embed_dims)
-        self.ln1 = nn.LayerNorm(embed_dims)
-        self.attn = Attention(
-            query_dim=embed_dims,
-            dim_head=dim_head,
-            heads=heads,
-            out_bias=False,
-        )
-        self.ff = nn.Sequential(
-            nn.LayerNorm(embed_dims),
-            FeedForward(embed_dims, embed_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
-        )
-
-    def forward(self, x, latents, residual):
-        encoder_hidden_states = self.ln0(x)
-        latents = self.ln1(latents)
-        encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
-        latents = self.attn(latents, encoder_hidden_states) + residual
-        latents = self.ff(latents) + latents
-        return latents
 
 
 class IPAdapterFaceIDPlusImageProjection(nn.Module):
