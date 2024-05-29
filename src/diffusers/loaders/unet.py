@@ -33,7 +33,7 @@ from ..models.embeddings import (
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta, load_state_dict
+from ..models.modeling_utils import load_model_dict_into_meta, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -49,7 +49,6 @@ from .utils import AttnProcsLayers
 
 
 if is_accelerate_available():
-    from accelerate import init_empty_weights
     from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
 
 logger = logging.get_logger(__name__)
@@ -140,7 +139,6 @@ class UNet2DConditionLoadersMixin:
         ```
         """
         from ..models.attention_processor import CustomDiffusionAttnProcessor
-        from ..models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -152,15 +150,7 @@ class UNet2DConditionLoadersMixin:
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
-        # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
-        # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
-        network_alphas = kwargs.pop("network_alphas", None)
-
         _pipeline = kwargs.pop("_pipeline", None)
-
-        is_network_alphas_none = network_alphas is None
-
         allow_pickle = False
 
         if use_safetensors is None:
@@ -216,95 +206,9 @@ class UNet2DConditionLoadersMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
-        # fill attn processors
-        lora_layers_list = []
-
-        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys()) and not USE_PEFT_BACKEND
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
-        if is_lora:
-            # correct keys
-            state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(state_dict, network_alphas)
-
-            if network_alphas is not None:
-                network_alphas_keys = list(network_alphas.keys())
-                used_network_alphas_keys = set()
-
-            lora_grouped_dict = defaultdict(dict)
-            mapped_network_alphas = {}
-
-            all_keys = list(state_dict.keys())
-            for key in all_keys:
-                value = state_dict.pop(key)
-                attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
-                lora_grouped_dict[attn_processor_key][sub_key] = value
-
-                # Create another `mapped_network_alphas` dictionary so that we can properly map them.
-                if network_alphas is not None:
-                    for k in network_alphas_keys:
-                        if k.replace(".alpha", "") in key:
-                            mapped_network_alphas.update({attn_processor_key: network_alphas.get(k)})
-                            used_network_alphas_keys.add(k)
-
-            if not is_network_alphas_none:
-                if len(set(network_alphas_keys) - used_network_alphas_keys) > 0:
-                    raise ValueError(
-                        f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
-                    )
-
-            if len(state_dict) > 0:
-                raise ValueError(
-                    f"The `state_dict` has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
-                )
-
-            for key, value_dict in lora_grouped_dict.items():
-                attn_processor = self
-                for sub_key in key.split("."):
-                    attn_processor = getattr(attn_processor, sub_key)
-
-                # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
-                # or add_{k,v,q,out_proj}_proj_lora layers.
-                rank = value_dict["lora.down.weight"].shape[0]
-
-                if isinstance(attn_processor, LoRACompatibleConv):
-                    in_features = attn_processor.in_channels
-                    out_features = attn_processor.out_channels
-                    kernel_size = attn_processor.kernel_size
-
-                    ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
-                    with ctx():
-                        lora = LoRAConv2dLayer(
-                            in_features=in_features,
-                            out_features=out_features,
-                            rank=rank,
-                            kernel_size=kernel_size,
-                            stride=attn_processor.stride,
-                            padding=attn_processor.padding,
-                            network_alpha=mapped_network_alphas.get(key),
-                        )
-                elif isinstance(attn_processor, LoRACompatibleLinear):
-                    ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
-                    with ctx():
-                        lora = LoRALinearLayer(
-                            attn_processor.in_features,
-                            attn_processor.out_features,
-                            rank,
-                            mapped_network_alphas.get(key),
-                        )
-                else:
-                    raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
-
-                value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
-                lora_layers_list.append((attn_processor, lora))
-
-                if low_cpu_mem_usage:
-                    device = next(iter(value_dict.values())).device
-                    dtype = next(iter(value_dict.values())).dtype
-                    load_model_dict_into_meta(lora, value_dict, device=device, dtype=dtype)
-                else:
-                    lora.load_state_dict(value_dict)
-
-        elif is_custom_diffusion:
+        if is_custom_diffusion:
             attn_processors = {}
             custom_diffusion_grouped_dict = defaultdict(dict)
             for key, value in state_dict.items():
@@ -333,13 +237,9 @@ class UNet2DConditionLoadersMixin:
                         cross_attention_dim=cross_attention_dim,
                     )
                     attn_processors[key].load_state_dict(value_dict)
-        elif USE_PEFT_BACKEND:
-            # In that case we have nothing to do as loading the adapter weights is already handled above by `set_peft_model_state_dict`
-            # on the Unet
-            pass
         else:
             raise ValueError(
-                f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training."
+                f"{model_file} does not seem to be in the correct format expected by Custom Diffusion training."
             )
 
         # <Unsafe code
@@ -349,7 +249,7 @@ class UNet2DConditionLoadersMixin:
         is_sequential_cpu_offload = False
 
         # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `load_lora_weights_into_unet`
-        if not USE_PEFT_BACKEND:
+        if is_custom_diffusion:
             if _pipeline is not None:
                 for _, component in _pipeline.components.items():
                     if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
@@ -368,12 +268,7 @@ class UNet2DConditionLoadersMixin:
             # only custom diffusion needs to set attn processors
             if is_custom_diffusion:
                 self.set_attn_processor(attn_processors)
-
-            # set lora layers
-            for target_module, lora_layer in lora_layers_list:
-                target_module.set_lora_layer(lora_layer)
-
-            self.to(dtype=self.dtype, device=self.device)
+                self.to(dtype=self.dtype, device=self.device)
 
             # Offload back.
             if is_model_cpu_offload:
@@ -381,33 +276,6 @@ class UNet2DConditionLoadersMixin:
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
             # Unsafe code />
-
-    def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
-        is_new_lora_format = all(
-            key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
-        )
-        if is_new_lora_format:
-            # Strip the `"unet"` prefix.
-            is_text_encoder_present = any(key.startswith(self.text_encoder_name) for key in state_dict.keys())
-            if is_text_encoder_present:
-                warn_message = "The state_dict contains LoRA params corresponding to the text encoder which are not being used here. To use both UNet and text encoder related LoRA params, use [`pipe.load_lora_weights()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights)."
-                logger.warning(warn_message)
-            unet_keys = [k for k in state_dict.keys() if k.startswith(self.unet_name)]
-            state_dict = {k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
-
-        # change processor format to 'pure' LoRACompatibleLinear format
-        if any("processor" in k.split(".") for k in state_dict.keys()):
-
-            def format_to_lora_compatible(key):
-                if "processor" not in key.split("."):
-                    return key
-                return key.replace(".processor", "").replace("to_out_lora", "to_out.0.lora").replace("_lora", ".lora")
-
-            state_dict = {format_to_lora_compatible(k): v for k, v in state_dict.items()}
-
-            if network_alphas is not None:
-                network_alphas = {format_to_lora_compatible(k): v for k, v in network_alphas.items()}
-        return state_dict, network_alphas
 
     def save_attn_procs(
         self,
