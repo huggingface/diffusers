@@ -59,6 +59,8 @@
     title: Distributed inference with multiple GPUs
   - local: using-diffusers/merge_loras
     title: Merge LoRAs
+  - local: using-diffusers/scheduler_features
+    title: Scheduler features
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
@@ -68,6 +70,10 @@
   - local: using-diffusers/weighted_prompts
     title: Prompt techniques
   title: Inference techniques
+- sections:
+  - local: advanced_inference/outpaint
+    title: Outpainting
+  title: Advanced inference
 - sections:
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
@@ -93,6 +99,8 @@
     title: Trajectory Consistency Distillation-LoRA
   - local: using-diffusers/svd
     title: Stable Video Diffusion
+  - local: using-diffusers/marigold_usage
+    title: Marigold Computer Vision
   title: Specific pipeline examples
 - sections:
   - local: training/overview
@@ -295,6 +303,8 @@
       title: Latent Diffusion
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/marigold
+      title: Marigold
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm

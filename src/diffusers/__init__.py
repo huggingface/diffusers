@@ -1,4 +1,4 @@
-__version__ = "0.28.0.dev0"
+__version__ = "0.29.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -259,6 +259,8 @@ else:
             "LDMTextToImagePipeline",
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
+            "MarigoldDepthPipeline",
+            "MarigoldNormalsPipeline",
             "MusicLDMPipeline",
             "PaintByExamplePipeline",
             "PIAPipeline",
@@ -637,6 +639,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMTextToImagePipeline,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
+            MarigoldDepthPipeline,
+            MarigoldNormalsPipeline,
             MusicLDMPipeline,
             PaintByExamplePipeline,
             PIAPipeline,
