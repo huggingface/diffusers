@@ -1,11 +1,28 @@
-from .embeddings_utils import (
+from .general import (
+    AttentionPooling,
+    CombinedTimestepLabelEmbeddings,
+    GaussianFourierProjection,
+    ImageHintTimeEmbedding,
+    ImagePositionalEmbeddings,
+    ImageTimeEmbedding,
+    LabelEmbedding,
+    PatchEmbed,
+    PixArtAlphaCombinedTimestepSizeEmbeddings,
+    PixArtAlphaTextProjection,
+    SinusoidalPositionalEmbedding,
+    TextImageProjection,
+    TextImageTimeEmbedding,
+    TextTimeEmbedding,
+    TimestepEmbedding,
+    Timesteps,
     get_1d_sincos_pos_embed_from_grid,
     get_2d_sincos_pos_embed,
     get_2d_sincos_pos_embed_from_grid,
-    get_fourier_embeds_from_boundingbox,
     get_timestep_embedding,
 )
+from .gligen import GLIGENTextBoundingboxProjection, get_fourier_embeds_from_boundingbox
 from .ip_adapter import (
+    ImageProjection,
     IPAdapterFaceIDImageProjection,
     IPAdapterFaceIDPlusImageProjection,
     IPAdapterFullImageProjection,
@@ -13,22 +30,3 @@ from .ip_adapter import (
     IPAdapterPlusImageProjectionBlock,
     MultiIPAdapterImageProjection,
 )
-from .misc import (
-    AttentionPooling,
-    CombinedTimestepLabelEmbeddings,
-    GaussianFourierProjection,
-    GLIGENTextBoundingboxProjection,
-    ImageHintTimeEmbedding,
-    ImagePositionalEmbeddings,
-    ImageProjection,
-    ImageTimeEmbedding,
-    LabelEmbedding,
-    PatchEmbed,
-    SinusoidalPositionalEmbedding,
-    TextImageProjection,
-    TextImageTimeEmbedding,
-    TextTimeEmbedding,
-    TimestepEmbedding,
-    Timesteps,
-)
-from .pixart import PixArtAlphaCombinedTimestepSizeEmbeddings, PixArtAlphaTextProjection

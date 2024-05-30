@@ -19,7 +19,104 @@ import torch
 from torch import nn
 
 from ..activations import get_activation
-from .embeddings_utils import get_2d_sincos_pos_embed, get_fourier_embeds_from_boundingbox, get_timestep_embedding
+
+
+def get_timestep_embedding(
+    timesteps: torch.Tensor,
+    embedding_dim: int,
+    flip_sin_to_cos: bool = False,
+    downscale_freq_shift: float = 1,
+    scale: float = 1,
+    max_period: int = 10000,
+):
+    """
+    This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal timestep embeddings.
+
+    :param timesteps: a 1-D Tensor of N indices, one per batch element.
+                      These may be fractional.
+    :param embedding_dim: the dimension of the output. :param max_period: controls the minimum frequency of the
+    embeddings. :return: an [N x dim] Tensor of positional embeddings.
+    """
+    assert len(timesteps.shape) == 1, "Timesteps should be a 1d-array"
+
+    half_dim = embedding_dim // 2
+    exponent = -math.log(max_period) * torch.arange(
+        start=0, end=half_dim, dtype=torch.float32, device=timesteps.device
+    )
+    exponent = exponent / (half_dim - downscale_freq_shift)
+
+    emb = torch.exp(exponent)
+    emb = timesteps[:, None].float() * emb[None, :]
+
+    # scale embeddings
+    emb = scale * emb
+
+    # concat sine and cosine embeddings
+    emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
+
+    # flip sine and cosine embeddings
+    if flip_sin_to_cos:
+        emb = torch.cat([emb[:, half_dim:], emb[:, :half_dim]], dim=-1)
+
+    # zero pad
+    if embedding_dim % 2 == 1:
+        emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
+    return emb
+
+
+def get_2d_sincos_pos_embed(
+    embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
+):
+    """
+    grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
+    [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    """
+    if isinstance(grid_size, int):
+        grid_size = (grid_size, grid_size)
+
+    grid_h = np.arange(grid_size[0], dtype=np.float32) / (grid_size[0] / base_size) / interpolation_scale
+    grid_w = np.arange(grid_size[1], dtype=np.float32) / (grid_size[1] / base_size) / interpolation_scale
+    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    grid = np.stack(grid, axis=0)
+
+    grid = grid.reshape([2, 1, grid_size[1], grid_size[0]])
+    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
+    if cls_token and extra_tokens > 0:
+        pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
+    return pos_embed
+
+
+def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
+    if embed_dim % 2 != 0:
+        raise ValueError("embed_dim must be divisible by 2")
+
+    # use half of dimensions to encode grid_h
+    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
+    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
+
+    emb = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
+    return emb
+
+
+def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
+    """
+    embed_dim: output dimension for each position pos: a list of positions to be encoded: size (M,) out: (M, D)
+    """
+    if embed_dim % 2 != 0:
+        raise ValueError("embed_dim must be divisible by 2")
+
+    omega = np.arange(embed_dim // 2, dtype=np.float64)
+    omega /= embed_dim / 2.0
+    omega = 1.0 / 10000**omega  # (D/2,)
+
+    pos = pos.reshape(-1)  # (M,)
+    out = np.einsum("m,d->md", pos, omega)  # (M, D/2), outer product
+
+    emb_sin = np.sin(out)  # (M, D/2)
+    emb_cos = np.cos(out)  # (M, D/2)
+
+    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+    return emb
 
 
 class PatchEmbed(nn.Module):
@@ -338,29 +435,6 @@ class TextImageProjection(nn.Module):
         return torch.cat([image_text_embeds, text_embeds], dim=1)
 
 
-class ImageProjection(nn.Module):
-    def __init__(
-        self,
-        image_embed_dim: int = 768,
-        cross_attention_dim: int = 768,
-        num_image_text_embeds: int = 32,
-    ):
-        super().__init__()
-
-        self.num_image_text_embeds = num_image_text_embeds
-        self.image_embeds = nn.Linear(image_embed_dim, self.num_image_text_embeds * cross_attention_dim)
-        self.norm = nn.LayerNorm(cross_attention_dim)
-
-    def forward(self, image_embeds: torch.Tensor):
-        batch_size = image_embeds.shape[0]
-
-        # image
-        image_embeds = self.image_embeds(image_embeds)
-        image_embeds = image_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
-        image_embeds = self.norm(image_embeds)
-        return image_embeds
-
-
 class CombinedTimestepLabelEmbeddings(nn.Module):
     def __init__(self, num_classes, embedding_dim, class_dropout_prob=0.1):
         super().__init__()
@@ -508,94 +582,58 @@ class AttentionPooling(nn.Module):
         return a[:, 0, :]  # cls_token
 
 
-class GLIGENTextBoundingboxProjection(nn.Module):
-    def __init__(self, positive_len, out_dim, feature_type="text-only", fourier_freqs=8):
+class PixArtAlphaCombinedTimestepSizeEmbeddings(nn.Module):
+    """
+    Introduced in PixArt-Alpha.
+
+    Reference:
+    https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L164C9-L168C29
+    """
+
+    def __init__(self, embedding_dim, size_emb_dim, use_additional_conditions: bool = False):
         super().__init__()
-        self.positive_len = positive_len
-        self.out_dim = out_dim
 
-        self.fourier_embedder_dim = fourier_freqs
-        self.position_dim = fourier_freqs * 2 * 4  # 2: sin/cos, 4: xyxy
+        self.outdim = size_emb_dim
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
-        if isinstance(out_dim, tuple):
-            out_dim = out_dim[0]
+        self.use_additional_conditions = use_additional_conditions
+        if use_additional_conditions:
+            self.additional_condition_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+            self.resolution_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
+            self.aspect_ratio_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
 
-        if feature_type == "text-only":
-            self.linears = nn.Sequential(
-                nn.Linear(self.positive_len + self.position_dim, 512),
-                nn.SiLU(),
-                nn.Linear(512, 512),
-                nn.SiLU(),
-                nn.Linear(512, out_dim),
-            )
-            self.null_positive_feature = torch.nn.Parameter(torch.zeros([self.positive_len]))
+    def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
-        elif feature_type == "text-image":
-            self.linears_text = nn.Sequential(
-                nn.Linear(self.positive_len + self.position_dim, 512),
-                nn.SiLU(),
-                nn.Linear(512, 512),
-                nn.SiLU(),
-                nn.Linear(512, out_dim),
-            )
-            self.linears_image = nn.Sequential(
-                nn.Linear(self.positive_len + self.position_dim, 512),
-                nn.SiLU(),
-                nn.Linear(512, 512),
-                nn.SiLU(),
-                nn.Linear(512, out_dim),
-            )
-            self.null_text_feature = torch.nn.Parameter(torch.zeros([self.positive_len]))
-            self.null_image_feature = torch.nn.Parameter(torch.zeros([self.positive_len]))
-
-        self.null_position_feature = torch.nn.Parameter(torch.zeros([self.position_dim]))
-
-    def forward(
-        self,
-        boxes,
-        masks,
-        positive_embeddings=None,
-        phrases_masks=None,
-        image_masks=None,
-        phrases_embeddings=None,
-        image_embeddings=None,
-    ):
-        masks = masks.unsqueeze(-1)
-
-        # embedding position (it may includes padding as placeholder)
-        xyxy_embedding = get_fourier_embeds_from_boundingbox(self.fourier_embedder_dim, boxes)  # B*N*4 -> B*N*C
-
-        # learnable null embedding
-        xyxy_null = self.null_position_feature.view(1, 1, -1)
-
-        # replace padding with learnable null embedding
-        xyxy_embedding = xyxy_embedding * masks + (1 - masks) * xyxy_null
-
-        # positionet with text only information
-        if positive_embeddings is not None:
-            # learnable null embedding
-            positive_null = self.null_positive_feature.view(1, 1, -1)
-
-            # replace padding with learnable null embedding
-            positive_embeddings = positive_embeddings * masks + (1 - masks) * positive_null
-
-            objs = self.linears(torch.cat([positive_embeddings, xyxy_embedding], dim=-1))
-
-        # positionet with text and image infomation
+        if self.use_additional_conditions:
+            resolution_emb = self.additional_condition_proj(resolution.flatten()).to(hidden_dtype)
+            resolution_emb = self.resolution_embedder(resolution_emb).reshape(batch_size, -1)
+            aspect_ratio_emb = self.additional_condition_proj(aspect_ratio.flatten()).to(hidden_dtype)
+            aspect_ratio_emb = self.aspect_ratio_embedder(aspect_ratio_emb).reshape(batch_size, -1)
+            conditioning = timesteps_emb + torch.cat([resolution_emb, aspect_ratio_emb], dim=1)
         else:
-            phrases_masks = phrases_masks.unsqueeze(-1)
-            image_masks = image_masks.unsqueeze(-1)
+            conditioning = timesteps_emb
 
-            # learnable null embedding
-            text_null = self.null_text_feature.view(1, 1, -1)
-            image_null = self.null_image_feature.view(1, 1, -1)
+        return conditioning
 
-            # replace padding with learnable null embedding
-            phrases_embeddings = phrases_embeddings * phrases_masks + (1 - phrases_masks) * text_null
-            image_embeddings = image_embeddings * image_masks + (1 - image_masks) * image_null
 
-            objs_text = self.linears_text(torch.cat([phrases_embeddings, xyxy_embedding], dim=-1))
-            objs_image = self.linears_image(torch.cat([image_embeddings, xyxy_embedding], dim=-1))
-            objs = torch.cat([objs_text, objs_image], dim=1)
+class PixArtAlphaTextProjection(nn.Module):
+    """
+    Projects caption embeddings. Also handles dropout for classifier-free guidance.
 
-        return objs
+    Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
+    """
+
+    def __init__(self, in_features, hidden_size, num_tokens=120):
+        super().__init__()
+        self.linear_1 = nn.Linear(in_features=in_features, out_features=hidden_size, bias=True)
+        self.act_1 = nn.GELU(approximate="tanh")
+        self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True)
+
+    def forward(self, caption):
+        hidden_states = self.linear_1(caption)
+        hidden_states = self.act_1(hidden_states)
+        hidden_states = self.linear_2(hidden_states)
+        return hidden_states
