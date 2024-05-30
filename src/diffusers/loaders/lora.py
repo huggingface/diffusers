@@ -566,17 +566,18 @@ class LoraLoaderMixin:
                 text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
 
                 for name, _ in text_encoder_attn_modules(text_encoder):
-                    rank_key = f"{name}.out_proj.lora_B.weight"
-                    rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+                    for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
+                        rank_key = f"{name}.{module}.lora_B.weight"
+                        if rank_key not in text_encoder_lora_state_dict:
+                            continue
+                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
-                patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
-                if patch_mlp:
-                    for name, _ in text_encoder_mlp_modules(text_encoder):
-                        rank_key_fc1 = f"{name}.fc1.lora_B.weight"
-                        rank_key_fc2 = f"{name}.fc2.lora_B.weight"
-
-                        rank[rank_key_fc1] = text_encoder_lora_state_dict[rank_key_fc1].shape[1]
-                        rank[rank_key_fc2] = text_encoder_lora_state_dict[rank_key_fc2].shape[1]
+                for name, _ in text_encoder_mlp_modules(text_encoder):
+                    for module in ('fc1', 'fc2'):
+                        rank_key = f"{name}.{module}.lora_B.weight"
+                        if rank_key not in text_encoder_lora_state_dict:
+                            continue
+                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
                 if network_alphas is not None:
                     alpha_keys = [
