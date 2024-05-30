@@ -11,130 +11,236 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput, deprecate, is_torch_version, logging
-from ..attention import HunyuanDiTBlock, FP32_SiLU, FP32_Layernorm, HunyuanDiTAttentionPool, modulate
+from ...utils import logging
+from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention import FeedForward
+from ..attention_processor import Attention, HunyuanAttnProcessor2_0
+from ..embeddings import HunYuanTextProjection, PatchEmbed, TimestepEmbedding, Timesteps, get_timestep_embedding
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormSingle
+from ..normalization import AdaLayerNormContinuous
 from .transformer_2d import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-import math
-from einops import repeat
 
-class HunyuanDiTPatchEmbed(nn.Module):
-    """ 2D Image to Patch Embedding
+class FP32_Layernorm(nn.LayerNorm):
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        origin_dtype = inputs.dtype
+        return F.layer_norm(
+            inputs.float(), self.normalized_shape, self.weight.float(), self.bias.float(), self.eps
+        ).to(origin_dtype)
 
-    Image to Patch Embedding using Conv2d
 
-    A convolution based approach to patchifying a 2D image w/ embedding projection.
+class AdaLayerNormShift(nn.Module):
+    r"""
+    Norm layer modified to incorporate timestep embeddings.
 
-    Based on the impl in https://github.com/google-research/vision_transformer
-
-    Hacked together by / Copyright 2020 Ross Wightman
-
-    Remove the _assert function in forward function to be compatible with multi-resolution images.
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+        num_embeddings (`int`): The size of the embeddings dictionary.
     """
+
+    def __init__(self, embedding_dim: int, elementwise_affine=True, eps=1e-6):
+        super().__init__()
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, embedding_dim)
+        self.norm = FP32_Layernorm(embedding_dim, elementwise_affine=elementwise_affine, eps=eps)
+    
+    def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
+        shift = self.linear(self.silu(emb.to(torch.float32)).to(emb.dtype))
+        x = self.norm(x) + shift.unsqueeze(dim=1)
+        return x
+    
+
+class HunyuanDiTAttentionPool(nn.Module):
+    def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
+        super().__init__()
+        self.positional_embedding = nn.Parameter(torch.randn(spacial_dim + 1, embed_dim) / embed_dim**0.5)
+        self.k_proj = nn.Linear(embed_dim, embed_dim)
+        self.q_proj = nn.Linear(embed_dim, embed_dim)
+        self.v_proj = nn.Linear(embed_dim, embed_dim)
+        self.c_proj = nn.Linear(embed_dim, output_dim or embed_dim)
+        self.num_heads = num_heads
+
+    def forward(self, x):
+        x = x.permute(1, 0, 2)  # NLC -> LNC
+        x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)  # (L+1)NC
+        x = x + self.positional_embedding[:, None, :].to(x.dtype)  # (L+1)NC
+        x, _ = F.multi_head_attention_forward(
+            query=x[:1],
+            key=x,
+            value=x,
+            embed_dim_to_check=x.shape[-1],
+            num_heads=self.num_heads,
+            q_proj_weight=self.q_proj.weight,
+            k_proj_weight=self.k_proj.weight,
+            v_proj_weight=self.v_proj.weight,
+            in_proj_weight=None,
+            in_proj_bias=torch.cat([self.q_proj.bias, self.k_proj.bias, self.v_proj.bias]),
+            bias_k=None,
+            bias_v=None,
+            add_zero_attn=False,
+            dropout_p=0,
+            out_proj_weight=self.c_proj.weight,
+            out_proj_bias=self.c_proj.bias,
+            use_separate_proj_weight=True,
+            training=self.training,
+            need_weights=False,
+        )
+        return x.squeeze(0)
+
+
+@maybe_allow_in_graph
+class HunyuanDiTBlock(nn.Module):
+    r"""
+    Parameters:
+    HunyuanDiT Transformer block. Allow skip connection and QKNorm
+        dim (`int`): The number of channels in the input and output. num_attention_heads (`int`): The number of heads
+        to use for multi-head attention. attention_head_dim (`int`): The number of channels in each head. dropout
+        (`float`, *optional*, defaults to 0.0): The dropout probability to use. cross_attention_dim (`int`,
+        *optional*): The size of the encoder_hidden_states vector for cross attention. activation_fn (`str`,
+        *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward. num_embeds_ada_norm (:
+            obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
+        attention_bias (:
+            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
+        only_cross_attention (`bool`, *optional*):
+            Whether to use only cross-attention layers. In this case two cross attention layers are used.
+        double_self_attention (`bool`, *optional*):
+            Whether to use two self-attention layers. In this case no cross attention layers are used.
+        upcast_attention (`bool`, *optional*):
+            Whether to upcast the attention computation to float32. This is useful for mixed precision training.
+        norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
+            Whether to use learnable elementwise affine parameters for normalization.
+        norm_type (`str`, *optional*, defaults to `"layer_norm"`):
+            The normalization layer to use. Can be `"layer_norm"`, `"ada_norm"` or `"ada_norm_zero"`.
+        final_dropout (`bool` *optional*, defaults to False):
+            Whether to apply a final dropout after the last feed-forward layer.
+        attention_type (`str`, *optional*, defaults to `"default"`):
+            The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
+        positional_embeddings (`str`, *optional*, defaults to `None`):
+            The type of positional embeddings to apply to.
+        num_positional_embeddings (`int`, *optional*, defaults to `None`):
+            The maximum number of positional embeddings to apply.
+    """
+
     def __init__(
-            self,
-            img_size=224,
-            patch_size=16,
-            in_chans=3,
-            embed_dim=768,
-            norm_layer=None,
-            flatten=True,
-            bias=True,
+        self,
+        dim: int,
+        num_attention_heads: int,
+        cross_attention_dim: int = 1024,
+        dropout=0.0,
+        activation_fn: str = "geglu",
+        norm_elementwise_affine: bool = True,
+        norm_eps: float = 1e-6,
+        final_dropout: bool = False,
+        ff_inner_dim: Optional[int] = None,
+        ff_bias: bool = True,
+        skip: bool = False,
+        qk_norm: bool = True,
     ):
         super().__init__()
 
-        if isinstance(img_size, int):
-            img_size = (img_size, img_size)
-        elif isinstance(img_size, (tuple, list)) and len(img_size) == 2:
-            img_size = tuple(img_size)
-        else:
-            raise ValueError(f"img_size must be int or tuple/list of length 2. Got {img_size}")
+        # Define 3 blocks. Each block has its own normalization layer.
+        # NOTE: when new version comes, check norm2 and norm 3
+        # 1. Self-Attn
+        self.norm1 = AdaLayerNormShift(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
 
-        patch_size = (patch_size, patch_size)
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
-        self.flatten = flatten
-
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias)
-        self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
-
-    def update_image_size(self, img_size):
-        self.img_size = img_size
-        self.grid_size = (img_size[0] // self.patch_size[0], img_size[1] // self.patch_size[1])
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
-
-    def forward(self, x):
-        # B, C, H, W = x.shape
-        # _assert(H == self.img_size[0], f"Input image height ({H}) doesn't match model ({self.img_size[0]}).")
-        # _assert(W == self.img_size[1], f"Input image width ({W}) doesn't match model ({self.img_size[1]}).")
-        x = self.proj(x)
-        if self.flatten:
-            x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
-        x = self.norm(x)
-        return x
-
-def timestep_embedding(t, dim, max_period=10000, repeat_only=False):
-    """
-    Create sinusoidal timestep embeddings.
-    :param t: a 1-D Tensor of N indices, one per batch element.
-                      These may be fractional.
-    :param dim: the dimension of the output.
-    :param max_period: controls the minimum frequency of the embeddings.
-    :return: an (N, D) Tensor of positional embeddings.
-    """
-    # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
-    if not repeat_only:
-        half = dim // 2
-        freqs = torch.exp(
-            -math.log(max_period)
-            * torch.arange(start=0, end=half, dtype=torch.float32)
-            / half
-        ).to(device=t.device)   # size: [dim/2], 一个指数衰减的曲线
-        args = t[:, None].float() * freqs[None]
-        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-        if dim % 2:
-            embedding = torch.cat(
-                [embedding, torch.zeros_like(embedding[:, :1])], dim=-1
-            )
-    else:
-        embedding = repeat(t, "b -> b d", d=dim)
-    return embedding
-
-
-class HunyuanDiTTimestepEmbedder(nn.Module):
-    """
-    Embeds scalar timesteps into vector representations.
-    """
-    def __init__(self, hidden_size, frequency_embedding_size=256, out_size=None):
-        super().__init__()
-        if out_size is None:
-            out_size = hidden_size
-        self.mlp = nn.Sequential(
-            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
-            nn.SiLU(),
-            nn.Linear(hidden_size, out_size, bias=True),
+        self.attn1 = Attention(
+            query_dim=dim,
+            cross_attention_dim=None,
+            dim_head=dim // num_attention_heads,
+            heads=num_attention_heads,
+            qk_norm="layer_norm" if qk_norm else None,
+            eps=1e-6,
+            bias=True,
+            processor=HunyuanAttnProcessor2_0(),
         )
-        self.frequency_embedding_size = frequency_embedding_size
 
-    def forward(self, t):
-        t_freq = timestep_embedding(t, self.frequency_embedding_size).type(self.mlp[0].weight.dtype)
-        t_emb = self.mlp(t_freq)
-        return t_emb
+        # 2. Cross-Attn
+        self.norm2 = FP32_Layernorm(dim, norm_eps, norm_elementwise_affine)
+
+        self.attn2 = Attention(
+            query_dim=dim,
+            cross_attention_dim=cross_attention_dim,
+            dim_head=dim // num_attention_heads,
+            heads=num_attention_heads,
+            qk_norm="layer_norm" if qk_norm else None,
+            eps=1e-6,
+            bias=True,
+            processor=HunyuanAttnProcessor2_0(),
+        )
+        # 3. Feed-forward
+        self.norm3 = FP32_Layernorm(dim, norm_eps, norm_elementwise_affine)
+
+        self.ff = FeedForward(
+            dim,
+            dropout=dropout,  ### 0.0
+            activation_fn=activation_fn,  ### approx GeLU
+            final_dropout=final_dropout,  ### 0.0
+            inner_dim=ff_inner_dim,  ### int(dim * mlp_ratio)
+            bias=ff_bias,
+        )
+
+        # 4. Skip Connection
+        if skip:
+            self.skip_norm = FP32_Layernorm(2 * dim, norm_eps, elementwise_affine=True)
+            self.skip_linear = nn.Linear(2 * dim, dim)
+        else:
+            self.skip_linear = None
+
+        # let chunk size default to None
+        self._chunk_size = None
+        self._chunk_dim = 0
+
+    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
+        # Sets chunk feed-forward
+        self._chunk_size = chunk_size
+        self._chunk_dim = dim
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+        image_rotary_emb=None,
+        skip=None,
+    ) -> torch.Tensor:
+        # Notice that normalization is always applied before the real computation in the following blocks.
+        # 0. Long Skip Connection
+        if self.skip_linear is not None:
+            cat = torch.cat([hidden_states, skip], dim=-1)
+            cat = self.skip_norm(cat)
+            hidden_states = self.skip_linear(cat)
+
+        # 1. Self-Attention
+        norm_hidden_states = self.norm1(hidden_states, temb)  ### checked: self.norm1 is correct
+        attn_output = self.attn1(
+            norm_hidden_states,
+            image_rotary_emb=image_rotary_emb,
+        )
+        hidden_states = hidden_states + attn_output
+
+        # 2. Cross-Attention
+        hidden_states = hidden_states + self.attn2(
+            self.norm2(hidden_states),
+            encoder_hidden_states=encoder_hidden_states,
+            image_rotary_emb=image_rotary_emb,
+        )
+
+        # FFN Layer ### TODO: switch norm2 and norm3 in the state dict
+        mlp_inputs = self.norm3(hidden_states)
+        hidden_states = hidden_states + self.ff(mlp_inputs)
+
+        return hidden_states
+
 
 class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
     """
@@ -142,9 +248,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
     Inherit ModelMixin and ConfigMixin to be compatible with the sampler StableDiffusionPipeline of diffusers.
 
-    Parameters
-    ----------
-    args: argparse.Namespace
+    Parameters ---------- args: argparse.Namespace
         The arguments parsed by argparse.
     input_size: tuple
         The size of the input image.
@@ -163,51 +267,43 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
     log_fn: callable
         The logging function.
     """
+
     @register_to_config
     def __init__(
-        self, 
+        self,
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
         in_channels: Optional[int] = None,
         patch_size: Optional[int] = None,
         activation_fn: str = "gelu-approximate",
-        input_size=(32, 32),
+        sample_size=32,
         hidden_size=1152,
         num_layers: int = 28,
-        mlp_ratio: float=4.0,
-        learn_sigma: bool=True,
-        text_dim: int=1024,
+        mlp_ratio: float = 4.0,
+        learn_sigma: bool = True,
+        cross_attention_dim: int = 1024,
         norm_type: str = "layer_norm",
-        text_states_dim_t5: int = 2048,
+        cross_attention_dim_t5: int = 2048,
         text_len: int = 77,
         text_len_t5: int = 256,
     ):
         super().__init__()
-        self.depth = num_layers
-        self.learn_sigma = learn_sigma
-        self.in_channels = in_channels
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
-        self.patch_size = patch_size
         self.num_heads = num_attention_heads
-        self.hidden_size = hidden_size
-        self.text_states_dim = text_dim
-        self.text_states_dim_t5 = text_states_dim_t5
-        self.text_len = text_len
-        self.text_len_t5 = text_len_t5
-        self.norm = norm_type
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.mlp_t5 = nn.Sequential(
-            nn.Linear(self.text_states_dim_t5, self.text_states_dim_t5 * 4, bias=True),
-            FP32_SiLU(),
-            nn.Linear(self.text_states_dim_t5 * 4, self.text_states_dim, bias=True),
+        self.text_embedder = HunYuanTextProjection(
+            in_features=cross_attention_dim_t5,
+            hidden_size=cross_attention_dim_t5 * 4,
+            out_features=cross_attention_dim,
         )
         # learnable replace
         self.text_embedding_padding = nn.Parameter(
-            torch.randn(self.text_len + self.text_len_t5, self.text_states_dim, dtype=torch.float32))
+            torch.randn(text_len + text_len_t5, cross_attention_dim, dtype=torch.float32)
+        )
 
         # Attention pooling
-        self.pooler = HunyuanDiTAttentionPool(self.text_len_t5, self.text_states_dim_t5, num_heads=8, output_dim=1024)
+        self.pooler = HunyuanDiTAttentionPool(text_len_t5, cross_attention_dim_t5, num_heads=8, output_dim=1024)
 
         # Here we use a default learned embedder layer for future extension.
         self.style_embedder = nn.Embedding(1, hidden_size)
@@ -216,60 +312,61 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         self.extra_in_dim = 256 * 6 + hidden_size
 
         # Text embedding for `add`
-        self.x_embedder = HunyuanDiTPatchEmbed(input_size, patch_size, in_channels, hidden_size)
-        self.t_embedder = HunyuanDiTTimestepEmbedder(hidden_size)
+        self.pos_embed = PatchEmbed(
+            height=sample_size,
+            width=sample_size,
+            in_channels=in_channels,
+            embed_dim=hidden_size,
+            patch_size=patch_size,
+            pos_embed_type=None,
+        )
+        self.time_proj = Timesteps(256, True, 0)
+        self.time_embedding = TimestepEmbedding(in_channels=256, time_embed_dim=hidden_size)
         self.extra_in_dim += 1024
-        self.extra_embedder = nn.Sequential(
-            nn.Linear(self.extra_in_dim, hidden_size * 4),
-            FP32_SiLU(),
-            nn.Linear(hidden_size * 4, hidden_size, bias=True),
+        self.extra_embedder = HunYuanTextProjection(
+            in_features=self.extra_in_dim,
+            hidden_size=hidden_size * 4,
+            out_features=hidden_size,
         )
 
         # HunyuanDiT Blocks
-        self.blocks = nn.ModuleList([
-            HunyuanDiTBlock(dim=self.inner_dim,
-                            num_attention_heads=self.config.num_attention_heads,
-                            activation_fn=activation_fn,
-                            ff_inner_dim=int(self.inner_dim * mlp_ratio),
-                            text_dim=self.config.text_dim,
-                            qk_norm=True, # See http://arxiv.org/abs/2302.05442 for details.
-                            skip=layer > self.depth // 2,
-                            )
-            for layer in range(self.depth)
-        ])
-
-        self.norm_final = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
-        self.final_linear = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
-        self.final_adaLN_modulation = nn.Sequential(
-            FP32_SiLU(),
-            nn.Linear(hidden_size, 2 * self.inner_dim, bias=True)
+        self.blocks = nn.ModuleList(
+            [
+                HunyuanDiTBlock(
+                    dim=self.inner_dim,
+                    num_attention_heads=self.config.num_attention_heads,
+                    activation_fn=activation_fn,
+                    ff_inner_dim=int(self.inner_dim * mlp_ratio),
+                    cross_attention_dim=cross_attention_dim,
+                    qk_norm=True,  # See http://arxiv.org/abs/2302.05442 for details.
+                    skip=layer > num_layers // 2,
+                )
+                for layer in range(num_layers)
+            ]
         )
-        self.unpatchify_channels = self.out_channels
+        
+        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
+        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
-        self.initialize_weights()
-
-
-    def forward(self,
-                x,
-                t,
-                encoder_hidden_states=None,
-                text_embedding_mask=None,
-                encoder_hidden_states_t5=None,
-                text_embedding_mask_t5=None,
-                image_meta_size=None,
-                style=None,
-                cos_cis_img=None,
-                sin_cis_img=None,
-                return_dict=True,
-                ):
+    def forward(
+        self,
+        hidden_states,
+        timestep,
+        encoder_hidden_states=None,
+        text_embedding_mask=None,
+        encoder_hidden_states_t5=None,
+        text_embedding_mask_t5=None,
+        image_meta_size=None,
+        style=None,
+        image_rotary_emb=None,
+        return_dict=True,
+    ):
         """
         Forward pass of the encoder.
 
-        Parameters
-        ----------
-        x: torch.Tensor
-            (B, D, H, W)
-        t: torch.Tensor
+        Args:
+        hidden_states: torch.Tensor (B, D, H, W)
+        timestep: torch.Tensor 
             (B)
         encoder_hidden_states: torch.Tensor
             CLIP text embedding, (B, L_clip, D)
@@ -288,72 +385,84 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         return_dict: bool
             Whether to return a dictionary.
         """
+        # Build text tokens with pooling
+        pooled_projections = self.pooler(encoder_hidden_states_t5)
 
-        text_states = encoder_hidden_states                     # 2,77,1024
-        text_states_t5 = encoder_hidden_states_t5               # 2,256,2048
-        text_states_mask = text_embedding_mask.bool()           # 2,77
-        text_states_t5_mask = text_embedding_mask_t5.bool()     # 2,256
-        b_t5, l_t5, c_t5 = text_states_t5.shape
-        text_states_t5 = self.mlp_t5(text_states_t5.view(-1, c_t5))
-        text_states = torch.cat([text_states, text_states_t5.view(b_t5, l_t5, -1)], dim=1)  # 2,205，1024
+        text_states_mask = text_embedding_mask.bool()  # 2,77
+        text_states_t5_mask = text_embedding_mask_t5.bool()  # 2,256
+        b_t5, l_t5, c_t5 = encoder_hidden_states_t5.shape  # 2,256,2048
+        encoder_hidden_states_t5 = self.text_embedder(encoder_hidden_states_t5.view(-1, c_t5))
+        encoder_hidden_states = torch.cat(
+            [encoder_hidden_states, encoder_hidden_states_t5.view(b_t5, l_t5, -1)], dim=1
+        )  # 2,205，1024
         clip_t5_mask = torch.cat([text_states_mask, text_states_t5_mask], dim=-1)
 
-        clip_t5_mask = clip_t5_mask
-        text_states = torch.where(clip_t5_mask.unsqueeze(2), text_states, self.text_embedding_padding.to(text_states))
+        encoder_hidden_states = torch.where(
+            clip_t5_mask.unsqueeze(2), encoder_hidden_states, self.text_embedding_padding.to(encoder_hidden_states)
+        )
 
-        _, _, oh, ow = x.shape
-        th, tw = oh // self.patch_size, ow // self.patch_size
+        _, _, height, width = hidden_states.shape
+        height, width = height // self.config.patch_size, width // self.config.patch_size
 
         # ========================= Build time and image embedding =========================
-        t = self.t_embedder(t)
-        x = self.x_embedder(x)
-
-        # Get image RoPE embedding according to `reso`lution.
-        freqs_cis_img = (cos_cis_img, sin_cis_img)
-
-        # ========================= Concatenate all extra vectors =========================
-        # Build text tokens with pooling
-        extra_vec = self.pooler(encoder_hidden_states_t5)
+        timesteps_projected = self.time_proj(timestep)
+        temb = self.time_embedding(timesteps_projected.to(dtype=timestep.dtype))
+        hidden_states = self.pos_embed(hidden_states)
 
         # Build image meta size tokens
-        image_meta_size = timestep_embedding(image_meta_size.view(-1), 256)   # [B * 6, 256]
-        
-        image_meta_size = image_meta_size.to(dtype=x.dtype)
+        image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0)  # [B * 6, 256]
+
+        image_meta_size = image_meta_size.to(dtype=hidden_states.dtype)
         image_meta_size = image_meta_size.view(-1, 6 * 256)
-        extra_vec = torch.cat([extra_vec, image_meta_size], dim=1)  # [B, D + 6 * 256]
+        extra_vec = torch.cat([pooled_projections, image_meta_size], dim=1)  # [B, D + 6 * 256]
 
         # Build style tokens
         style_embedding = self.style_embedder(style)
         extra_vec = torch.cat([extra_vec, style_embedding], dim=1)
 
         # Concatenate all extra vectors
-        c = t + self.extra_embedder(extra_vec)  # [B, D]
+        temb = temb + self.extra_embedder(extra_vec)  # [B, D]
 
         # ========================= Forward pass through HunYuanDiT blocks =========================
         skips = []
         for layer, block in enumerate(self.blocks):
-            if layer > self.depth // 2:
+            if layer > self.config.num_layers // 2:
                 skip = skips.pop()
-                x = block(x, timestep=c, encoder_hidden_states=text_states, freq_cis_img=freqs_cis_img, skip=skip)   # (N, L, D)
+                hidden_states = block(
+                    hidden_states,
+                    temb=temb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    image_rotary_emb=image_rotary_emb,
+                    skip=skip,
+                )  # (N, L, D)
             else:
-                x = block(x, timestep=c, encoder_hidden_states=text_states, freq_cis_img=freqs_cis_img,)         # (N, L, D)
-                
-            if layer < (self.depth // 2 - 1):
-                skips.append(x)
-            
-        # ========================= Final layer =========================
-        x = self._get_output_for_patched_inputs(x, c)                              # (N, L, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x, th, tw)                          # (N, out_channels, H, W)
+                hidden_states = block(
+                    hidden_states,
+                    temb=temb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    image_rotary_emb=image_rotary_emb,
+                )  # (N, L, D)
 
-        if return_dict:
-            return {'x': x}
-        return x
-    
-    def _get_output_for_patched_inputs(self, hidden_states, timestep):
-        shift, scale = self.final_adaLN_modulation(timestep).chunk(2, dim=1)
-        hidden_states = modulate(self.norm_final(hidden_states), shift, scale)
-        hidden_states = self.final_linear(hidden_states)
-        return hidden_states
+            if layer < (self.config.num_layers // 2 - 1):
+                skips.append(hidden_states)
+
+        # ========================= Final layer =========================
+        hidden_states = self.norm_out(hidden_states, temb.to(torch.float32))
+        hidden_states = self.proj_out(hidden_states)
+        # (N, L, patch_size ** 2 * out_channels)
+
+        # unpatchify: (N, out_channels, H, W)
+        patch_size = self.pos_embed.patch_size
+        hidden_states = hidden_states.reshape(
+            shape=(hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels)
+        )
+        hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
+        output = hidden_states.reshape(
+            shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
+        )
+        if not return_dict:
+            return (output,)
+        return Transformer2DModelOutput(sample=output)
 
     def initialize_weights(self):
         # Initialize transformer layers:
@@ -362,6 +471,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
                 torch.nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0)
+
         self.apply(_basic_init)
 
         # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
@@ -387,18 +497,3 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         nn.init.constant_(self.final_adaLN_modulation[-1].bias, 0)
         nn.init.constant_(self.final_linear.weight, 0)
         nn.init.constant_(self.final_linear.bias, 0)
-
-    def unpatchify(self, x, h, w):
-        """
-        x: (N, T, patch_size**2 * C)
-        imgs: (N, H, W, C)
-        """
-        c = self.unpatchify_channels
-        p = self.x_embedder.patch_size[0]
-        # h = w = int(x.shape[1] ** 0.5)
-        assert h * w == x.shape[1]
-
-        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
-        x = torch.einsum('nhwpqc->nchpwq', x)
-        imgs = x.reshape(shape=(x.shape[0], c, h * p, w * p))
-        return imgs

@@ -852,6 +852,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 7. Load each module in the pipeline
         current_device_map = None
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
+            print(name, library_name, class_name)
             if final_device_map is not None and len(final_device_map) > 0:
                 component_device = final_device_map.get(name, None)
                 if component_device is not None:
@@ -869,6 +870,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # 7.3 Use passed sub model or load class_name from library_name
             if name in passed_class_obj:
+                print(name)
                 # if the model is in a pipeline module, then we load it from the pipeline
                 # check that passed_class_obj has correct parent class
                 maybe_raise_or_warn(
