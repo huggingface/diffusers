@@ -46,15 +46,42 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_all_close,
     torch_device,
+    is_peft_available,
+    require_peft_backend
 )
+import numpy as np
 
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+
+if is_peft_available():
+    from peft import LoraConfig
+    from peft.tuners.tuners_utils import BaseTunerLayer
+    from peft.utils import get_peft_model_state_dict
 
 
 logger = logging.get_logger(__name__)
 
 enable_full_determinism()
 
+def get_unet_lora_config():
+    rank = 4
+    unet_lora_config = LoraConfig(
+        r=rank,
+        lora_alpha=rank,
+        target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+        init_lora_weights=False,
+        use_dora=False,
+    )
+    return unet_lora_config
+
+def check_if_lora_correctly_set(model) -> bool:
+    """
+    Checks if the LoRA layers are correctly set with peft
+    """
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            return True
+    return False
 
 def create_ip_adapter_state_dict(model):
     # "ip_adapter" (cross-attention weights)
@@ -1004,6 +1031,28 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert sample2.allclose(sample4, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
+
+    @require_peft_backend
+    def test_lora(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        # forward pass without LoRA
+        with torch.no_grad():
+            non_lora_sample = model(**inputs_dict).sample
+
+        unet_lora_config = get_unet_lora_config()
+        model.add_adapter(unet_lora_config)
+
+        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+        # forward pass with LoRA
+        with torch.no_grad():
+            lora_sample = model(**inputs_dict).sample
+
+        assert not torch.allclose(non_lora_sample, lora_sample, atol=1e-4, rtol=1e-4), "LoRA injected UNet should produce different results."
+        
 
 
 @slow

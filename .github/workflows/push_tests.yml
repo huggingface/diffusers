@@ -202,12 +202,17 @@ jobs:
           -s -v -k "not Flax and not Onnx and not PEFTLoRALoading" \
           --make-reports=tests_peft_cuda \
           tests/lora/
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "lora and not Flax and not Onnx and not PEFTLoRALoading" \
+          --make-reports=tests_peft_cuda_models_lora \
+          tests/models/
 
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
         cat reports/tests_peft_cuda_stats.txt
         cat reports/tests_peft_cuda_failures_short.txt
+        cat reports/tests_peft_cuda_models_lora_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
