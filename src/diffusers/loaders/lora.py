@@ -401,7 +401,7 @@ class LoraLoaderMixin:
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
 
-        unet.load_attn_procs(state_dict, network_alphas=network_alphas, _pipeline=_pipeline)
+        unet.load_attn_procs(state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline)
 
     @classmethod
     def load_lora_into_text_encoder(
