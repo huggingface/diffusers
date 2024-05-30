@@ -546,7 +546,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
 
         if depth_map is None:
             pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
-            pixel_values = pixel_values.to(device=device)
+            pixel_values = pixel_values.to(device=device, dtype=dtype)
             # The DPT-Hybrid model uses batch-norm layers which are not compatible with fp16.
             # So we use `torch.autocast` here for half precision inference.
             if torch.backends.mps.is_available():
