@@ -280,6 +280,13 @@ class UNet2DConditionLoadersMixin:
         return attn_processors
 
     def _process_lora(self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline):
+        # This method does the following things:
+        # 1. Filters the `state_dict` with keys matching  `unet_identifier_key` when using the non-legacy
+        #    format. For legacy format no filtering is applied.
+        # 2. Converts the `state_dict` to the `peft` compatible format.
+        # 3. Creates a `LoraConfig` and then injects the converted `state_dict` into the UNet per the
+        #    `LoraConfig` specs.
+        # 4. It also reports if the underlying `_pipeline` has any kind of offloading inside of it.
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
@@ -302,7 +309,7 @@ class UNet2DConditionLoadersMixin:
         is_sequential_cpu_offload = False
         state_dict_to_be_used = unet_state_dict if len(unet_state_dict) > 0 else state_dict
 
-        if len(state_dict_to_be_used.keys()) > 0:
+        if len(state_dict_to_be_used) > 0:
             if adapter_name in getattr(self, "peft_config", {}):
                 raise ValueError(
                     f"Adapter name {adapter_name} already in use in the Unet - please select a new adapter name."
