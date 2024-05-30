@@ -138,15 +138,15 @@ Because Marigold's latent space is compatible with the base Stable Diffusion, it
 ```diff
   import diffusers
   import torch
-  
+
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
       "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
   ).to("cuda")
-  
+
 + pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
 +     "madebyollin/taesd", torch_dtype=torch.float16
 + ).cuda()
-  
+
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
   depth = pipe(image)
 ```
@@ -156,13 +156,13 @@ As suggested in [Optimizations](torch2.0), adding `torch.compile` may squeeze ex
 ```diff
   import diffusers
   import torch
-  
+
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
       "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
   ).to("cuda")
-  
+
 + pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-  
+
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
   depth = pipe(image)
 ```
@@ -208,7 +208,7 @@ model_paper_kwargs = {
 	diffusers.schedulers.LCMScheduler: {
 		"num_inference_steps": 4,
 		"ensemble_size": 5,
-	},	
+	},
 }
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -261,7 +261,7 @@ model_paper_kwargs = {
 	diffusers.schedulers.LCMScheduler: {
 		"num_inference_steps": 4,
 		"ensemble_size": 10,
-	},	
+	},
 }
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -415,7 +415,7 @@ image = diffusers.utils.load_image(
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
     "prs-eth/marigold-lcm-v1-0", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+).to(device)
 
 depth_image = pipe(image, generator=generator).prediction
 depth_image = pipe.image_processor.visualize_depth(depth_image, color_map="binary")
@@ -423,10 +423,10 @@ depth_image[0].save("motorcycle_controlnet_depth.png")
 
 controlnet = diffusers.ControlNetModel.from_pretrained(
     "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+).to(device)
 pipe = diffusers.StableDiffusionXLControlNetPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0", torch_dtype=torch.float16, variant="fp16", controlnet=controlnet
-).to("cuda")
+).to(device)
 pipe.scheduler = diffusers.DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 
 controlnet_out = pipe(
