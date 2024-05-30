@@ -439,6 +439,23 @@ class UNet2DConditionLoadersMixin:
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
+        is_custom_diffusion = any(
+            isinstance(
+                x,
+                (CustomDiffusionAttnProcessor, CustomDiffusionAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor),
+            )
+            for (_, x) in self.attn_processors.items()
+        )
+        if is_custom_diffusion:
+            state_dict = self._get_custom_diffusion_state_dict()
+        else:
+            if not USE_PEFT_BACKEND:
+                raise ValueError("PEFT backend is required for saving LoRAs using the `save_attn_procs()` method.")
+
+            from peft.utils import get_peft_model_state_dict
+
+            state_dict = get_peft_model_state_dict(self)
+
         if save_function is None:
             if safe_serialization:
 
@@ -449,36 +466,6 @@ class UNet2DConditionLoadersMixin:
                 save_function = torch.save
 
         os.makedirs(save_directory, exist_ok=True)
-
-        is_custom_diffusion = any(
-            isinstance(
-                x,
-                (CustomDiffusionAttnProcessor, CustomDiffusionAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor),
-            )
-            for (_, x) in self.attn_processors.items()
-        )
-        if is_custom_diffusion:
-            model_to_save = AttnProcsLayers(
-                {
-                    y: x
-                    for (y, x) in self.attn_processors.items()
-                    if isinstance(
-                        x,
-                        (
-                            CustomDiffusionAttnProcessor,
-                            CustomDiffusionAttnProcessor2_0,
-                            CustomDiffusionXFormersAttnProcessor,
-                        ),
-                    )
-                }
-            )
-            state_dict = model_to_save.state_dict()
-            for name, attn in self.attn_processors.items():
-                if len(attn.state_dict()) == 0:
-                    state_dict[name] = {}
-        else:
-            model_to_save = AttnProcsLayers(self.attn_processors)
-            state_dict = model_to_save.state_dict()
 
         if weight_name is None:
             if safe_serialization:
@@ -491,56 +478,84 @@ class UNet2DConditionLoadersMixin:
         save_function(state_dict, save_path)
         logger.info(f"Model weights saved in {save_path}")
 
+    def _get_custom_diffusion_state_dict(self):
+        from ..models.attention_processor import (
+            CustomDiffusionAttnProcessor,
+            CustomDiffusionAttnProcessor2_0,
+            CustomDiffusionXFormersAttnProcessor,
+        )
+
+        model_to_save = AttnProcsLayers(
+            {
+                y: x
+                for (y, x) in self.attn_processors.items()
+                if isinstance(
+                    x,
+                    (
+                        CustomDiffusionAttnProcessor,
+                        CustomDiffusionAttnProcessor2_0,
+                        CustomDiffusionXFormersAttnProcessor,
+                    ),
+                )
+            }
+        )
+        state_dict = model_to_save.state_dict()
+        for name, attn in self.attn_processors.items():
+            if len(attn.state_dict()) == 0:
+                state_dict[name] = {}
+
+        return state_dict
+
     def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `fuse_lora()`.")
+
         self.lora_scale = lora_scale
         self._safe_fusing = safe_fusing
         self.apply(partial(self._fuse_lora_apply, adapter_names=adapter_names))
 
     def _fuse_lora_apply(self, module, adapter_names=None):
-        if not USE_PEFT_BACKEND:
-            if hasattr(module, "_fuse_lora"):
-                module._fuse_lora(self.lora_scale, self._safe_fusing)
+        from peft.tuners.tuners_utils import BaseTunerLayer
 
-            if adapter_names is not None:
+        merge_kwargs = {"safe_merge": self._safe_fusing}
+
+        if isinstance(module, BaseTunerLayer):
+            if self.lora_scale != 1.0:
+                module.scale_layer(self.lora_scale)
+
+            # For BC with prevous PEFT versions, we need to check the signature
+            # of the `merge` method to see if it supports the `adapter_names` argument.
+            supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+            if "adapter_names" in supported_merge_kwargs:
+                merge_kwargs["adapter_names"] = adapter_names
+            elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
                 raise ValueError(
-                    "The `adapter_names` argument is not supported in your environment. Please switch"
-                    " to PEFT backend to use this argument by installing latest PEFT and transformers."
-                    " `pip install -U peft transformers`"
+                    "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
+                    " to the latest version of PEFT. `pip install -U peft`"
                 )
-        else:
-            from peft.tuners.tuners_utils import BaseTunerLayer
 
-            merge_kwargs = {"safe_merge": self._safe_fusing}
-
-            if isinstance(module, BaseTunerLayer):
-                if self.lora_scale != 1.0:
-                    module.scale_layer(self.lora_scale)
-
-                # For BC with prevous PEFT versions, we need to check the signature
-                # of the `merge` method to see if it supports the `adapter_names` argument.
-                supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
-                if "adapter_names" in supported_merge_kwargs:
-                    merge_kwargs["adapter_names"] = adapter_names
-                elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
-                    raise ValueError(
-                        "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
-                        " to the latest version of PEFT. `pip install -U peft`"
-                    )
-
-                module.merge(**merge_kwargs)
+            module.merge(**merge_kwargs)
 
     def unfuse_lora(self):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `unfuse_lora()`.")
         self.apply(self._unfuse_lora_apply)
 
     def _unfuse_lora_apply(self, module):
-        if not USE_PEFT_BACKEND:
-            if hasattr(module, "_unfuse_lora"):
-                module._unfuse_lora()
-        else:
-            from peft.tuners.tuners_utils import BaseTunerLayer
+        from peft.tuners.tuners_utils import BaseTunerLayer
 
-            if isinstance(module, BaseTunerLayer):
-                module.unmerge()
+        if isinstance(module, BaseTunerLayer):
+            module.unmerge()
+
+    def unload_lora(self):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `unload_lora()`.")
+
+        from ..utils import recurse_remove_peft_layers
+
+        recurse_remove_peft_layers(self)
+        if hasattr(self, "peft_config"):
+            del self.peft_config
 
     def set_adapters(
         self,

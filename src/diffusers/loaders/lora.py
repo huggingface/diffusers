@@ -22,10 +22,8 @@ import torch
 from huggingface_hub import model_info
 from huggingface_hub.constants import HF_HUB_OFFLINE
 from huggingface_hub.utils import validate_hf_hub_args
-from packaging import version
 from torch import nn
 
-from .. import __version__
 from ..models.modeling_utils import load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -733,22 +731,11 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-
         if not USE_PEFT_BACKEND:
-            if version.parse(__version__) > version.parse("0.23"):
-                logger.warning(
-                    "You are using `unload_lora_weights` to disable and unload lora weights. If you want to iteratively enable and disable adapter weights,"
-                    "you can use `pipe.enable_lora()` or `pipe.disable_lora()`. After installing the latest version of PEFT."
-                )
+            raise ValueError("PEFT backend is required for this method.")
 
-            for _, module in unet.named_modules():
-                if hasattr(module, "set_lora_layer"):
-                    module.set_lora_layer(None)
-        else:
-            recurse_remove_peft_layers(unet)
-            if hasattr(unet, "peft_config"):
-                del unet.peft_config
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        unet.unload_lora()
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
