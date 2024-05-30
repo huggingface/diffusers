@@ -78,7 +78,8 @@ def _fetch_remapped_cls_from_config(config, old_class):
     remapped_class = getattr(diffusers_library, remapped_class_name)
     logger.info(
         f"Changing class object to be of `{remapped_class_name}` type from `{previous_class_name}` type."
-        " Note that this doesn't affect the final results."
+        "This is because `previous_class_name` is scheduled to be deprecated in a future version. Note that this"
+        " DOESN'T affect the final results."
     )
 
     return remapped_class
