@@ -1056,7 +1056,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert not torch.allclose(
             non_lora_sample, lora_sample, atol=1e-4, rtol=1e-4
         ), "LoRA injected UNet should produce different results."
-
+    
+    @require_peft_backend
     def test_lora_serialization(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
