@@ -801,7 +801,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # 2. pre-process
         sample = self.conv_in(sample)
 
-        if controlnet_cond:
+        if hasattr(self, "controlnet_cond_embedding"):
             controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
             sample = sample + controlnet_cond
 
