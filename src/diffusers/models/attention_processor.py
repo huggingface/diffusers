@@ -2856,7 +2856,7 @@ def rotate_half(x):
 def apply_rotary_emb(
         xq: torch.Tensor,
         xk: Optional[torch.Tensor],
-        freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
+        freqs_cis: Tuple[torch.Tensor],
         head_first: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -2874,18 +2874,11 @@ def apply_rotary_emb(
         Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
     """
     xk_out = None
-    if isinstance(freqs_cis, tuple):
-        cos, sin = reshape_for_broadcast(freqs_cis, xq, head_first)    # [S, D]
-        cos, sin = cos.to(xq.device), sin.to(xq.device)
-        xq_out = (xq.float() * cos + rotate_half(xq.float()) * sin).type_as(xq)
-        if xk is not None:
-            xk_out = (xk.float() * cos + rotate_half(xk.float()) * sin).type_as(xk)
-    else:
-        xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))  # [B, S, H, D//2]
-        freqs_cis = reshape_for_broadcast(freqs_cis, xq_, head_first).to(xq.device)   # [S, D//2] --> [1, S, 1, D//2]
-        xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3).type_as(xq)
-        if xk is not None:
-            xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))  # [B, S, H, D//2]
-            xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3).type_as(xk)
+
+    cos, sin = reshape_for_broadcast(freqs_cis, xq, head_first)    # [S, D]
+    cos, sin = cos.to(xq.device), sin.to(xq.device)
+    xq_out = (xq.float() * cos + rotate_half(xq.float()) * sin).type_as(xq)
+    if xk is not None:
+        xk_out = (xk.float() * cos + rotate_half(xk.float()) * sin).type_as(xk)
 
     return xq_out, xk_out

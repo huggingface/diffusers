@@ -7,6 +7,7 @@ from huggingface_hub import hf_hub_download
 from diffusers import HunyuanDiT2DModel
 import safetensors.torch
 
+
 device = "cuda"
 model_config = HunyuanDiT2DModel.load_config("XCLiu/HunyuanDiT-0523", subfolder="transformer")
 model = HunyuanDiT2DModel.from_config(model_config).to(device)
@@ -93,10 +94,17 @@ for i in range(num_layers):
     state_dict[f"blocks.{i}.norm3.weight"] = norm2_weight
     state_dict[f"blocks.{i}.norm3.bias"] = norm2_bias
 
-model.load_state_dict(state_dict)
+#model.load_state_dict(state_dict)
 
-pipe = HunyuanDiTPipeline.from_pretrained("XCLiu/HunyuanDiT-0523", transformer=model, torch_dtype=torch.float32)
+#from transformers import BertModel
+#bert_model = BertModel.from_pretrained("XCLiu/HunyuanDiT-0523", add_pooling_layer=False, subfolder="text_encoder")
+
+#pipe = HunyuanDiTPipeline.from_pretrained("XCLiu/HunyuanDiT-0523", text_encoder=bert_model, transformer=model, torch_dtype=torch.float32)
+pipe = HunyuanDiTPipeline.from_pretrained("../HunyuanDiT-ckpt")
 pipe.to('cuda')
+#pipe.to(dtype=torch.float16)
+
+#pipe.save_pretrained("../HunyuanDiT-ckpt")
 
 ### NOTE: HunyuanDiT supports both Chinese and English inputs
 prompt = "一个宇航员在骑马"

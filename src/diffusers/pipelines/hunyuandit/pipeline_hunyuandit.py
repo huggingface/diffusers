@@ -152,62 +152,6 @@ def get_meshgrid(start, *args):
     return grid
 
 #################################################################################
-#                   Sine/Cosine Positional Embedding Functions                  #
-#################################################################################
-# https://github.com/facebookresearch/mae/blob/main/util/pos_embed.py
-
-def get_2d_sincos_pos_embed(embed_dim, start, *args, cls_token=False, extra_tokens=0):
-    """
-    grid_size: int of the grid height and width
-    return:
-    pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
-    """
-    grid = get_meshgrid(start, *args)   # [2, H, w]
-    # grid_h = np.arange(grid_size, dtype=np.float32)
-    # grid_w = np.arange(grid_size, dtype=np.float32)
-    # grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    # grid = np.stack(grid, axis=0)   # [2, W, H]
-
-    grid = grid.reshape([2, 1, *grid.shape[1:]])
-    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
-    if cls_token and extra_tokens > 0:
-        pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
-    return pos_embed
-
-
-def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
-    assert embed_dim % 2 == 0
-
-    # use half of dimensions to encode grid_h
-    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
-    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
-
-    emb = np.concatenate([emb_h, emb_w], axis=1)    # (H*W, D)
-    return emb
-
-
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
-    """
-    embed_dim: output dimension for each position
-    pos: a list of positions to be encoded: size (W,H)
-    out: (M, D)
-    """
-    assert embed_dim % 2 == 0
-    omega = np.arange(embed_dim // 2, dtype=np.float64)
-    omega /= embed_dim / 2.
-    omega = 1. / 10000**omega  # (D/2,)
-
-    pos = pos.reshape(-1)  # (M,)
-    out = np.einsum('m,d->md', pos, omega)  # (M, D/2), outer product
-
-    emb_sin = np.sin(out)   # (M, D/2)
-    emb_cos = np.cos(out)   # (M, D/2)
-
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
-    return emb
-
-
-#################################################################################
 #                   Rotary Positional Embedding Functions                       #
 #################################################################################
 # https://github.com/facebookresearch/llama/blob/main/llama/model.py#L443
@@ -408,7 +352,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             embedder_t5=embedder_t5,
         )
 
-        self.text_encoder.pooler.to_empty(device='cpu') ### workaround for the meta device in pooler...
+        #self.text_encoder.pooler.to_empty(device='cpu') ### workaround for the meta device in pooler...
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -722,6 +666,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             prompt: Union[str, List[str]] = None,
             num_inference_steps: Optional[int] = 50,
             guidance_scale: Optional[float] = 5.0,
+            original_size: Optional[Tuple[int, int]] = [1024, 1024],
             negative_prompt: Optional[Union[str, List[str]]] = None,
             num_images_per_prompt: Optional[int] = 1,
             eta: Optional[float] = 0.0,
@@ -934,13 +879,14 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         # ========================================================================
         # Inner arguments: image_meta_size (Please refer to SDXL.)
         # ========================================================================
-        size_cond = [1024, 1024] + [width, height, 0, 0]
+        size_cond = list(original_size) + [width, height, 0, 0]
         image_meta_size = torch.as_tensor([size_cond] * 2 * batch_size, device=self._execution_device)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                print(i, t, latents.dtype, prompt_embeds.dtype, prompt_embeds_t5.dtype)
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
