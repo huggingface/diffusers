@@ -286,10 +286,12 @@ class UNet2DConditionLoadersMixin:
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
         keys = list(state_dict.keys())
+
         unet_keys = [k for k in keys if k.startswith(unet_identifier_key)]
         unet_state_dict = {
             k.replace(f"{unet_identifier_key}.", ""): v for k, v in state_dict.items() if k in unet_keys
         }
+
         if network_alphas is not None:
             alpha_keys = [k for k in network_alphas.keys() if k.startswith(unet_identifier_key)]
             network_alphas = {

@@ -394,12 +394,17 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
+        only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
 
-        if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
+        if (
+            all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys)
+            and not only_text_encoder
+        ):
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
-
-        unet.load_attn_procs(state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline)
+            unet.load_attn_procs(
+                state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline
+            )
 
     @classmethod
     def load_lora_into_text_encoder(
