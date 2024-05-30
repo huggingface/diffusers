@@ -32,7 +32,6 @@ from ..utils import (
     _get_model_file,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
-    convert_unet_state_dict_to_peft,
     delete_adapter_layers,
     get_adapter_name,
     get_peft_kwargs,
@@ -393,8 +392,6 @@ class LoraLoaderMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
-
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
@@ -403,79 +400,6 @@ class LoraLoaderMixin:
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
-
-            unet_keys = [k for k in keys if k.startswith(cls.unet_name)]
-            state_dict = {k.replace(f"{cls.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
-
-            if network_alphas is not None:
-                alpha_keys = [k for k in network_alphas.keys() if k.startswith(cls.unet_name)]
-                network_alphas = {
-                    k.replace(f"{cls.unet_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
-                }
-
-        else:
-            # Otherwise, we're dealing with the old format. This means the `state_dict` should only
-            # contain the module names of the `unet` as its keys WITHOUT any prefix.
-            if not USE_PEFT_BACKEND:
-                warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
-                logger.warning(warn_message)
-
-        if len(state_dict.keys()) > 0:
-            if adapter_name in getattr(unet, "peft_config", {}):
-                raise ValueError(
-                    f"Adapter name {adapter_name} already in use in the Unet - please select a new adapter name."
-                )
-
-            state_dict = convert_unet_state_dict_to_peft(state_dict)
-
-            if network_alphas is not None:
-                # The alphas state dict have the same structure as Unet, thus we convert it to peft format using
-                # `convert_unet_state_dict_to_peft` method.
-                network_alphas = convert_unet_state_dict_to_peft(network_alphas)
-
-            rank = {}
-            for key, val in state_dict.items():
-                if "lora_B" in key:
-                    rank[key] = val.shape[1]
-
-            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
-            if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"]:
-                    if is_peft_version("<", "0.9.0"):
-                        raise ValueError(
-                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                        )
-                else:
-                    if is_peft_version("<", "0.9.0"):
-                        lora_config_kwargs.pop("use_dora")
-            lora_config = LoraConfig(**lora_config_kwargs)
-
-            # adapter_name
-            if adapter_name is None:
-                adapter_name = get_adapter_name(unet)
-
-            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
-            # otherwise loading LoRA weights will lead to an error
-            is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
-
-            inject_adapter_in_model(lora_config, unet, adapter_name=adapter_name)
-            incompatible_keys = set_peft_model_state_dict(unet, state_dict, adapter_name)
-
-            if incompatible_keys is not None:
-                # check only for unexpected keys
-                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-                if unexpected_keys:
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
-                        f" {unexpected_keys}. "
-                    )
-
-            # Offload back.
-            if is_model_cpu_offload:
-                _pipeline.enable_model_cpu_offload()
-            elif is_sequential_cpu_offload:
-                _pipeline.enable_sequential_cpu_offload()
-            # Unsafe code />
 
         unet.load_attn_procs(state_dict, network_alphas=network_alphas, _pipeline=_pipeline)
 

@@ -287,21 +287,26 @@ class UNet2DConditionLoadersMixin:
 
         keys = list(state_dict.keys())
         unet_keys = [k for k in keys if k.startswith(unet_identifier_key)]
-        state_dict = {k.replace(f"{unet_identifier_key}.", ""): v for k, v in state_dict.items() if k in unet_keys}
-
+        unet_state_dict = {
+            k.replace(f"{unet_identifier_key}.", ""): v for k, v in state_dict.items() if k in unet_keys
+        }
         if network_alphas is not None:
             alpha_keys = [k for k in network_alphas.keys() if k.startswith(unet_identifier_key)]
             network_alphas = {
                 k.replace(f"{unet_identifier_key}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
             }
 
-        if len(state_dict.keys()) > 0:
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+        state_dict_to_be_used = unet_state_dict if len(unet_state_dict) > 0 else state_dict
+
+        if len(state_dict_to_be_used.keys()) > 0:
             if adapter_name in getattr(self, "peft_config", {}):
                 raise ValueError(
                     f"Adapter name {adapter_name} already in use in the Unet - please select a new adapter name."
                 )
 
-            state_dict = convert_unet_state_dict_to_peft(state_dict)
+            state_dict = convert_unet_state_dict_to_peft(state_dict_to_be_used)
 
             if network_alphas is not None:
                 # The alphas state dict have the same structure as Unet, thus we convert it to peft format using
