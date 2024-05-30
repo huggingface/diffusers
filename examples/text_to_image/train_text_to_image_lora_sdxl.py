@@ -123,11 +123,11 @@ Special VAE used for training: {vae_path}.
 
 
 def log_validation(
-        pipeline,
-        args,
-        accelerator,
-        epoch,
-        is_final_validation=False,
+    pipeline,
+    args,
+    accelerator,
+    epoch,
+    is_final_validation=False,
 ):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
@@ -137,7 +137,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None 
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
     pipeline_args = {"prompt": args.validation_prompt}
     if torch.backends.mps.is_available():
         autocast_ctx = nullcontext()
@@ -145,11 +145,8 @@ def log_validation(
         autocast_ctx = torch.autocast(accelerator.device.type)
 
     with autocast_ctx:
-        images = [
-            pipeline(**pipeline_args, generator=generator).images[0]
-            for _ in range(args.num_validation_images)
-        ]
-    
+        images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
+
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
         if tracker.name == "tensorboard":
@@ -159,12 +156,12 @@ def log_validation(
             tracker.log(
                 {
                     phase_name: [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                        for i, image in enumerate(images)
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
                     ]
                 }
             )
     return images
+
 
 def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
