@@ -567,11 +567,6 @@ def main(args):
         kwargs_handlers=[kwargs],
     )
 
-    # if args.report_to == "wandb":
-    #     if not is_wandb_available():
-    #         raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-    #     import wandb
-
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -1240,10 +1235,6 @@ def main(args):
 
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-                # logger.info(
-                #     f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                #     f" {args.validation_prompt}."
-                # )
                 # create pipeline
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
@@ -1256,36 +1247,6 @@ def main(args):
                     torch_dtype=weight_dtype,
                 )
 
-                # pipeline = pipeline.to(accelerator.device)
-                # pipeline.set_progress_bar_config(disable=True)
-
-                # # run inference
-                # generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-                # pipeline_args = {"prompt": args.validation_prompt}
-                # if torch.backends.mps.is_available():
-                #     autocast_ctx = nullcontext()
-                # else:
-                #     autocast_ctx = torch.autocast(accelerator.device.type)
-
-                # with autocast_ctx:
-                #     images = [
-                #         pipeline(**pipeline_args, generator=generator).images[0]
-                #         for _ in range(args.num_validation_images)
-                #     ]
-
-                # for tracker in accelerator.trackers:
-                #     if tracker.name == "tensorboard":
-                #         np_images = np.stack([np.asarray(img) for img in images])
-                #         tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                #     if tracker.name == "wandb":
-                #         tracker.log(
-                #             {
-                #                 "validation": [
-                #                     wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                #                     for i, image in enumerate(images)
-                #                 ]
-                #             }
-                #         )
                 images = log_validation(pipeline, args, accelerator, epoch)
 
                 del pipeline
@@ -1333,33 +1294,12 @@ def main(args):
             variant=args.variant,
             torch_dtype=weight_dtype,
         )
-        # pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
         pipeline.load_lora_weights(args.output_dir)
 
         # run inference
-        # images = []
         if args.validation_prompt and args.num_validation_images > 0:
-            # generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            # images = [
-            #     pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
-            #     for _ in range(args.num_validation_images)
-            # ]
-
-            # for tracker in accelerator.trackers:
-            #     if tracker.name == "tensorboard":
-            #         np_images = np.stack([np.asarray(img) for img in images])
-            #         tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
-            #     if tracker.name == "wandb":
-            #         tracker.log(
-            #             {
-            #                 "test": [
-            #                     wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-            #                     for i, image in enumerate(images)
-            #                 ]
-            #             }
-            #         )
             images = log_validation(pipeline, args, accelerator, epoch, is_final_validation=True)
 
         if args.push_to_hub:
