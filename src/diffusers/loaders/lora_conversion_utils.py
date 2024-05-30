@@ -303,7 +303,9 @@ def _convert_text_encoder_lora_key(key, lora_name):
     diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
     diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
     diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
-    if "self_attn" in diffusers_name:
+    diffusers_name = diffusers_name.replace("text.projection", "text_projection")
+
+    if "self_attn" in diffusers_name or "text_projection" in diffusers_name:
         pass
     elif "mlp" in diffusers_name:
         # Be aware that this is the new diffusers convention and the rest of the code might
