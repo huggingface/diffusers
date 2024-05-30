@@ -187,6 +187,75 @@ class PatchEmbed(nn.Module):
         return (latent + pos_embed).to(latent.dtype)
 
 
+class PatchEmbed3D(nn.Module):
+    """Video to Patch Embedding"""
+
+    def __init__(
+        self,
+        height=224,
+        width=224,
+        patch_size=(1, 2, 2),
+        in_channels=3,
+        embed_dim=768,
+        layer_norm=False,
+        bias=True,
+        interpolation_scale=1,
+    ):
+        super().__init__()
+
+        num_patches = (height // patch_size[1]) * (width // patch_size[2])
+        self.layer_norm = layer_norm
+        self.emed_dim = embed_dim
+
+        self.proj = nn.Conv3d(in_channels, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias)
+        if layer_norm:
+            self.norm = nn.LayerNorm(embed_dim, elementwise_affine=False, eps=1e-6)
+        else:
+            self.norm = None
+
+        self.patch_size = patch_size
+        # See:
+        # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L161
+        self.height, self.width = height // patch_size[1], width // patch_size[2]
+        self.base_size = height // patch_size[1]
+        self.interpolation_scale = interpolation_scale
+        pos_embed = get_2d_sincos_pos_embed(
+            embed_dim, int(num_patches**0.5), base_size=self.base_size, interpolation_scale=self.interpolation_scale
+        )
+        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
+
+    def forward(self, latent):
+        height, width = latent.shape[-2] // self.patch_size[1], latent.shape[-1] // self.patch_size[2]
+
+        latent = self.proj(latent)  # (B C T H W)
+
+        if self.layer_norm:
+            batch_size, _, num_frames, height, width = latent.size()
+            latent = latent.flatten(2).transpose(1, 2)
+            latent = self.norm(latent)
+            latent = latent.transpose(1, 2).view(batch_size, self.emed_dim, num_frames, height, width)
+
+        latent = latent.flatten(3).permute(0, 2, 3, 1)  # BCTHW -> BT(HW)C
+
+        # Interpolate positional embeddings if needed.
+        # (For PixArt-Alpha: https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L162C151-L162C160)
+        if self.height != height or self.width != width:
+            pos_embed = get_2d_sincos_pos_embed(
+                embed_dim=self.pos_embed.shape[-1],
+                grid_size=(height, width),
+                base_size=self.base_size,
+                interpolation_scale=self.interpolation_scale,
+            )
+            pos_embed = torch.from_numpy(pos_embed)
+            pos_embed = pos_embed.float().unsqueeze(0).to(latent.device)
+        else:
+            pos_embed = self.pos_embed
+
+        latent = (latent + pos_embed).to(latent.dtype)
+        latent = latent.flatten(1, 2)  # BT(H*W)C -> B(T*H*W)C
+        return latent
+
+
 class TimestepEmbedding(nn.Module):
     def __init__(
         self,

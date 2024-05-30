@@ -261,6 +261,7 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
+    _import_structure["open_sora"] = ["OpenSoraPipeline"]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -460,6 +461,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .musicldm import MusicLDMPipeline
+        from .open_sora import OpenSoraPipeline
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
