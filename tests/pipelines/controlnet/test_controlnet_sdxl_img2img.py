@@ -322,7 +322,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
-    # copied from test_stable_diffusion_xl.py
+    # Copied from test_stable_diffusion_xl.py
     def test_stable_diffusion_xl_prompt_embeds(self):
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
