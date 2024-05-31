@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Marigold Pipelines for Computer Vision Tasks
 
-[Marigold](marigold) is a novel diffusion-based dense prediction approach, and a set of pipelines for various computer vision tasks, such as monocular depth estimation.
+[Marigold](../api/pipelines/marigold) is a novel diffusion-based dense prediction approach, and a set of pipelines for various computer vision tasks, such as monocular depth estimation.
 
 This guide will show you how to use Marigold to obtain fast and high-quality predictions for images and videos.
 
@@ -133,7 +133,7 @@ The above quick start snippets are already optimized for speed: they load the LC
 The `pipe(image)` call completes in 280ms on RTX 3090 GPU.
 Internally, the input image is encoded with the Stable Diffusion VAE encoder, then the U-Net performs one denoising step, and finally, the prediction latent is decoded with the VAE decoder into pixel space.
 In this case, two out of three module calls are dedicated to converting between pixel and latent space of LDM.
-Because Marigold's latent space is compatible with the base Stable Diffusion, it is possible to speed up the pipeline call by more than 3x (85ms on RTX 3090) by using a [lightweight replacement of the SD VAE](autoencoder_tiny):
+Because Marigold's latent space is compatible with the base Stable Diffusion, it is possible to speed up the pipeline call by more than 3x (85ms on RTX 3090) by using a [lightweight replacement of the SD VAE](../api/models/autoencoder_tiny):
 
 ```diff
   import diffusers
@@ -151,7 +151,7 @@ Because Marigold's latent space is compatible with the base Stable Diffusion, it
   depth = pipe(image)
 ```
 
-As suggested in [Optimizations](torch2.0), adding `torch.compile` may squeeze extra performance depending on the target hardware:
+As suggested in [Optimizations](../optimization/torch2.0), adding `torch.compile` may squeeze extra performance depending on the target hardware:
 
 ```diff
   import diffusers
