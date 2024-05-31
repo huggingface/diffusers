@@ -86,6 +86,13 @@ def _fetch_remapped_cls_from_config(config, old_class):
         )
         return remapped_class
     else:
+        input_norm_type = config["norm_type"]
+        mappings = _CLASS_REMAPPING_DICT.get(previous_class_name)
+        all_norm_types = list({k for k in mappings if "norm" in k})
+        logger.info(
+            f"`{previous_class_name}` couldn't be mapped because `{input_norm_type}` isn't available"
+            f" in the remappings. Available `norm_type`s: {all_norm_types}"
+        )
         return old_class
 
 
