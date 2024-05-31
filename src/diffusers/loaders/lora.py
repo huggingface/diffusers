@@ -573,7 +573,7 @@ class LoraLoaderMixin:
                         rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
                 for name, _ in text_encoder_mlp_modules(text_encoder):
-                    for module in ('fc1', 'fc2'):
+                    for module in ("fc1", "fc2"):
                         rank_key = f"{name}.{module}.lora_B.weight"
                         if rank_key not in text_encoder_lora_state_dict:
                             continue
