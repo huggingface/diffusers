@@ -151,7 +151,7 @@ Because Marigold's latent space is compatible with the base Stable Diffusion, it
   depth = pipe(image)
 ```
 
-As suggested in [Optimizations](../optimization/torch2.0), adding `torch.compile` may squeeze extra performance depending on the target hardware:
+As suggested in [Optimizations](../optimization/torch2.0#torch.compile), adding `torch.compile` may squeeze extra performance depending on the target hardware:
 
 ```diff
   import diffusers
