@@ -68,6 +68,8 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 |   InstantID Pipeline                                                                                               | Stable Diffusion XL Pipeline that supports InstantID                                                                                                                                                                                                                                                                                                                                                 |  [InstantID Pipeline](#instantid-pipeline) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/InstantX/InstantID) | [Haofan Wang](https://github.com/haofanwang) |
 |   UFOGen Scheduler                                                                                               | Scheduler for UFOGen Model (compatible with Stable Diffusion pipelines)                                                                                                                                                                                                                                                                                                                                                 |  [UFOGen Scheduler](#ufogen-scheduler) | - | [dg845](https://github.com/dg845) |
 | Stable Diffusion XL IPEX Pipeline | Accelerate Stable Diffusion XL inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion XL on IPEX](#stable-diffusion-xl-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
+| Stable Diffusion BoxDiff Pipeline | Training-free controlled generation with bounding boxes using [BoxDiff](https://github.com/showlab/BoxDiff) | [Stable Diffusion BoxDiff Pipeline](#stable-diffusion-boxdiff) | - | [Jingyang Zhang](https://github.com/zjysteven/) |
+|   FRESCO V2V Pipeline                                                                                                    | Implementation of [[CVPR 2024] FRESCO: Spatial-Temporal Correspondence for Zero-Shot Video Translation](https://arxiv.org/abs/2403.12962)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [FRESCO V2V Pipeline](#fresco)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -238,12 +240,12 @@ pipeline_output = pipe(
     # denoising_steps=10,     # (optional) Number of denoising steps of each inference pass. Default: 10.
     # ensemble_size=10,       # (optional) Number of inference passes in the ensemble. Default: 10.
     # ------------------------------------------------
-    
+
     # ----- recommended setting for LCM version ------
     # denoising_steps=4,
     # ensemble_size=5,
     # -------------------------------------------------
-    
+
     # processing_res=768,     # (optional) Maximum resolution of processing. If set to 0: will not resize at all. Defaults to 768.
     # match_input_res=True,   # (optional) Resize depth prediction to match input resolution.
     # batch_size=0,           # (optional) Inference batch size, no bigger than `num_ensemble`. If set to 0, the script will automatically decide the proper batch size. Defaults to 0.
@@ -1030,7 +1032,7 @@ image = pipe().images[0]
 
 Make sure you have @crowsonkb's <https://github.com/crowsonkb/k-diffusion> installed:
 
-```
+```sh
 pip install k-diffusion
 ```
 
@@ -1676,6 +1678,68 @@ image = pipe(prompt, image=input_image, strength=0.75,).images[0]
 image.save('tensorrt_img2img_new_zealand_hills.png')
 ```
 
+### Stable Diffusion BoxDiff
+BoxDiff is a training-free method for controlled generation with bounding box coordinates. It shoud work with any Stable Diffusion model. Below shows an example with `stable-diffusion-2-1-base`.
+```py
+import torch
+from PIL import Image, ImageDraw
+from copy import deepcopy
+
+from examples.community.pipeline_stable_diffusion_boxdiff import StableDiffusionBoxDiffPipeline
+
+def draw_box_with_text(img, boxes, names):
+    colors = ["red", "olive", "blue", "green", "orange", "brown", "cyan", "purple"]
+    img_new = deepcopy(img)
+    draw = ImageDraw.Draw(img_new)
+
+    W, H = img.size
+    for bid, box in enumerate(boxes):
+        draw.rectangle([box[0] * W, box[1] * H, box[2] * W, box[3] * H], outline=colors[bid % len(colors)], width=4)
+        draw.text((box[0] * W, box[1] * H), names[bid], fill=colors[bid % len(colors)])
+    return img_new
+
+pipe = StableDiffusionBoxDiffPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1-base",
+    torch_dtype=torch.float16,
+)
+pipe.to("cuda")
+
+# example 1
+prompt = "as the aurora lights up the sky, a herd of reindeer leisurely wanders on the grassy meadow, admiring the breathtaking view, a serene lake quietly reflects the magnificent display, and in the distance, a snow-capped mountain stands majestically, fantasy, 8k, highly detailed"
+phrases = [
+    "aurora",
+    "reindeer",
+    "meadow",
+    "lake",
+    "mountain"
+]
+boxes = [[1,3,512,202], [75,344,421,495], [1,327,508,507], [2,217,507,341], [1,135,509,242]]
+
+# example 2
+# prompt = "A rabbit wearing sunglasses looks very proud"
+# phrases = ["rabbit", "sunglasses"]
+# boxes = [[67,87,366,512], [66,130,364,262]]
+
+boxes = [[x / 512 for x in box] for box in boxes]
+
+images = pipe(
+    prompt,
+    boxdiff_phrases=phrases,
+    boxdiff_boxes=boxes,
+    boxdiff_kwargs={
+        "attention_res": 16,
+        "normalize_eot": True
+    },
+    num_inference_steps=50,
+    guidance_scale=7.5,
+    generator=torch.manual_seed(42),
+    safety_checker=None
+).images
+
+draw_box_with_text(images[0], boxes, phrases).save("output.png")
+```
+
+
 ### Stable Diffusion Reference
 
 This pipeline uses the Reference Control. Refer to the [sd-webui-controlnet discussion: Reference-only Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1236)[sd-webui-controlnet discussion: Reference-adain Control](https://github.com/Mikubill/sd-webui-controlnet/discussions/1280).
@@ -1790,13 +1854,13 @@ To use this pipeline, you need to:
 
 You can simply use pip to install IPEX with the latest version.
 
-```python
+```sh
 python -m pip install intel_extension_for_pytorch
 ```
 
 **Note:** To install a specific version, run with the following command:
 
-```
+```sh
 python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
 ```
 
@@ -1894,13 +1958,13 @@ To use this pipeline, you need to:
 
 You can simply use pip to install IPEX with the latest version.
 
-```python
+```sh
 python -m pip install intel_extension_for_pytorch
 ```
 
 **Note:** To install a specific version, run with the following command:
 
-```
+```sh
 python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
 ```
 
@@ -2946,8 +3010,8 @@ This code implements a pipeline for the Stable Diffusion model, enabling the div
 
 ### Sample Code
 
-```
-from from examples.community.regional_prompting_stable_diffusion import RegionalPromptingStableDiffusionPipeline
+```py
+from examples.community.regional_prompting_stable_diffusion import RegionalPromptingStableDiffusionPipeline
 pipe = RegionalPromptingStableDiffusionPipeline.from_single_file(model_path, vae=vae)
 
 rp_args = {
@@ -3972,6 +4036,93 @@ onestep_image = pipe(prompt, num_inference_steps=1).images[0]
 multistep_image = pipe(prompt, num_inference_steps=4).images[0]
 ```
 
+### FRESCO
+
+This is the Diffusers implementation of zero-shot video-to-video translation pipeline [FRESCO](https://github.com/williamyang1991/FRESCO) (without Ebsynth postprocessing and background smooth). To run the code, please install gmflow. Then modify the path in `gmflow_dir`. After that, you can run the pipeline with:
+
+```py
+from PIL import Image
+import cv2
+import torch
+import numpy as np
+
+from diffusers import ControlNetModel,DDIMScheduler, DiffusionPipeline
+import sys
+gmflow_dir = "/path/to/gmflow"
+sys.path.insert(0, gmflow_dir)
+
+def video_to_frame(video_path: str, interval: int):
+    vidcap = cv2.VideoCapture(video_path)
+    success = True
+
+    count = 0
+    res = []
+    while success:
+        count += 1
+        success, image = vidcap.read()
+        if count % interval != 1:
+            continue
+        if image is not None:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            res.append(image)
+            if len(res) >= 8:
+                break
+
+    vidcap.release()
+    return res
+
+
+input_video_path = 'https://github.com/williamyang1991/FRESCO/raw/main/data/car-turn.mp4'
+output_video_path = 'car.gif'
+
+# You can use any fintuned SD here
+model_path = 'SG161222/Realistic_Vision_V2.0'
+
+prompt = 'a red car turns in the winter'
+a_prompt = ', RAW photo, subject, (high detailed skin:1.2), 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3, '
+n_prompt = '(deformed iris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, mutated hands and fingers:1.4), (deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, disconnected limbs, mutation, mutated, ugly, disgusting, amputation'
+
+input_interval = 5
+frames = video_to_frame(
+    input_video_path, input_interval)
+
+control_frames = []
+# get canny image
+for frame in frames:
+    image = cv2.Canny(frame, 50, 100)
+    np_image = np.array(image)
+    np_image = np_image[:, :, None]
+    np_image = np.concatenate([np_image, np_image, np_image], axis=2)
+    canny_image = Image.fromarray(np_image)
+    control_frames.append(canny_image)
+
+# You can use any ControlNet here
+controlnet = ControlNetModel.from_pretrained(
+    "lllyasviel/sd-controlnet-canny").to('cuda')
+
+pipe = DiffusionPipeline.from_pretrained(
+    model_path, controlnet=controlnet, custom_pipeline='fresco_v2v').to('cuda')
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+
+generator = torch.manual_seed(0)
+frames = [Image.fromarray(frame) for frame in frames]
+
+output_frames = pipe(
+    prompt + a_prompt,
+    frames,
+    control_frames,
+    num_inference_steps=20,
+    strength=0.75,
+    controlnet_conditioning_scale=0.7,
+    generator=generator,
+    negative_prompt=n_prompt
+).images
+
+output_frames[0].save(output_video_path, save_all=True,
+                 append_images=output_frames[1:], duration=100, loop=0)
+
+```
+
 # Perturbed-Attention Guidance
 
 [Project](https://ku-cvlab.github.io/Perturbed-Attention-Guidance/) / [arXiv](https://arxiv.org/abs/2403.17377) / [GitHub](https://github.com/KU-CVLAB/Perturbed-Attention-Guidance)
@@ -3980,7 +4131,7 @@ This implementation is based on [Diffusers](https://huggingface.co/docs/diffuser
 
 ## Example Usage
 
-```
+```py
 import os
 import torch
 
