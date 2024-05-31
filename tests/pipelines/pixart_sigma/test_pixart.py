@@ -25,7 +25,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     PixArtSigmaPipeline,
-    Transformer2DModel,
+    PixArtTransformer2DModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -53,7 +53,7 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = Transformer2DModel(
+        transformer = PixArtTransformer2DModel(
             sample_size=8,
             num_layers=2,
             patch_size=2,
@@ -344,7 +344,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_512(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
-        transformer = Transformer2DModel.from_pretrained(
+        transformer = PixArtTransformer2DModel.from_pretrained(
             self.ckpt_id_512, subfolder="transformer", torch_dtype=torch.float16
         )
         pipe = PixArtSigmaPipeline.from_pretrained(
@@ -399,7 +399,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_512_without_resolution_binning(self):
         generator = torch.manual_seed(0)
 
-        transformer = Transformer2DModel.from_pretrained(
+        transformer = PixArtTransformer2DModel.from_pretrained(
             self.ckpt_id_512, subfolder="transformer", torch_dtype=torch.float16
         )
         pipe = PixArtSigmaPipeline.from_pretrained(

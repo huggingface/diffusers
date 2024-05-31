@@ -706,3 +706,20 @@ def flax_register_to_config(cls):
 
     cls.__init__ = init
     return cls
+
+
+class LegacyConfigMixin(ConfigMixin):
+    r"""
+    A subclass of `ConfigMixin` to resolve class mapping from legacy classes (like `Transformer2DModel`) to more
+    pipeline-specific classes (like `DiTTransformer2DModel`).
+    """
+
+    @classmethod
+    def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
+        # To prevent depedency import problem.
+        from .models.model_loading_utils import _fetch_remapped_cls_from_config
+
+        # resolve remapping
+        remapped_class = _fetch_remapped_cls_from_config(config, cls)
+
+        return remapped_class.from_config(config, return_unused_kwargs, **kwargs)

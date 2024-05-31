@@ -22,7 +22,7 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import PixArtImageProcessor
-from ...models import AutoencoderKL, Transformer2DModel
+from ...models import AutoencoderKL, PixArtTransformer2DModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BACKENDS_MAPPING,
@@ -202,7 +202,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         tokenizer: T5Tokenizer,
         text_encoder: T5EncoderModel,
         vae: AutoencoderKL,
-        transformer: Transformer2DModel,
+        transformer: PixArtTransformer2DModel,
         scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
