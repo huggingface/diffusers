@@ -63,7 +63,7 @@ CHECKPOINT_KEY_NAMES = {
     "controlnet": "control_model.time_embed.0.weight",
     "playground-v2-5": "edm_mean",
     "inpainting": "model.diffusion_model.input_blocks.0.0.weight",
-    "clip": "cond_stage_model.transformer.text_model.embeddings.position_ids",
+    "clip": "cond_stage_model.transformer.text_model.embeddings.position_embedding.weight",
     "clip_sdxl": "conditioner.embedders.0.transformer.text_model.embeddings.position_embedding.weight",
     "open_clip": "cond_stage_model.model.token_embedding.weight",
     "open_clip_sdxl": "conditioner.embedders.1.model.positional_embedding",
