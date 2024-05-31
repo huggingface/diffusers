@@ -49,14 +49,14 @@ This makes it easier to compare visualizations of the predictions across various
 
 ### Depth Prediction Quick Start
 
-To get the first depth prediction, load `prs-eth/marigold-depth-lcm-v1-0` checkpoint into `MarigoldDepthPipeline` pipeline, put the image through the pipeline, and save the predictions:
+To get the first depth prediction, load `prs-eth/marigold-lcm-v1-0` checkpoint into `MarigoldDepthPipeline` pipeline, put the image through the pipeline, and save the predictions:
 
 ```python
 import diffusers
 import torch
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
+    "prs-eth/marigold-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
 ).to("cuda")
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -140,7 +140,7 @@ Because Marigold's latent space is compatible with the base Stable Diffusion, it
   import torch
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-      "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
+      "prs-eth/marigold-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
   ).to("cuda")
 
 + pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
@@ -158,7 +158,7 @@ As suggested in [Optimizations](torch2.0), adding `torch.compile` may squeeze ex
   import torch
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-      "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
+      "prs-eth/marigold-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
   ).to("cuda")
 
 + pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
@@ -287,7 +287,7 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
+    "prs-eth/marigold-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
 ).to("cuda")
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
