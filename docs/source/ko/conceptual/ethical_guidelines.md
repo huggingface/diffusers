@@ -50,7 +50,7 @@ Diffusers 커뮤니티는 프로젝트의 개발에 다음과 같은 윤리 지�
 
 - [**커뮤니티 탭**](https://huggingface.co/docs/hub/repositories-pull-requests-discussions): 이를 통해 커뮤니티는 프로젝트에 대해 토론하고 더 나은 협력을 할 수 있습니다.
 
-- **편향 탐색 및 평가**: Hugging Face 팀은 Stable Diffusion 모델의 편향을 대화식으로 시각화하는 [공간](https://huggingface.co/spaces/society-ethics/DiffusionBiasExplorer)을 제공합니다. 이런 의미에서, 우리는 편향 탐색 및 평가를 지원하고 장려합니다.
+- **편향 탐색 및 평가**: Hugging Face 팀은 Stable Diffusion 모델의 편향성을 대화형으로 보여주는 [space](https://huggingface.co/spaces/society-ethics/DiffusionBiasExplorer)을 제공합니다. 이런 의미에서, 우리는 편향 탐색 및 평가를 지원하고 장려합니다.
 
 - **배포에서의 안전 유도**
 
