@@ -76,13 +76,13 @@ Below are the raw and the visualized predictions; as can be seen, dark areas (mu
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_depth_16bit.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_lcm_depth_16bit.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Predicted depth (16-bit PNG)
     </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_depth.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_lcm_depth.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Predicted depth visualization (Spectral)
     </figcaption>
@@ -115,7 +115,7 @@ Below is the visualized prediction:
 
 <div class="flex gap-4" style="justify-content: center; width: 100%;">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_normals.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_lcm_normals.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Predicted surface normals visualization
     </figcaption>
@@ -173,13 +173,13 @@ With the above speed optimizations, Marigold delivers predictions with more deta
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_depth.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_lcm_depth.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Marigold LCM fp16 with Tiny AutoEncoder
     </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/bfe7cb56ca1cc0811b328212472350879dfa7f8b/marigold/einstein_depthanything_large.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/einstein_depthanything_large.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Depth Anything Large
     </figcaption>
@@ -224,13 +224,13 @@ vis[0].save("einstein_normals.png")
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_normals.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_lcm_normals.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Surface normals, no ensembling
     </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_normals.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_normals.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Surface normals, with ensembling
     </figcaption>
@@ -303,13 +303,13 @@ uncertainty[0].save("einstein_depth_uncertainty.png")
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_depth_uncertainty.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_depth_uncertainty.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Depth uncertainty
     </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_normals_uncertainty.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_normals_uncertainty.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Surface normals uncertainty
     </figcaption>
@@ -327,11 +327,11 @@ This becomes an obvious drawback compared to traditional end-to-end dense regres
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama.gif"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_obama.gif"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">Input video</figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama_depth_independent.gif"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_obama_depth_independent.gif"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">Marigold Depth applied to input video frames independently</figcaption>
   </div>
 </div>
@@ -387,11 +387,11 @@ The result is much more stable now:
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama_depth_independent.gif"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_obama_depth_independent.gif"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">Marigold Depth applied to input video frames independently</figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama_depth_consistent.gif"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_obama_depth_consistent.gif"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">Marigold Depth with forced latents initialization</figcaption>
   </div>
 </div>
@@ -450,13 +450,13 @@ controlnet_out[0].save("motorcycle_controlnet_out.png")
     </figcaption>
   </div>
   <div style="flex: 1 1 33%; max-width: 33%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/8e61e31f9feb7756c0404ceff26f3f0e5d3fe610/marigold/motorcycle_controlnet_depth.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/motorcycle_controlnet_depth.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Depth in the format compatible with ControlNet
     </figcaption>
   </div>
   <div style="flex: 1 1 33%; max-width: 33%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/8e61e31f9feb7756c0404ceff26f3f0e5d3fe610/marigold/motorcycle_controlnet_out.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/motorcycle_controlnet_out.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       ControlNet generation, conditioned on depth and prompt: "high quality photo of a sports bike, city"
     </figcaption>
