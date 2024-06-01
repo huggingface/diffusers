@@ -279,7 +279,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         if max_sequence_length is None:
             if text_encoder_index == 0:
                 max_length = 77
-            if text_encoder_index == 1: 
+            if text_encoder_index == 1:
                 max_length = 256
         else:
             max_length = max_sequence_length
@@ -453,7 +453,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
 
         if prompt_embeds is not None and prompt_attention_mask is None:
             raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
-        
+
         if prompt_embeds_2 is not None and prompt_attention_mask_2 is None:
             raise ValueError("Must provide `prompt_attention_mask_2` when specifying `prompt_embeds_2`.")
 
@@ -462,12 +462,14 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
-        
+
         if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
             raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
-        
+
         if negative_prompt_embeds_2 is not None and negative_prompt_attention_mask_2 is None:
-            raise ValueError("Must provide `negative_prompt_attention_mask_2` when specifying `negative_prompt_embeds_2`.")
+            raise ValueError(
+                "Must provide `negative_prompt_attention_mask_2` when specifying `negative_prompt_embeds_2`."
+            )
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
                 raise ValueError(
