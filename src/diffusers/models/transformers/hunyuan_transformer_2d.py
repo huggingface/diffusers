@@ -245,7 +245,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         pooled_projection_dim (`int`, *optional*):
             The size of the pooled projection.
         text_len (`int`, *optional*):
-            The length of the bert text embedding.
+            The length of the clip text embedding.
         text_len_t5 (`int`, *optional*):
             The length of the T5 text embedding.
     """
