@@ -22,7 +22,7 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import PixArtImageProcessor
-from ...models import AutoencoderKL, Transformer2DModel
+from ...models import AutoencoderKL, PixArtTransformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -246,8 +246,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         tokenizer (`T5Tokenizer`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        transformer ([`Transformer2DModel`]):
-            A text conditioned `Transformer2DModel` to denoise the encoded image latents.
+        transformer ([`PixArtTransformer2DModel`]):
+            A text conditioned `PixArtTransformer2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
@@ -276,7 +276,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         tokenizer: T5Tokenizer,
         text_encoder: T5EncoderModel,
         vae: AutoencoderKL,
-        transformer: Transformer2DModel,
+        transformer: PixArtTransformer2DModel,
         scheduler: DPMSolverMultistepScheduler,
     ):
         super().__init__()
