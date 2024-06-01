@@ -149,9 +149,7 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
-        ) = pipe.encode_prompt(
-            prompt, device=torch_device, dtype=torch.float32, text_encoder_index=0
-        )
+        ) = pipe.encode_prompt(prompt, device=torch_device, dtype=torch.float32, text_encoder_index=0)
 
         (
             prompt_embeds_2,
