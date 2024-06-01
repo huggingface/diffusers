@@ -231,7 +231,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         dropout (`float`, *optional*, defaults to 0.0):
             The dropout probability to use.
         cross_attention_dim (`int`, *optional*):
-            The number of dimension in the bert text embedding.
+            The number of dimension in the clip text embedding.
         hidden_size (`int`, *optional*):
             The size of hidden layer in the conditioning embedding layers.
         num_layers (`int`, *optional*, defaults to 1):
