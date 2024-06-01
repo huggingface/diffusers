@@ -238,6 +238,10 @@
       title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
       title: Transformer2D
+    - local: api/models/pixart_transformer2d
+      title: PixArtTransformer2D
+    - local: api/models/dit_transformer2d
+      title: DiTTransformer2D
     - local: api/models/transformer_temporal
       title: Transformer Temporal
     - local: api/models/prior_transformer
