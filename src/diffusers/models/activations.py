@@ -57,6 +57,7 @@ class FP32SiLU(nn.Module):
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         return F.silu(inputs.float(), inplace=False).to(inputs.dtype)
 
+
 class GELU(nn.Module):
     r"""
     GELU activation function with tanh approximation support with `approximate="tanh"`.

@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import deprecate
-from .activations import get_activation, FP32SiLU
+from .activations import FP32SiLU, get_activation
 from .attention_processor import Attention
 
 
@@ -621,6 +621,7 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
 
         return conditioning
 
+
 class HunyuanDiTAttentionPool(nn.Module):
     def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
         super().__init__()
@@ -658,6 +659,7 @@ class HunyuanDiTAttentionPool(nn.Module):
         )
         return x.squeeze(0)
 
+
 class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
     def __init__(self, embedding_dim, pooled_projection_dim=1024, seq_len=256, cross_attention_dim=2048):
         super().__init__()
@@ -683,16 +685,16 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, 256)
 
         # extra condition1: text
-        pooled_projections = self.pooler(encoder_hidden_states) # (N, 1024)
+        pooled_projections = self.pooler(encoder_hidden_states)  # (N, 1024)
 
         # extra condition2: image meta size embdding
-        image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0) 
+        image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0)
         image_meta_size = image_meta_size.to(dtype=hidden_dtype)
-        image_meta_size = image_meta_size.view(-1, 6 * 256) # (N, 1536)
+        image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
 
         # extra condition3: style embedding
         style_embedding = self.style_embedder(style)  # (N, embedding_dim)
-        
+
         # Concatenate all extra vectors
         extra_cond = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
         conditioning = timesteps_emb + self.extra_embedder(extra_cond)  # [B, D]
@@ -986,7 +988,7 @@ class PixArtAlphaTextProjection(nn.Module):
     Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
     """
 
-    def __init__(self, in_features, hidden_size, out_features=None, act_fn = "gelu_tanh"):
+    def __init__(self, in_features, hidden_size, out_features=None, act_fn="gelu_tanh"):
         super().__init__()
         if out_features is None:
             out_features = hidden_size
@@ -1004,7 +1006,6 @@ class PixArtAlphaTextProjection(nn.Module):
         hidden_states = self.act_1(hidden_states)
         hidden_states = self.linear_2(hidden_states)
         return hidden_states
-
 
 
 class IPAdapterPlusImageProjectionBlock(nn.Module):
