@@ -415,7 +415,7 @@ CLIP 점수와 CLIP 방향 유사성 모두 CLIP 모델에 의존하기 때문�
 
 ***위의 메트릭을 사용하면 클래스 조건이 있는 모델을 평가할 수 있습니다. 예를 들어, [DiT](https://huggingface.co/docs/diffusers/main/en/api/pipelines/dit). 이는 ImageNet-1k 클래스에 조건을 걸고 사전 훈련되었습니다.***
 
-### 클래스 조건화 이미지 생성
+### 클래스 조건화 이미지 생성[[class-conditioned-image-generation]]
 
 클래스 조건화 생성 모델은 일반적으로 [ImageNet-1k](https://huggingface.co/datasets/imagenet-1k)와 같은 클래스 레이블이 지정된 데이터셋에서 사전 훈련됩니다. 이러한 모델을 평가하는 인기있는 지표에는 Fréchet Inception Distance (FID), Kernel Inception Distance (KID) 및 Inception Score (IS)가 있습니다. 이 문서에서는 FID ([Heusel et al.](https://arxiv.org/abs/1706.08500))에 초점을 맞추고 있습니다. [`DiTPipeline`](https://huggingface.co/docs/diffusers/api/pipelines/dit)을 사용하여 FID를 계산하는 방법을 보여줍니다. 이는 내부적으로 [DiT 모델](https://arxiv.org/abs/2212.09748)을 사용합니다.
 
