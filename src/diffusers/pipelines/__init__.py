@@ -150,6 +150,7 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
+    _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -418,6 +419,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
+        from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
             KandinskyCombinedPipeline,

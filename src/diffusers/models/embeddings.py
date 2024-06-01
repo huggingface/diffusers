@@ -16,10 +16,11 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from ..utils import deprecate
-from .activations import get_activation
+from .activations import FP32SiLU, get_activation
 from .attention_processor import Attention
 
 
@@ -135,6 +136,7 @@ class PatchEmbed(nn.Module):
         flatten=True,
         bias=True,
         interpolation_scale=1,
+        pos_embed_type="sincos",
     ):
         super().__init__()
 
@@ -156,10 +158,18 @@ class PatchEmbed(nn.Module):
         self.height, self.width = height // patch_size, width // patch_size
         self.base_size = height // patch_size
         self.interpolation_scale = interpolation_scale
-        pos_embed = get_2d_sincos_pos_embed(
-            embed_dim, int(num_patches**0.5), base_size=self.base_size, interpolation_scale=self.interpolation_scale
-        )
-        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
+        if pos_embed_type is None:
+            self.pos_embed = None
+        elif pos_embed_type == "sincos":
+            pos_embed = get_2d_sincos_pos_embed(
+                embed_dim,
+                int(num_patches**0.5),
+                base_size=self.base_size,
+                interpolation_scale=self.interpolation_scale,
+            )
+            self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
+        else:
+            raise ValueError(f"Unsupported pos_embed_type: {pos_embed_type}")
 
     def forward(self, latent):
         height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
@@ -169,6 +179,8 @@ class PatchEmbed(nn.Module):
             latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
         if self.layer_norm:
             latent = self.norm(latent)
+        if self.pos_embed is None:
+            return latent.to(latent.dtype)
 
         # Interpolate positional embeddings if needed.
         # (For PixArt-Alpha: https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L162C151-L162C160)
@@ -185,6 +197,113 @@ class PatchEmbed(nn.Module):
             pos_embed = self.pos_embed
 
         return (latent + pos_embed).to(latent.dtype)
+
+
+def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
+    """
+    RoPE for image tokens with 2d structure.
+
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size
+    crops_coords (`Tuple[int]`)
+        The top-left and bottom-right coordinates of the crop.
+    grid_size (`Tuple[int]`):
+        The grid size of the positional embedding.
+    use_real (`bool`):
+        If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+
+    Returns:
+        `torch.Tensor`: positional embdding with shape `( grid_size * grid_size, embed_dim/2)`.
+    """
+    start, stop = crops_coords
+    grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
+    grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
+    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    grid = np.stack(grid, axis=0)  # [2, W, H]
+
+    grid = grid.reshape([2, 1, *grid.shape[1:]])
+    pos_embed = get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=use_real)
+    return pos_embed
+
+
+def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
+    assert embed_dim % 4 == 0
+
+    # use half of dimensions to encode grid_h
+    emb_h = get_1d_rotary_pos_embed(embed_dim // 2, grid[0].reshape(-1), use_real=use_real)  # (H*W, D/4)
+    emb_w = get_1d_rotary_pos_embed(embed_dim // 2, grid[1].reshape(-1), use_real=use_real)  # (H*W, D/4)
+
+    if use_real:
+        cos = torch.cat([emb_h[0], emb_w[0]], dim=1)  # (H*W, D/2)
+        sin = torch.cat([emb_h[1], emb_w[1]], dim=1)  # (H*W, D/2)
+        return cos, sin
+    else:
+        emb = torch.cat([emb_h, emb_w], dim=1)  # (H*W, D/2)
+        return emb
+
+
+def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float = 10000.0, use_real=False):
+    """
+    Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
+
+    This function calculates a frequency tensor with complex exponentials using the given dimension 'dim' and the end
+    index 'end'. The 'theta' parameter scales the frequencies. The returned tensor contains complex values in complex64
+    data type.
+
+    Args:
+        dim (`int`): Dimension of the frequency tensor.
+        pos (`np.ndarray` or `int`): Position indices for the frequency tensor. [S] or scalar
+        theta (`float`, *optional*, defaults to 10000.0):
+            Scaling factor for frequency computation. Defaults to 10000.0.
+        use_real (`bool`, *optional*):
+            If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+
+    Returns:
+        `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
+    """
+    if isinstance(pos, int):
+        pos = np.arange(pos)
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))  # [D/2]
+    t = torch.from_numpy(pos).to(freqs.device)  # type: ignore  # [S]
+    freqs = torch.outer(t, freqs).float()  # type: ignore   # [S, D/2]
+    if use_real:
+        freqs_cos = freqs.cos().repeat_interleave(2, dim=1)  # [S, D]
+        freqs_sin = freqs.sin().repeat_interleave(2, dim=1)  # [S, D]
+        return freqs_cos, freqs_sin
+    else:
+        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
+        return freqs_cis
+
+
+def apply_rotary_emb(
+    x: torch.Tensor,
+    freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
+    to the given query or key 'x' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
+    reshaped as complex numbers, and the frequency tensor is reshaped for broadcasting compatibility. The resulting
+    tensors contain rotary embeddings and are returned as real tensors.
+
+    Args:
+        x (`torch.Tensor`):
+            Query or key tensor to apply rotary embeddings. [B, H, S, D] xk (torch.Tensor): Key tensor to apply
+        freqs_cis (`Tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
+    """
+    cos, sin = freqs_cis  # [S, D]
+    cos = cos[None, None]
+    sin = sin[None, None]
+    cos, sin = cos.to(x.device), sin.to(x.device)
+
+    x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+    x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+
+    return out
 
 
 class TimestepEmbedding(nn.Module):
@@ -507,6 +626,88 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
         return conditioning
 
 
+class HunyuanDiTAttentionPool(nn.Module):
+    # Copied from https://github.com/Tencent/HunyuanDiT/blob/cb709308d92e6c7e8d59d0dff41b74d35088db6a/hydit/modules/poolers.py#L6
+
+    def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
+        super().__init__()
+        self.positional_embedding = nn.Parameter(torch.randn(spacial_dim + 1, embed_dim) / embed_dim**0.5)
+        self.k_proj = nn.Linear(embed_dim, embed_dim)
+        self.q_proj = nn.Linear(embed_dim, embed_dim)
+        self.v_proj = nn.Linear(embed_dim, embed_dim)
+        self.c_proj = nn.Linear(embed_dim, output_dim or embed_dim)
+        self.num_heads = num_heads
+
+    def forward(self, x):
+        x = x.permute(1, 0, 2)  # NLC -> LNC
+        x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)  # (L+1)NC
+        x = x + self.positional_embedding[:, None, :].to(x.dtype)  # (L+1)NC
+        x, _ = F.multi_head_attention_forward(
+            query=x[:1],
+            key=x,
+            value=x,
+            embed_dim_to_check=x.shape[-1],
+            num_heads=self.num_heads,
+            q_proj_weight=self.q_proj.weight,
+            k_proj_weight=self.k_proj.weight,
+            v_proj_weight=self.v_proj.weight,
+            in_proj_weight=None,
+            in_proj_bias=torch.cat([self.q_proj.bias, self.k_proj.bias, self.v_proj.bias]),
+            bias_k=None,
+            bias_v=None,
+            add_zero_attn=False,
+            dropout_p=0,
+            out_proj_weight=self.c_proj.weight,
+            out_proj_bias=self.c_proj.bias,
+            use_separate_proj_weight=True,
+            training=self.training,
+            need_weights=False,
+        )
+        return x.squeeze(0)
+
+
+class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
+    def __init__(self, embedding_dim, pooled_projection_dim=1024, seq_len=256, cross_attention_dim=2048):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+
+        self.pooler = HunyuanDiTAttentionPool(
+            seq_len, cross_attention_dim, num_heads=8, output_dim=pooled_projection_dim
+        )
+        # Here we use a default learned embedder layer for future extension.
+        self.style_embedder = nn.Embedding(1, embedding_dim)
+        extra_in_dim = 256 * 6 + embedding_dim + pooled_projection_dim
+        self.extra_embedder = PixArtAlphaTextProjection(
+            in_features=extra_in_dim,
+            hidden_size=embedding_dim * 4,
+            out_features=embedding_dim,
+            act_fn="silu_fp32",
+        )
+
+    def forward(self, timestep, encoder_hidden_states, image_meta_size, style, hidden_dtype=None):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, 256)
+
+        # extra condition1: text
+        pooled_projections = self.pooler(encoder_hidden_states)  # (N, 1024)
+
+        # extra condition2: image meta size embdding
+        image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0)
+        image_meta_size = image_meta_size.to(dtype=hidden_dtype)
+        image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
+
+        # extra condition3: style embedding
+        style_embedding = self.style_embedder(style)  # (N, embedding_dim)
+
+        # Concatenate all extra vectors
+        extra_cond = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
+        conditioning = timesteps_emb + self.extra_embedder(extra_cond)  # [B, D]
+
+        return conditioning
+
+
 class TextTimeEmbedding(nn.Module):
     def __init__(self, encoder_dim: int, time_embed_dim: int, num_heads: int = 64):
         super().__init__()
@@ -793,11 +994,18 @@ class PixArtAlphaTextProjection(nn.Module):
     Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
     """
 
-    def __init__(self, in_features, hidden_size, num_tokens=120):
+    def __init__(self, in_features, hidden_size, out_features=None, act_fn="gelu_tanh"):
         super().__init__()
+        if out_features is None:
+            out_features = hidden_size
         self.linear_1 = nn.Linear(in_features=in_features, out_features=hidden_size, bias=True)
-        self.act_1 = nn.GELU(approximate="tanh")
-        self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True)
+        if act_fn == "gelu_tanh":
+            self.act_1 = nn.GELU(approximate="tanh")
+        elif act_fn == "silu_fp32":
+            self.act_1 = FP32SiLU()
+        else:
+            raise ValueError(f"Unknown activation function: {act_fn}")
+        self.linear_2 = nn.Linear(in_features=hidden_size, out_features=out_features, bias=True)
 
     def forward(self, caption):
         hidden_states = self.linear_1(caption)
