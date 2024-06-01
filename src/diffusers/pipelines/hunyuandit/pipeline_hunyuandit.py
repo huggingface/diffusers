@@ -137,7 +137,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin):
+class HunyuanDiTPipeline(DiffusionPipeline):
     r"""
     Pipeline for English/Chinese-to-image generation using HunyuanDiT.
 
