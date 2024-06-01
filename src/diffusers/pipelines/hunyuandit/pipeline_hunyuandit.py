@@ -278,7 +278,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
                 Attention mask for the negative prompt. Required when `negative_prompt_embeds` is passed directly.
             max_sequence_length (`int`, *optional*): maximum sequence length to use for the prompt.
             text_encoder_index (`int`, *optional*):
-                Index of the text encoder to use. `0` for Bert and `1` for T5.
+                Index of the text encoder to use. `0` for clip and `1` for T5.
         """
         tokenizers = [self.tokenizer, self.tokenizer_2]
         text_encoders = [self.text_encoder, self.text_encoder_2]
