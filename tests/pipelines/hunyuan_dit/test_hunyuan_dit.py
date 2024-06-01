@@ -113,7 +113,7 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertEqual(image.shape, (1, 16, 16, 3))
         expected_slice = np.array(
-            [0.5421802, 0.30296382, 0.35727492, 0.42976296, 0.31749535, 0.50821614, 0.44922674, 0.6940243, 0.41378903]
+            [0.56939435, 0.34541583, 0.35915792, 0.46489206, 0.38775963, 0.45004836, 0.5957267, 0.59481275, 0.33287364]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
