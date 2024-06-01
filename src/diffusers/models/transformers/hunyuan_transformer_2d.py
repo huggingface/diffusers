@@ -22,10 +22,14 @@ from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import Attention, HunyuanAttnProcessor2_0
-from ..embeddings import PixArtAlphaTextProjection, PatchEmbed, TimestepEmbedding, Timesteps, get_timestep_embedding, HunyuanCombinedTimestepTextSizeStyleEmbedding
+from ..embeddings import (
+    HunyuanCombinedTimestepTextSizeStyleEmbedding,
+    PatchEmbed,
+    PixArtAlphaTextProjection,
+)
+from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous
-from ..modeling_outputs import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -58,7 +62,6 @@ class AdaLayerNormShift(nn.Module):
         shift = self.linear(self.silu(emb.to(torch.float32)).to(emb.dtype))
         x = self.norm(x) + shift.unsqueeze(dim=1)
         return x
-
 
 
 @maybe_allow_in_graph
@@ -343,23 +346,23 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         height, width = hidden_states.shape[-2:]
 
         hidden_states = self.pos_embed(hidden_states)
-        
-        temb = self.time_extra_emb(timestep, encoder_hidden_states_t5, image_meta_size, style, hidden_dtype=timestep.dtype)  # [B, D]
+
+        temb = self.time_extra_emb(
+            timestep, encoder_hidden_states_t5, image_meta_size, style, hidden_dtype=timestep.dtype
+        )  # [B, D]
 
         # text projection
-        batch_size, sequence_length, _ = encoder_hidden_states_t5.shape 
-        encoder_hidden_states_t5 = self.text_embedder(encoder_hidden_states_t5.view(-1, encoder_hidden_states_t5.shape[-1]))
+        batch_size, sequence_length, _ = encoder_hidden_states_t5.shape
+        encoder_hidden_states_t5 = self.text_embedder(
+            encoder_hidden_states_t5.view(-1, encoder_hidden_states_t5.shape[-1])
+        )
         encoder_hidden_states_t5 = encoder_hidden_states_t5.view(batch_size, sequence_length, -1)
-        
-        encoder_hidden_states = torch.cat(
-            [encoder_hidden_states, encoder_hidden_states_t5], dim=1
-        ) 
+
+        encoder_hidden_states = torch.cat([encoder_hidden_states, encoder_hidden_states_t5], dim=1)
         text_embedding_mask = torch.cat([text_embedding_mask, text_embedding_mask_t5], dim=-1)
         text_embedding_mask = text_embedding_mask.unsqueeze(2).bool()
 
-        encoder_hidden_states = torch.where(
-            text_embedding_mask, encoder_hidden_states, self.text_embedding_padding
-        )
+        encoder_hidden_states = torch.where(text_embedding_mask, encoder_hidden_states, self.text_embedding_padding)
 
         skips = []
         for layer, block in enumerate(self.blocks):
