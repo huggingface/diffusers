@@ -284,6 +284,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         cross_attention_dim: int = 1024,
         norm_type: str = "layer_norm",
         cross_attention_dim_t5: int = 2048,
+        pooled_projection_dim: int = 1024,
         text_len: int = 77,
         text_len_t5: int = 256,
     ):
@@ -303,13 +304,10 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         )
 
         # Attention pooling
-        self.pooler = HunyuanDiTAttentionPool(text_len_t5, cross_attention_dim_t5, num_heads=8, output_dim=1024)
+        self.pooler = HunyuanDiTAttentionPool(text_len_t5, cross_attention_dim_t5, num_heads=8, output_dim=pooled_projection_dim)
 
         # Here we use a default learned embedder layer for future extension.
         self.style_embedder = nn.Embedding(1, hidden_size)
-
-        # Image size and crop size conditions
-        self.extra_in_dim = 256 * 6 + hidden_size
 
         # Text embedding for `add`
         self.pos_embed = PatchEmbed(
@@ -322,7 +320,8 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         )
         self.time_proj = Timesteps(256, True, 0)
         self.time_embedding = TimestepEmbedding(in_channels=256, time_embed_dim=hidden_size)
-        self.extra_in_dim += 1024
+
+        self.extra_in_dim = 256 * 6 + hidden_size + pooled_projection_dim
         self.extra_embedder = HunYuanTextProjection(
             in_features=self.extra_in_dim,
             hidden_size=hidden_size * 4,
@@ -385,9 +384,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         return_dict: bool
             Whether to return a dictionary.
         """
-        # Build text tokens with pooling
         pooled_projections = self.pooler(encoder_hidden_states_t5)
 
+        # text_embedder and mask
         text_states_mask = text_embedding_mask.bool()  # 2,77
         text_states_t5_mask = text_embedding_mask_t5.bool()  # 2,256
         b_t5, l_t5, c_t5 = encoder_hidden_states_t5.shape  # 2,256,2048
@@ -404,26 +403,24 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         _, _, height, width = hidden_states.shape
         height, width = height // self.config.patch_size, width // self.config.patch_size
 
-        # ========================= Build time and image embedding =========================
+        # time and image embedding
         timesteps_projected = self.time_proj(timestep)
         temb = self.time_embedding(timesteps_projected.to(dtype=timestep.dtype))
         hidden_states = self.pos_embed(hidden_states)
 
-        # Build image meta size tokens
+        # image meta size embdding
         image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0)  # [B * 6, 256]
 
         image_meta_size = image_meta_size.to(dtype=hidden_states.dtype)
         image_meta_size = image_meta_size.view(-1, 6 * 256)
-        extra_vec = torch.cat([pooled_projections, image_meta_size], dim=1)  # [B, D + 6 * 256]
 
-        # Build style tokens
-        style_embedding = self.style_embedder(style)
-        extra_vec = torch.cat([extra_vec, style_embedding], dim=1)
+        # style embedding
+        style_embedding = self.style_embedder(style)  # batch_size, hidden_size
+        extra_vec = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
 
         # Concatenate all extra vectors
         temb = temb + self.extra_embedder(extra_vec)  # [B, D]
 
-        # ========================= Forward pass through HunYuanDiT blocks =========================
         skips = []
         for layer, block in enumerate(self.blocks):
             if layer > self.config.num_layers // 2:
@@ -446,7 +443,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             if layer < (self.config.num_layers // 2 - 1):
                 skips.append(hidden_states)
 
-        # ========================= Final layer =========================
+        # final layer
         hidden_states = self.norm_out(hidden_states, temb.to(torch.float32))
         hidden_states = self.proj_out(hidden_states)
         # (N, L, patch_size ** 2 * out_channels)
@@ -463,37 +460,3 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
-
-    def initialize_weights(self):
-        # Initialize transformer layers:
-        def _basic_init(module):
-            if isinstance(module, nn.Linear):
-                torch.nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-
-        self.apply(_basic_init)
-
-        # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
-        w = self.x_embedder.proj.weight.data
-        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-        nn.init.constant_(self.x_embedder.proj.bias, 0)
-
-        # Initialize label embedding table:
-        nn.init.normal_(self.extra_embedder[0].weight, std=0.02)
-        nn.init.normal_(self.extra_embedder[2].weight, std=0.02)
-
-        # Initialize timestep embedding MLP:
-        nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
-        nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
-
-        # Zero-out adaLN modulation layers in HunYuanDiT blocks:
-        for block in self.blocks:
-            nn.init.constant_(block.default_modulation[-1].weight, 0)
-            nn.init.constant_(block.default_modulation[-1].bias, 0)
-
-        # Zero-out output layers:
-        nn.init.constant_(self.final_adaLN_modulation[-1].weight, 0)
-        nn.init.constant_(self.final_adaLN_modulation[-1].bias, 0)
-        nn.init.constant_(self.final_linear.weight, 0)
-        nn.init.constant_(self.final_linear.bias, 0)

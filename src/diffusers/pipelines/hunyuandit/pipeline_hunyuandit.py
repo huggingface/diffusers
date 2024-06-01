@@ -26,16 +26,22 @@ from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, HunyuanDiT2DModel
 from ...models.embeddings import get_2d_rotary_pos_embed
-from ...models.lora import adjust_lora_scale_text_encoder
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import DDPMScheduler
 from ...utils import (
-    deprecate,
     logging,
     replace_example_docstring,
+    is_torch_xla_available,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -157,17 +163,22 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             A scheduler to be used in combination with HunyuanDiT to denoise the encoded image latents.
     """
 
-    model_cpu_offload_seq = "text_encoder->embedder_t5->transformer->vae"
-    _optional_components = ["safety_checker", "feature_extractor", "embedder_t5", "tokenizer_t5"]
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
+    _optional_components = [
+        "safety_checker", 
+        "feature_extractor", 
+        "text_encoder_2", 
+        "tokenizer_2", 
+        "text_encoder", 
+        "tokenizer",
+    ]
     _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
         "negative_prompt_embeds",
-        "add_text_embeds",
-        "add_time_ids",
-        "negative_pooled_prompt_embeds",
-        "negative_add_time_ids",
+        "prompt_embeds_2",
+        "negative_prompt_embeds_2",
     ]
 
     def __init__(
@@ -180,8 +191,8 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
-        embedder_t5=T5EncoderModel,
-        tokenizer_t5=MT5Tokenizer,
+        text_encoder_2=T5EncoderModel,
+        tokenizer_2=MT5Tokenizer,
     ):
         super().__init__()
         
@@ -189,12 +200,12 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            tokenizer_t5=tokenizer_t5,
+            tokenizer_2=tokenizer_2,
             transformer=transformer,
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
-            embedder_t5=embedder_t5,
+            text_encoder_2=text_encoder_2,
         )
 
         if safety_checker is None and requires_safety_checker:
@@ -216,19 +227,23 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
+        self.default_sample_size = self.transformer.config.sample_size
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        lora_scale: Optional[float] = None,
-        embedder=None,
+        tokenizer: Union[BertTokenizer, MT5Tokenizer],
+        text_encoder: Union[BertModel, T5EncoderModel],
+        prompt: str,
+        device: torch.device,
+        dtype: torch.dtype,
+        num_images_per_prompt: int = 1,
+        do_classifier_free_guidance: bool = True,
+        negative_prompt: Optional[str] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        max_sequence_length: Optional[int] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -246,35 +261,16 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            lora_scale (`float`, *optional*):
-                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
-            embedder:
-                T5 embedder (including text encoder and tokenizer)
+            max_sequence_length (`int`, *optional*): maximum sequence length to use for the prompt.
         """
-        if embedder is None:
-            text_encoder = self.text_encoder
-            tokenizer = self.tokenizer
-            max_length = self.tokenizer.model_max_length
-        else:
-            text_encoder = embedder["model"]
-            tokenizer = embedder["tokenizer"]
-            max_length = embedder["max_length"]
-
-        # set lora scale so that monkey patched LoRA
-        # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
-            self._lora_scale = lora_scale
-
-            # dynamically adjust the LoRA scale
-            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-
+        max_length = max_sequence_length or tokenizer.model_max_length
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -283,9 +279,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                prompt = self.maybe_convert_prompt(prompt, tokenizer)
 
             text_inputs = tokenizer(
                 prompt,
@@ -307,24 +300,16 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                     f" {tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            attention_mask = text_inputs.attention_mask.to(device)
+            prompt_attention_mask = text_inputs.attention_mask.to(device)            
             prompt_embeds = text_encoder(
                 text_input_ids.to(device),
-                attention_mask=attention_mask,
+                attention_mask=prompt_attention_mask,
             )
             prompt_embeds = prompt_embeds[0]
-            attention_mask = attention_mask.repeat(num_images_per_prompt, 1)
-        else:
-            attention_mask = None
+            prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
-        if text_encoder is not None:
-            prompt_embeds_dtype = text_encoder.dtype
-        elif self.transformer is not None:
-            prompt_embeds_dtype = self.transformer.dtype
-        else:
-            prompt_embeds_dtype = prompt_embeds.dtype
 
-        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -352,9 +337,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             else:
                 uncond_tokens = negative_prompt
 
-            # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = tokenizer(
@@ -365,26 +347,24 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 return_tensors="pt",
             )
 
-            uncond_attention_mask = uncond_input.attention_mask.to(device)
+            negative_prompt_attention_mask = uncond_input.attention_mask.to(device)
             negative_prompt_embeds = text_encoder(
                 uncond_input.input_ids.to(device),
-                attention_mask=uncond_attention_mask,
+                attention_mask=negative_prompt_attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
-            uncond_attention_mask = uncond_attention_mask.repeat(num_images_per_prompt, 1)
-        else:
-            uncond_attention_mask = None
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        return prompt_embeds, negative_prompt_embeds, attention_mask, uncond_attention_mask
+        return prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
@@ -424,20 +404,20 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         prompt,
         height,
         width,
-        callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        prompt_attention_mask=None,
+        negative_prompt_attention_mask=None,
+        prompt_embeds_2=None,
+        negative_prompt_embeds_2=None,
+        prompt_attention_mask_2=None,
+        negative_prompt_attention_mask_2=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
         
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -457,12 +437,18 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        
+        if prompt_embeds is not None and (prompt_attention_mask is None or prompt_embeds_2 is None or prompt_attention_mask_2 is None):
+            raise ValueError("Must provide `prompt_attention_mask` and `prompt_embeds_2` and `prompt_attention_mask_2` when specifying `prompt_embeds`.")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
+        
+        if negative_prompt_embeds is not None and (negative_prompt_attention_mask is None or negative_prompt_embeds_2 is None or negative_prompt_attention_mask_2 is None):
+            raise ValueError("Must provide `negative_prompt_attention_mask` and `negative_prompt_embeds_2` and `negative_prompt_attention_mask_2` when specifying `negative_prompt_embeds`.")
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
@@ -497,7 +483,30 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-    
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def guidance_rescale(self):
+        return self._guidance_rescale
+
+    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # corresponds to doing no classifier free guidance.
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    @property
+    def interrupt(self):
+        return self._interrupt  
+  
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -511,21 +520,26 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_embeds_t5: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds_t5: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds_2: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds_2: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        prompt_attention_mask_2: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask_2: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
-        original_size: Optional[Tuple[int, int]] = [1024, 1024],
-        **kwargs,
+        original_size: Optional[Tuple[int, int]] = (1024, 1024),
+        target_size: Optional[Tuple[int, int]] = None,
+        crops_coords_top_left: Tuple[int, int] = (0, 0),
+        use_resolution_binning: bool = True,
     ):
         r"""
         The call function to the pipeline for generation with HunyuanDiT.
@@ -537,18 +551,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 The width in pixels of the generated image.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
-                numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
-                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
-                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
-                latents as `image`, but if passing latents directly it is not encoded again.
-            strength (`float`, *optional*, defaults to 1.0):
-                Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
-                starting point and more noise is added the higher the `strength`. The number of denoising steps depends
-                on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
-                process runs for the full number of iterations specified in `num_inference_steps`. A value of 1
-                essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter is modulated by `strength`.
@@ -566,10 +568,10 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -577,16 +579,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
-            callback (`Callable`, *optional*):
-                A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor, pred_x0: 
-                torch.FloatTensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function is called. If not specified, the callback is called at
-                every step.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
-                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
 
         Examples:
 
@@ -598,45 +590,43 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 "not-safe-for-work" (nsfw) content.
         """
 
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
+        # 0. default height and width
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
+        height = int((height // 16) * 16)
+        width = int((width // 16) * 16)
+
+        if use_resolution_binning and (height, width) not in SUPPORTED_SHAPE:
+            width, height = map_to_standard_shapes(width, height)
+            height = int(height)
+            width = int(width)
+            logger.warning(f"Reshaped to (height, width)=({height}, {width}), Supported shapes are {SUPPORTED_SHAPE}")
+        
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             height,
             width,
-            callback_steps,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_attention_mask,
+            prompt_embeds_2,
+            negative_prompt_embeds_2,
+            prompt_attention_mask_2,
+            negative_prompt_attention_mask_2,
             callback_on_step_end_tensor_inputs,    
         )
+        self._guidance_scale = guidance_scale
+        self._guidance_rescale = guidance_rescale
+        self._interrupt = False
 
-        # 2. Calculate neccessary elements for HunyuanDiT
-        height = int((height // 16) * 16)
-        width = int((width // 16) * 16)
-        print(f"Align to 16: (height, width) = ({height}, {width})")
 
-        if (height, width) not in SUPPORTED_SHAPE:
-            width, height = map_to_standard_shapes(width, height)
-            height = int(height)
-            width = int(width)
-            print(f"Reshaped to (height, width)=({height}, {width})")
-            print(f"Supported shapes are {SUPPORTED_SHAPE}")
-
-        grid_height = height // 8 // self.transformer.config.patch_size
-        grid_width = width // 8 // self.transformer.config.patch_size
-        base_size = 512 // 8 // self.transformer.config.patch_size
-        grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_size)
-        image_rotary_emb = get_2d_rotary_pos_embed(
-            self.transformer.inner_dim // self.transformer.num_heads, grid_crops_coords, (grid_height, grid_width)
-        )
-
-        # 3. Define call parameters
+        # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -645,57 +635,47 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
+       
 
-        # 4. Encode input prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
+        # 3. Encode input prompt
 
-        prompt_embeds, negative_prompt_embeds, attention_mask, uncond_attention_mask = self.encode_prompt(
-            prompt,
-            device,
-            num_images_per_prompt,
-            do_classifier_free_guidance,
-            negative_prompt,
+        prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = self.encode_prompt(
+            tokenizer=self.tokenizer,
+            text_encoder=self.text_encoder,
+            prompt=prompt,
+            device=device,
+            dtype=self.transformer.dtype,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
+            max_sequence_length=77,
         )
-        prompt_embeds_t5, negative_prompt_embeds_t5, attention_mask_t5, uncond_attention_mask_t5 = self.encode_prompt(
-            prompt,
-            device,
-            num_images_per_prompt,
-            do_classifier_free_guidance,
-            negative_prompt,
-            prompt_embeds=prompt_embeds_t5,
-            negative_prompt_embeds=negative_prompt_embeds_t5,
-            lora_scale=text_encoder_lora_scale,
-            embedder={"model": self.embedder_t5, "tokenizer": self.tokenizer_t5, "max_length": 256},
+        prompt_embeds_2, negative_prompt_embeds_2, prompt_attention_mask_2, negative_prompt_attention_mask_2 = self.encode_prompt(
+            tokenizer=self.tokenizer_2,
+            text_encoder=self.text_encoder_2,
+            prompt=prompt,
+            device=device,
+            dtype=self.transformer.dtype,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds_2,
+            negative_prompt_embeds=negative_prompt_embeds_2,
+            prompt_attention_mask=prompt_attention_mask_2,
+            negative_prompt_attention_mask=negative_prompt_attention_mask_2,
+            max_sequence_length=256,
         )
 
-        # For classifier free guidance, we need to do two forward passes.
-        # Here we concatenate the unconditional and text embeddings into a single batch
-        # to avoid doing two forward passes
-        if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-            attention_mask = torch.cat([uncond_attention_mask, attention_mask])
-            prompt_embeds_t5 = torch.cat([negative_prompt_embeds_t5, prompt_embeds_t5])
-            attention_mask_t5 = torch.cat([uncond_attention_mask_t5, attention_mask_t5])
-        
-        prompt_embeds = prompt_embeds.to(dtype=self.transformer.dtype)
-        attention_mask = attention_mask.to(dtype=self.transformer.dtype)
-        prompt_embeds_t5 = prompt_embeds_t5.to(dtype=self.transformer.dtype)
-        attention_mask_t5 = attention_mask_t5.to(dtype=self.transformer.dtype)
 
-        # 5. Prepare timesteps
+        # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 6. Prepare latent variables
+        # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -708,45 +688,65 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             latents,
         )
 
-        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
         
-        # ========================================================================
-        # Arguments: style. (A fixed argument. Don't Change it.)
-        # ========================================================================
-        style = torch.as_tensor([0, 0] * batch_size, device=self._execution_device)
+        # 7 create image_rotary_emb, style embedding & time ids
+        grid_height = height // 8 // self.transformer.config.patch_size
+        grid_width = width // 8 // self.transformer.config.patch_size
+        base_size = 512 // 8 // self.transformer.config.patch_size
+        grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_size)
+        image_rotary_emb = get_2d_rotary_pos_embed(
+            self.transformer.inner_dim // self.transformer.num_heads, grid_crops_coords, (grid_height, grid_width)
+        )
 
-        # ========================================================================
-        # Inner arguments: image_meta_size (Please refer to SDXL.)
-        # ========================================================================
-        size_cond = list(original_size) + [width, height, 0, 0]
-        image_meta_size = torch.as_tensor([size_cond] * 2 * batch_size, device=self._execution_device)
+        style = torch.tensor([0], device=device)
+
+        target_size = target_size or (height, width)
+        add_time_ids = list(original_size + target_size + crops_coords_top_left)
+        add_time_ids = torch.tensor([add_time_ids], dtype=prompt_embeds.dtype)
+
+        if self.do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
+            prompt_embeds_2 = torch.cat([negative_prompt_embeds_2, prompt_embeds_2])
+            prompt_attention_mask_2 = torch.cat([negative_prompt_attention_mask_2, prompt_attention_mask_2])
+            add_time_ids = torch.cat([add_time_ids] * 2, dim=0)
+            style = torch.cat([style] * 2, dim=0)
+        
+        prompt_embeds = prompt_embeds.to(device=device)
+        prompt_attention_mask = prompt_attention_mask.to(device=device)
+        prompt_embeds_2 = prompt_embeds_2.to(device=device)
+        prompt_attention_mask_2 = prompt_attention_mask_2.to(device=device)
+        add_time_ids = add_time_ids.to(dtype=prompt_embeds.dtype, device=device).repeat(batch_size * num_images_per_prompt, 1)
+        style = style.to(device=device).repeat(batch_size * num_images_per_prompt)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
+        
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                 
                 # expand scalar t to 1-D tensor to match the 1st dim of latent_model_input
-                t_expand = torch.tensor([t] * latent_model_input.shape[0], device=latent_model_input.device).to(
-                    dtype=self.transformer.dtype
+                t_expand = torch.tensor([t] * latent_model_input.shape[0], device=device).to(
+                    dtype=latent_model_input.dtype
                 )
-
-                ims = image_meta_size if image_meta_size is not None else None
-                ims = ims.to(self.transformer.dtype)
 
                 # predict the noise residual
                 noise_pred = self.transformer(
                     latent_model_input,
                     t_expand,
                     encoder_hidden_states=prompt_embeds,
-                    text_embedding_mask=attention_mask,
-                    encoder_hidden_states_t5=prompt_embeds_t5,
-                    text_embedding_mask_t5=attention_mask_t5,
-                    image_meta_size=ims,
+                    text_embedding_mask=prompt_attention_mask,
+                    encoder_hidden_states_t5=prompt_embeds_2,
+                    text_embedding_mask_t5=prompt_attention_mask_2,
+                    image_meta_size=add_time_ids,
                     style=style,
                     image_rotary_emb=image_rotary_emb,
                     return_dict=False,
@@ -755,24 +755,36 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 noise_pred, _ = noise_pred.chunk(2, dim=1)
 
                 # perform guidance
-                if do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                if do_classifier_free_guidance and guidance_rescale > 0.0:
+                if self.do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                results = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=True)
-                latents = results.prev_sample
-                pred_x0 = results.pred_original_sample if hasattr(results, "pred_original_sample") else None
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
-                # call the callback, if provided
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    prompt_embeds_2 = callback_outputs.pop("prompt_embeds_2", prompt_embeds_2)
+                    negative_prompt_embeds_2 = callback_outputs.pop(
+                        "negative_prompt_embeds_2", negative_prompt_embeds_2
+                    )
+                
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents, pred_x0)
+                
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
