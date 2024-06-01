@@ -156,7 +156,7 @@ class PeftLoraLoaderMixinTests:
 
         return noise, input_ids, pipeline_inputs
 
-    # copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
+    # Copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
     def get_dummy_tokens(self):
         max_seq_length = 77
 
