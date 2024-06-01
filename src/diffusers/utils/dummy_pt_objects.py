@@ -121,6 +121,7 @@ class HunyuanDiT2DModel(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
 
+
 class DiTTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 

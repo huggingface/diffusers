@@ -940,6 +940,7 @@ class HunYuanTextProjection(nn.Module):
         hidden_states = self.linear_2(hidden_states)
         return hidden_states
 
+
 class IPAdapterPlusImageProjectionBlock(nn.Module):
     def __init__(
         self,
