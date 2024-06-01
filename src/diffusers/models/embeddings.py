@@ -180,7 +180,7 @@ class PatchEmbed(nn.Module):
             latent = self.norm(latent)
         if self.pos_embed is None:
             return latent.to(latent.dtype)
-        
+
         # Interpolate positional embeddings if needed.
         # (For PixArt-Alpha: https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L162C151-L162C160)
         if self.height != height or self.width != width:
@@ -924,7 +924,7 @@ class PixArtAlphaTextProjection(nn.Module):
 class HunYuanTextProjection(nn.Module):
     """
     Projects caption embeddings. Also handles dropout for classifier-free guidance.
-    
+
     Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
     """
 
@@ -939,7 +939,7 @@ class HunYuanTextProjection(nn.Module):
         hidden_states = self.act_1(hidden_states.to(torch.float32)).to(caption.dtype)
         hidden_states = self.linear_2(hidden_states)
         return hidden_states
-    
+
 
 class IPAdapterPlusImageProjection(nn.Module):
     """Resampler of IP-Adapter Plus.

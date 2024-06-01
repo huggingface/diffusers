@@ -53,12 +53,12 @@ class AdaLayerNormShift(nn.Module):
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, embedding_dim)
         self.norm = FP32_Layernorm(embedding_dim, elementwise_affine=elementwise_affine, eps=eps)
-    
+
     def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
         shift = self.linear(self.silu(emb.to(torch.float32)).to(emb.dtype))
         x = self.norm(x) + shift.unsqueeze(dim=1)
         return x
-    
+
 
 class HunyuanDiTAttentionPool(nn.Module):
     def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
@@ -304,7 +304,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         )
 
         # Attention pooling
-        self.pooler = HunyuanDiTAttentionPool(text_len_t5, cross_attention_dim_t5, num_heads=8, output_dim=pooled_projection_dim)
+        self.pooler = HunyuanDiTAttentionPool(
+            text_len_t5, cross_attention_dim_t5, num_heads=8, output_dim=pooled_projection_dim
+        )
 
         # Here we use a default learned embedder layer for future extension.
         self.style_embedder = nn.Embedding(1, hidden_size)
@@ -343,7 +345,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
                 for layer in range(num_layers)
             ]
         )
-        
+
         self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
@@ -365,7 +367,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
         Args:
         hidden_states: torch.Tensor (B, D, H, W)
-        timestep: torch.Tensor 
+        timestep: torch.Tensor
             (B)
         encoder_hidden_states: torch.Tensor
             CLIP text embedding, (B, L_clip, D)

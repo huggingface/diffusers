@@ -1481,7 +1481,6 @@ class HunyuanAttnProcessor2_0:
 
         query = attn.to_q(hidden_states)
 
-        
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
@@ -1507,7 +1506,7 @@ class HunyuanAttnProcessor2_0:
         if image_rotary_emb is not None:
             query = apply_rotary_emb(query, image_rotary_emb)
             if not attn.is_cross_attention:
-                key = apply_rotary_emb(key, image_rotary_emb) 
+                key = apply_rotary_emb(key, image_rotary_emb)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1

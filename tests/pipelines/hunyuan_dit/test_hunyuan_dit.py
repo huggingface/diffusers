@@ -13,25 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import tempfile
 import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, T5EncoderModel, BertModel, BertTokenizer
+from transformers import AutoTokenizer, BertModel, T5EncoderModel
 
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
-    HunyuanDiTPipeline,
     HunyuanDiT2DModel,
+    HunyuanDiTPipeline,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -116,7 +112,9 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (1, 16, 16, 3))
-        expected_slice = np.array([0.5421802, 0.30296382, 0.35727492, 0.42976296, 0.31749535, 0.50821614, 0.44922674, 0.6940243, 0.41378903])
+        expected_slice = np.array(
+            [0.5421802, 0.30296382, 0.35727492, 0.42976296, 0.31749535, 0.50821614, 0.44922674, 0.6940243, 0.41378903]
+        )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
@@ -127,7 +125,7 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_sequential_offload_forward_pass_twice(self):
         # TODO(YiYi) need to fix later
         pass
-    
+
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(
             expected_max_diff=1e-3,
@@ -151,21 +149,28 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder_2 = components["text_encoder_2"]
         tokenizer_2 = components["tokenizer_2"]
 
-
         (
             prompt_embeds,
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
-        ) = pipe.encode_prompt(tokenizer, text_encoder, prompt, device=torch_device, dtype=text_encoder.dtype, max_sequence_length=77)
-
+        ) = pipe.encode_prompt(
+            tokenizer, text_encoder, prompt, device=torch_device, dtype=text_encoder.dtype, max_sequence_length=77
+        )
 
         (
             prompt_embeds_2,
             negative_prompt_embeds_2,
             prompt_attention_mask_2,
             negative_prompt_attention_mask_2,
-        ) = pipe.encode_prompt(tokenizer_2, text_encoder_2, prompt, device=torch_device, dtype=text_encoder_2.dtype, max_sequence_length=256)
+        ) = pipe.encode_prompt(
+            tokenizer_2,
+            text_encoder_2,
+            prompt,
+            device=torch_device,
+            dtype=text_encoder_2.dtype,
+            max_sequence_length=256,
+        )
 
         # inputs with prompt converted to embeddings
         inputs = {

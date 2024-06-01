@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -29,12 +29,13 @@ from ...models.embeddings import get_2d_rotary_pos_embed
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import DDPMScheduler
 from ...utils import (
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
-    is_torch_xla_available,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -54,7 +55,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = HunyuanDiTPipeline.from_pretrained("Tencent-Hunyuan/HunyuanDiT", torch_dtype=torch.float16)
         >>> pipe.to("cuda")
-        
+
         >>> # You may also use English prompt as HunyuanDiT supports both English and Chinese
         >>> # prompt = "An astronaut riding a horse"
         >>> prompt = "一个宇航员在骑马"
@@ -105,7 +106,7 @@ def get_resize_crop_region_for_grid(src, tgt_size):
     th = tw = tgt_size
     h, w = src
 
-    r = h / w       
+    r = h / w
 
     # resize
     if r > 1:
@@ -145,11 +146,11 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
 
     HunyuanDiT uses two text encoders: [mT5](https://huggingface.co/google/mt5-base) and [bilingual CLIP](fine-tuned by
     ourselves)
-    
+
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. We use
-            `sdxl-vae-fp16-fix`.   
+            `sdxl-vae-fp16-fix`.
         text_encoder (Optional[`~transformers.BertModel`, `~transformers.CLIPTextModel`]):
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
             HunyuanDiT uses a fine-tuned [bilingual CLIP].
@@ -165,11 +166,11 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
     _optional_components = [
-        "safety_checker", 
-        "feature_extractor", 
-        "text_encoder_2", 
-        "tokenizer_2", 
-        "text_encoder", 
+        "safety_checker",
+        "feature_extractor",
+        "text_encoder_2",
+        "tokenizer_2",
+        "text_encoder",
         "tokenizer",
     ]
     _exclude_from_cpu_offload = ["safety_checker"]
@@ -195,7 +196,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         tokenizer_2=MT5Tokenizer,
     ):
         super().__init__()
-        
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -279,7 +280,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-
             text_inputs = tokenizer(
                 prompt,
                 padding="max_length",
@@ -300,14 +300,13 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                     f" {tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            prompt_attention_mask = text_inputs.attention_mask.to(device)            
+            prompt_attention_mask = text_inputs.attention_mask.to(device)
             prompt_embeds = text_encoder(
                 text_input_ids.to(device),
                 attention_mask=prompt_attention_mask,
             )
             prompt_embeds = prompt_embeds[0]
             prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
-
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
@@ -336,7 +335,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 )
             else:
                 uncond_tokens = negative_prompt
-
 
             max_length = prompt_embeds.shape[1]
             uncond_input = tokenizer(
@@ -418,7 +416,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -437,18 +434,28 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        
-        if prompt_embeds is not None and (prompt_attention_mask is None or prompt_embeds_2 is None or prompt_attention_mask_2 is None):
-            raise ValueError("Must provide `prompt_attention_mask` and `prompt_embeds_2` and `prompt_attention_mask_2` when specifying `prompt_embeds`.")
+
+        if prompt_embeds is not None and (
+            prompt_attention_mask is None or prompt_embeds_2 is None or prompt_attention_mask_2 is None
+        ):
+            raise ValueError(
+                "Must provide `prompt_attention_mask` and `prompt_embeds_2` and `prompt_attention_mask_2` when specifying `prompt_embeds`."
+            )
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
-        
-        if negative_prompt_embeds is not None and (negative_prompt_attention_mask is None or negative_prompt_embeds_2 is None or negative_prompt_attention_mask_2 is None):
-            raise ValueError("Must provide `negative_prompt_attention_mask` and `negative_prompt_embeds_2` and `negative_prompt_attention_mask_2` when specifying `negative_prompt_embeds`.")
+
+        if negative_prompt_embeds is not None and (
+            negative_prompt_attention_mask is None
+            or negative_prompt_embeds_2 is None
+            or negative_prompt_attention_mask_2 is None
+        ):
+            raise ValueError(
+                "Must provide `negative_prompt_attention_mask` and `negative_prompt_embeds_2` and `negative_prompt_attention_mask_2` when specifying `negative_prompt_embeds`."
+            )
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
@@ -505,8 +512,8 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
 
     @property
     def interrupt(self):
-        return self._interrupt  
-  
+        return self._interrupt
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -604,7 +611,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             height = int(height)
             width = int(width)
             logger.warning(f"Reshaped to (height, width)=({height}, {width}), Supported shapes are {SUPPORTED_SHAPE}")
-        
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -619,12 +626,11 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             negative_prompt_embeds_2,
             prompt_attention_mask_2,
             negative_prompt_attention_mask_2,
-            callback_on_step_end_tensor_inputs,    
+            callback_on_step_end_tensor_inputs,
         )
         self._guidance_scale = guidance_scale
         self._guidance_rescale = guidance_rescale
         self._interrupt = False
-
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -635,11 +641,15 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-       
 
         # 3. Encode input prompt
 
-        prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = self.encode_prompt(
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_attention_mask,
+        ) = self.encode_prompt(
             tokenizer=self.tokenizer,
             text_encoder=self.text_encoder,
             prompt=prompt,
@@ -654,7 +664,12 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             max_sequence_length=77,
         )
-        prompt_embeds_2, negative_prompt_embeds_2, prompt_attention_mask_2, negative_prompt_attention_mask_2 = self.encode_prompt(
+        (
+            prompt_embeds_2,
+            negative_prompt_embeds_2,
+            prompt_attention_mask_2,
+            negative_prompt_attention_mask_2,
+        ) = self.encode_prompt(
             tokenizer=self.tokenizer_2,
             text_encoder=self.text_encoder_2,
             prompt=prompt,
@@ -669,7 +684,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             negative_prompt_attention_mask=negative_prompt_attention_mask_2,
             max_sequence_length=256,
         )
-
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -690,7 +704,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-        
+
         # 7 create image_rotary_emb, style embedding & time ids
         grid_height = height // 8 // self.transformer.config.patch_size
         grid_width = width // 8 // self.transformer.config.patch_size
@@ -713,12 +727,14 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             prompt_attention_mask_2 = torch.cat([negative_prompt_attention_mask_2, prompt_attention_mask_2])
             add_time_ids = torch.cat([add_time_ids] * 2, dim=0)
             style = torch.cat([style] * 2, dim=0)
-        
+
         prompt_embeds = prompt_embeds.to(device=device)
         prompt_attention_mask = prompt_attention_mask.to(device=device)
         prompt_embeds_2 = prompt_embeds_2.to(device=device)
         prompt_attention_mask_2 = prompt_attention_mask_2.to(device=device)
-        add_time_ids = add_time_ids.to(dtype=prompt_embeds.dtype, device=device).repeat(batch_size * num_images_per_prompt, 1)
+        add_time_ids = add_time_ids.to(dtype=prompt_embeds.dtype, device=device).repeat(
+            batch_size * num_images_per_prompt, 1
+        )
         style = style.to(device=device).repeat(batch_size * num_images_per_prompt)
 
         # 8. Denoising loop
@@ -728,11 +744,11 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-        
+
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                
+
                 # expand scalar t to 1-D tensor to match the 1st dim of latent_model_input
                 t_expand = torch.tensor([t] * latent_model_input.shape[0], device=device).to(
                     dtype=latent_model_input.dtype
@@ -765,7 +781,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-                
+
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
@@ -779,10 +795,10 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                     negative_prompt_embeds_2 = callback_outputs.pop(
                         "negative_prompt_embeds_2", negative_prompt_embeds_2
                     )
-                
+
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                
+
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
