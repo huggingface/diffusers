@@ -107,7 +107,7 @@ class ControlNetXSAdapter(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class HunyuanDiT2DModel(metaclass=DummyObject):
+class DiTTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -122,7 +122,7 @@ class HunyuanDiT2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class DiTTransformer2DModel(metaclass=DummyObject):
+class HunyuanDiT2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
