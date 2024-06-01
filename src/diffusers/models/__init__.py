@@ -37,6 +37,8 @@ if is_torch_available():
     _import_structure["dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
+    _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
+    _import_structure["transformers.pixart_transformer_2d"] = ["PixArtTransformer2DModel"]
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
@@ -74,7 +76,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
+            DiTTransformer2DModel,
             DualTransformer2DModel,
+            PixArtTransformer2DModel,
             PriorTransformer,
             T5FilmDecoder,
             Transformer2DModel,
