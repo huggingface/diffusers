@@ -24,7 +24,7 @@ specific language governing permissions and limitations under the License.
 
 이 문서에서 보여진 방법들은 기반 생성 모델을 고정시키고 다양한 [노이즈 스케줄러](https://huggingface.co/docs/diffusers/main/en/api/schedulers/overview)를 평가하는 데에도 사용할 수 있습니다.
 
-## 시나리오
+## 시나리오[[scenarios]]
 다음과 같은 파이프라인을 사용하여 Diffusion 모델을 다룹니다:
 
 - 텍스트로 안내된 이미지 생성 (예: [`StableDiffusionPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/text2img)).
