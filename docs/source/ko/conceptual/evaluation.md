@@ -101,7 +101,7 @@ images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generato
 
 </Tip>
 
-## 정량적 평가
+## 정량적 평가[[quantitative-evaluation]]
 
 이 섹션에서는 세 가지 다른 확산 파이프라인을 평가하는 방법을 안내합니다:
 
