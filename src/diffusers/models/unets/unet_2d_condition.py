@@ -60,11 +60,11 @@ class UNet2DConditionOutput(BaseOutput):
     The output of [`UNet2DConditionModel`].
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)`):
             The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
     """
 
-    sample: torch.FloatTensor = None
+    sample: torch.Tensor = None
 
 
 class UNet2DConditionModel(
@@ -110,13 +110,13 @@ class UNet2DConditionModel(
             The dimension of the cross attention features.
         transformer_layers_per_block (`int`, `Tuple[int]`, or `Tuple[Tuple]` , *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
-            [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
-            [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
+            [`~models.unets.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unets.unet_2d_blocks.CrossAttnUpBlock2D`],
+            [`~models.unets.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
         reverse_transformer_layers_per_block : (`Tuple[Tuple]`, *optional*, defaults to None):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`], in the upsampling
             blocks of the U-Net. Only relevant if `transformer_layers_per_block` is of type `Tuple[Tuple]` and for
-            [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
-            [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
+            [`~models.unets.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unets.unet_2d_blocks.CrossAttnUpBlock2D`],
+            [`~models.unets.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
         encoder_hid_dim (`int`, *optional*, defaults to None):
             If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
             dimension to `cross_attention_dim`.
@@ -685,7 +685,7 @@ class UNet2DConditionModel(
             positive_len = 768
             if isinstance(cross_attention_dim, int):
                 positive_len = cross_attention_dim
-            elif isinstance(cross_attention_dim, tuple) or isinstance(cross_attention_dim, list):
+            elif isinstance(cross_attention_dim, (list, tuple)):
                 positive_len = cross_attention_dim[0]
 
             feature_type = "text-only" if attention_type == "gated" else "text-image"
@@ -1042,7 +1042,7 @@ class UNet2DConditionModel(
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
@@ -1060,10 +1060,10 @@ class UNet2DConditionModel(
         The [`UNet2DConditionModel`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The noisy input tensor with the following shape `(batch, channel, height, width)`.
-            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
-            encoder_hidden_states (`torch.FloatTensor`):
+            timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             class_labels (`torch.Tensor`, *optional*, defaults to `None`):
                 Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.

@@ -22,7 +22,7 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import PixArtImageProcessor
-from ...models import AutoencoderKL, Transformer2DModel
+from ...models import AutoencoderKL, PixArtTransformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -246,8 +246,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         tokenizer (`T5Tokenizer`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        transformer ([`Transformer2DModel`]):
-            A text conditioned `Transformer2DModel` to denoise the encoded image latents.
+        transformer ([`PixArtTransformer2DModel`]):
+            A text conditioned `PixArtTransformer2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
@@ -276,7 +276,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         tokenizer: T5Tokenizer,
         text_encoder: T5EncoderModel,
         vae: AutoencoderKL,
-        transformer: Transformer2DModel,
+        transformer: PixArtTransformer2DModel,
         scheduler: DPMSolverMultistepScheduler,
     ):
         super().__init__()
@@ -296,10 +296,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         negative_prompt: str = "",
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_attention_mask: Optional[torch.FloatTensor] = None,
-        negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         clean_caption: bool = False,
         max_sequence_length: int = 120,
         **kwargs,
@@ -320,10 +320,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 number of images that should be generated per prompt
             device: (`torch.device`, *optional*):
                 torch device to place the resulting embeddings on
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. For PixArt-Alpha, it's should be the embeddings of the ""
                 string.
             clean_caption (`bool`, defaults to `False`):
@@ -366,7 +366,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             ):
                 removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_length - 1 : -1])
                 logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
+                    "The following part of your input was truncated because T5 can only handle sequences up to"
                     f" {max_length} tokens: {removed_text}"
                 )
 
@@ -394,7 +394,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens = [negative_prompt] * batch_size
+            uncond_tokens = [negative_prompt] * batch_size if isinstance(negative_prompt, str) else negative_prompt
             uncond_tokens = self._text_preprocessing(uncond_tokens, clean_caption=clean_caption)
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -694,14 +694,14 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         width: Optional[int] = None,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_attention_mask: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         clean_caption: bool = True,
         use_resolution_binning: bool = True,
@@ -748,18 +748,18 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            prompt_attention_mask (`torch.FloatTensor`, *optional*): Pre-generated attention mask for text embeddings.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_attention_mask (`torch.Tensor`, *optional*): Pre-generated attention mask for text embeddings.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. For PixArt-Alpha this negative prompt should be "". If not
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
-            negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
@@ -768,7 +768,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.

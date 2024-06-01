@@ -21,11 +21,12 @@ import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ...utils.torch_utils import is_compiled_module, randn_tensor
+from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 
 
@@ -59,28 +60,6 @@ def _append_dims(x, target_dims):
     if dims_to_append < 0:
         raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
     return x[(...,) + (None,) * dims_to_append]
-
-
-# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
-def tensor2vid(video: torch.Tensor, processor: VaeImageProcessor, output_type: str = "np"):
-    batch_size, channels, num_frames, height, width = video.shape
-    outputs = []
-    for batch_idx in range(batch_size):
-        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-        batch_output = processor.postprocess(batch_vid, output_type)
-
-        outputs.append(batch_output)
-
-    if output_type == "np":
-        outputs = np.stack(outputs)
-
-    elif output_type == "pt":
-        outputs = torch.stack(outputs)
-
-    elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
-
-    return outputs
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -149,12 +128,12 @@ class StableVideoDiffusionPipelineOutput(BaseOutput):
     Output class for Stable Video Diffusion pipeline.
 
     Args:
-        frames (`[List[List[PIL.Image.Image]]`, `np.ndarray`, `torch.FloatTensor`]):
+        frames (`[List[List[PIL.Image.Image]]`, `np.ndarray`, `torch.Tensor`]):
             List of denoised PIL images of length `batch_size` or numpy array or torch tensor of shape `(batch_size,
             num_frames, height, width, num_channels)`.
     """
 
-    frames: Union[List[List[PIL.Image.Image]], np.ndarray, torch.FloatTensor]
+    frames: Union[List[List[PIL.Image.Image]], np.ndarray, torch.Tensor]
 
 
 class StableVideoDiffusionPipeline(DiffusionPipeline):
@@ -199,7 +178,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.video_processor = VideoProcessor(do_resize=True, vae_scale_factor=self.vae_scale_factor)
 
     def _encode_image(
         self,
@@ -207,12 +186,12 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         device: Union[str, torch.device],
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
-            image = self.image_processor.pil_to_numpy(image)
-            image = self.image_processor.numpy_to_pt(image)
+            image = self.video_processor.pil_to_numpy(image)
+            image = self.video_processor.numpy_to_pt(image)
 
             # We normalize the image before resizing to match with the original implementation.
             # Then we unnormalize it after resizing.
@@ -300,7 +279,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         return add_time_ids
 
-    def decode_latents(self, latents: torch.FloatTensor, num_frames: int, decode_chunk_size: int = 14):
+    def decode_latents(self, latents: torch.Tensor, num_frames: int, decode_chunk_size: int = 14):
         # [batch, frames, channels, height, width] -> [batch*frames, channels, height, width]
         latents = latents.flatten(0, 1)
 
@@ -336,7 +315,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             and not isinstance(image, list)
         ):
             raise ValueError(
-                "`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
                 f" {type(image)}"
             )
 
@@ -353,7 +332,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         dtype: torch.dtype,
         device: Union[str, torch.device],
         generator: torch.Generator,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
     ):
         shape = (
             batch_size,
@@ -398,7 +377,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
+        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.Tensor],
         height: int = 576,
         width: int = 1024,
         num_frames: Optional[int] = None,
@@ -412,7 +391,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         decode_chunk_size: Optional[int] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -422,7 +401,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
+            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.Tensor`):
                 Image(s) to guide image generation. If you provide a tensor, the expected value range is between `[0,
                 1]`.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -461,7 +440,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for video
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
@@ -486,8 +465,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] is
-                returned, otherwise a `tuple` of (`List[List[PIL.Image.Image]]` or `np.ndarray` or `torch.FloatTensor`)
-                is returned.
+                returned, otherwise a `tuple` of (`List[List[PIL.Image.Image]]` or `np.ndarray` or `torch.Tensor`) is
+                returned.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -520,7 +499,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         fps = fps - 1
 
         # 4. Encode input image using VAE
-        image = self.image_processor.preprocess(image, height=height, width=width).to(device)
+        image = self.video_processor.preprocess(image, height=height, width=width).to(device)
         noise = randn_tensor(image.shape, generator=generator, device=device, dtype=image.dtype)
         image = image + noise_aug_strength * noise
 
@@ -626,7 +605,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             if needs_upcasting:
                 self.vae.to(dtype=torch.float16)
             frames = self.decode_latents(latents, num_frames, decode_chunk_size)
-            frames = tensor2vid(frames, self.image_processor, output_type=output_type)
+            frames = self.video_processor.postprocess_video(video=frames, output_type=output_type)
         else:
             frames = latents
 
