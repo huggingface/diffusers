@@ -31,7 +31,7 @@ specific language governing permissions and limitations under the License.
 - 입력 이미지에 추가로 조건을 건 텍스트로 안내된 이미지 생성 (예: [`StableDiffusionImg2ImgPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/img2img) 및 [`StableDiffusionInstructPix2PixPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pix2pix)).
 - 클래스 조건화된 이미지 생성 모델 (예: [`DiTPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/dit)).
 
-## 정성적 평가
+## 정성적 평가[[qualitative-evaluation]]
 
 정성적 평가는 일반적으로 생성된 이미지의 인간 평가를 포함합니다. 품질은 구성성, 이미지-텍스트 일치, 공간 관계 등과 같은 측면에서 측정됩니다. 일반적인 프롬프트는 주관적인 지표에 대한 일정한 기준을 제공합니다.
 DrawBench와 PartiPrompts는 정성적인 벤치마킹에 사용되는 프롬프트 데이터셋입니다. DrawBench와 PartiPrompts는 각각 [Imagen](https://imagen.research.google/)과 [Parti](https://parti.research.google/)에서 소개되었습니다.
