@@ -232,8 +232,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
 
     def encode_prompt(
         self,
-        tokenizer: Union[BertTokenizer, MT5Tokenizer],
-        text_encoder: Union[BertModel, T5EncoderModel],
         prompt: str,
         device: torch.device,
         dtype: torch.dtype,
@@ -245,6 +243,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         max_sequence_length: Optional[int] = None,
+        text_encoder_index: int = 0,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -271,7 +270,20 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 argument.
             max_sequence_length (`int`, *optional*): maximum sequence length to use for the prompt.
         """
-        max_length = max_sequence_length or tokenizer.model_max_length
+        tokenizers = [self.tokenizer, self.tokenizer_2]
+        text_encoders = [self.text_encoder, self.text_encoder_2]
+
+        tokenizer = tokenizers[text_encoder_index]
+        text_encoder = text_encoders[text_encoder_index]
+
+        if max_sequence_length is None:
+            if text_encoder_index == 0:
+                max_length = 77
+            if text_encoder_index == 1: 
+                max_length = 256
+        else:
+            max_length = max_sequence_length
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -432,37 +444,43 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
+        elif prompt is None and prompt_embeds_2 is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds_2`. Cannot leave both `prompt` and `prompt_embeds_2` undefined."
+            )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
-        if prompt_embeds is not None and (
-            prompt_attention_mask is None or prompt_embeds_2 is None or prompt_attention_mask_2 is None
-        ):
-            raise ValueError(
-                "Must provide `prompt_attention_mask` and `prompt_embeds_2` and `prompt_attention_mask_2` when specifying `prompt_embeds`."
-            )
+        if prompt_embeds is not None and prompt_attention_mask is None:
+            raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
+        
+        if prompt_embeds_2 is not None and prompt_attention_mask_2 is None:
+            raise ValueError("Must provide `prompt_attention_mask_2` when specifying `prompt_embeds_2`.")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
-
-        if negative_prompt_embeds is not None and (
-            negative_prompt_attention_mask is None
-            or negative_prompt_embeds_2 is None
-            or negative_prompt_attention_mask_2 is None
-        ):
-            raise ValueError(
-                "Must provide `negative_prompt_attention_mask` and `negative_prompt_embeds_2` and `negative_prompt_attention_mask_2` when specifying `negative_prompt_embeds`."
-            )
-
+        
+        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
+            raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
+        
+        if negative_prompt_embeds_2 is not None and negative_prompt_attention_mask_2 is None:
+            raise ValueError("Must provide `negative_prompt_attention_mask_2` when specifying `negative_prompt_embeds_2`.")
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
                 raise ValueError(
                     "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
+                )
+        if prompt_embeds_2 is not None and negative_prompt_embeds_2 is not None:
+            if prompt_embeds_2.shape != negative_prompt_embeds_2.shape:
+                raise ValueError(
+                    "`prompt_embeds_2` and `negative_prompt_embeds_2` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds_2` {prompt_embeds_2.shape} != `negative_prompt_embeds_2`"
+                    f" {negative_prompt_embeds_2.shape}."
                 )
 
     def get_timesteps(self, num_inference_steps, strength, device):
@@ -650,8 +668,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             prompt_attention_mask,
             negative_prompt_attention_mask,
         ) = self.encode_prompt(
-            tokenizer=self.tokenizer,
-            text_encoder=self.text_encoder,
             prompt=prompt,
             device=device,
             dtype=self.transformer.dtype,
@@ -663,6 +679,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             max_sequence_length=77,
+            text_encoder_index=0,
         )
         (
             prompt_embeds_2,
@@ -670,8 +687,6 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             prompt_attention_mask_2,
             negative_prompt_attention_mask_2,
         ) = self.encode_prompt(
-            tokenizer=self.tokenizer_2,
-            text_encoder=self.text_encoder_2,
             prompt=prompt,
             device=device,
             dtype=self.transformer.dtype,
@@ -683,6 +698,7 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             prompt_attention_mask=prompt_attention_mask_2,
             negative_prompt_attention_mask=negative_prompt_attention_mask_2,
             max_sequence_length=256,
+            text_encoder_index=1,
         )
 
         # 4. Prepare timesteps

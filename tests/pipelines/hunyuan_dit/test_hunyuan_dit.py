@@ -144,18 +144,13 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         num_inference_steps = inputs["num_inference_steps"]
         output_type = inputs["output_type"]
 
-        text_encoder = components["text_encoder"]
-        tokenizer = components["tokenizer"]
-        text_encoder_2 = components["text_encoder_2"]
-        tokenizer_2 = components["tokenizer_2"]
-
         (
             prompt_embeds,
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
         ) = pipe.encode_prompt(
-            tokenizer, text_encoder, prompt, device=torch_device, dtype=text_encoder.dtype, max_sequence_length=77
+            prompt, device=torch_device, dtype=torch.float32, text_encoder_index=0
         )
 
         (
@@ -164,12 +159,10 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             prompt_attention_mask_2,
             negative_prompt_attention_mask_2,
         ) = pipe.encode_prompt(
-            tokenizer_2,
-            text_encoder_2,
             prompt,
             device=torch_device,
-            dtype=text_encoder_2.dtype,
-            max_sequence_length=256,
+            dtype=torch.float32,
+            text_encoder_index=1,
         )
 
         # inputs with prompt converted to embeddings
