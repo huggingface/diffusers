@@ -158,9 +158,11 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             A `BertTokenizer` or `CLIPTokenizer` to tokenize text.
         transformer ([`HunyuanDiT2DModel`]):
             The HunyuanDiT model designed by Tencent Hunyuan.
-        embedder_t5 (`MT5Embedder`):
+        text_encoder_2 (`T5EncoderModel`):
             The mT5 embedder. Specifically, it is 't5-v1_1-xxl'.
-        scheduler ([`SchedulerMixin`]):
+        tokenizer_2 (`MT5Tokenizer`):
+            The tokenizer for the mT5 embedder.
+        scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with HunyuanDiT to denoise the encoded image latents.
     """
 
@@ -253,6 +255,8 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
+            dtype (`torch.dtype`):
+                torch dtype
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
@@ -268,7 +272,13 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for the prompt. Required when `prompt_embeds` is passed directly.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for the negative prompt. Required when `negative_prompt_embeds` is passed directly.
             max_sequence_length (`int`, *optional*): maximum sequence length to use for the prompt.
+            text_encoder_index (`int`, *optional*):
+                Index of the text encoder to use. `0` for Bert and `1` for T5.
         """
         tokenizers = [self.tokenizer, self.tokenizer_2]
         text_encoders = [self.text_encoder, self.text_encoder_2]
@@ -485,17 +495,14 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
                     f" {negative_prompt_embeds_2.shape}."
                 )
 
-    def get_timesteps(self, num_inference_steps, strength, device):
-        # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
-
-        t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-
-        return timesteps, num_inference_steps - t_start
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -538,9 +545,9 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        prompt: Union[str, List[str]] = None,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -572,12 +579,12 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
         The call function to the pipeline for generation with HunyuanDiT.
 
         Args:
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             height (`int`):
                 The height in pixels of the generated image.
             width (`int`):
                 The width in pixels of the generated image.
-            prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter is modulated by `strength`.
@@ -598,14 +605,46 @@ class HunyuanDiTPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoa
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
+            prompt_embeds_2 (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
+                provided, text embeddings are generated from the `prompt` input argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
+            negative_prompt_embeds_2 (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
+                not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
+            prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for the prompt. Required when `prompt_embeds` is passed directly.
+            prompt_attention_mask_2 (`torch.Tensor`, *optional*):
+                Attention mask for the prompt. Required when `prompt_embeds_2` is passed directly.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for the negative prompt. Required when `negative_prompt_embeds` is passed directly.
+            negative_prompt_attention_mask_2 (`torch.Tensor`, *optional*):
+                Attention mask for the negative prompt. Required when `negative_prompt_embeds_2` is passed directly.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
+            callback_on_step_end (`Callable[[int, int, Dict], None]`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
+                A callback function or a list of callback functions to be called at the end of each denoising step.
+            callback_on_step_end_tensor_inputs (`List[str]`, *optional*):
+                A list of tensor inputs that should be passed to the callback function. If not defined, all tensor
+                inputs will be passed.
+            guidance_rescale (`float`, *optional*, defaults to 0.0):
+                Rescale the noise_cfg according to `guidance_rescale`. Based on findings of [Common Diffusion Noise
+                Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
+            original_size (`Tuple[int, int]`, *optional*, defaults to `(1024, 1024)`):
+                The original size of the image. Used to calculate the time ids.
+            target_size (`Tuple[int, int]`, *optional*):
+                The target size of the image. Used to calculate the time ids.
+            crops_coords_top_left (`Tuple[int, int]`, *optional*, defaults to `(0, 0)`):
+                The top left coordinates of the crop. Used to calculate the time ids.
+            use_resolution_binning (`bool`, *optional*, defaults to `True`):
+                Whether to use resolution binning or not. If `True`, the input resolution will be mapped to the closest
+                standard resolution. Supported resolutions are 1024x1024, 1280x1280, 1024x768, 1152x864, 1280x960,
+                768x1024, 864x1152, 960x1280, 1280x768, and 768x1280. It is recommended to set this to `True`.
 
         Examples:
 

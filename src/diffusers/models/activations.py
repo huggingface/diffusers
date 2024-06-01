@@ -51,6 +51,10 @@ def get_activation(act_fn: str) -> nn.Module:
 
 
 class FP32SiLU(nn.Module):
+    r"""
+    SiLU activation function with input upcasted to torch.float32.
+    """
+
     def __init__(self):
         super().__init__()
 

@@ -201,18 +201,20 @@ class PatchEmbed(nn.Module):
 
 def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
     """
-    This is a 2d version of precompute_freqs_cis, which is a RoPE for image tokens with 2d structure.
+    RoPE for image tokens with 2d structure.
 
-    Parameters ---------- embed_dim: int
-        embedding dimension size
-    start: int or tuple of int
-        If len(args) == 0, start is num; If len(args) == 1, start is start, args[0] is stop, step is 1; If len(args) ==
-        2, start is start, args[0] is stop, args[1] is num.
-    use_real: bool
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size
+    crops_coords (`Tuple[int]`)
+        The top-left and bottom-right coordinates of the crop.
+    grid_size (`Tuple[int]`):
+        The grid size of the positional embedding.
+    use_real (`bool`):
         If True, return real part and imaginary part separately. Otherwise, return complex numbers.
 
-    Returns ------- pos_embed: torch.Tensor
-        [HW, D/2]
+    Returns:
+        `torch.Tensor`: positional embdding with shape `( grid_size * grid_size, embed_dim/2)`.
     """
     start, stop = crops_coords
     grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
@@ -250,14 +252,15 @@ def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float 
     data type.
 
     Args:
-        dim (int): Dimension of the frequency tensor.
-        pos (np.ndarray, int): Position indices for the frequency tensor. [S] or scalar
-        theta (float, optional): Scaling factor for frequency computation. Defaults to 10000.0.
-        use_real (bool, optional): If True, return real part and imaginary part separately.
-                                   Otherwise, return complex numbers.
+        dim (`int`): Dimension of the frequency tensor.
+        pos (`np.ndarray` or `int`): Position indices for the frequency tensor. [S] or scalar
+        theta (`float`, *optional*, defaults to 10000.0):
+            Scaling factor for frequency computation. Defaults to 10000.0.
+        use_real (`bool`, *optional*):
+            If True, return real part and imaginary part separately. Otherwise, return complex numbers.
 
     Returns:
-        torch.Tensor: Precomputed frequency tensor with complex exponentials. [S, D/2]
+        `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
     """
     if isinstance(pos, int):
         pos = np.arange(pos)
@@ -278,14 +281,15 @@ def apply_rotary_emb(
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Args:
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
-    to the given query 'xq' and key 'xk' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are:
+    to the given query or key 'x' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
     reshaped as complex numbers, and the frequency tensor is reshaped for broadcasting compatibility. The resulting
     tensors contain rotary embeddings and are returned as real tensors.
-        xq (torch.Tensor): Query tensor to apply rotary embeddings. [B, H, S, D] xk (torch.Tensor): Key tensor to apply
-        rotary embeddings. [B, H, S, D] freqs_cis (Union[torch.Tensor, Tuple[torch.Tensor]]):
-            Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
+
+    Args:
+        x (`torch.Tensor`):
+            Query or key tensor to apply rotary embeddings. [B, H, S, D] xk (torch.Tensor): Key tensor to apply
+        freqs_cis (`Tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
@@ -623,6 +627,8 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
 
 
 class HunyuanDiTAttentionPool(nn.Module):
+    # Copied from https://github.com/Tencent/HunyuanDiT/blob/cb709308d92e6c7e8d59d0dff41b74d35088db6a/hydit/modules/poolers.py#L6
+
     def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
         super().__init__()
         self.positional_embedding = nn.Parameter(torch.randn(spacial_dim + 1, embed_dim) / embed_dim**0.5)

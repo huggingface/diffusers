@@ -176,6 +176,7 @@ class AdaLayerNormContinuous(nn.Module):
             raise ValueError(f"unknown norm_type {norm_type}")
 
     def forward(self, x: torch.Tensor, conditioning_embedding: torch.Tensor) -> torch.Tensor:
+        # covonvert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
         emb = self.linear(self.silu(conditioning_embedding).to(x.dtype))
         scale, shift = torch.chunk(emb, 2, dim=1)
         x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]

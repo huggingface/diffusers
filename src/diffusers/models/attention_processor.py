@@ -1438,7 +1438,8 @@ class AttnProcessor2_0:
 
 class HunyuanAttnProcessor2_0:
     r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
+    used in the HunyuanDiT model. It applies a s normalization layer and rotary embedding on query and key vector.
     """
 
     def __init__(self):

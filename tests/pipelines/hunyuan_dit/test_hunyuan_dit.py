@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import tempfile
 import unittest
 
@@ -28,6 +29,9 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    slow,
     torch_device,
 )
 
@@ -223,3 +227,40 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, 1e-4)
+
+
+@slow
+@require_torch_gpu
+class HunyuanDiTPipelineIntegrationTests(unittest.TestCase):
+    prompt = "一个宇航员在骑马"
+
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_hunyuan_dit_1024(self):
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = HunyuanDiTPipeline.from_pretrained(
+            "XCLiu/HunyuanDiT-0523", revision="refs/pr/2", torch_dtype=torch.float16
+        )
+        pipe.enable_model_cpu_offload()
+        prompt = self.prompt
+
+        image = pipe(
+            prompt=prompt, height=1024, width=1024, generator=generator, num_inference_steps=2, output_type="np"
+        ).images
+
+        image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array(
+            [0.48388672, 0.33789062, 0.30737305, 0.47875977, 0.25097656, 0.30029297, 0.4440918, 0.26953125, 0.30078125]
+        )
+
+        max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
+        assert max_diff < 1e-3, f"Max diff is too high. got {image_slice.flatten()}"

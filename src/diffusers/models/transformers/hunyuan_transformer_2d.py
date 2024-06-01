@@ -67,34 +67,34 @@ class AdaLayerNormShift(nn.Module):
 @maybe_allow_in_graph
 class HunyuanDiTBlock(nn.Module):
     r"""
+    Transformer block used in Hunyuan-DiT model (https://github.com/Tencent/HunyuanDiT). Allow skip connection and
+    QKNorm
+
     Parameters:
-    HunyuanDiT Transformer block. Allow skip connection and QKNorm
-        dim (`int`): The number of channels in the input and output. num_attention_heads (`int`): The number of heads
-        to use for multi-head attention. attention_head_dim (`int`): The number of channels in each head. dropout
-        (`float`, *optional*, defaults to 0.0): The dropout probability to use. cross_attention_dim (`int`,
-        *optional*): The size of the encoder_hidden_states vector for cross attention. activation_fn (`str`,
-        *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward. num_embeds_ada_norm (:
-            obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
-        attention_bias (:
-            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
-        only_cross_attention (`bool`, *optional*):
-            Whether to use only cross-attention layers. In this case two cross attention layers are used.
-        double_self_attention (`bool`, *optional*):
-            Whether to use two self-attention layers. In this case no cross attention layers are used.
-        upcast_attention (`bool`, *optional*):
-            Whether to upcast the attention computation to float32. This is useful for mixed precision training.
+        dim (`int`):
+            The number of channels in the input and output.
+        num_attention_heads (`int`):
+            The number of headsto use for multi-head attention.
+        cross_attention_dim (`int`,*optional*):
+            The size of the encoder_hidden_states vector for cross attention.
+        dropout(`float`, *optional*, defaults to 0.0):
+            The dropout probability to use.
+        activation_fn (`str`,*optional*, defaults to `"geglu"`):
+            Activation function to be used in feed-forward. .
         norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
             Whether to use learnable elementwise affine parameters for normalization.
-        norm_type (`str`, *optional*, defaults to `"layer_norm"`):
-            The normalization layer to use. Can be `"layer_norm"`, `"ada_norm"` or `"ada_norm_zero"`.
+        norm_eps (`float`, *optional*, defaults to 1e-6):
+            A small constant added to the denominator in normalization layers to prevent division by zero.
         final_dropout (`bool` *optional*, defaults to False):
             Whether to apply a final dropout after the last feed-forward layer.
-        attention_type (`str`, *optional*, defaults to `"default"`):
-            The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
-        positional_embeddings (`str`, *optional*, defaults to `None`):
-            The type of positional embeddings to apply to.
-        num_positional_embeddings (`int`, *optional*, defaults to `None`):
-            The maximum number of positional embeddings to apply.
+        ff_inner_dim (`int`, *optional*):
+            The size of the hidden layer in the feed-forward block. Defaults to `None`.
+        ff_bias (`bool`, *optional*, defaults to `True`):
+            Whether to use bias in the feed-forward block.
+        skip (`bool`, *optional*, defaults to `False`):
+            Whether to use skip connection. Defaults to `False` for down-blocks and mid-blocks.
+        qk_norm (`bool`, *optional*, defaults to `True`):
+            Whether to use normalization in QK calculation. Defaults to `True`.
     """
 
     def __init__(
@@ -214,24 +214,40 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
     Inherit ModelMixin and ConfigMixin to be compatible with the sampler StableDiffusionPipeline of diffusers.
 
-    Parameters ---------- args: argparse.Namespace
-        The arguments parsed by argparse.
-    input_size: tuple
-        The size of the input image.
-    patch_size: int
-        The size of the patch.
-    in_channels: int
-        The number of input channels.
-    hidden_size: int
-        The hidden size of the transformer backbone.
-    depth: int
-        The number of transformer blocks.
-    num_heads: int
-        The number of attention heads.
-    mlp_ratio: float
-        The ratio of the hidden size of the MLP in the transformer block.
-    log_fn: callable
-        The logging function.
+    Parameters:
+        num_attention_heads (`int`, *optional*, defaults to 16):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, *optional*, defaults to 88):
+            The number of channels in each head.
+        in_channels (`int`, *optional*):
+            The number of channels in the input and output (specify if the input is **continuous**).
+        patch_size (`int`, *optional*):
+            The size of the patch to use for the input.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`):
+            Activation function to use in feed-forward.
+        sample_size (`int`, *optional*):
+            The width of the latent images. This is fixed during training since it is used to learn a number of
+            position embeddings.
+        dropout (`float`, *optional*, defaults to 0.0):
+            The dropout probability to use.
+        cross_attention_dim (`int`, *optional*):
+            The number of dimension in the bert text embedding.
+        hidden_size (`int`, *optional*):
+            The size of hidden layer in the conditioning embedding layers.
+        num_layers (`int`, *optional*, defaults to 1):
+            The number of layers of Transformer blocks to use.
+        mlp_ratio (`float`, *optional*, defaults to 4.0):
+            The ratio of the hidden layer size to the input size.
+        learn_sigma (`bool`, *optional*, defaults to `True`):
+             Whether to predict variance.
+        cross_attention_dim_t5 (`int`, *optional*):
+            The number dimensions in t5 text embedding.
+        pooled_projection_dim (`int`, *optional*):
+            The size of the pooled projection.
+        text_len (`int`, *optional*):
+            The length of the bert text embedding.
+        text_len_t5 (`int`, *optional*):
+            The length of the T5 text embedding.
     """
 
     @register_to_config
@@ -319,26 +335,29 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         return_dict=True,
     ):
         """
-        Forward pass of the encoder.
+        The [`HunyuanDiT2DModel`] forward method.
 
         Args:
-        hidden_states: torch.Tensor (B, D, H, W)
-        timestep: torch.Tensor
-            (B)
-        encoder_hidden_states: torch.Tensor
-            CLIP text embedding, (B, L_clip, D)
+        hidden_states (`torch.Tensor` of shape `(batch size, dim, height, width)`):
+            The input tensor.
+        timestep ( `torch.LongTensor`, *optional*):
+            Used to indicate denoising step.
+        encoder_hidden_states ( `torch.Tensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
+            Conditional embeddings for cross attention layer. This is the output of `BertModel`.
         text_embedding_mask: torch.Tensor
-            CLIP text embedding mask, (B, L_clip)
-        encoder_hidden_states_t5: torch.Tensor
-            T5 text embedding, (B, L_t5, D)
+            An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. This is the output
+            of `BertModel`.
+        encoder_hidden_states_t5 ( `torch.Tensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
+            Conditional embeddings for cross attention layer. This is the output of T5 Text Encoder.
         text_embedding_mask_t5: torch.Tensor
-            T5 text embedding mask, (B, L_t5)
-        image_meta_size: torch.Tensor
-            (B, 6)
-        style: torch.Tensor
-            (B)
-        cos_cis_img: torch.Tensor
-        sin_cis_img: torch.Tensor
+            An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. This is the output
+            of T5 Text Encoder.
+        image_meta_size (torch.Tensor):
+            Conditional embedding indicate the image sizes
+        style: torch.Tensor:
+            Conditional embedding indicate the style
+        image_rotary_emb (`torch.Tensor`):
+            The image rotary embeddings to apply on query and key tensors during attention calculation.
         return_dict: bool
             Whether to return a dictionary.
         """
