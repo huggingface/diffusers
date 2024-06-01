@@ -199,7 +199,7 @@ print(f"CLIP Score with v-1-5: {sd_clip_score_1_5}")
 
 </Tip>
 
-### 이미지 조건화된 텍스트-이미지 생성
+### 이미지 조건화된 텍스트-이미지 생성[[image-conditioned-text-to-image-generation]]
 
 이 경우, 생성 파이프라인을 입력 이미지와 텍스트 프롬프트로 조건화합니다. [`StableDiffusionInstructPix2PixPipeline`]을 예로 들어보겠습니다. 이는 편집 지시문을 입력 프롬프트로 사용하고 편집할 입력 이미지를 사용합니다.
 
