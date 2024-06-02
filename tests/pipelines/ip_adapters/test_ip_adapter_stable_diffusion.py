@@ -612,10 +612,10 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_instant_style_multiple_masks(self):
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
             "h94/IP-Adapter", subfolder="models/image_encoder", torch_dtype=torch.float16
-        ).to("cuda")
+        )
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             "RunDiffusion/Juggernaut-XL-v9", torch_dtype=torch.float16, image_encoder=image_encoder, variant="fp16"
-        ).to("cuda")
+        )
         pipeline.enable_model_cpu_offload()
 
         pipeline.load_ip_adapter(

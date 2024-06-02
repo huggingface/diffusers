@@ -559,7 +559,7 @@ class ModelTesterMixin:
         max_diff = np.amax(np.abs(out_1 - out_2))
         self.assertLessEqual(max_diff, expected_max_diff)
 
-    def test_output(self):
+    def test_output(self, expected_output_shape=None):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -575,8 +575,12 @@ class ModelTesterMixin:
 
         # input & output have to have the same shape
         input_tensor = inputs_dict[self.main_input_name]
-        expected_shape = input_tensor.shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+        if expected_output_shape is None:
+            expected_shape = input_tensor.shape
+            self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        else:
+            self.assertEqual(output.shape, expected_output_shape, "Input and output shapes do not match")
 
     def test_model_from_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
