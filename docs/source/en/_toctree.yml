@@ -29,10 +29,8 @@
     title: Load community pipelines and components
   - local: using-diffusers/schedulers
     title: Load schedulers and models
-  - local: using-diffusers/using_safetensors
-    title: Load safetensors
   - local: using-diffusers/other-formats
-    title: Load different Stable Diffusion formats
+    title: Model files and layouts
   - local: using-diffusers/loading_adapters
     title: Load adapters
   - local: using-diffusers/push_to_hub
@@ -59,6 +57,8 @@
     title: Distributed inference with multiple GPUs
   - local: using-diffusers/merge_loras
     title: Merge LoRAs
+  - local: using-diffusers/scheduler_features
+    title: Scheduler features
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
@@ -68,6 +68,10 @@
   - local: using-diffusers/weighted_prompts
     title: Prompt techniques
   title: Inference techniques
+- sections:
+  - local: advanced_inference/outpaint
+    title: Outpainting
+  title: Advanced inference
 - sections:
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
@@ -93,6 +97,8 @@
     title: Trajectory Consistency Distillation-LoRA
   - local: using-diffusers/svd
     title: Stable Video Diffusion
+  - local: using-diffusers/marigold_usage
+    title: Marigold Computer Vision
   title: Specific pipeline examples
 - sections:
   - local: training/overview
@@ -232,6 +238,10 @@
       title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
       title: Transformer2D
+    - local: api/models/pixart_transformer2d
+      title: PixArtTransformer2D
+    - local: api/models/dit_transformer2d
+      title: DiTTransformer2D
     - local: api/models/transformer_temporal
       title: Transformer Temporal
     - local: api/models/prior_transformer
@@ -295,6 +305,8 @@
       title: Latent Diffusion
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/marigold
+      title: Marigold
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
