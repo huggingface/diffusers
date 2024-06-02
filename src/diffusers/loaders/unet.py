@@ -928,9 +928,7 @@ class UNet2DConditionLoadersMixin:
                 hidden_size = self.config.block_out_channels[block_id]
 
             if cross_attention_dim is None or "motion_modules" in name:
-                attn_processor_class = (
-                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                )
+                attn_processor_class = self.attn_processors[name].__class__
                 attn_procs[name] = attn_processor_class()
 
             else:

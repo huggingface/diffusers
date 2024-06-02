@@ -1172,6 +1172,10 @@ class StableDiffusionXLPipeline(
                 self.do_classifier_free_guidance,
             )
 
+        # expand the image embeddings if we are using perturbed-attention guidance
+        for i in range(len(image_embeds)):
+            image_embeds[i] = image_embeds[i].repeat(prompt_embeds.shape[0] // latents.shape[0], 1, 1)
+
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
@@ -1205,7 +1209,7 @@ class StableDiffusionXLPipeline(
                 if self.interrupt:
                     continue
 
-                # expand the latents if we are doing classifier free guidance
+                # expand the latents if we are doing classifier free guidance, perturbed-attention guidance, or both
                 latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
 
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
