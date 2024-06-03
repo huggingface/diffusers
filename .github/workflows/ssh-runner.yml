@@ -25,7 +25,7 @@ jobs:
     runs-on: [single-gpu, nvidia-gpu, "${{ github.event.inputs.runner_type }}", ci]
     container:
       image: ${{ github.event.inputs.docker_image }}
-      options: --gpus all --privileged --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0 --privileged
 
     steps:
       - name: Checkout diffusers
