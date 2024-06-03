@@ -221,7 +221,7 @@ def _fetch_index_file(
                 user_agent=user_agent,
                 commit_hash=commit_hash,
             )
-        except EntryNotFoundError:
+        except (EntryNotFoundError, EnvironmentError):
             index_file = None
 
     return index_file

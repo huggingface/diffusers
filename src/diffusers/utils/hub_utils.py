@@ -372,10 +372,6 @@ def _get_model_file(
                 f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
             )
         except EntryNotFoundError:
-            # # This should correspond to a shard index file.
-            # if "index" in weights_name and ".json" in weights_name and weights_name != "model_index.json":
-            #     return None
-            # else:
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
             )
