@@ -23,6 +23,7 @@ from typing import List, Optional, Union
 
 import safetensors
 import torch
+from huggingface_hub.utils import EntryNotFoundError
 
 from ..utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -205,19 +206,22 @@ def _fetch_index_file(
             subfolder or "",
             _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
         ).as_posix()
-        index_file = _get_model_file(
-            pretrained_model_name_or_path,
-            weights_name=index_file_in_repo,
-            cache_dir=cache_dir,
-            force_download=force_download,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-            subfolder=subfolder,
-            user_agent=user_agent,
-            commit_hash=commit_hash,
-        )
+        try:
+            index_file = _get_model_file(
+                pretrained_model_name_or_path,
+                weights_name=index_file_in_repo,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+                commit_hash=commit_hash,
+            )
+        except EntryNotFoundError:
+            index_file = None
 
     return index_file
