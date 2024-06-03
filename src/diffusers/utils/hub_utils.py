@@ -268,17 +268,11 @@ if cache_version < 1:
         )
 
 
-def _add_variant(weights_name: str, variant: Optional[str] = None, add_suffix_keyword: bool = False) -> str:
+def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
         splits = splits[:-1] + [variant] + splits[-1:]
         weights_name = ".".join(splits)
-    if add_suffix_keyword:
-        weight_name_split = weights_name.split(".")
-        if len(weight_name_split) in [2, 3]:
-            weights_name = weight_name_split[0] + "{suffix}." + ".".join(weight_name_split[1:])
-        else:
-            raise ValueError(f"Invalid {weights_name} provided with {add_suffix_keyword=}.")
 
     return weights_name
 
