@@ -238,6 +238,8 @@
       title: PixArtTransformer2D
     - local: api/models/dit_transformer2d
       title: DiTTransformer2D
+    - local: api/models/hunyuan_transformer_2d
+      title: HunyuanDiT2DModel
     - local: api/models/transformer_temporal
       title: Transformer Temporal
     - local: api/models/prior_transformer
@@ -285,6 +287,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/hunyuandit
+      title: Hunyuan-DiT
     - local: api/pipelines/i2vgenxl
       title: I2VGen-XL
     - local: api/pipelines/pix2pix
