@@ -308,6 +308,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
+        weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
+        weights_name = _add_variant(weights_name, variant, add_suffix_keyword=True)
+        weight_name_split = weights_name.split(".")
+        if len(weight_name_split) in [2, 3]:
+            weights_name_pattern = weight_name_split[0] + "{suffix}." + ".".join(weight_name_split[1:])
+        else:
+            raise ValueError(f"Invalid {weights_name} provided.")
+
         os.makedirs(save_directory, exist_ok=True)
 
         if push_to_hub:
@@ -329,12 +337,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # Save the model
         state_dict = model_to_save.state_dict()
 
-        weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
-        weights_name = _add_variant(weights_name, variant, add_suffix_keyword=True)
-
         # Save the model
         state_dict_split = split_torch_state_dict_into_shards(
-            state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name
+            state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name_pattern
         )
 
         # Clean the folder from a previous save
