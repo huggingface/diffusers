@@ -36,11 +36,10 @@ class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     main_input_name = "sample"
 
     @property
-    def dummy_input(self, sizes=(32, 32)):
+    def dummy_input(self):
         batch_size = 4
-        num_channels = 3
 
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        image = floats_tensor((batch_size, ) + self.input_shape).to(torch_device)
 
         return {"sample": image}
 

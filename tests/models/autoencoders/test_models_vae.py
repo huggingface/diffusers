@@ -139,7 +139,7 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         num_channels = 3
         sizes = (32, 32)
 
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        image = floats_tensor((batch_size,) + self.input_shape).to(torch_device)
 
         return {"sample": image}
 
