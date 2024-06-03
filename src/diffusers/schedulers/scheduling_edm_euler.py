@@ -106,6 +106,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         elif sigma_schedule == "exponential":
             sigmas = self._compute_exponential_sigmas(ramp)
 
+        print(f"{type(sigmas)=} from _init_().")
         self.timesteps = self.precondition_noise(sigmas)
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
@@ -216,6 +217,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         elif self.config.sigma_schedule == "exponential":
             sigmas = self._compute_exponential_sigmas(ramp)
 
+        print(f"{type(sigmas)=} from set_timesteps().")
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
         self.timesteps = self.precondition_noise(sigmas)
 
@@ -234,7 +236,6 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
-
         return sigmas
 
     def _compute_exponential_sigmas(self, ramp, sigma_min=None, sigma_max=None) -> torch.Tensor:
@@ -245,6 +246,8 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         sigma_min = sigma_min or self.config.sigma_min
         sigma_max = sigma_max or self.config.sigma_max
         sigmas = torch.linspace(math.log(sigma_min), math.log(sigma_max), len(ramp)).exp().flip(0)
+        if not torch.is_tensor(ramp):
+            sigmas = sigmas.numpy()
         return sigmas
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
