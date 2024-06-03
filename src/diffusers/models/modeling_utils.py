@@ -309,7 +309,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             return
 
         weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
-        weights_name = _add_variant(weights_name, variant, add_suffix_keyword=True)
+        weights_name = _add_variant(weights_name, variant)
         weight_name_split = weights_name.split(".")
         if len(weight_name_split) in [2, 3]:
             weights_name_pattern = weight_name_split[0] + "{suffix}." + ".".join(weight_name_split[1:])
