@@ -628,6 +628,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # Determine if we're loading from a directory of sharded checkpoints.
         is_sharded = False
+        index_file = None
         is_local = os.path.isdir(pretrained_model_name_or_path)
         index_file = _fetch_index_file(
             is_local=is_local,
@@ -645,7 +646,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             user_agent=user_agent,
             commit_hash=commit_hash,
         )
-        if index_file.is_file():
+        if index_file is not None and index_file.is_file():
             is_sharded = True
 
         if is_sharded and from_flax:
