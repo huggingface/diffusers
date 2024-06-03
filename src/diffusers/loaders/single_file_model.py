@@ -172,7 +172,7 @@ class FromOriginalModelMixin:
         token = kwargs.pop("token", None)
         cache_dir = kwargs.pop("cache_dir", None)
         local_files_only = kwargs.pop("local_files_only", None)
-        subfolder = kwargs.pop("subfolder", None) or ""
+        subfolder = kwargs.pop("subfolder", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
 

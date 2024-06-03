@@ -53,6 +53,7 @@ from ..utils.hub_utils import (
 )
 from .model_loading_utils import (
     _determine_device_map,
+    _fetch_index_file,
     _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
@@ -516,7 +517,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        subfolder = kwargs.pop("subfolder", None) or ""
+        subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
@@ -623,34 +624,24 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # Determine if we're loading from a directory of sharded checkpoints.
         is_sharded = False
         is_local = os.path.isdir(pretrained_model_name_or_path)
-        if is_local:
-            index_file = Path(
-                pretrained_model_name_or_path,
-                subfolder,
-                _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
-            )
-            if index_file.is_file():
-                is_sharded = True
-        else:
-            index_file_in_repo = Path(
-                subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant)
-            ).as_posix()
-            index_file = _get_model_file(
-                pretrained_model_name_or_path,
-                weights_name=index_file_in_repo,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-                subfolder=subfolder,
-                user_agent=user_agent,
-                commit_hash=commit_hash,
-            )
-            if index_file:
-                is_sharded = True
+        index_file = _fetch_index_file(
+            is_local=is_local,
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            subfolder=subfolder,
+            use_safetensors=use_safetensors,
+            cache_dir=cache_dir,
+            variant=variant,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            user_agent=user_agent,
+            commit_hash=commit_hash,
+        )
+        if index_file.is_file():
+            is_sharded = True
 
         if is_sharded and from_flax:
             raise ValueError("Loading of sharded checkpoints is not supported when `from_flax=True`.")

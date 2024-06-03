@@ -301,7 +301,7 @@ class FlaxModelMixin(PushToHubMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        subfolder = kwargs.pop("subfolder", None) or ""
+        subfolder = kwargs.pop("subfolder", None)
 
         user_agent = {
             "diffusers": __version__,

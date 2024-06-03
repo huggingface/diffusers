@@ -18,13 +18,18 @@ import importlib
 import inspect
 import os
 from collections import OrderedDict
+from pathlib import Path
 from typing import List, Optional, Union
 
 import safetensors
 import torch
 
 from ..utils import (
+    SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
+    WEIGHTS_INDEX_NAME,
+    _add_variant,
+    _get_model_file,
     is_accelerate_available,
     is_torch_version,
     logging,
@@ -171,3 +176,48 @@ def _load_state_dict_into_model(model_to_load, state_dict: OrderedDict) -> List[
     load(model_to_load)
 
     return error_msgs
+
+
+def _fetch_index_file(
+    is_local,
+    pretrained_model_name_or_path,
+    subfolder,
+    use_safetensors,
+    cache_dir,
+    variant,
+    force_download,
+    resume_download,
+    proxies,
+    local_files_only,
+    token,
+    revision,
+    user_agent,
+    commit_hash,
+):
+    if is_local:
+        index_file = Path(
+            pretrained_model_name_or_path,
+            subfolder or "",
+            _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
+        )
+    else:
+        index_file_in_repo = Path(
+            subfolder or "",
+            _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
+        ).as_posix()
+        index_file = _get_model_file(
+            pretrained_model_name_or_path,
+            weights_name=index_file_in_repo,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            commit_hash=commit_hash,
+        )
+
+    return index_file
