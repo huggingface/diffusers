@@ -74,11 +74,6 @@ class DiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_output(self):
-        super().test_output(
-            expected_output_shape=(self.dummy_input[self.main_input_name].shape[0],) + self.output_shape
-        )
-
     def test_correct_class_remapping_from_dict_config(self):
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
         model = Transformer2DModel.from_config(init_dict)
