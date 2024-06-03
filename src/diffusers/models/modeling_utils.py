@@ -675,50 +675,25 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
-            if use_safetensors:
+            if is_sharded:
+                sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
+                    pretrained_model_name_or_path,
+                    index_file,
+                    cache_dir=cache_dir,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    local_files_only=local_files_only,
+                    token=token,
+                    user_agent=user_agent,
+                    revision=revision,
+                    subfolder=subfolder,
+                )
+
+            elif use_safetensors:
                 try:
-                    if not is_sharded:
-                        model_file = _get_model_file(
-                            pretrained_model_name_or_path,
-                            weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
-                            cache_dir=cache_dir,
-                            force_download=force_download,
-                            resume_download=resume_download,
-                            proxies=proxies,
-                            local_files_only=local_files_only,
-                            token=token,
-                            revision=revision,
-                            subfolder=subfolder,
-                            user_agent=user_agent,
-                            commit_hash=commit_hash,
-                        )
-                    else:
-                        sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
-                            pretrained_model_name_or_path,
-                            index_file,
-                            cache_dir=cache_dir,
-                            proxies=proxies,
-                            resume_download=resume_download,
-                            local_files_only=local_files_only,
-                            token=token,
-                            user_agent=user_agent,
-                            revision=revision,
-                            subfolder=subfolder,
-                        )
-
-                except IOError as e:
-                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
-                    if not allow_pickle:
-                        raise
-                    logger.warning(
-                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
-                    )
-
-            if model_file is None:
-                if not is_sharded:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path,
-                        weights_name=_add_variant(WEIGHTS_NAME, variant),
+                        weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
                         cache_dir=cache_dir,
                         force_download=force_download,
                         resume_download=resume_download,
@@ -730,19 +705,30 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         user_agent=user_agent,
                         commit_hash=commit_hash,
                     )
-                else:
-                    sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
-                        pretrained_model_name_or_path,
-                        index_file,
-                        cache_dir=cache_dir,
-                        proxies=proxies,
-                        resume_download=resume_download,
-                        local_files_only=local_files_only,
-                        token=token,
-                        user_agent=user_agent,
-                        revision=revision,
-                        subfolder=subfolder,
+
+                except IOError as e:
+                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
+                    if not allow_pickle:
+                        raise
+                    logger.warning(
+                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
                     )
+
+            if model_file is None:
+                model_file = _get_model_file(
+                    pretrained_model_name_or_path,
+                    weights_name=_add_variant(WEIGHTS_NAME, variant),
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                    commit_hash=commit_hash,
+                )
 
             if low_cpu_mem_usage:
                 # Instantiate model with empty weights
