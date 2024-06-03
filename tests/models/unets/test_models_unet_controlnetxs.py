@@ -39,11 +39,9 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
     @property
     def dummy_input(self):
         batch_size = 4
-        num_channels = 4
-        sizes = (16, 16)
         conditioning_image_size = (3, 32, 32)  # size of additional, unprocessed image for control-conditioning
 
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        noise = floats_tensor((batch_size,) + self.input_shape).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
         encoder_hidden_states = floats_tensor((batch_size, 4, 8)).to(torch_device)
         controlnet_cond = floats_tensor((batch_size, *conditioning_image_size)).to(torch_device)

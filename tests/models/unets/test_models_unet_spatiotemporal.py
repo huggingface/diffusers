@@ -49,7 +49,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         num_channels = 4
         sizes = (32, 32)
 
-        noise = floats_tensor((batch_size, num_frames, num_channels) + sizes).to(torch_device)
+        noise = floats_tensor((batch_size,) + self.input_shape).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
         encoder_hidden_states = floats_tensor((batch_size, 1, 32)).to(torch_device)
 
