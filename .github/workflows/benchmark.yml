@@ -19,8 +19,8 @@ jobs:
       max-parallel: 1
     runs-on: [single-gpu, nvidia-gpu, a10, ci]
     container:
-      image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      image: diffusers/diffusers-pytorch-compile-cuda
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
