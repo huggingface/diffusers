@@ -221,6 +221,7 @@ def _fetch_index_file(
                 user_agent=user_agent,
                 commit_hash=commit_hash,
             )
+            index_file = Path(index_file)
         except (EntryNotFoundError, EnvironmentError):
             index_file = None
 

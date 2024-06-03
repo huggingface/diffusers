@@ -633,7 +633,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         index_file = _fetch_index_file(
             is_local=is_local,
             pretrained_model_name_or_path=pretrained_model_name_or_path,
-            subfolder=subfolder,
+            subfolder=subfolder or "",
             use_safetensors=use_safetensors,
             cache_dir=cache_dir,
             variant=variant,
@@ -687,10 +687,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     token=token,
                     user_agent=user_agent,
                     revision=revision,
-                    subfolder=subfolder,
+                    subfolder=subfolder or "",
                 )
 
-            elif use_safetensors:
+            elif use_safetensors and not is_sharded:
                 try:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path,
@@ -715,7 +715,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
                     )
 
-            if model_file is None:
+            if model_file is None and not is_sharded:
                 model_file = _get_model_file(
                     pretrained_model_name_or_path,
                     weights_name=_add_variant(WEIGHTS_NAME, variant),
