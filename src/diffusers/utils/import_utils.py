@@ -333,7 +333,7 @@ try:
 except NameError:
     pass  # Probably standard Python interpreter
 
-_is_google_colab = "google.colab" in sys.modules
+_is_google_colab = bool(os.getenv("COLAB_RELEASE_TAG"))
 
 
 def is_torch_available():
