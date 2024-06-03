@@ -62,11 +62,11 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
 
     @property
     def input_shape(self):
-        return (2, 2, 4, 32, 32)
+        return (2, 4, 32, 32)
 
     @property
     def output_shape(self):
-        return (4, 32, 32)
+        return (2, 4, 32, 32)
 
     @property
     def fps(self):
