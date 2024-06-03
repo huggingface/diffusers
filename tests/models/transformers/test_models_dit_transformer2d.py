@@ -38,12 +38,10 @@ class DiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
     @property
     def dummy_input(self):
         batch_size = 4
-        in_channels = 4
-        sample_size = 8
         scheduler_num_train_steps = 1000
         num_class_labels = 4
 
-        hidden_states = floats_tensor((batch_size, in_channels, sample_size, sample_size)).to(torch_device)
+        hidden_states = floats_tensor((batch_size,) + self.input_shape).to(torch_device)
         timesteps = torch.randint(0, scheduler_num_train_steps, size=(batch_size,)).to(torch_device)
         class_label_ids = torch.randint(0, num_class_labels, size=(batch_size,)).to(torch_device)
 
