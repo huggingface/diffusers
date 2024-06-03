@@ -350,7 +350,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 full_filename = os.path.join(save_directory, filename)
                 if not os.path.isfile(full_filename):
                     continue
-                weights_without_ext = weights_name.replace(".bin", "").replace(".safetensors", "")
+                weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
                 weights_without_ext = weights_without_ext.replace("{suffix}", "")
                 filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
                 # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
