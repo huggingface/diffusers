@@ -45,11 +45,11 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        return (4, 14, 16)
+        return (14, 16)
 
     @property
     def output_shape(self):
-        return (4, 14, 16)
+        return (14, 16)
 
     def test_ema_training(self):
         pass
