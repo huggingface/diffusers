@@ -61,13 +61,12 @@ class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
     def get_dummy_seed_input(self, seed=0):
         torch.manual_seed(seed)
         batch_size = 4
-        embedding_dim = 8
         num_embeddings = 7
 
-        hidden_states = torch.randn((batch_size, embedding_dim)).to(torch_device)
+        hidden_states = torch.randn((batch_size,) + self.input_shape).to(torch_device)
 
-        proj_embedding = torch.randn((batch_size, embedding_dim)).to(torch_device)
-        encoder_hidden_states = torch.randn((batch_size, num_embeddings, embedding_dim)).to(torch_device)
+        proj_embedding = torch.randn((batch_size,) + self.input_shape).to(torch_device)
+        encoder_hidden_states = torch.randn((batch_size, num_embeddings) + self.input_shape).to(torch_device)
 
         return {
             "hidden_states": hidden_states,
@@ -78,11 +77,11 @@ class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        return (4, 8)
+        return (8, )
 
     @property
     def output_shape(self):
-        return (4, 8)
+        return (8, )
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
