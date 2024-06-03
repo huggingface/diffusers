@@ -44,7 +44,7 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
         cross_attention_dim = 8
         seq_len = 8
 
-        hidden_states = floats_tensor((batch_size,)  + self.input_shape).to(torch_device)
+        hidden_states = floats_tensor((batch_size,) + self.input_shape).to(torch_device)
         timesteps = torch.randint(0, scheduler_num_train_steps, size=(batch_size,)).to(torch_device)
         encoder_hidden_states = floats_tensor((batch_size, seq_len, cross_attention_dim)).to(torch_device)
 

@@ -136,8 +136,6 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     @property
     def dummy_input(self):
         batch_size = 4
-        num_channels = 3
-        sizes = (32, 32)
 
         image = floats_tensor((batch_size,) + self.input_shape).to(torch_device)
 

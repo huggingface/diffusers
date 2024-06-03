@@ -45,9 +45,6 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
     @property
     def dummy_input(self):
         batch_size = 2
-        num_frames = 2
-        num_channels = 4
-        sizes = (32, 32)
 
         noise = floats_tensor((batch_size,) + self.input_shape).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)

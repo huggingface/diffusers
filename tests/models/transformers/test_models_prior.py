@@ -77,11 +77,11 @@ class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        return (8, )
+        return (8,)
 
     @property
     def output_shape(self):
-        return (8, )
+        return (8,)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
