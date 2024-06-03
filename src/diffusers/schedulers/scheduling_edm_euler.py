@@ -106,7 +106,6 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         elif sigma_schedule == "exponential":
             sigmas = self._compute_exponential_sigmas(ramp)
 
-        print(f"{type(sigmas)=} from _init_().")
         self.timesteps = self.precondition_noise(sigmas)
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
@@ -217,7 +216,6 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         elif self.config.sigma_schedule == "exponential":
             sigmas = self._compute_exponential_sigmas(ramp)
 
-        print(f"{type(sigmas)=} from set_timesteps().")
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
         self.timesteps = self.precondition_noise(sigmas)
 
