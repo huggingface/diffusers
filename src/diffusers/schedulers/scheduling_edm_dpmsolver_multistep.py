@@ -283,7 +283,6 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
-
         return sigmas
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._compute_exponential_sigmas
@@ -295,6 +294,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigma_min = sigma_min or self.config.sigma_min
         sigma_max = sigma_max or self.config.sigma_max
         sigmas = torch.linspace(math.log(sigma_min), math.log(sigma_max), len(ramp)).exp().flip(0)
+        if not torch.is_tensor(ramp):
+            sigmas = sigmas.numpy()
         return sigmas
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
