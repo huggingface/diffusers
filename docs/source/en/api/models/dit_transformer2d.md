@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# DiTTransformer2D
+# DiTTransformer2DModel
 
 A Transformer model for image-like data from [DiT](https://huggingface.co/papers/2212.09748).
 
