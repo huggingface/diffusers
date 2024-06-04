@@ -166,6 +166,7 @@ class HunyuanDiTBlock(nn.Module):
         self._chunk_size = None
         self._chunk_dim = 0
 
+    # Copied from diffusers.models.attention.BasicTransformerBlock.set_chunk_feed_forward
     def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
         # Sets chunk feed-forward
         self._chunk_size = chunk_size
@@ -425,3 +426,45 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
+
+    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
+    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+        """
+        Sets the attention processor to use [feed forward
+        chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
+
+        Parameters:
+            chunk_size (`int`, *optional*):
+                The chunk size of the feed-forward layers. If not specified, will run feed-forward layer individually
+                over each tensor of dim=`dim`.
+            dim (`int`, *optional*, defaults to `0`):
+                The dimension over which the feed-forward computation should be chunked. Choose between dim=0 (batch)
+                or dim=1 (sequence length).
+        """
+        if dim not in [0, 1]:
+            raise ValueError(f"Make sure to set `dim` to either 0 or 1, not {dim}")
+
+        # By default chunk size is 1
+        chunk_size = chunk_size or 1
+
+        def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
+            if hasattr(module, "set_chunk_feed_forward"):
+                module.set_chunk_feed_forward(chunk_size=chunk_size, dim=dim)
+
+            for child in module.children():
+                fn_recursive_feed_forward(child, chunk_size, dim)
+
+        for module in self.children():
+            fn_recursive_feed_forward(module, chunk_size, dim)
+
+    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
+    def disable_forward_chunking(self):
+        def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
+            if hasattr(module, "set_chunk_feed_forward"):
+                module.set_chunk_feed_forward(chunk_size=chunk_size, dim=dim)
+
+            for child in module.children():
+                fn_recursive_feed_forward(child, chunk_size, dim)
+
+        for module in self.children():
+            fn_recursive_feed_forward(module, None, 0)

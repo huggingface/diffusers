@@ -228,6 +228,26 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, 1e-4)
 
+    def test_feed_forward_chunking(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_no_chunking = image[0, -3:, -3:, -1]
+
+        pipe.transformer.enable_forward_chunking(chunk_size=1, dim=0)
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_chunking = image[0, -3:, -3:, -1]
+
+        max_diff = np.abs(to_np(image_slice_no_chunking) - to_np(image_slice_chunking)).max()
+        self.assertLess(max_diff, 1e-4)
+
 
 @slow
 @require_torch_gpu
