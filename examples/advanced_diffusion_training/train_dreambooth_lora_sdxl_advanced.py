@@ -76,7 +76,7 @@ from diffusers.utils import (
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
-from blora_utils import get_target_modules
+
 
 
 if is_wandb_available():
@@ -458,6 +458,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--do_edm_style_training",
+        default=False,
         action="store_true",
         help="Flag to conduct training using the EDM formulation as introduced in https://arxiv.org/abs/2206.00364.",
     )
@@ -1017,6 +1018,7 @@ class DreamBoothDataset(Dataset):
                 image_column = column_names[0]
                 logger.info(f"image column defaulting to {image_column}")
             else:
+                image_column = args.image_column
                 if image_column not in column_names:
                     raise ValueError(
                         f"`--image_column` value '{args.image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
