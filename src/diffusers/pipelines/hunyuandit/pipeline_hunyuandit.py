@@ -52,7 +52,9 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import HunyuanDiTPipeline
 
-        >>> pipe = HunyuanDiTPipeline.from_pretrained("Tencent-Hunyuan/HunyuanDiT", torch_dtype=torch.float16)
+        >>> pipe = HunyuanDiTPipeline.from_pretrained(
+        ...     "Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
+        ... )
         >>> pipe.to("cuda")
 
         >>> # You may also use English prompt as HunyuanDiT supports both English and Chinese
