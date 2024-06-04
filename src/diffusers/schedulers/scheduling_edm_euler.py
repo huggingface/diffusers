@@ -100,7 +100,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = None
 
-        ramp = torch.linspace(0, 1, num_train_timesteps)
+        ramp = np.linspace(0, 1, num_train_timesteps)
         if sigma_schedule == "karras":
             sigmas = self._compute_karras_sigmas(ramp)
         elif sigma_schedule == "exponential":
@@ -214,7 +214,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         if self.config.sigma_schedule == "karras":
             sigmas = self._compute_karras_sigmas(ramp)
         elif self.config.sigma_schedule == "exponential":
-            sigmas = self._compute_exponential_sigmas(ramp)
+            sigmas = self._compute_exponential_sigmas(ramp).numpy()
 
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
         self.timesteps = self.precondition_noise(sigmas)
@@ -244,8 +244,6 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         sigma_min = sigma_min or self.config.sigma_min
         sigma_max = sigma_max or self.config.sigma_max
         sigmas = torch.linspace(math.log(sigma_min), math.log(sigma_max), len(ramp)).exp().flip(0)
-        if not torch.is_tensor(ramp):
-            sigmas = sigmas.numpy()
         return sigmas
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
