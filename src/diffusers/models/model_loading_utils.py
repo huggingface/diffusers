@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import inspect
 import os
 from collections import OrderedDict
@@ -31,6 +32,13 @@ from ..utils import (
 
 
 logger = logging.get_logger(__name__)
+
+_CLASS_REMAPPING_DICT = {
+    "Transformer2DModel": {
+        "ada_norm_zero": "DiTTransformer2DModel",
+        "ada_norm_single": "PixArtTransformer2DModel",
+    }
+}
 
 
 if is_accelerate_available():
@@ -59,6 +67,22 @@ def _determine_device_map(model: torch.nn.Module, device_map, max_memory, torch_
         device_map = infer_auto_device_map(model, dtype=torch_dtype, **device_map_kwargs)
 
     return device_map
+
+
+def _fetch_remapped_cls_from_config(config, old_class):
+    previous_class_name = old_class.__name__
+    remapped_class_name = _CLASS_REMAPPING_DICT.get(previous_class_name).get(config["norm_type"])
+
+    # load diffusers library to import compatible and original scheduler
+    diffusers_library = importlib.import_module(__name__.split(".")[0])
+    remapped_class = getattr(diffusers_library, remapped_class_name)
+    logger.info(
+        f"Changing class object to be of `{remapped_class_name}` type from `{previous_class_name}` type."
+        "This is because `previous_class_name` is scheduled to be deprecated in a future version. Note that this"
+        " DOESN'T affect the final results."
+    )
+
+    return remapped_class
 
 
 def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None):
