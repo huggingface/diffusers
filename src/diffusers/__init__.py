@@ -1,4 +1,4 @@
-__version__ = "0.28.0.dev0"
+__version__ = "0.29.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -82,11 +82,14 @@ else:
             "ConsistencyDecoderVAE",
             "ControlNetModel",
             "ControlNetXSAdapter",
+            "DiTTransformer2DModel",
+            "HunyuanDiT2DModel",
             "I2VGenXLUNet",
             "Kandinsky3UNet",
             "ModelMixin",
             "MotionAdapter",
             "MultiAdapter",
+            "PixArtTransformer2DModel",
             "PriorTransformer",
             "StableCascadeUNet",
             "T2IAdapter",
@@ -227,6 +230,7 @@ else:
             "BlipDiffusionPipeline",
             "CLIPImageProjection",
             "CycleDiffusionPipeline",
+            "HunyuanDiTPipeline",
             "I2VGenXLPipeline",
             "IFImg2ImgPipeline",
             "IFImg2ImgSuperResolutionPipeline",
@@ -484,11 +488,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
             ControlNetModel,
             ControlNetXSAdapter,
+            DiTTransformer2DModel,
+            HunyuanDiT2DModel,
             I2VGenXLUNet,
             Kandinsky3UNet,
             ModelMixin,
             MotionAdapter,
             MultiAdapter,
+            PixArtTransformer2DModel,
             PriorTransformer,
             T2IAdapter,
             T5FilmDecoder,
@@ -607,6 +614,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDMPipeline,
             CLIPImageProjection,
             CycleDiffusionPipeline,
+            HunyuanDiTPipeline,
             I2VGenXLPipeline,
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,

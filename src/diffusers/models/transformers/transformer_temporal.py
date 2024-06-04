@@ -149,13 +149,14 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
-                tuple.
+                Whether or not to return a [`~models.transformers.transformer_temporal.TransformerTemporalModelOutput`]
+                instead of a plain tuple.
 
         Returns:
-            [`~models.transformer_temporal.TransformerTemporalModelOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.transformer_temporal.TransformerTemporalModelOutput`] is
-                returned, otherwise a `tuple` where the first element is the sample tensor.
+            [`~models.transformers.transformer_temporal.TransformerTemporalModelOutput`] or `tuple`:
+                If `return_dict` is True, an
+                [`~models.transformers.transformer_temporal.TransformerTemporalModelOutput`] is returned, otherwise a
+                `tuple` where the first element is the sample tensor.
         """
         # 1. Input
         batch_frames, channel, height, width = hidden_states.shape
@@ -294,13 +295,14 @@ class TransformerSpatioTemporalModel(nn.Module):
                 A tensor indicating whether the input contains only images. 1 indicates that the input contains only
                 images, 0 indicates that the input contains video frames.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.transformer_temporal.TransformerTemporalModelOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~models.transformers.transformer_temporal.TransformerTemporalModelOutput`]
+                instead of a plain tuple.
 
         Returns:
-            [`~models.transformer_temporal.TransformerTemporalModelOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.transformer_temporal.TransformerTemporalModelOutput`] is
-                returned, otherwise a `tuple` where the first element is the sample tensor.
+            [`~models.transformers.transformer_temporal.TransformerTemporalModelOutput`] or `tuple`:
+                If `return_dict` is True, an
+                [`~models.transformers.transformer_temporal.TransformerTemporalModelOutput`] is returned, otherwise a
+                `tuple` where the first element is the sample tensor.
         """
         # 1. Input
         batch_frames, _, height, width = hidden_states.shape
