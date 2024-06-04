@@ -42,7 +42,11 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import (
+    PushToHubMixin,
+    load_or_create_model_card,
+    populate_model_card,
+)
 from .model_loading_utils import (
     _determine_device_map,
     _load_state_dict_into_model,
@@ -1039,3 +1043,55 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             del module.key
             del module.value
             del module.proj_attn
+
+
+class LegacyModelMixin(ModelMixin):
+    r"""
+    A subclass of `ModelMixin` to resolve class mapping from legacy classes (like `Transformer2DModel`) to more
+    pipeline-specific classes (like `DiTTransformer2DModel`).
+    """
+
+    @classmethod
+    @validate_hf_hub_args
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+        # To prevent depedency import problem.
+        from .model_loading_utils import _fetch_remapped_cls_from_config
+
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", None)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+
+        # Load config if we don't provide a configuration
+        config_path = pretrained_model_name_or_path
+
+        user_agent = {
+            "diffusers": __version__,
+            "file_type": "model",
+            "framework": "pytorch",
+        }
+
+        # load config
+        config, _, _ = cls.load_config(
+            config_path,
+            cache_dir=cache_dir,
+            return_unused_kwargs=True,
+            return_commit_hash=True,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            **kwargs,
+        )
+        # resolve remapping
+        remapped_class = _fetch_remapped_cls_from_config(config, cls)
+
+        return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs)
