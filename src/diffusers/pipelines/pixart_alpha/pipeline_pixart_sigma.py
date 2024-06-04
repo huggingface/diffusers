@@ -22,7 +22,7 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import PixArtImageProcessor
-from ...models import AutoencoderKL, Transformer2DModel
+from ...models import AutoencoderKL, PixArtTransformer2DModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BACKENDS_MAPPING,
@@ -202,7 +202,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         tokenizer: T5Tokenizer,
         text_encoder: T5EncoderModel,
         vae: AutoencoderKL,
-        transformer: Transformer2DModel,
+        transformer: PixArtTransformer2DModel,
         scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
@@ -320,7 +320,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens = [negative_prompt] * batch_size
+            uncond_tokens = [negative_prompt] * batch_size if isinstance(negative_prompt, str) else negative_prompt
             uncond_tokens = self._text_preprocessing(uncond_tokens, clean_caption=clean_caption)
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
