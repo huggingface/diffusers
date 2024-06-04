@@ -321,6 +321,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
     def fuse_qkv_projections(self):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
@@ -344,6 +345,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
@@ -358,6 +360,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             self.set_attn_processor(self.original_attn_processors)
 
     @property
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
@@ -381,6 +384,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
         return processors
 
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
@@ -419,9 +423,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        processor = HunyuanAttnProcessor2_0()
-
-        self.set_attn_processor(processor)
+        self.set_attn_processor(HunyuanAttnProcessor2_0())
 
     def forward(
         self,
