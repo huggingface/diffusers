@@ -176,7 +176,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
             z = posterior.sample(generator=generator)
         else:
             z = posterior.mode()
-        dec = self.decode(z, sample, mask).sample
+        dec = self.decode(z, generator, sample, mask).sample
 
         if not return_dict:
             return (dec,)
