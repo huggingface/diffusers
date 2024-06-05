@@ -1527,7 +1527,6 @@ def main(args):
     else:
         target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
 
-    print(len(blora_modules))
     unet_lora_config = LoraConfig(
         r=args.rank,
         use_dora=args.use_dora,
@@ -1659,7 +1658,7 @@ def main(args):
             if args.train_text_encoder:
                 models.extend([text_encoder_one_, text_encoder_two_])
                 # only upcast trainable parameters (LoRA) into fp32
-            cast_training_params(models)
+                cast_training_params(models)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
