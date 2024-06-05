@@ -187,6 +187,7 @@ else:
             "LEditsPPPipelineStableDiffusionXL",
         ]
     )
+    _import_structure["latte"] = ["LattePipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -457,6 +458,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
+        from .latte import LattePipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldNormalsPipeline,

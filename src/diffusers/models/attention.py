@@ -192,7 +192,7 @@ class BasicTransformerBlock(nn.Module):
                 "rms_norm",
             )
         else:
-            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
+            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps) # LayerNorm((1152,), eps=1e-06, elementwise_affine=False)
 
         self.attn1 = Attention(
             query_dim=dim,
@@ -222,7 +222,7 @@ class BasicTransformerBlock(nn.Module):
                     "rms_norm",
                 )
             else:
-                self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+                self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine) # LayerNorm((1152,), eps=1e-06, elementwise_affine=False
 
             self.attn2 = Attention(
                 query_dim=dim,
@@ -253,6 +253,8 @@ class BasicTransformerBlock(nn.Module):
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
         elif norm_type == "layer_norm_i2vgen":
             self.norm3 = None
+        elif norm_type == "layer_norm_latte":
+            self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
 
         self.ff = FeedForward(
             dim,
@@ -268,7 +270,7 @@ class BasicTransformerBlock(nn.Module):
             self.fuser = GatedSelfAttentionDense(dim, cross_attention_dim, num_attention_heads, attention_head_dim)
 
         # 5. Scale-shift for PixArt-Alpha.
-        if norm_type == "ada_norm_single":
+        if norm_type in ["ada_norm_single", "layer_norm_latte"]:
             self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
 
         # let chunk size default to None
@@ -309,15 +311,18 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = self.norm1(hidden_states)
         elif self.norm_type == "ada_norm_continuous":
             norm_hidden_states = self.norm1(hidden_states, added_cond_kwargs["pooled_text_emb"])
-        elif self.norm_type == "ada_norm_single":
+        elif self.norm_type in ["ada_norm_single", "layer_norm_latte"]:
             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
                 self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
             ).chunk(6, dim=1)
             norm_hidden_states = self.norm1(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
-            norm_hidden_states = norm_hidden_states.squeeze(1)
+            if self.norm_type == "ada_norm_single":
+                norm_hidden_states = norm_hidden_states.squeeze(1)
         else:
             raise ValueError("Incorrect norm used")
+        # if self.norm_type == "layer_norm_latte":
+        #     print('norm_hidden_states' ,norm_hidden_states.mean())
 
         if self.pos_embed is not None:
             norm_hidden_states = self.pos_embed(norm_hidden_states)
@@ -332,14 +337,21 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
+        # if self.norm_type == "layer_norm_latte":
+        #     print('attn_output', attn_output.mean())
+
         if self.norm_type == "ada_norm_zero":
             attn_output = gate_msa.unsqueeze(1) * attn_output
-        elif self.norm_type == "ada_norm_single":
+        elif self.norm_type in ["ada_norm_single", "layer_norm_latte"]:
             attn_output = gate_msa * attn_output
+        # if self.norm_type == "layer_norm_latte":
+        #     print('attn_output after ada layer norm single', attn_output.mean())
 
         hidden_states = attn_output + hidden_states
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
+        # if self.norm_type == "layer_norm_latte":
+        #     print('hidden_states', hidden_states.mean())
 
         # 1.2 GLIGEN Control
         if gligen_kwargs is not None:
@@ -359,6 +371,9 @@ class BasicTransformerBlock(nn.Module):
                 norm_hidden_states = self.norm2(hidden_states, added_cond_kwargs["pooled_text_emb"])
             else:
                 raise ValueError("Incorrect norm")
+            
+            # if self.norm_type == "layer_norm_latte":
+            #     print('norm_hidden_states cross attention', norm_hidden_states.mean())
 
             if self.pos_embed is not None and self.norm_type != "ada_norm_single":
                 norm_hidden_states = self.pos_embed(norm_hidden_states)
@@ -370,6 +385,8 @@ class BasicTransformerBlock(nn.Module):
                 **cross_attention_kwargs,
             )
             hidden_states = attn_output + hidden_states
+            # if self.norm_type == "layer_norm_latte":
+            #     print('attn_output cross attention', attn_output.mean())
 
         # 4. Feed-forward
         # i2vgen doesn't have this norm 🤷‍♂️
@@ -384,6 +401,13 @@ class BasicTransformerBlock(nn.Module):
         if self.norm_type == "ada_norm_single":
             norm_hidden_states = self.norm2(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
+        
+        if self.norm_type == "layer_norm_latte":
+            norm_hidden_states = self.norm3(hidden_states)
+            norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
+        
+        # if self.norm_type == "layer_norm_latte":
+        #         print('norm_hidden_states after ada layer norm single', norm_hidden_states.mean())
 
         if self._chunk_size is not None:
             # "feed_forward_chunk_size" can be used to save memory
@@ -393,12 +417,15 @@ class BasicTransformerBlock(nn.Module):
 
         if self.norm_type == "ada_norm_zero":
             ff_output = gate_mlp.unsqueeze(1) * ff_output
-        elif self.norm_type == "ada_norm_single":
+        elif self.norm_type in ["ada_norm_single", "layer_norm_latte"]:
             ff_output = gate_mlp * ff_output
 
         hidden_states = ff_output + hidden_states
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
+        # if self.norm_type == "layer_norm_latte":
+        #     print('hidden_states after feed forward', hidden_states.mean())
+            # exit()
 
         return hidden_states
 
