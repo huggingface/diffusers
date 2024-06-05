@@ -86,7 +86,6 @@ Furthermore, you can use the [`~HunyuanDiT2DModel.enable_forward_chunking`] meth
 + pipeline.transformer.enable_forward_chunking(chunk_size=1, dim=1)
 ```
 
-Feed-forward chunking runs the feed-forward layers in a transformer  block in a loop instead of all at once. This gives you a trade-off between memory consumption and inference runtime.
 
 ## HunyuanDiTPipeline
 
