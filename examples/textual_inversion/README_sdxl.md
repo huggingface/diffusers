@@ -1,6 +1,6 @@
 ## Textual Inversion fine-tuning example for SDXL
 
-```
+```sh
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
 export DATA_DIR="./cat"
 
@@ -23,4 +23,4 @@ accelerate launch textual_inversion_sdxl.py \
   --output_dir="./textual_inversion_cat_sdxl"
 ```
 
-For now, only training of the first text encoder is supported. 
+For now, only training of the first text encoder is supported.

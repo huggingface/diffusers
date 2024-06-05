@@ -85,10 +85,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> init_image = download_image(img_url).resize((768, 768))
 
-        >>> pipe = StableDiffusionDiffEditPipeline.from_pretrained(
+        >>> pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
         ... )
-        >>> pipe = pipe.to("cuda")
 
         >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
         >>> pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
@@ -97,9 +96,9 @@ EXAMPLE_DOC_STRING = """
         >>> mask_prompt = "A bowl of fruits"
         >>> prompt = "A bowl of pears"
 
-        >>> mask_image = pipe.generate_mask(image=init_image, source_prompt=prompt, target_prompt=mask_prompt)
-        >>> image_latents = pipe.invert(image=init_image, prompt=mask_prompt).latents
-        >>> image = pipe(prompt=prompt, mask_image=mask_image, image_latents=image_latents).images[0]
+        >>> mask_image = pipeline.generate_mask(image=init_image, source_prompt=prompt, target_prompt=mask_prompt)
+        >>> image_latents = pipeline.invert(image=init_image, prompt=mask_prompt).latents
+        >>> image = pipeline(prompt=prompt, mask_image=mask_image, image_latents=image_latents).images[0]
         ```
 """
 
@@ -122,10 +121,9 @@ EXAMPLE_INVERT_DOC_STRING = """
 
         >>> init_image = download_image(img_url).resize((768, 768))
 
-        >>> pipe = StableDiffusionDiffEditPipeline.from_pretrained(
+        >>> pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
         ... )
-        >>> pipe = pipe.to("cuda")
 
         >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
         >>> pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
@@ -133,7 +131,7 @@ EXAMPLE_INVERT_DOC_STRING = """
 
         >>> prompt = "A bowl of fruits"
 
-        >>> inverted_latents = pipe.invert(image=init_image, prompt=prompt).latents
+        >>> inverted_latents = pipeline.invert(image=init_image, prompt=prompt).latents
         ```
 """
 

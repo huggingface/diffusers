@@ -95,13 +95,13 @@ cd diffusers
 
 **PyTorch**
 
-```
+```sh
 pip install -e ".[torch]"
 ```
 
 **Flax**
 
-```
+```sh
 pip install -e ".[flax]"
 ```
 

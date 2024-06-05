@@ -177,7 +177,7 @@ inpaint = StableDiffusionInpaintPipeline(**text2img.components)
 
 The Stable Diffusion pipelines are automatically supported in [Gradio](https://github.com/gradio-app/gradio/), a library that makes creating beautiful and user-friendly machine learning apps on the web a breeze. First, make sure you have Gradio installed:
 
-```
+```sh
 pip install -U gradio
 ```
 
@@ -209,4 +209,4 @@ gr.Interface.from_pipeline(pipe).launch()
 ```
 
 By default, the web demo runs on a local server. If you'd like to share it with others, you can generate a temporary public
-link by setting `share=True` in `launch()`. Or, you can host your demo on [Hugging Face Spaces](https://huggingface.co/spaces)https://huggingface.co/spaces for a permanent link. 
+link by setting `share=True` in `launch()`. Or, you can host your demo on [Hugging Face Spaces](https://huggingface.co/spaces)https://huggingface.co/spaces for a permanent link.

@@ -188,7 +188,7 @@ def latents_to_rgb(latents):
 ```py
 def decode_tensors(pipe, step, timestep, callback_kwargs):
     latents = callback_kwargs["latents"]
-    
+
     image = latents_to_rgb(latents)
     image.save(f"{step}.png")
 

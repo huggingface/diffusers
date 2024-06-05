@@ -43,7 +43,7 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
-When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
 ### Dog toy example
@@ -231,7 +231,7 @@ accelerate launch --mixed_precision="fp16" train_dreambooth.py \
 
 ### Fine-tune text encoder with the UNet.
 
-The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces. 
+The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces.
 Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
 
 ___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
@@ -303,7 +303,7 @@ In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-de
 - Rank-decomposition matrices have significantly fewer parameters than the original model, which means that trained LoRA weights are easily portable.
 - LoRA attention layers allow to control to which extent the model is adapted towards new training images via a `scale` parameter.
 
-[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in 
+[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in
 the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
 
 ### Training
@@ -326,7 +326,7 @@ export INSTANCE_DIR="dog"
 export OUTPUT_DIR="path-to-save-model"
 ```
 
-For this example we want to directly store the trained LoRA embeddings on the Hub, so 
+For this example we want to directly store the trained LoRA embeddings on the Hub, so
 we need to be logged in and add the `--push_to_hub` flag.
 
 ```bash
@@ -356,7 +356,7 @@ accelerate launch train_dreambooth_lora.py \
   --push_to_hub
 ```
 
-**___Note: When using LoRA we can use a much higher learning rate compared to vanilla dreambooth. Here we 
+**___Note: When using LoRA we can use a much higher learning rate compared to vanilla dreambooth. Here we
 use *1e-4* instead of the usual *2e-6*.___**
 
 The final LoRA embedding weights have been uploaded to [patrickvonplaten/lora_dreambooth_dog_example](https://huggingface.co/patrickvonplaten/lora_dreambooth_dog_example). **___Note: [The final weights](https://huggingface.co/patrickvonplaten/lora/blob/main/pytorch_attn_procs.bin) are only 3 MB in size which is orders of magnitudes smaller than the original model.**
@@ -365,14 +365,14 @@ The training results are summarized [here](https://api.wandb.ai/report/patrickvo
 You can use the `Step` slider to see how the model learned the features of our subject while the model trained.
 
 Optionally, we can also train additional LoRA layers for the text encoder. Specify the `--train_text_encoder` argument above for that. If you're interested to know more about how we
-enable this support, check out this [PR](https://github.com/huggingface/diffusers/pull/2918). 
+enable this support, check out this [PR](https://github.com/huggingface/diffusers/pull/2918).
 
 With the default hyperparameters from the above, the training seems to go in a positive direction. Check out [this panel](https://wandb.ai/sayakpaul/dreambooth-lora/reports/test-23-04-17-17-00-13---Vmlldzo0MDkwNjMy). The trained LoRA layers are available [here](https://huggingface.co/sayakpaul/dreambooth).
 
 
 ### Inference
 
-After training, LoRA weights can be loaded very easily into the original pipeline. First, you need to 
+After training, LoRA weights can be loaded very easily into the original pipeline. First, you need to
 load the original pipeline:
 
 ```python
@@ -394,9 +394,9 @@ image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).image
 
 If you are loading the LoRA parameters from the Hub and if the Hub repository has
 a `base_model` tag (such as [this](https://huggingface.co/patrickvonplaten/lora_dreambooth_dog_example/blob/main/README.md?code=true#L4)), then
-you can do: 
+you can do:
 
-```py 
+```py
 from huggingface_hub.repocard import RepoCard
 
 lora_model_id = "patrickvonplaten/lora_dreambooth_dog_example"
@@ -413,7 +413,7 @@ weights. For example:
 ```python
 from huggingface_hub.repocard import RepoCard
 from diffusers import StableDiffusionPipeline
-import torch 
+import torch
 
 lora_model_id = "sayakpaul/dreambooth-text-encoder-test"
 card = RepoCard.load(lora_model_id)
@@ -430,7 +430,7 @@ Note that the use of [`LoraLoaderMixin.load_lora_weights`](https://huggingface.c
 
 * LoRA parameters that don't have separate identifiers for the UNet and the text encoder (such as [`"patrickvonplaten/lora_dreambooth_dog_example"`](https://huggingface.co/patrickvonplaten/lora_dreambooth_dog_example)). So, you can just do:
 
-  ```py 
+  ```py
   pipe.load_lora_weights(lora_model_path)
   ```
 
@@ -529,11 +529,11 @@ To save even more memory, pass the `--set_grads_to_none` argument to the script.
 More info: https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html
 
 ### Experimental results
-You can refer to [this blog post](https://huggingface.co/blog/dreambooth) that discusses some of DreamBooth experiments in detail. Specifically, it recommends a set of DreamBooth-specific tips and tricks that we have found to work well for a variety of subjects. 
+You can refer to [this blog post](https://huggingface.co/blog/dreambooth) that discusses some of DreamBooth experiments in detail. Specifically, it recommends a set of DreamBooth-specific tips and tricks that we have found to work well for a variety of subjects.
 
 ## IF
 
-You can use the lora and full dreambooth scripts to train the text to image [IF model](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0) and the stage II upscaler 
+You can use the lora and full dreambooth scripts to train the text to image [IF model](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0) and the stage II upscaler
 [IF model](https://huggingface.co/DeepFloyd/IF-II-L-v1.0).
 
 Note that IF has a predicted variance, and our finetuning scripts only train the models predicted error, so for finetuned IF models we switch to a fixed
@@ -553,7 +553,7 @@ pipe.scheduler = pipe.scheduler.__class__.from_config(pipe.scheduler.config, var
 
 Additionally, a few alternative cli flags are needed for IF.
 
-`--resolution=64`: IF is a pixel space diffusion model. In order to operate on un-compressed pixels, the input images are of a much smaller resolution. 
+`--resolution=64`: IF is a pixel space diffusion model. In order to operate on un-compressed pixels, the input images are of a much smaller resolution.
 
 `--pre_compute_text_embeddings`: IF uses [T5](https://huggingface.co/docs/transformers/model_doc/t5) for its text encoder. In order to save GPU memory, we pre compute all text embeddings and then de-allocate
 T5.
@@ -568,7 +568,7 @@ We find LoRA to be sufficient for finetuning the stage I model as the low resolu
 For common and/or not-visually complex object concepts, you can get away with not-finetuning the upscaler. Just be sure to adjust the prompt passed to the
 upscaler to remove the new token from the instance prompt. I.e. if your stage I prompt is "a sks dog", use "a dog" for your stage II prompt.
 
-For finegrained detail like faces that aren't present in the original training set, we find that full finetuning of the stage II upscaler is better than 
+For finegrained detail like faces that aren't present in the original training set, we find that full finetuning of the stage II upscaler is better than
 LoRA finetuning stage II.
 
 For finegrained detail like faces, we find that lower learning rates along with larger batch sizes work best.
@@ -647,7 +647,7 @@ python train_dreambooth_lora.py \
     --resolution=256 \
     --train_batch_size=4 \
     --gradient_accumulation_steps=1 \
-    --learning_rate=1e-6 \ 
+    --learning_rate=1e-6 \
     --max_train_steps=2000 \
     --validation_prompt="a sks dog" \
     --validation_epochs=100 \
@@ -663,9 +663,9 @@ python train_dreambooth_lora.py \
 `--skip_save_text_encoder`: When training the full model, this will skip saving the entire T5 with the finetuned model. You can still load the pipeline
 with a T5 loaded from the original model.
 
-`use_8bit_adam`: Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam. 
+`use_8bit_adam`: Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam.
 
-`--learning_rate=1e-7`: For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade. Note that it is 
+`--learning_rate=1e-7`: For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade. Note that it is
 likely the learning rate can be increased with larger batch sizes.
 
 Using 8bit adam and a batch size of 4, the model can be trained in ~48 GB VRAM.
@@ -741,4 +741,4 @@ accelerate launch train_dreambooth.py \
 
 ## Stable Diffusion XL
 
-We support fine-tuning of the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md). 
+We support fine-tuning of the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md).
