@@ -613,7 +613,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             motion_num_attention_heads=self.config["motion_num_attention_heads"],
             motion_max_seq_length=self.config["motion_max_seq_length"],
             use_motion_mid_block=self.config["use_motion_mid_block"],
-            conv_in_channels=self.config["conv_in_channels"],
+            conv_in_channels=self.config["in_channels"],
         )
         adapter.load_state_dict(motion_state_dict)
         adapter.save_pretrained(
