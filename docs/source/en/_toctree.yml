@@ -242,7 +242,7 @@
       title: PixArtTransformer2DModel
     - local: api/models/dit_transformer2d
       title: DiTTransformer2DModel
-    - local: api/models/hunyuan_transformer_2d
+    - local: api/models/hunyuan_transformer2d
       title: HunyuanDiT2DModel
     - local: api/models/transformer_temporal
       title: TransformerTemporalModel
