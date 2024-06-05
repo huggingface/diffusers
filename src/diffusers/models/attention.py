@@ -192,7 +192,7 @@ class BasicTransformerBlock(nn.Module):
                 "rms_norm",
             )
         else:
-            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps) # LayerNorm((1152,), eps=1e-06, elementwise_affine=False)
+            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
 
         self.attn1 = Attention(
             query_dim=dim,
