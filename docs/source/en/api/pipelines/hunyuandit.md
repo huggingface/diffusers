@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # Hunyuan-DiT
 ![chinese elements understanding](https://github.com/gnobitab/diffusers-hunyuan/assets/1157982/39b99036-c3cb-4f16-bb1a-40ec25eda573)
 
-[Hunyuan-DiT : A Powerful Multi-Resolution Diffusion Transformer with Fine-Grained Chinese Understanding](https://arxiv.org/abs/2405.08748)] from Tencent Hunyuan.
+[Hunyuan-DiT : A Powerful Multi-Resolution Diffusion Transformer with Fine-Grained Chinese Understanding](https://arxiv.org/abs/2405.08748) from Tencent Hunyuan.
 
 The abstract from the paper is:
 
@@ -28,6 +28,10 @@ HunyuanDiT has the following components:
 * It uses a diffusion transformer as the backbone
 * It combines two text encoders, a bilingual CLIP and a multilingual T5 encoder
 
+
+## Memory optimization
+
+By loading the T5 text encoder in 8 bits, you can run the pipeline in just under 6 GBs of GPU VRAM. Refer to [this script](https://gist.github.com/sayakpaul/3154605f6af05b98a41081aaba5ca43e) for details. 
 
 ## HunyuanDiTPipeline
 
