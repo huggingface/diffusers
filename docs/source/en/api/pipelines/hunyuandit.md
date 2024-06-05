@@ -28,10 +28,65 @@ HunyuanDiT has the following components:
 * It uses a diffusion transformer as the backbone
 * It combines two text encoders, a bilingual CLIP and a multilingual T5 encoder
 
+<Tip>
 
-## Memory optimization
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.md) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading.md#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
+
+## Optimization
+
+You can optimize the runtime and memory consumption of the pipeline using various methods. 
+
+### Inference
+
+Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
+
+First, load the pipeline:
+
+```python
+from diffusers import HunyuanDiTPipeline
+import torch 
+
+pipeline = HunyuanDiTPipeline.from_pretrained(
+	"Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
+).to("cuda")
+```
+
+Then change memory layout of the `transformer` and `vae` components of the pipeline to be of "channels-last":
+
+```python
+pipeline.transformer.to(memory_format=torch.channels_last)
+pipeline.vae.to(memory_format=torch.channels_last)
+```
+
+Finally, compile the components and run inference:
+
+```python
+pipeline.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
+pipeline.vae.decode = torch.compile(pipeline.vae.decode, mode="max-autotune", fullgraph=True)
+
+image = pipeline(prompt="一个宇航员在骑马").images[0]
+```
+
+We ran a [benchmark](https://gist.github.com/sayakpaul/29d3a14905cfcbf611fe71ebd22e9b23) on a 80GB A100 machine and we noticed the following numbers:
+
+```bash
+With torch.compile(): Average inference time: 12.470 seconds.
+Without torch.compile(): Average inference time: 20.570 seconds.
+```
+
+### Memory optimization
 
 By loading the T5 text encoder in 8 bits, you can run the pipeline in just under 6 GBs of GPU VRAM. Refer to [this script](https://gist.github.com/sayakpaul/3154605f6af05b98a41081aaba5ca43e) for details. 
+
+Furthermore, you can use the `enable_forward_chunking()` method to reduce memory usage:
+
+```diff
++ pipeline.transformer.enable_forward_chunking(chunk_size=1, dim=1)
+```
+
+Feed-forward chunking runs the feed-forward layers in a transformer  block in a loop instead of all at once. This gives you a trade-off between memory consumption and inference runtime.
 
 ## HunyuanDiTPipeline
 
