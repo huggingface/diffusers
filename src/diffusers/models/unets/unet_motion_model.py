@@ -57,7 +57,7 @@ class MotionModules(nn.Module):
         self,
         in_channels: int,
         layers_per_block: int = 2,
-        transformer_layers_per_block: int = 8,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 8,
         num_attention_heads: Union[int, Tuple[int]] = 8,
         attention_bias: bool = False,
         cross_attention_dim: Optional[int] = None,
@@ -99,9 +99,9 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         self,
         block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         motion_layers_per_block: Union[int, Tuple[int]] = 2,
-        motion_transformer_per_layers: Union[int, Tuple[int], Tuple[Tuple[int]]] = 1,
+        motion_transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple[int]]] = 1,
         motion_mid_block_layers_per_block: int = 1,
-        motion_transformer_per_mid_layers: Union[int, Tuple[int]] = 1,
+        motion_transformer_layers_per_mid_block: Union[int, Tuple[int]] = 1,
         motion_num_attention_heads: Union[int, Tuple[int]] = 8,
         motion_norm_num_groups: int = 32,
         motion_max_seq_length: int = 32,
@@ -115,11 +115,11 @@ class MotionAdapter(ModelMixin, ConfigMixin):
             The tuple of output channels for each UNet block.
             motion_layers_per_block (`int` or `Tuple[int]`, *optional*, defaults to 2):
                 The number of motion layers per UNet block.
-            motion_transformer_per_layers (`int`, `Tuple[int]`, or `Tuple[Tuple[int]]`, *optional*, defaults to 1):
+            motion_transformer_layers_per_block (`int`, `Tuple[int]`, or `Tuple[Tuple[int]]`, *optional*, defaults to 1):
                 The number of transformer layers to use in each motion layer in each block.
             motion_mid_block_layers_per_block (`int`, *optional*, defaults to 1):
                 The number of motion layers in the middle UNet block.
-            motion_transformer_per_mid_layers (`int` or `Tuple[int]`, *optional*, defaults to 1):
+            motion_transformer_layers_per_mid_block (`int` or `Tuple[int]`, *optional*, defaults to 1):
                 The number of transformer layers to use in each motion layer in the middle block.
             motion_num_attention_heads (`int` or `Tuple[int]`, *optional*, defaults to 8):
                 The number of heads to use in each attention layer of the motion module.
@@ -136,26 +136,28 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         up_blocks = []
 
         if isinstance(motion_layers_per_block, int):
-            motion_layers_per_block = [motion_layers_per_block] * len(block_out_channels)
+            motion_layers_per_block = (motion_layers_per_block,) * len(block_out_channels)
         elif len(motion_layers_per_block) != len(block_out_channels):
             raise ValueError(
                 f"The number of motion layers per block must match the number of blocks, "
                 f"got {len(block_out_channels)} and {len(motion_layers_per_block)}"
             )
 
-        if isinstance(motion_transformer_per_layers, int):
-            motion_transformer_per_layers = [motion_transformer_per_layers] * len(block_out_channels)
+        if isinstance(motion_transformer_layers_per_block, int):
+            motion_transformer_layers_per_block = (motion_transformer_layers_per_block,) * len(block_out_channels)
 
-        if isinstance(motion_transformer_per_mid_layers, int):
-            motion_transformer_per_mid_layers = [motion_transformer_per_mid_layers] * motion_mid_block_layers_per_block
-        elif len(motion_transformer_per_mid_layers) != motion_mid_block_layers_per_block:
+        if isinstance(motion_transformer_layers_per_mid_block, int):
+            motion_transformer_layers_per_mid_block = (
+                motion_transformer_layers_per_mid_block,
+            ) * motion_mid_block_layers_per_block
+        elif len(motion_transformer_layers_per_mid_block) != motion_mid_block_layers_per_block:
             raise ValueError(
                 f"The number of layers per mid block ({motion_mid_block_layers_per_block}) "
-                f"must match the length of motion_transformer_per_mid_layers ({len(motion_transformer_per_mid_layers)})"
+                f"must match the length of motion_transformer_layers_per_mid_block ({len(motion_transformer_layers_per_mid_block)})"
             )
 
         if isinstance(motion_num_attention_heads, int):
-            motion_num_attention_heads = [motion_num_attention_heads] * len(block_out_channels)
+            motion_num_attention_heads = (motion_num_attention_heads,) * len(block_out_channels)
         elif len(motion_num_attention_heads) != len(block_out_channels):
             raise ValueError(
                 f"The length of the attention head number tuple in the motion module must match the "
@@ -180,7 +182,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                     num_attention_heads=motion_num_attention_heads[i],
                     max_seq_length=motion_max_seq_length,
                     layers_per_block=motion_layers_per_block[i],
-                    transformer_layers_per_block=motion_transformer_per_layers[i],
+                    transformer_layers_per_block=motion_transformer_layers_per_block[i],
                 )
             )
 
@@ -194,7 +196,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                 num_attention_heads=motion_num_attention_heads[-1],
                 max_seq_length=motion_max_seq_length,
                 layers_per_block=motion_mid_block_layers_per_block,
-                transformer_layers_per_block=motion_transformer_per_mid_layers,
+                transformer_layers_per_block=motion_transformer_layers_per_mid_block,
             )
         else:
             self.mid_block = None
@@ -203,7 +205,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         output_channel = reversed_block_out_channels[0]
 
         reversed_motion_layers_per_block = list(reversed(motion_layers_per_block))
-        reversed_motion_motion_transformer_per_layers = list(reversed(motion_transformer_per_layers))
+        reversed_motion_transformer_layers_per_block = list(reversed(motion_transformer_layers_per_block))
         reversed_motion_num_attention_heads = list(reversed(motion_num_attention_heads))
         for i, channel in enumerate(reversed_block_out_channels):
             output_channel = reversed_block_out_channels[i]
@@ -217,7 +219,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                     num_attention_heads=reversed_motion_num_attention_heads[i],
                     max_seq_length=motion_max_seq_length,
                     layers_per_block=reversed_motion_layers_per_block[i] + 1,
-                    transformer_layers_per_block=reversed_motion_motion_transformer_per_layers[i],
+                    transformer_layers_per_block=reversed_motion_transformer_layers_per_block[i],
                 )
             )
 
@@ -269,8 +271,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         reverse_transformer_layers_per_block: Optional[Union[int, Tuple[int], Tuple[Tuple]]] = None,
         temporal_transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
         reverse_temporal_transformer_layers_per_block: Optional[Union[int, Tuple[int], Tuple[Tuple]]] = None,
-        transformer_layers_per_midblock: Optional[Union[int, Tuple[int]]] = None,
-        temporal_transformer_layers_per_midblock: Optional[Union[int, Tuple[int]]] = 1,
+        transformer_layers_per_mid_block: Optional[Union[int, Tuple[int]]] = None,
+        temporal_transformer_layers_per_mid_block: Optional[Union[int, Tuple[int]]] = 1,
         use_linear_projection: bool = False,
         num_attention_heads: Union[int, Tuple[int, ...]] = 8,
         motion_max_seq_length: int = 32,
@@ -414,8 +416,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             self.down_blocks.append(down_block)
 
         # mid
-        if transformer_layers_per_midblock is None:
-            transformer_layers_per_midblock = (
+        if transformer_layers_per_mid_block is None:
+            transformer_layers_per_mid_block = (
                 transformer_layers_per_block[-1] if isinstance(transformer_layers_per_block[-1], int) else 1
             )
 
@@ -434,8 +436,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 num_layers=mid_block_layers,
                 temporal_num_attention_heads=motion_num_attention_heads[-1],
                 temporal_max_seq_length=motion_max_seq_length,
-                transformer_layers_per_block=transformer_layers_per_midblock,
-                temporal_transformer_layers_per_block=temporal_transformer_layers_per_midblock,
+                transformer_layers_per_block=transformer_layers_per_mid_block,
+                temporal_transformer_layers_per_block=temporal_transformer_layers_per_mid_block,
             )
 
         else:
@@ -451,7 +453,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 dual_cross_attention=False,
                 use_linear_projection=use_linear_projection,
                 num_layers=mid_block_layers,
-                transformer_layers_per_block=transformer_layers_per_midblock,
+                transformer_layers_per_block=transformer_layers_per_mid_block,
             )
 
         # count how many layers upsample the images
@@ -462,9 +464,13 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         reversed_num_attention_heads = list(reversed(num_attention_heads))
         reversed_layers_per_block = list(reversed(layers_per_block))
         reversed_cross_attention_dim = list(reversed(cross_attention_dim))
-        reversed_transformer_layers_per_block = list(reversed(transformer_layers_per_block))
-        reversed_temporal_transformer_layers_per_block = list(reversed(temporal_transformer_layers_per_block))
         reversed_motion_num_attention_heads = list(reversed(motion_num_attention_heads))
+
+        if reverse_transformer_layers_per_block is None:
+            reverse_transformer_layers_per_block = list(reversed(transformer_layers_per_block))
+
+        if reverse_temporal_transformer_layers_per_block is None:
+            reverse_temporal_transformer_layers_per_block = list(reversed(temporal_transformer_layers_per_block))
 
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
@@ -480,16 +486,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 self.num_upsamplers += 1
             else:
                 add_upsample = False
-
-            if reverse_transformer_layers_per_block is not None:
-                curr_layer_transformer = reverse_transformer_layers_per_block[i]
-            else:
-                curr_layer_transformer = reversed_transformer_layers_per_block[i]
-
-            if reverse_temporal_transformer_layers_per_block is not None:
-                curr_layer_temporal_transformer = reverse_temporal_transformer_layers_per_block[i]
-            else:
-                curr_layer_temporal_transformer = reversed_temporal_transformer_layers_per_block[i]
 
             up_block = get_up_block(
                 up_block_type,
@@ -509,8 +505,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 use_linear_projection=use_linear_projection,
                 temporal_num_attention_heads=reversed_motion_num_attention_heads[i],
                 temporal_max_seq_length=motion_max_seq_length,
-                transformer_layers_per_block=curr_layer_transformer,
-                temporal_transformer_layers_per_block=curr_layer_temporal_transformer,
+                transformer_layers_per_block=reverse_transformer_layers_per_block[i],
+                temporal_transformer_layers_per_block=reverse_temporal_transformer_layers_per_block[i],
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -585,10 +581,12 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             config["motion_max_seq_length"] = motion_adapter.config["motion_max_seq_length"]
             config["use_motion_mid_block"] = motion_adapter.config["use_motion_mid_block"]
             config["layers_per_block"] = motion_adapter.config["motion_layers_per_block"]
-            config["temporal_transformer_layers_per_midblock"] = motion_adapter.config[
-                "motion_transformer_per_mid_layers"
+            config["temporal_transformer_layers_per_mid_block"] = motion_adapter.config[
+                "motion_transformer_layers_per_mid_block"
             ]
-            config["temporal_transformer_layers_per_block"] = motion_adapter.config["motion_transformer_per_layers"]
+            config["temporal_transformer_layers_per_block"] = motion_adapter.config[
+                "motion_transformer_layers_per_block"
+            ]
             config["motion_num_attention_heads"] = motion_adapter.config["motion_num_attention_heads"]
 
             # For PIA UNets we need to set the number input channels to 9
