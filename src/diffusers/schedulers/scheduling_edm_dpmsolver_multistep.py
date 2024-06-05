@@ -243,13 +243,13 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         self.num_inference_steps = num_inference_steps
 
-        ramp = np.linspace(0, 1, self.num_inference_steps)
+        ramp = torch.linspace(0, 1, self.num_inference_steps)
         if self.config.sigma_schedule == "karras":
             sigmas = self._compute_karras_sigmas(ramp)
         elif self.config.sigma_schedule == "exponential":
-            sigmas = self._compute_exponential_sigmas(ramp).numpy()
+            sigmas = self._compute_exponential_sigmas(ramp)
 
-        sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
+        sigmas = sigmas.to(dtype=torch.float32, device=device)
         self.timesteps = self.precondition_noise(sigmas)
 
         if self.config.final_sigmas_type == "sigma_min":
