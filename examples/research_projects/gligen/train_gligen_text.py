@@ -1,6 +1,6 @@
-from accelerate.utils import write_basic_config
-
-write_basic_config()
+# from accelerate.utils import write_basic_config
+#
+# write_basic_config()
 import argparse
 import logging
 import math
@@ -17,22 +17,21 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from packaging import version
-from PIL import Image
 from tqdm.auto import tqdm
 
 import diffusers
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
-    UNet2DConditionModel,
-    StableDiffusionGLIGENTextImagePipeline,
+    EulerDiscreteScheduler,
     StableDiffusionGLIGENPipeline,
-    EulerDiscreteScheduler
+    UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import is_wandb_available, make_image_grid
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
+
 
 if is_wandb_available():
     pass
@@ -44,11 +43,9 @@ logger = get_logger(__name__)
 
 
 @torch.no_grad()
-def log_validation(
-        vae, text_encoder, tokenizer, unet, noise_scheduler, args, accelerator, step, weight_dtype
-):
+def log_validation(vae, text_encoder, tokenizer, unet, noise_scheduler, args, accelerator, step, weight_dtype):
     if accelerator.is_main_process:
-        print('generate test images...')
+        print("generate test images...")
     unet = accelerator.unwrap_model(unet)
     vae.to(accelerator.device, dtype=torch.float32)
 
@@ -71,12 +68,14 @@ def log_validation(
     else:
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
-    prompt = 'A realistic image of landscape scene depicting a green car parking on the left of a blue truck, with a red air balloon and a bird in the sky'
-    boxes = [[0.041015625, 0.548828125, 0.453125, 0.859375],
+    prompt = "A realistic image of landscape scene depicting a green car parking on the left of a blue truck, with a red air balloon and a bird in the sky"
+    boxes = [
+        [0.041015625, 0.548828125, 0.453125, 0.859375],
         [0.525390625, 0.552734375, 0.93359375, 0.865234375],
         [0.12890625, 0.015625, 0.412109375, 0.279296875],
-        [0.578125, 0.08203125, 0.857421875, 0.27734375]]
-    gligen_phrases = ['a green car', 'a blue truck', 'a red air balloon', 'a bird']
+        [0.578125, 0.08203125, 0.857421875, 0.27734375],
+    ]
+    gligen_phrases = ["a green car", "a blue truck", "a red air balloon", "a bird"]
     images = pipeline(
         prompt=prompt,
         gligen_phrases=gligen_phrases,
@@ -88,10 +87,13 @@ def log_validation(
         num_images_per_prompt=4,
         generator=generator,
     ).images
-    os.makedirs(os.path.join(args.output_dir, 'images'), exist_ok=True)
-    make_image_grid(images, 1, 4).save(os.path.join(args.output_dir, 'images', f"generated-images-{step:06d}-{accelerator.process_index:02d}.png"))
+    os.makedirs(os.path.join(args.output_dir, "images"), exist_ok=True)
+    make_image_grid(images, 1, 4).save(
+        os.path.join(args.output_dir, "images", f"generated-images-{step:06d}-{accelerator.process_index:02d}.png")
+    )
 
     vae.to(accelerator.device, dtype=weight_dtype)
+
 
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a ControlNet training script.")
@@ -320,19 +322,14 @@ def main(args):
     # text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
     # Load scheduler and models
     from transformers import CLIPTextModel, CLIPTokenizer
-    pretrained_model_name_or_path = 'masterful/gligen-1-4-generation-text-box'
+
+    pretrained_model_name_or_path = "masterful/gligen-1-4-generation-text-box"
     tokenizer = CLIPTokenizer.from_pretrained(pretrained_model_name_or_path, subfolder="tokenizer")
     noise_scheduler = DDPMScheduler.from_pretrained(pretrained_model_name_or_path, subfolder="scheduler")
-    text_encoder = CLIPTextModel.from_pretrained(
-        pretrained_model_name_or_path, subfolder="text_encoder"
-    )
+    text_encoder = CLIPTextModel.from_pretrained(pretrained_model_name_or_path, subfolder="text_encoder")
 
-    vae = AutoencoderKL.from_pretrained(
-        pretrained_model_name_or_path, subfolder="vae"
-    )
-    unet = UNet2DConditionModel.from_pretrained(
-        pretrained_model_name_or_path, subfolder="unet"
-    )
+    vae = AutoencoderKL.from_pretrained(pretrained_model_name_or_path, subfolder="vae")
+    unet = UNet2DConditionModel.from_pretrained(pretrained_model_name_or_path, subfolder="unet")
 
     # Taken from [Sayak Paul's Diffusers PR #6511](https://github.com/huggingface/diffusers/pull/6511/files)
     def unwrap_model(model):
@@ -399,9 +396,7 @@ def main(args):
     )
 
     if unwrap_model(unet).dtype != torch.float32:
-        raise ValueError(
-            f"Controlnet loaded as datatype {unwrap_model(unet).dtype}. {low_precision_error_string}"
-        )
+        raise ValueError(f"Controlnet loaded as datatype {unwrap_model(unet).dtype}. {low_precision_error_string}")
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -410,19 +405,20 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     optimizer_class = torch.optim.AdamW
     # Optimizer creation
     for n, m in unet.named_modules():
-        if ('fuser' in n) or ('position_net' in n):
+        if ("fuser" in n) or ("position_net" in n):
             import torch.nn as nn
+
             if isinstance(m, (nn.Linear, nn.LayerNorm)):
                 m.reset_parameters()
     params_to_optimize = []
     for n, p in unet.named_parameters():
-        if ('fuser' in n) or ('position_net' in n):
+        if ("fuser" in n) or ("position_net" in n):
             p.requires_grad = True
             params_to_optimize.append(p)
     optimizer = optimizer_class(
@@ -434,11 +430,16 @@ def main(args):
     )
 
     from dataset import COCODataset
-    train_dataset = COCODataset(
-        data_path=args.data_path, image_path=args.image_path,
-        tokenizer=tokenizer, image_size=args.resolution, max_boxes_per_data=30)
 
-    print('num samples: ', len(train_dataset))
+    train_dataset = COCODataset(
+        data_path=args.data_path,
+        image_path=args.image_path,
+        tokenizer=tokenizer,
+        image_size=args.resolution,
+        max_boxes_per_data=30,
+    )
+
+    print("num samples: ", len(train_dataset))
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -583,14 +584,18 @@ def main(args):
 
                 with torch.no_grad():
                     # Get the text embedding for conditioning
-                    encoder_hidden_states = text_encoder(batch['caption']['input_ids'].squeeze(1),
-                                                         # batch['caption']['attention_mask'].squeeze(1),
-                                                         return_dict=False)[0]
+                    encoder_hidden_states = text_encoder(
+                        batch["caption"]["input_ids"].squeeze(1),
+                        # batch['caption']['attention_mask'].squeeze(1),
+                        return_dict=False,
+                    )[0]
 
                 cross_attention_kwargs = {}
-                cross_attention_kwargs["gligen"] = {"boxes": batch['boxes'],
-                                                    "positive_embeddings": batch['text_embeddings_before_projection'],
-                                                    "masks": batch['masks']}
+                cross_attention_kwargs["gligen"] = {
+                    "boxes": batch["boxes"],
+                    "positive_embeddings": batch["text_embeddings_before_projection"],
+                    "masks": batch["masks"],
+                }
                 # Predict the noise residual
                 model_pred = unet(
                     noisy_latents,
@@ -659,7 +664,6 @@ def main(args):
                         global_step,
                         weight_dtype,
                     )
-            
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
