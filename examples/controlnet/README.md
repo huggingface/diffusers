@@ -321,7 +321,7 @@ pip install "jax[tpu]==0.4.5" -f https://storage.googleapis.com/jax-releases/lib
 
 To verify that JAX was correctly installed, you can run the following command:
 
-```
+```py
 import jax
 jax.device_count()
 ```
@@ -351,14 +351,14 @@ pip install wandb
 
 Now let's downloading two conditioning images that we will use to run validation during the training in order to track our progress
 
-```
+```sh
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
 ```
 
 We encourage you to store or share your model with the community. To use huggingface hub, please login to your Hugging Face account, or ([create one](https://huggingface.co/docs/diffusers/main/en/training/hf.co/join) if you don’t have one already):
 
-```
+```sh
 huggingface-cli login
 ```
 
