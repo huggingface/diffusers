@@ -36,7 +36,7 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 ## Optimization
 
-You can optimize the runtime and memory consumption of the pipeline using various methods. 
+You can optimize the pipeline's runtime and memory consumption with torch.compile and feed-forward chunking. To learn about other optimization methods, check out the [Speed up inference](../../optimization/fp16) and [Reduce memory usage](../../optimization/memory) guides. 
 
 ### Inference
 
@@ -53,7 +53,7 @@ pipeline = HunyuanDiTPipeline.from_pretrained(
 ).to("cuda")
 ```
 
-Then change memory layout of the `transformer` and `vae` components of the pipeline to be of "channels-last":
+Then change the memory layout of the pipelines `transformer` and `vae` components to `torch.channels-last`:
 
 ```python
 pipeline.transformer.to(memory_format=torch.channels_last)
@@ -69,7 +69,7 @@ pipeline.vae.decode = torch.compile(pipeline.vae.decode, mode="max-autotune", fu
 image = pipeline(prompt="一个宇航员在骑马").images[0]
 ```
 
-We ran a [benchmark](https://gist.github.com/sayakpaul/29d3a14905cfcbf611fe71ebd22e9b23) on a 80GB A100 machine and we noticed the following numbers:
+The [benchmark](https://gist.github.com/sayakpaul/29d3a14905cfcbf611fe71ebd22e9b23) results on a 80GB A100 machine are:
 
 ```bash
 With torch.compile(): Average inference time: 12.470 seconds.
@@ -80,7 +80,7 @@ Without torch.compile(): Average inference time: 20.570 seconds.
 
 By loading the T5 text encoder in 8 bits, you can run the pipeline in just under 6 GBs of GPU VRAM. Refer to [this script](https://gist.github.com/sayakpaul/3154605f6af05b98a41081aaba5ca43e) for details. 
 
-Furthermore, you can use the `enable_forward_chunking()` method to reduce memory usage:
+Furthermore, you can use the [`~HunyuanDiT2DModel.enable_forward_chunking`] method to reduce memory usage. Feed-forward chunking runs the feed-forward layers in a transformer block in a loop instead of all at once. This gives you a trade-off between memory consumption and inference runtime.
 
 ```diff
 + pipeline.transformer.enable_forward_chunking(chunk_size=1, dim=1)
