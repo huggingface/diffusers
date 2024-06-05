@@ -10,14 +10,11 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# TransformerTemporalModel
+# HunyuanDiT2DModel
 
-A Transformer model for video-like data.
+A Diffusion Transformer model for 2D data from [Hunyuan-DiT](https://github.com/Tencent/HunyuanDiT).
 
-## TransformerTemporalModel
+## HunyuanDiT2DModel
 
-[[autodoc]] models.transformers.transformer_temporal.TransformerTemporalModel
+[[autodoc]] HunyuanDiT2DModel
 
-## TransformerTemporalModelOutput
-
-[[autodoc]] models.transformers.transformer_temporal.TransformerTemporalModelOutput
