@@ -29,6 +29,10 @@ HunyuanDiT has the following components:
 * It combines two text encoders, a bilingual CLIP and a multilingual T5 encoder
 
 
+## Memory optimization
+
+By loading the T5 text encoder in 8 bits, you can run the pipeline in just under 6 GBs of GPU VRAM. Refer to [this script](https://gist.github.com/sayakpaul/3154605f6af05b98a41081aaba5ca43e) for details. 
+
 ## HunyuanDiTPipeline
 
 [[autodoc]] HunyuanDiTPipeline
