@@ -270,7 +270,7 @@ Lastly, there are also Spaces, such as [SD To Diffusers](https://hf.co/spaces/di
 
 ## Single-file layout usage
 
-Now that you're familiar with the single-file layout, this section shows you how to load models and pipeline components, customize configuration options for loading, and load local files.
+Now that you're familiar with the differences between the Diffusers-multifolder and single-file layout, this section shows you how to load models and pipeline components, customize configuration options for loading, and load local files with the [`~loaders.FromSingleFileMixin.from_single_file`] method.
 
 ### Load a pipeline or model
 
