@@ -45,7 +45,7 @@ class PAGMixin:
         self._pag_applied_layers = pag_applied_layers
         self._pag_applied_layers_index = pag_applied_layers_index
         self._pag_cfg = pag_cfg
-
+        self._is_pag_enabled = True
         self._set_pag_attn_processor()
 
     def _get_self_attn_layers(self):
@@ -180,6 +180,7 @@ class PAGMixin:
         self._pag_applied_layers = None
         self._pag_applied_layers_index = None
         self._pag_cfg = None
+        self._is_pag_enabled = False
 
     @property
     def pag_adaptive_scaling(self):
@@ -191,4 +192,4 @@ class PAGMixin:
 
     @property
     def do_perturbed_attention_guidance(self):
-        return hasattr(self, "_pag_scale") and self._pag_scale is not None and self._pag_scale > 0
+        return self._is_pag_enabled

@@ -536,7 +536,7 @@ class StableDiffusionXLPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance, do_perturbed_attention_guidance
     ):
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
@@ -560,6 +560,10 @@ class StableDiffusionXLPipeline(
                     [single_negative_image_embeds] * num_images_per_prompt, dim=0
                 )
 
+                if do_perturbed_attention_guidance:
+                    single_image_embeds = torch.cat([single_image_embeds, single_image_embeds], dim=0)
+                    single_image_embeds = single_image_embeds.to(device)
+
                 if do_classifier_free_guidance:
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                     single_image_embeds = single_image_embeds.to(device)
@@ -577,11 +581,16 @@ class StableDiffusionXLPipeline(
                     single_negative_image_embeds = single_negative_image_embeds.repeat(
                         num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
                     )
-                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                    if do_perturbed_attention_guidance:
+                        single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds, single_image_embeds], dim=0)
+                    else:
+                        single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                 else:
                     single_image_embeds = single_image_embeds.repeat(
                         num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
                     )
+                    if do_perturbed_attention_guidance:
+                        single_image_embeds = torch.cat([single_image_embeds, single_image_embeds], dim=0)
                 image_embeds.append(single_image_embeds)
 
         return image_embeds
@@ -1170,6 +1179,7 @@ class StableDiffusionXLPipeline(
                 device,
                 batch_size * num_images_per_prompt,
                 self.do_classifier_free_guidance,
+                self.do_perturbed_attention_guidance,
             )
 
         # 8. Denoising loop
@@ -1205,7 +1215,7 @@ class StableDiffusionXLPipeline(
                 if self.interrupt:
                     continue
 
-                # expand the latents if we are doing classifier free guidance
+                # expand the latents if we are doing classifier free guidance, perturbed-attention guidance, or both
                 latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
 
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
