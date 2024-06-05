@@ -31,8 +31,6 @@ from typing import List, Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
-
-# imports of the TokenEmbeddingsHandler class
 import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
@@ -75,8 +73,6 @@ from diffusers.utils import (
 )
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
-
-
 
 
 if is_wandb_available():
@@ -1816,8 +1812,6 @@ def main(args):
 
     def compute_time_ids(crops_coords_top_left, original_size=None):
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-        if original_size is None:
-            original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
         add_time_ids = torch.tensor([add_time_ids])
