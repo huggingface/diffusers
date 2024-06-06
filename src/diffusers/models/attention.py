@@ -148,11 +148,9 @@ class BasicTransformerBlock(nn.Module):
         ff_inner_dim: Optional[int] = None,
         ff_bias: bool = True,
         attention_out_bias: bool = True,
-        squeeze_hidden_states: bool = True,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
-        self.squeeze_hidden_states = squeeze_hidden_states
 
         # We keep these boolean flags for backward-compatibility.
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
@@ -321,8 +319,7 @@ class BasicTransformerBlock(nn.Module):
             ).chunk(6, dim=1)
             norm_hidden_states = self.norm1(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
-            if self.squeeze_hidden_states:
-                norm_hidden_states = norm_hidden_states.squeeze(1)
+            # norm_hidden_states = norm_hidden_states.squeeze(1)
         else:
             raise ValueError("Incorrect norm used")
 

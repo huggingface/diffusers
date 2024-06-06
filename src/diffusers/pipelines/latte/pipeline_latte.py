@@ -756,7 +756,7 @@ class LattePipeline(DiffusionPipeline):
                 latents[frame_idx:frame_idx+1]).sample)
         video = torch.cat(video)
         video = einops.rearrange(video, "(b f) c h w -> b f c h w", f=video_length)
-        video = (video / 2.0 + 0.5).clamp(0, 1)
+        video = (video / 2.0 + 0.5).clamp(0, 1).cpu()
         return video
     
     def decode_latents(self, latents):
