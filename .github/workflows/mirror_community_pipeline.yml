@@ -32,12 +32,12 @@ jobs:
         run: |
           if [ "${GITHUB_EVENT_NAME}" == "push" ]; then
             if [ "${GITHUB_REF}" == "refs/heads/main" ]; then
-              echo "path_in_repo=main" >> $GITHUB_ENV
+              echo "PATH_IN_REPO=main" >> $GITHUB_ENV
             else
-              echo "path_in_repo=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+              echo "PATH_IN_REPO=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
             fi
           elif [ "${GITHUB_EVENT_NAME}" == "push" ] && [ "${GITHUB_REF}"!= "refs/heads/main" ]; then
-            echo "path_in_repo=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+            echo "PATH_IN_REPO=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
           fi
 
       - name: whoami
@@ -46,7 +46,7 @@ jobs:
             HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
 
       - name: Mirror community pipeline
-        run: huggingface-cli upload Wauplin/diffusers-community-pipelines-mirror ./examples/community ${path_in_repo}
+        run: huggingface-cli upload Wauplin/diffusers-community-pipelines-mirror ./examples/community ${PATH_IN_REPO}
         env:
-            path_in_repo: ${{ env.path_in_repo }}
+            PATH_IN_REPO: ${{ env.PATH_IN_REPO }}
             HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
