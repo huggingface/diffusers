@@ -506,7 +506,6 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-depth", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
