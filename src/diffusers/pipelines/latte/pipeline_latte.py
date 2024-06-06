@@ -594,6 +594,9 @@ class LattePipeline(DiffusionPipeline):
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
                 prompt.
             mask_feature (`bool` defaults to `True`): If set to `True`, the text embeddings will be masked.
+            enable_temporal_attentions (`bool`, *optional*, defaults to `True`): Whether to enable temporal attentions
+            enable_vae_temporal_decoder (`bool`, *optional*, defaults to `False`): Whether to enable the temporal decoder
+            use_learned_sigma (`bool`, *optional*, defaults to `False`): Whether to use the learned sigma or not.
 
         Examples:
 
