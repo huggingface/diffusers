@@ -470,6 +470,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        print(f"{subfolder=}")
 
         allow_pickle = False
         if use_safetensors is None:
@@ -1057,6 +1058,9 @@ class LegacyModelMixin(ModelMixin):
         # To prevent depedency import problem.
         from .model_loading_utils import _fetch_remapped_cls_from_config
 
+        # Create a copy of the kwargs so that we don't mess with the keyword arguments in the downstream calls.
+        kwargs_copy = kwargs.copy()
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", None)
@@ -1094,4 +1098,4 @@ class LegacyModelMixin(ModelMixin):
         # resolve remapping
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-        return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)
