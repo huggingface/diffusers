@@ -237,17 +237,19 @@
     - local: api/models/consistency_decoder_vae
       title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
-      title: Transformer2D
+      title: Transformer2DModel
     - local: api/models/pixart_transformer2d
-      title: PixArtTransformer2D
+      title: PixArtTransformer2DModel
     - local: api/models/dit_transformer2d
-      title: DiTTransformer2D
+      title: DiTTransformer2DModel
+    - local: api/models/hunyuan_transformer2d
+      title: HunyuanDiT2DModel
     - local: api/models/transformer_temporal
-      title: Transformer Temporal
+      title: TransformerTemporalModel
     - local: api/models/prior_transformer
-      title: Prior Transformer
+      title: PriorTransformer
     - local: api/models/controlnet
-      title: ControlNet
+      title: ControlNetModel
     title: Models
     isExpanded: false
   - sections:
@@ -289,6 +291,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/hunyuandit
+      title: Hunyuan-DiT
     - local: api/pipelines/i2vgenxl
       title: I2VGen-XL
     - local: api/pipelines/pix2pix
