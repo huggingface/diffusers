@@ -424,6 +424,7 @@ class PeftLoraLoaderMixinTests:
             state_dict = {
                 f"text_encoder.{module_name}": param
                 for module_name, param in get_peft_model_state_dict(pipe.text_encoder).items()
+                if "text_model.encoder.layers.4" not in module_name
             }
 
             if self.has_two_text_encoders:
@@ -433,25 +434,25 @@ class PeftLoraLoaderMixinTests:
                 )
                 state_dict.update(
                     {
-                        f"text_encoder.{module_name}": param
+                        f"text_encoder_2.{module_name}": param
                         for module_name, param in get_peft_model_state_dict(pipe.text_encoder_2).items()
+                        if "text_model.encoder.layers.4" not in module_name
                     }
                 )
 
-            # Discard half of the adapters.
-            rng = np.random.default_rng(0)
-            key2adapters = {k: k.rsplit(".", 2)[0] for k in state_dict.keys()}
-            adapters = list(set(key2adapters.values()))
-            adapters = set(rng.choice(adapters, size=len(adapters) // 2, replace=False))
-            state_dict = {k: state_dict[k] for k, adapter in key2adapters.items() if adapter in adapters}
+            output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(
+                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+            )
 
             # Unload lora and load it back using the pipe.load_lora_weights machinery
             pipe.unload_lora_weights()
             pipe.load_lora_weights(state_dict)
 
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_partial_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+                not np.allclose(output_partial_lora, output_lora, atol=1e-3, rtol=1e-3),
+                "Removing adapters should change the output",
             )
 
     def test_simple_inference_save_pretrained(self):
