@@ -46,7 +46,11 @@ jobs:
             HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
 
       - name: Mirror community pipeline
-        run: huggingface-cli upload Wauplin/diffusers-community-pipelines-mirror ./examples/community ${PATH_IN_REPO}
+        run: huggingface-cli upload \
+               Wauplin/diffusers-community-pipelines-mirror \
+               ./examples/community \
+               ${PATH_IN_REPO} \
+               --repo-type dataset
         env:
             PATH_IN_REPO: ${{ env.PATH_IN_REPO }}
             HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
