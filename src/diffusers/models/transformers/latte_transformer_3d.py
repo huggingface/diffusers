@@ -156,11 +156,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
 
         # 4. Define output layers
         self.out_channels = in_channels if out_channels is None else out_channels
-        # elif self.is_input_patches and norm_type != "ada_norm_single":
-        #     self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-        #     self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-        #     self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
-        # elif self.is_input_patches and norm_type == "ada_norm_single":
         self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
         self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
@@ -168,11 +163,11 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         # 5. Latte other blocks.
         self.adaln_single = None
         self.use_additional_conditions = False
-        if norm_type == "ada_norm_single":
-            self.use_additional_conditions = self.config.sample_size == 128 # False, 128 -> 1024
-            # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
-            # additional conditions until we find better name
-            self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=self.use_additional_conditions)
+        # norm_type == "ada_norm_single"
+        self.use_additional_conditions = self.config.sample_size == 128 # False, 128 -> 1024
+        # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
+        # additional conditions until we find better name
+        self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=self.use_additional_conditions)
 
         self.caption_projection = None
         if caption_channels is not None:
