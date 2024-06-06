@@ -1,19 +1,23 @@
 name: Fast tests for PRs
 
 on:
-    # Push on any tag or main branch
-    push:
-        tags:
-            - "*"
-        branches:
-            - main
+  # Push changes on the main branch
+  push:
+    branches:
+      - main
+    paths:
+      - 'examples/community/**.py'
 
+  # And on tag creation
+  create:
+    tags:
+      - '*'
 jobs:
   mirror_community_pipeline:
     runs-on: ubuntu-latest
     steps:
-        # Setup + install dependencies
-        - uses: actions/checkout@v3
+      # Setup + install dependencies
+      - uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
