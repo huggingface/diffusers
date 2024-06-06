@@ -40,6 +40,11 @@ jobs:
             echo "path_in_repo=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
           fi
 
+      - name: whoami
+        run: huggingface-cli whoami
+        env:
+            hf_token: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
+
       - name: Mirror community pipeline
         run: huggingface-cli upload Wauplin/diffusers-community-pipelines-mirror ./examples/community ${path_in_repo}
         env:
