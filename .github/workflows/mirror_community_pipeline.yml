@@ -43,10 +43,10 @@ jobs:
       - name: whoami
         run: huggingface-cli whoami
         env:
-            hf_token: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
+            HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
 
       - name: Mirror community pipeline
         run: huggingface-cli upload Wauplin/diffusers-community-pipelines-mirror ./examples/community ${path_in_repo}
         env:
             path_in_repo: ${{ env.path_in_repo }}
-            hf_token: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
+            HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
