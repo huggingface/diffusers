@@ -52,7 +52,6 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pag_utils import PAGMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
 
@@ -169,7 +168,6 @@ class StableDiffusionXLPipeline(
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
-    PAGMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
@@ -536,7 +534,7 @@ class StableDiffusionXLPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance, do_perturbed_attention_guidance
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
     ):
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
@@ -560,10 +558,6 @@ class StableDiffusionXLPipeline(
                     [single_negative_image_embeds] * num_images_per_prompt, dim=0
                 )
 
-                if do_perturbed_attention_guidance:
-                    single_image_embeds = torch.cat([single_image_embeds, single_image_embeds], dim=0)
-                    single_image_embeds = single_image_embeds.to(device)
-
                 if do_classifier_free_guidance:
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                     single_image_embeds = single_image_embeds.to(device)
@@ -581,16 +575,11 @@ class StableDiffusionXLPipeline(
                     single_negative_image_embeds = single_negative_image_embeds.repeat(
                         num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
                     )
-                    if do_perturbed_attention_guidance:
-                        single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds, single_image_embeds], dim=0)
-                    else:
-                        single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                 else:
                     single_image_embeds = single_image_embeds.repeat(
                         num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
                     )
-                    if do_perturbed_attention_guidance:
-                        single_image_embeds = torch.cat([single_image_embeds, single_image_embeds], dim=0)
                 image_embeds.append(single_image_embeds)
 
         return image_embeds
@@ -620,7 +609,6 @@ class StableDiffusionXLPipeline(
         height,
         width,
         callback_steps,
-        guidance_scale,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -709,11 +697,6 @@ class StableDiffusionXLPipeline(
                 raise ValueError(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
-
-        if hasattr(self, "_pag_cfg") and self._pag_cfg is False and guidance_scale != 0:
-            raise ValueError(
-                f"Cannot use guidance scale {guidance_scale} with PAG unconditional guidance. Please set `guidance_scale` to 0."
-            )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -1057,7 +1040,6 @@ class StableDiffusionXLPipeline(
             height,
             width,
             callback_steps,
-            guidance_scale,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
@@ -1158,11 +1140,6 @@ class StableDiffusionXLPipeline(
         else:
             negative_add_time_ids = add_time_ids
 
-        if self.do_perturbed_attention_guidance:
-            prompt_embeds = torch.cat([prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat([add_text_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
-
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
@@ -1179,7 +1156,6 @@ class StableDiffusionXLPipeline(
                 device,
                 batch_size * num_images_per_prompt,
                 self.do_classifier_free_guidance,
-                self.do_perturbed_attention_guidance,
             )
 
         # 8. Denoising loop
@@ -1215,8 +1191,8 @@ class StableDiffusionXLPipeline(
                 if self.interrupt:
                     continue
 
-                # expand the latents if we are doing classifier free guidance, perturbed-attention guidance, or both
-                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -1235,12 +1211,7 @@ class StableDiffusionXLPipeline(
                 )[0]
 
                 # perform guidance
-                if self.do_perturbed_attention_guidance:
-                    noise_pred = self._apply_perturbed_attention_guidance(
-                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
-                    )
-
-                elif self.do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 

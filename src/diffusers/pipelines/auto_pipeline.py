@@ -26,6 +26,7 @@ from .controlnet import (
     StableDiffusionXLControlNetInpaintPipeline,
     StableDiffusionXLControlNetPipeline,
 )
+from .pag import StableDiffusionXLPAGPipeline
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -75,6 +76,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("lcm", LatentConsistencyModelPipeline),
         ("pixart-alpha", PixArtAlphaPipeline),
         ("pixart-sigma", PixArtSigmaPipeline),
+        ("stable-diffusion-xl-pag", StableDiffusionXLPAGPipeline),
     ]
 )
 
@@ -332,6 +334,8 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         if "controlnet" in kwargs:
             orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
+        if "enable_pag" in kwargs:
+            orig_class_name = config["_class_name"].replace("Pipeline", "PAGPipeline")
 
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
@@ -383,6 +387,18 @@ class AutoPipelineForText2Image(ConfigMixin):
                 text_2_image_cls = _get_task_class(
                     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
                     text_2_image_cls.__name__.replace("ControlNetPipeline", "Pipeline"),
+                )
+        
+        if "enable_pag" in kwargs:
+            if kwargs["enable_pag"] is not None:
+                text_2_image_cls = _get_task_class(
+                    AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
+                    text_2_image_cls.__name__.replace("PAG", "").replace("Pipeline", "PAGPipeline"),
+                )
+            else:
+                text_2_image_cls = _get_task_class(
+                    AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
+                    text_2_image_cls.__name__.replace("PAGPipeline", "Pipeline"),
                 )
 
         # define expected module and optional kwargs given the pipeline signature

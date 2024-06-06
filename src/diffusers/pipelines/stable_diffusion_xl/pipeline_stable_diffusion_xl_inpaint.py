@@ -53,7 +53,6 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pag_utils import PAGMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
 
@@ -331,7 +330,6 @@ class StableDiffusionXLInpaintPipeline(
     StableDiffusionXLLoraLoaderMixin,
     FromSingleFileMixin,
     IPAdapterMixin,
-    PAGMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
@@ -787,7 +785,6 @@ class StableDiffusionXLInpaintPipeline(
         strength,
         callback_steps,
         output_type,
-        guidance_scale,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -880,11 +877,6 @@ class StableDiffusionXLInpaintPipeline(
                 raise ValueError(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
-
-        if hasattr(self, "_pag_cfg") and self._pag_cfg is False and guidance_scale != 0:
-            raise ValueError(
-                f"Cannot use guidance scale {guidance_scale} with PAG unconditional guidance. Please set `guidance_scale` to 0."
-            )
 
     def prepare_latents(
         self,
@@ -1468,7 +1460,6 @@ class StableDiffusionXLInpaintPipeline(
             strength,
             callback_steps,
             output_type,
-            guidance_scale,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
@@ -1668,11 +1659,6 @@ class StableDiffusionXLInpaintPipeline(
         )
         add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1)
 
-        if self.do_perturbed_attention_guidance:
-            prompt_embeds = torch.cat([prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat([add_text_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
-
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
@@ -1729,8 +1715,8 @@ class StableDiffusionXLInpaintPipeline(
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-                # expand the latents if we are doing classifier free guidance or perturbed attention guidance
-                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
                 # concat latents, mask, masked_image_latents in the channel dimension
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -1753,12 +1739,7 @@ class StableDiffusionXLInpaintPipeline(
                 )[0]
 
                 # perform guidance
-                if self.do_perturbed_attention_guidance:
-                    noise_pred = self._apply_perturbed_attention_guidance(
-                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
-                    )
-
-                elif self.do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 

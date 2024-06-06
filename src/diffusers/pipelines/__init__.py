@@ -26,6 +26,7 @@ _import_structure = {
     "ledits_pp": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
+    "pag": [],
 }
 
 try:
@@ -133,6 +134,11 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+        ]
+    )
+    _import_structure["pag"].extend(
+        [
+            "StableDiffusionXLPAGPipeline",
         ]
     )
     _import_structure["controlnet_xs"].extend(
@@ -389,6 +395,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
         )
+        from .pag import StableDiffusionXLPAGPipeline
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
