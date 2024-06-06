@@ -119,6 +119,8 @@ class BasicTransformerBlock(nn.Module):
             The type of positional embeddings to apply to.
         num_positional_embeddings (`int`, *optional*, defaults to `None`):
             The maximum number of positional embeddings to apply.
+        squeeze_hidden_states (`bool`, *optional*, defaults to `True`): 
+            Whether to squeeze the hidden states. Set to `False` for Latte.
     """
 
     def __init__(
@@ -146,9 +148,11 @@ class BasicTransformerBlock(nn.Module):
         ff_inner_dim: Optional[int] = None,
         ff_bias: bool = True,
         attention_out_bias: bool = True,
+        squeeze_hidden_states: bool = True,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
+        self.squeeze_hidden_states = squeeze_hidden_states
 
         # We keep these boolean flags for backward-compatibility.
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
@@ -253,7 +257,7 @@ class BasicTransformerBlock(nn.Module):
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
         elif norm_type == "layer_norm_i2vgen":
             self.norm3 = None
-        elif norm_type == "layer_norm_latte":
+        else:
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
 
         self.ff = FeedForward(
@@ -270,7 +274,7 @@ class BasicTransformerBlock(nn.Module):
             self.fuser = GatedSelfAttentionDense(dim, cross_attention_dim, num_attention_heads, attention_head_dim)
 
         # 5. Scale-shift for PixArt-Alpha.
-        if norm_type in ["ada_norm_single", "layer_norm_latte"]:
+        if norm_type == "ada_norm_single":
             self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
 
         # let chunk size default to None
@@ -311,13 +315,13 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = self.norm1(hidden_states)
         elif self.norm_type == "ada_norm_continuous":
             norm_hidden_states = self.norm1(hidden_states, added_cond_kwargs["pooled_text_emb"])
-        elif self.norm_type in ["ada_norm_single", "layer_norm_latte"]:
+        elif self.norm_type == "ada_norm_single":
             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
                 self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
             ).chunk(6, dim=1)
             norm_hidden_states = self.norm1(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
-            if self.norm_type == "ada_norm_single":
+            if self.squeeze_hidden_states:
                 norm_hidden_states = norm_hidden_states.squeeze(1)
         else:
             raise ValueError("Incorrect norm used")
@@ -338,7 +342,7 @@ class BasicTransformerBlock(nn.Module):
 
         if self.norm_type == "ada_norm_zero":
             attn_output = gate_msa.unsqueeze(1) * attn_output
-        elif self.norm_type in ["ada_norm_single", "layer_norm_latte"]:
+        elif self.norm_type == "ada_norm_single":
             attn_output = gate_msa * attn_output
 
         hidden_states = attn_output + hidden_states
@@ -386,11 +390,9 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
         if self.norm_type == "ada_norm_single":
-            norm_hidden_states = self.norm2(hidden_states)
-            norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
-        
-        if self.norm_type == "layer_norm_latte":
-            norm_hidden_states = self.norm3(hidden_states)
+            norm_func = self.norm2 if self.norm2 is not None else self.norm3
+            # norm_hidden_states = self.norm2(hidden_states)
+            norm_hidden_states = norm_func(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
 
         if self._chunk_size is not None:
@@ -401,7 +403,7 @@ class BasicTransformerBlock(nn.Module):
 
         if self.norm_type == "ada_norm_zero":
             ff_output = gate_mlp.unsqueeze(1) * ff_output
-        elif self.norm_type in ["ada_norm_single", "layer_norm_latte"]:
+        elif self.norm_type == "ada_norm_single":
             ff_output = gate_mlp * ff_output
 
         hidden_states = ff_output + hidden_states

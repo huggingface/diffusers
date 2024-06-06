@@ -123,6 +123,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                     norm_elementwise_affine=norm_elementwise_affine,
                     norm_eps=norm_eps,
                     attention_type=attention_type,
+                    squeeze_hidden_states=False,
                 )
                 for d in range(num_layers)
             ]
@@ -143,10 +144,11 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                     only_cross_attention=only_cross_attention,
                     double_self_attention=False,
                     upcast_attention=upcast_attention,
-                    norm_type='layer_norm_latte',
+                    norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
                     norm_eps=norm_eps,
                     attention_type=attention_type,
+                    squeeze_hidden_states=False,
                 )
                 for d in range(num_layers)
             ]
