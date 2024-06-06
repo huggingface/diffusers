@@ -50,15 +50,17 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import PixArtAlphaPipeline
+        >>> import imageio
+        >>> from diffusers import LattePipeline
 
-        >>> # You can replace the checkpoint id with "PixArt-alpha/PixArt-XL-2-512x512" too.
-        >>> pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
+        >>> # You can replace the checkpoint id with "maxin-cn/Latte-1" too.
+        >>> pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16)
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "A small cactus with a happy face in the Sahara desert."
-        >>> image = pipe(prompt).images[0]
+        >>> videos = pipe(prompt).video
+        >>> imageio.mimwrite('./test_pipeline.mp4', videos[0], fps=8, quality=5) # highest quality is 10, lowest is 0
         ```
 """
 
@@ -69,25 +71,25 @@ class LattePipelineOutput(BaseOutput):
 
 class LattePipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using PixArt-Alpha.
+    Pipeline for text-to-video generation using Latte.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         text_encoder ([`T5EncoderModel`]):
-            Frozen text-encoder. PixArt-Alpha uses
+            Frozen text-encoder. Latte uses
             [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
             [t5-v1_1-xxl](https://huggingface.co/PixArt-alpha/PixArt-alpha/tree/main/t5-v1_1-xxl) variant.
         tokenizer (`T5Tokenizer`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        transformer ([`Transformer2DModel`]):
-            A text conditioned `Transformer2DModel` to denoise the encoded image latents.
+        transformer ([`LatteTransformer3DModel`]):
+            A text conditioned `LatteTransformer3DModel` to denoise the encoded video latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+            A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
     """
     bad_punct_regex = re.compile(
         r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + r"]{1,}"
@@ -128,7 +130,7 @@ class LattePipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
-        num_images_per_prompt: int = 1,
+        num_videos_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -142,20 +144,20 @@ class LattePipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt not to guide the image generation. If not defined, one has to pass `negative_prompt_embeds`
+                The prompt not to guide the video generation. If not defined, one has to pass `negative_prompt_embeds`
                 instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`). For
-                PixArt-Alpha, this should be "".
+                Latte, this should be "".
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 whether to use classifier free guidance or not
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                number of images that should be generated per prompt
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                number of video that should be generated per prompt
             device: (`torch.device`, *optional*):
                 torch device to place the resulting embeddings on
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. For PixArt-Alpha, it's should be the embeddings of the ""
+                Pre-generated negative text embeddings. For Latte, it's should be the embeddings of the ""
                 string.
             clean_caption (bool, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
@@ -219,10 +221,10 @@ class LattePipeline(DiffusionPipeline):
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
         prompt_embeds_attention_mask = prompt_embeds_attention_mask.view(bs_embed, -1)
-        prompt_embeds_attention_mask = prompt_embeds_attention_mask.repeat(num_images_per_prompt, 1)
+        prompt_embeds_attention_mask = prompt_embeds_attention_mask.repeat(num_videos_per_prompt, 1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -252,8 +254,8 @@ class LattePipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -512,7 +514,7 @@ class LattePipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
         guidance_scale: float = 7.5,
-        num_images_per_prompt: Optional[int] = 1,
+        num_videos_per_prompt: Optional[int] = 1,
         video_length: int = 16,
         height: int = 512,
         width: int = 512,
@@ -536,14 +538,14 @@ class LattePipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                The prompt or prompts to guide the video generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                The prompt or prompts not to guide the video generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
             num_inference_steps (`int`, *optional*, defaults to 100):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                The number of denoising steps. More denoising steps usually lead to a higher quality video at the
                 expense of slower inference.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
@@ -552,14 +554,14 @@ class LattePipeline(DiffusionPipeline):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
+                1`. Higher guidance scale encourages to generate videos that are closely linked to the text `prompt`,
+                usually at the expense of lower video quality.
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                The number of videos to generate per prompt.
             height (`int`, *optional*, defaults to self.unet.config.sample_size):
-                The height in pixels of the generated image.
+                The height in pixels of the generated video.
             width (`int`, *optional*, defaults to self.unet.config.sample_size):
-                The width in pixels of the generated image.
+                The width in pixels of the generated video.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
@@ -567,17 +569,17 @@ class LattePipeline(DiffusionPipeline):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for video
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. For PixArt-Alpha this negative prompt should be "". If not
+                Pre-generated negative text embeddings. For Latte this negative prompt should be "". If not
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
+                The output format of the generate video. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
@@ -627,7 +629,7 @@ class LattePipeline(DiffusionPipeline):
             prompt,
             do_classifier_free_guidance,
             negative_prompt=negative_prompt,
-            num_images_per_prompt=num_images_per_prompt,
+            num_videos_per_prompt=num_videos_per_prompt,
             device=device,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -644,7 +646,7 @@ class LattePipeline(DiffusionPipeline):
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
+            batch_size * num_videos_per_prompt,
             latent_channels,
             video_length,
             height,
@@ -661,8 +663,8 @@ class LattePipeline(DiffusionPipeline):
         # 6.1 Prepare micro-conditions.
         added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
         if self.transformer.config.sample_size == 128:
-            resolution = torch.tensor([height, width]).repeat(batch_size * num_images_per_prompt, 1)
-            aspect_ratio = torch.tensor([float(height / width)]).repeat(batch_size * num_images_per_prompt, 1)
+            resolution = torch.tensor([height, width]).repeat(batch_size * num_videos_per_prompt, 1)
+            aspect_ratio = torch.tensor([float(height / width)]).repeat(batch_size * num_videos_per_prompt, 1)
             resolution = resolution.to(dtype=prompt_embeds.dtype, device=device)
             aspect_ratio = aspect_ratio.to(dtype=prompt_embeds.dtype, device=device)
             added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
@@ -711,7 +713,7 @@ class LattePipeline(DiffusionPipeline):
                 else:
                     noise_pred = noise_pred
 
-                # compute previous image: x_t -> x_t-1
+                # compute previous video: x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 # call the callback, if provided
