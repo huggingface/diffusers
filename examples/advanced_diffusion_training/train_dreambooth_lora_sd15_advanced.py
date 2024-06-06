@@ -1232,7 +1232,7 @@ def main(args):
     unet_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
-        use_dora=args.use_dora,
+        # use_dora=args.use_dora, #using getting error not to use for sd15
         init_lora_weights="gaussian",
         target_modules=["to_k", "to_q", "to_v", "to_out.0"],
     )
@@ -1870,7 +1870,7 @@ def main(args):
                             }
                         )
 
-                del pipeline
+                # del pipeline while  del the pipeline --> not able to again load the  generate after again runing validation
                 torch.cuda.empty_cache()
 
     # Save the lora layers
