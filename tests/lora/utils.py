@@ -403,6 +403,7 @@ class PeftLoraLoaderMixinTests:
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, _, _ = self.get_dummy_components(scheduler_cls)
+            # Verify `LoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
             text_lora_config = LoraConfig(
                 r=4,
                 rank_pattern={"q_proj": 1, "k_proj": 2, "v_proj": 3},
@@ -421,6 +422,8 @@ class PeftLoraLoaderMixinTests:
 
             pipe.text_encoder.add_adapter(text_lora_config)
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            # Gather the state dict for the PEFT model, excluding `layers.4`, to ensure `load_lora_into_text_encoder`
+            # supports missing layers (PR#8324).
             state_dict = {
                 f"text_encoder.{module_name}": param
                 for module_name, param in get_peft_model_state_dict(pipe.text_encoder).items()
