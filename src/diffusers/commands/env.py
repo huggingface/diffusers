@@ -123,7 +123,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
                 out_str = out_str.decode("utf-8")
 
                 if len(out_str) > 0:
-                    accelerator = out_str.strip() + " VRAM"
+                    accelerator = out_str.strip()
             except FileNotFoundError:
                 pass
         elif platform.system() == "Darwin":  # Mac OS
