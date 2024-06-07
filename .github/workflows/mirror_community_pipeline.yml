@@ -28,6 +28,7 @@ jobs:
           uv pip install --upgrade huggingface_hub
 
       # Determine to which folder to push changes (based on branch or tag)
+      # e.g. `PATH_IN_REPO=main` or `PATH_IN_REPO=v0.28.1`
       - name: Infer path in repo (main or tag)
         run: |
           if [ "${GITHUB_EVENT_NAME}" == "push" ]; then
