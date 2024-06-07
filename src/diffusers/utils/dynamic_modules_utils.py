@@ -26,7 +26,7 @@ from typing import Dict, Optional, Union
 from urllib import request
 
 from huggingface_hub import hf_hub_download, model_info
-from huggingface_hub.utils import validate_hf_hub_args
+from huggingface_hub.utils import RevisionNotFoundError, validate_hf_hub_args
 from packaging import version
 
 from .. import __version__
@@ -34,6 +34,9 @@ from . import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+# See https://huggingface.co/datasets/diffusers/community-pipelines-mirror
+COMMUNITY_PIPELINES_MIRROR_ID = "diffusers/community-pipelines-mirror"
 
 
 def get_diffusers_versions():
@@ -276,10 +279,9 @@ def get_cached_module_file(
                 f" {', '.join(available_versions + ['main'])}."
             )
 
-        # community pipeline on GitHub
         try:
             resolved_module_file = hf_hub_download(
-                repo_id="diffusers/community-pipelines-mirror",
+                repo_id=COMMUNITY_PIPELINES_MIRROR_ID,
                 repo_type="dataset",
                 filename=f"{revision}/{pretrained_model_name_or_path}.py",
                 cache_dir=cache_dir,
@@ -289,6 +291,12 @@ def get_cached_module_file(
             )
             submodule = "git"
             module_file = pretrained_model_name_or_path + ".py"
+        except RevisionNotFoundError as e:
+            raise EnvironmentError(
+                f"Revision '{revision}' not found in the community pipelines mirror. Check available revisions on"
+                " https://huggingface.co/datasets/diffusers/community-pipelines-mirror/tree/main."
+                " If you don't find the revision you are looking for, please open an issue on https://github.com/huggingface/diffusers/issues."
+            ) from e
         except EnvironmentError:
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
