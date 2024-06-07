@@ -56,6 +56,10 @@ jobs:
             echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
             echo "PATH_IN_REPO=${${{ github.ref }}#refs/tags/}" >> $GITHUB_ENV
           fi
+      - name: Print env vars
+        run: |
+          echo "CHECKOUT_REF: ${{ env.CHECKOUT_REF }}"
+          echo "PATH_IN_REPO: ${{ env.PATH_IN_REPO }}"
       - uses: actions/checkout@v3
         with:
           ref: ${{ env.CHECKOUT_REF }}
