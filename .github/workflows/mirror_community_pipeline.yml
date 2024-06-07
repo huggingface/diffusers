@@ -48,6 +48,7 @@ jobs:
             HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
 
       # Push to HF!
+      # https://huggingface.co/datasets/diffusers/community-pipelines-mirror
       - name: Mirror community pipeline to HF
         run: huggingface-cli upload diffusers/community-pipelines-mirror ./examples/community ${PATH_IN_REPO} --repo-type dataset
         env:
