@@ -36,6 +36,7 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
     main_input_name = "hidden_states"
     # We override the items here because the transformer under consideration is small.
     model_split_percents = [0.7, 0.6, 0.6]
+    subfolder_path = "hf-internal-testing/tiny-pixart-alpha-pipe/transformer"
 
     @property
     def dummy_input(self):

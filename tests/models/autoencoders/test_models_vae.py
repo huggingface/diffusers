@@ -132,6 +132,7 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AutoencoderKL
     main_input_name = "sample"
     base_precision = 1e-2
+    subfolder_path = "hf-internal-testing/tiny-t2v-sd-pipe/vae"
 
     @property
     def dummy_input(self):

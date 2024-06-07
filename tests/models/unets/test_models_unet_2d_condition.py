@@ -353,6 +353,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     main_input_name = "sample"
     # We override the items here because the unet under consideration is small.
     model_split_percents = [0.5, 0.3, 0.4]
+    subfolder_path = "hf-internal-testing/tiny-sd-pipe/unet"
 
     @property
     def dummy_input(self):

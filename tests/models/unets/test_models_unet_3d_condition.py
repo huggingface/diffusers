@@ -35,6 +35,7 @@ logger = logging.get_logger(__name__)
 class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet3DConditionModel
     main_input_name = "sample"
+    subfolder_path = "hf-internal-testing/tiny-t2v-sd-pipe/unet"
 
     @property
     def dummy_input(self):

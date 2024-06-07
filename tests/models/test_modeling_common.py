@@ -208,6 +208,7 @@ class ModelTesterMixin:
     base_precision = 1e-3
     forward_requires_fresh_args = False
     model_split_percents = [0.5, 0.7, 0.9]
+    subfolder_path = None
 
     def check_device_map_is_respected(self, model, device_map):
         for param_name, param in model.named_parameters():
@@ -865,6 +866,19 @@ class ModelTesterMixin:
                 new_output = new_model(**inputs_dict)
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    def test_loading_from_subfolder(self):
+        if self.subfolder_path is None:
+            return
+        else:
+            assert (
+                len(self.subfolder_path.split("/")) == 3
+            ), "`subfolder_path` not configured properly. Example of a valid `subfolder_path`:' hf-internal-testing/tiny-sd-pipe/unet'."
+            pipeline_ckpt_id = "/".join(self.subfolder_path.split("/")[:-1])
+            model_subfolder = self.subfolder_path.split("/")[-1]
+
+            model = self.model_class.from_pretrained(pipeline_ckpt_id, subfolder=model_subfolder)
+            assert model is not None
 
 
 @is_staging_test

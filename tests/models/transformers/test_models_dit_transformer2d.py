@@ -34,6 +34,7 @@ enable_full_determinism()
 class DiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = DiTTransformer2DModel
     main_input_name = "hidden_states"
+    subfolder_path = "hf-internal-testing/tiny-dit-pipe/transformer"
 
     @property
     def dummy_input(self):
