@@ -131,7 +131,6 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _unidecode_available = False
 
-
 _onnxruntime_version = "N/A"
 _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:

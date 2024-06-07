@@ -29,6 +29,7 @@ import PIL.Image
 import requests_mock
 import safetensors.torch
 import torch
+import torch.nn as nn
 from parameterized import parameterized
 from PIL import Image
 from requests.exceptions import HTTPError
@@ -135,6 +136,7 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
 class CustomEncoder(ModelMixin, ConfigMixin):
     def __init__(self):
         super().__init__()
+        self.linear = nn.Linear(3, 3)
 
 
 class CustomPipeline(DiffusionPipeline):
