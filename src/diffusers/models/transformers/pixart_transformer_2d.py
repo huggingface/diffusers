@@ -23,12 +23,13 @@ from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
+from ...loaders.single_file_model import FromOriginalModelMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
+class PixArtTransformer2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A 2D Transformer model as introduced in PixArt family of models (https://arxiv.org/abs/2310.00426,
     https://arxiv.org/abs/2403.04692).

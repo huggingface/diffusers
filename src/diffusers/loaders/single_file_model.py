@@ -31,6 +31,8 @@ from .single_file_utils import (
     fetch_diffusers_config,
     fetch_original_config,
     load_single_file_checkpoint,
+    convert_pixart_transformer_single_file_to_diffusers,
+    create_diffusers_config_from_pixart
 )
 
 
@@ -64,6 +66,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_controlnet_checkpoint,
         "config_mapping_fn": create_controlnet_diffusers_config_from_ldm,
     },
+    "PixArtTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_pixart_transformer_single_file_to_diffusers,
+        "config_mapping_fn": create_diffusers_config_from_pixart
+    }
 }
 
 
@@ -208,7 +214,7 @@ class FromOriginalModelMixin:
                     )
                 )
 
-            if isinstance(original_config, str):
+            if isinstance(original_config, str) and "PixArt" not in class_name:
                 # If original_config is a URL or filepath fetch the original_config dict
                 original_config = fetch_original_config(original_config, local_files_only=local_files_only)
 
@@ -216,6 +222,7 @@ class FromOriginalModelMixin:
             diffusers_model_config = config_mapping_fn(
                 original_config=original_config, checkpoint=checkpoint, **config_mapping_kwargs
             )
+            print(f"{diffusers_model_config=}")
         else:
             if config:
                 if isinstance(config, str):
