@@ -19,9 +19,9 @@ import re
 from contextlib import nullcontext
 from io import BytesIO
 from urllib.parse import urlparse
-import torch
 
 import requests
+import torch
 import yaml
 
 from ..models.modeling_utils import load_state_dict
@@ -1564,17 +1564,20 @@ def _legacy_load_safety_checker(local_files_only, torch_dtype):
 
     return {"safety_checker": safety_checker, "feature_extractor": feature_extractor}
 
+
 def convert_pixart_transformer_single_file_to_diffusers(checkpoint, **kwargs):
     checkpoint = checkpoint.pop("state_dict") if "state_dict" in checkpoint else checkpoint
     converted_state_dict = {}
 
     # Patch embeddings.
-    if "x_embedder" in checkpoint:
+    x_embedder_present = any("x_embedder" in key for key in checkpoint)
+    if x_embedder_present:
         converted_state_dict["pos_embed.proj.weight"] = checkpoint.pop("x_embedder.proj.weight")
         converted_state_dict["pos_embed.proj.bias"] = checkpoint.pop("x_embedder.proj.bias")
 
     # Caption projection.
-    if "y_embedder" in checkpoint:
+    y_embedder_present = any("y_embedder" in key for key in checkpoint)
+    if y_embedder_present:
         converted_state_dict["caption_projection.linear_1.weight"] = checkpoint.pop("y_embedder.y_proj.fc1.weight")
         converted_state_dict["caption_projection.linear_1.bias"] = checkpoint.pop("y_embedder.y_proj.fc1.bias")
         converted_state_dict["caption_projection.linear_2.weight"] = checkpoint.pop("y_embedder.y_proj.fc2.weight")
@@ -1622,7 +1625,7 @@ def convert_pixart_transformer_single_file_to_diffusers(checkpoint, **kwargs):
     converted_state_dict["adaln_single.linear.weight"] = checkpoint.pop("t_block.1.weight")
     converted_state_dict["adaln_single.linear.bias"] = checkpoint.pop("t_block.1.bias")
 
-    depths = len({block.split(".")[1] for block in checkpoint if "blocks" in checkpoint})
+    depths = len({key.split(".")[1] for key in checkpoint if "blocks" in key})
     for depth in range(depths):
         # Transformer blocks.
         converted_state_dict[f"transformer_blocks.{depth}.scale_shift_table"] = checkpoint.pop(
@@ -1710,27 +1713,30 @@ def convert_pixart_transformer_single_file_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 
-def create_diffusers_config_from_pixart(original_config, checkpoint, **kwargs):
+def create_diffusers_config_from_pixart(original_config, checkpoint, sample_size=None):
     micro_condition = any(("resolution_embedder" in key or "aspect_ratio_embedder" in key) for key in checkpoint)
-    sample_size = kwargs.get("sample_size", 1024 // 8)
-    config = dict(
-        sample_size=sample_size,
-        num_layers=28,
-        attention_head_dim=72,
-        in_channels=4,
-        out_channels=8,
-        patch_size=2,
-        attention_bias=True,
-        num_attention_heads=16,
-        cross_attention_dim=1152,
-        activation_fn="gelu-approximate",
-        num_embeds_ada_norm=1000,
-        norm_type="ada_norm_single",
-        norm_elementwise_affine=False,
-        norm_eps=1e-6,
-        caption_channels=4096,
-        interpolation_scale=PIXART_INTERPOLATION_SCALE[sample_size * 8],
-        use_additional_conditions=micro_condition
-    )
+    if sample_size is None:
+        sample_size = 1024 // 8
 
+    num_layers = len({key.split(".")[1] for key in checkpoint if "blocks" in key})
+
+    config = {
+        "sample_size": sample_size,
+        "num_layers": num_layers,
+        "attention_head_dim": 72,
+        "in_channels": 4,
+        "out_channels": 8,
+        "patch_size": 2,
+        "attention_bias": True,
+        "num_attention_heads": 16,
+        "cross_attention_dim": 1152,
+        "activation_fn": "gelu-approximate",
+        "num_embeds_ada_norm": 1000,
+        "norm_type": "ada_norm_single",
+        "norm_elementwise_affine": False,
+        "norm_eps": 1e-6,
+        "caption_channels": 4096,
+        "interpolation_scale": PIXART_INTERPOLATION_SCALE[sample_size * 8],
+        "use_additional_conditions": micro_condition,
+    }
     return config

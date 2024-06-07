@@ -24,15 +24,15 @@ from .single_file_utils import (
     convert_controlnet_checkpoint,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
+    convert_pixart_transformer_single_file_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
+    create_diffusers_config_from_pixart,
     create_unet_diffusers_config_from_ldm,
     create_vae_diffusers_config_from_ldm,
     fetch_diffusers_config,
     fetch_original_config,
     load_single_file_checkpoint,
-    convert_pixart_transformer_single_file_to_diffusers,
-    create_diffusers_config_from_pixart
 )
 
 
@@ -68,8 +68,8 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "PixArtTransformer2DModel": {
         "checkpoint_mapping_fn": convert_pixart_transformer_single_file_to_diffusers,
-        "config_mapping_fn": create_diffusers_config_from_pixart
-    }
+        "config_mapping_fn": create_diffusers_config_from_pixart,
+    },
 }
 
 
@@ -222,7 +222,6 @@ class FromOriginalModelMixin:
             diffusers_model_config = config_mapping_fn(
                 original_config=original_config, checkpoint=checkpoint, **config_mapping_kwargs
             )
-            print(f"{diffusers_model_config=}")
         else:
             if config:
                 if isinstance(config, str):
