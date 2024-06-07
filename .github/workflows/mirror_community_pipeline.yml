@@ -8,8 +8,7 @@ on:
     paths:
       - 'examples/community/**.py'
 
-  # And on tag creation
-  create:
+    # And on tag creation (e.g. `v0.28.1`)
     tags:
       - '*'
 
@@ -17,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Branch or tag to push'
+        description: 'Either 'main' or a tag ref'
         required: true
         default: 'main'
 
@@ -26,19 +25,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Checkout to correct ref
-      # e.g. `CHECKOUT_REF=main` or `CHECKOUT_REF=v0.28.1`
-      - name: Set checkout ref
-        run: |
+      #   If workflow dispatch
+      #     If ref is 'main', set:
+      #       CHECKOUT_REF=refs/heads/main
+      #       PATH_IN_REPO=main
+      #     Else it must be a tag. Set:
+      #       CHECKOUT_REF=refs/tags/{tag}
+      #       PATH_IN_REPO={tag}
+      #   If not workflow dispatch
+      #     If ref is 'refs/heads/main' => set 'main'
+      #     Else it must be a tag => set {tag}
+      - name: Set checkout_ref and path_in_repo
+        run: | 
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "CHECKOUT_REF=${{ github.event.inputs.ref }}" >> $GITHUB_ENV
-          elif [ "${{ github.event_name }}" == "push" ]; then
-            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-              echo "CHECKOUT_REF=main" >> $GITHUB_ENV
+            if [ -z "${{ github.event.inputs.ref }}" ]; then
+              echo "Error: Missing ref input"
+              exit 1
+            elif [ "${{ github.event.inputs.ref }}" == "main" ]; then
+              echo "CHECKOUT_REF=refs/heads/main" >> $GITHUB_ENV
+              echo "PATH_IN_REPO=main" >> $GITHUB_ENV
             else
-              echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
+              echo "CHECKOUT_REF=refs/tags/${{ github.event.inputs.ref }}" >> $GITHUB_ENV
+              echo "PATH_IN_REPO=${{ github.event.inputs.ref }}" >> $GITHUB_ENV
             fi
-          elif [ "${{ github.event_name }}" == "create" ]; then
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
             echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
+            echo "PATH_IN_REPO=main" >> $GITHUB_ENV
+          else
+            # e.g. refs/tags/v0.28.1 -> v0.28.1
+            echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
+            echo "PATH_IN_REPO=${{ github.ref | replace('refs/tags/', '') }}" >> $GITHUB_ENV
           fi
       - uses: actions/checkout@v3
         with:
@@ -65,5 +81,5 @@ jobs:
       - name: Mirror community pipeline to HF
         run: huggingface-cli upload diffusers/community-pipelines-mirror ./examples/community ${PATH_IN_REPO} --repo-type dataset
         env:
-            PATH_IN_REPO: ${{ env.CHECKOUT_REF }}
+            PATH_IN_REPO: ${{ env.PATH_IN_REPO }}
             HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
