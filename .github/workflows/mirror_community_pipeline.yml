@@ -12,12 +12,39 @@ on:
   create:
     tags:
       - '*'
+
+  # Manual trigger with ref input
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or tag to push'
+        required: true
+        default: 'main'
+
 jobs:
   mirror_community_pipeline:
     runs-on: ubuntu-latest
     steps:
-      # Setup + install dependencies
+      # Checkout to correct ref
+      # e.g. `CHECKOUT_REF=main` or `CHECKOUT_REF=v0.28.1`
+      - name: Set checkout ref
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "CHECKOUT_REF=${{ github.event.inputs.ref }}" >> $GITHUB_ENV
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              echo "CHECKOUT_REF=main" >> $GITHUB_ENV
+            else
+              echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
+            fi
+          elif [ "${{ github.event_name }}" == "create" ]; then
+            echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
+          fi
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      # Setup + install dependencies
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -27,30 +54,16 @@ jobs:
           python -m pip install uv
           uv pip install --upgrade huggingface_hub
 
-      # Determine to which folder to push changes (based on branch or tag)
-      # e.g. `PATH_IN_REPO=main` or `PATH_IN_REPO=v0.28.1`
-      - name: Infer path in repo (main or tag)
-        run: |
-          if [ "${GITHUB_EVENT_NAME}" == "push" ]; then
-            if [ "${GITHUB_REF}" == "refs/heads/main" ]; then
-              echo "PATH_IN_REPO=main" >> $GITHUB_ENV
-            else
-              echo "PATH_IN_REPO=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
-            fi
-          elif [ "${GITHUB_EVENT_NAME}" == "push" ] && [ "${GITHUB_REF}"!= "refs/heads/main" ]; then
-            echo "PATH_IN_REPO=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          fi
-
       # Check secret is set
       - name: whoami
         run: huggingface-cli whoami
         env:
             HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
 
-      # Push to HF!
+      # Push to HF! (under subfolder based on checkout ref)
       # https://huggingface.co/datasets/diffusers/community-pipelines-mirror
       - name: Mirror community pipeline to HF
         run: huggingface-cli upload diffusers/community-pipelines-mirror ./examples/community ${PATH_IN_REPO} --repo-type dataset
         env:
-            PATH_IN_REPO: ${{ env.PATH_IN_REPO }}
+            PATH_IN_REPO: ${{ env.CHECKOUT_REF }}
             HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
