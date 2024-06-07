@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Either 'main' or a tag ref'
+        description: "Either 'main' or a tag ref"
         required: true
         default: 'main'
 
@@ -54,7 +54,7 @@ jobs:
           else
             # e.g. refs/tags/v0.28.1 -> v0.28.1
             echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
-            echo "PATH_IN_REPO=${{ github.ref | replace('refs/tags/', '') }}" >> $GITHUB_ENV
+            echo "PATH_IN_REPO=${${{ github.ref }}#refs/tags/}" >> $GITHUB_ENV
           fi
       - uses: actions/checkout@v3
         with:
