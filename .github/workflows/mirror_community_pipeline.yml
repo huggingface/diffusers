@@ -1,4 +1,4 @@
-name: Fast tests for PRs
+name: Mirror Community Pipeline
 
 on:
   # Push changes on the main branch
