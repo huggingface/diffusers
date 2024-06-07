@@ -333,7 +333,7 @@ try:
 except NameError:
     pass  # Probably standard Python interpreter
 
-_is_google_colab = bool(os.getenv("COLAB_RELEASE_TAG"))
+_is_google_colab = any(k.startswith("COLAB_") for k in os.environ)
 
 
 def is_torch_available():
