@@ -1679,7 +1679,6 @@ def main(args):
         cast_training_params(models, dtype=torch.float32)
 
     unet_lora_parameters = list(filter(lambda p: p.requires_grad, unet.parameters()))
-    print("len(unet_lora_parameters)", len(unet_lora_parameters))
 
     if args.train_text_encoder:
         text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
@@ -2041,7 +2040,6 @@ def main(args):
                         tokens_two = tokenize_prompt(tokenizer_two, prompts, add_special_tokens)
 
                 if args.cache_latents:
-                    print("NOOOOOOOOO 1")
                     model_input = latents_cache[step].sample()
                 else:
                     pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
@@ -2249,7 +2247,6 @@ def main(args):
 
                 # every step, we reset the embeddings to the original embeddings.
                 if args.train_text_encoder_ti:
-                    print("NOOOOOOOOO 2")
                     embedding_handler.retract_embeddings()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
@@ -2336,7 +2333,6 @@ def main(args):
         unet_lora_layers = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
 
         if args.train_text_encoder:
-            print("NOOOOOOOOO 3")
             text_encoder_one = unwrap_model(text_encoder_one)
             text_encoder_lora_layers = convert_state_dict_to_diffusers(
                 get_peft_model_state_dict(text_encoder_one.to(torch.float32))
