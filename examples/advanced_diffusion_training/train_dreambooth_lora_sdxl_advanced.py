@@ -106,8 +106,8 @@ def save_model_card(
     train_text_encoder=False,
     train_text_encoder_ti=False,
     token_abstraction_dict=None,
-    instance_prompt: str =None,
-    validation_prompt: str =None,
+    instance_prompt: str = None,
+    validation_prompt: str = None,
     repo_folder=None,
     vae_path=None,
 ):
@@ -228,6 +228,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
+
 
 def log_validation(
     pipeline,
@@ -2359,7 +2360,6 @@ def main(args):
         if args.train_text_encoder_ti:
             embeddings_path = f"{args.output_dir}/{args.output_dir}_emb.safetensors"
             embedding_handler.save_embeddings(embeddings_path)
-
 
         # Final inference
         # Load previous pipeline
