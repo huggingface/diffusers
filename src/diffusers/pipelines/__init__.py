@@ -24,9 +24,9 @@ _import_structure = {
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
+    "pag": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
-    "pag": [],
 }
 
 try:
@@ -395,7 +395,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
         )
-        from .pag import StableDiffusionXLPAGPipeline
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
@@ -456,6 +455,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .musicldm import MusicLDMPipeline
+        from .pag import StableDiffusionXLPAGPipeline
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline

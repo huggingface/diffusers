@@ -26,7 +26,6 @@ from .controlnet import (
     StableDiffusionXLControlNetInpaintPipeline,
     StableDiffusionXLControlNetPipeline,
 )
-from .pag import StableDiffusionXLPAGPipeline
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -46,6 +45,7 @@ from .kandinsky2_2 import (
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
+from .pag import StableDiffusionXLPAGPipeline
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
@@ -388,7 +388,7 @@ class AutoPipelineForText2Image(ConfigMixin):
                     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
                     text_2_image_cls.__name__.replace("ControlNetPipeline", "Pipeline"),
                 )
-        
+
         if "enable_pag" in kwargs:
             if kwargs["enable_pag"] is not None:
                 text_2_image_cls = _get_task_class(

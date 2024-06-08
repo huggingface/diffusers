@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Tuple
 import torch
 
 from ...models.attention_processor import (
@@ -20,52 +19,52 @@ from ...models.attention_processor import (
     PAGCFGIdentitySelfAttnProcessor2_0,
     PAGIdentitySelfAttnProcessor2_0,
 )
-
 from ...utils import logging
+
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 class PAGMixin:
     r"""Mixin class for PAG."""
-    
+
     @staticmethod
     def _check_input_pag_applied_layer(layer):
         layer_splits = layer.split(".")
         if len(layer_splits) > 3:
             raise ValueError(f"pag layer should only contains block_type, block_index and attention_index{layer}.")
-        
+
         if len(layer_splits) >= 1:
             if layer_splits[0] not in ["down", "mid", "up"]:
-                raise ValueError(f"Invalid block_type in pag layer {layer}. Accept 'down', 'mid', 'up', got {layer_splits[0]}")
-        
+                raise ValueError(
+                    f"Invalid block_type in pag layer {layer}. Accept 'down', 'mid', 'up', got {layer_splits[0]}"
+                )
+
         if len(layer_splits) >= 2:
             if not layer_splits[1].startswith("block_"):
                 raise ValueError(f"Invalid block_index in pag layer: {layer}. Should start with 'block_'")
-        
+
         if len(layer_splits) == 3:
             if not layer_splits[2].startswith("attentions_"):
                 raise ValueError(f"Invalid attention_index in pag layer: {layer}. Should start with 'attentions_'")
 
-
     def _set_attn_processor_pag_applied_layers(self, replace_processor):
-        
         def is_self_attn(name):
             return "attn1" in name and "to" not in name
 
-        def get_block_type(name): 
+        def get_block_type(name):
             # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "down"
             return name.split(".")[0].split("_")[0]
-        
+
         def get_block_index(name):
             # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "blocks_1"
             return f"block_{name.split('.')[1]}"
-        
+
         def get_attn_index(name):
             # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "attentions_0"
             return f"attentions_{name.split('.')[3]}"
-        
-        
-        for drop_layer in self.pag_applied_layers:
 
+        for drop_layer in self.pag_applied_layers:
             self._check_input_pag_applied_layer(drop_layer)
             drop_layer_splits = drop_layer.split(".")
 
@@ -78,7 +77,7 @@ class PAGMixin:
                         continue
                     if get_block_type(name) == block_type:
                         target_modules.append(module)
-             
+
             elif len(drop_layer_splits) == 2:
                 # e.g. "down.block_1"
                 block_type = drop_layer_splits[0]
@@ -99,12 +98,16 @@ class PAGMixin:
                 for name, module in self.unet.named_modules():
                     if not is_self_attn(name):
                         continue
-                    if get_block_type(name) == block_type and get_block_index(name) == block_index and get_attn_index(name) == attn_index:
+                    if (
+                        get_block_type(name) == block_type
+                        and get_block_index(name) == block_index
+                        and get_attn_index(name) == attn_index
+                    ):
                         target_modules.append(module)
-            
+
             if len(target_modules) == 0:
                 logger.warning(f"Cannot find pag layer to set attention processor: {drop_layer}")
-            
+
             for module in target_modules:
                 module.processor = replace_processor
 
@@ -139,7 +142,7 @@ class PAGMixin:
             noise_pred_uncond, noise_pred_perturb = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + pag_scale * (noise_pred_uncond - noise_pred_perturb)
         return noise_pred
-    
+
     def _prepare_perturbed_attention_guidance(self, input, uncond_input, do_classifier_free_guidance):
         input = torch.cat([input] * 2, dim=0)
 
@@ -149,11 +152,11 @@ class PAGMixin:
 
     def _reset_attn_processor(self):
         self._set_attn_processor_pag_applied_layers(AttnProcessor2_0())
-    
+
     @property
     def pag_scale(self):
         return self._pag_scale
-    
+
     @property
     def pag_adaptive_scale(self):
         return self._pag_adaptive_scale

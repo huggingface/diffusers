@@ -43,7 +43,6 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
-    deprecate,
     is_invisible_watermark_available,
     is_torch_xla_available,
     logging,
@@ -52,9 +51,9 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from .pag_utils import PAGMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from .pag_utils import PAGMixin
 
 
 if is_invisible_watermark_available():
@@ -249,7 +248,7 @@ class StableDiffusionXLPAGPipeline(
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
         enable_pag: bool = False,
-        pag_applied_layers: Union[str,List[str]] = "mid", # ["mid"],["down.1"]
+        pag_applied_layers: Union[str, List[str]] = "mid",  # ["mid"],["down.1"]
     ):
         super().__init__()
 
@@ -276,7 +275,7 @@ class StableDiffusionXLPAGPipeline(
             self.watermark = StableDiffusionXLWatermarker()
         else:
             self.watermark = None
-        
+
         if enable_pag and pag_applied_layers is not None:
             self._is_pag_enabled = True
         else:
@@ -285,7 +284,6 @@ class StableDiffusionXLPAGPipeline(
         if not isinstance(pag_applied_layers, list):
             pag_applied_layers = [pag_applied_layers]
         self.pag_applied_layers = pag_applied_layers
-        
 
     def encode_prompt(
         self,
@@ -570,24 +568,23 @@ class StableDiffusionXLPAGPipeline(
                     single_ip_adapter_image, device, 1, output_hidden_state
                 )
 
-
-                image_embeds.append(single_image_embeds[None,:])
+                image_embeds.append(single_image_embeds[None, :])
                 if do_classifier_free_guidance:
-                    negative_image_embeds.append(single_negative_image_embeds[None,:])
+                    negative_image_embeds.append(single_negative_image_embeds[None, :])
         else:
             for single_image_embeds in ip_adapter_image_embeds:
                 if do_classifier_free_guidance:
                     single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
                     negative_image_embeds.append(single_negative_image_embeds)
                 image_embeds.append(single_image_embeds)
-            
+
         ip_adapter_image_embeds = []
         for i, single_image_embeds in enumerate(image_embeds):
             single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
             if do_classifier_free_guidance:
                 single_negative_image_embeds = torch.cat([negative_image_embeds[i]] * num_images_per_prompt, dim=0)
-                single_image_embeds =  torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
-            
+                single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
+
             single_image_embeds = single_image_embeds.to(device=device)
             ip_adapter_image_embeds.append(single_image_embeds)
 
@@ -1127,11 +1124,17 @@ class StableDiffusionXLPAGPipeline(
             )
         else:
             negative_add_time_ids = add_time_ids
-        
+
         if self.do_perturbed_attention_guidance:
-            prompt_embeds = self._prepare_perturbed_attention_guidance(prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance)
-            add_text_embeds = self._prepare_perturbed_attention_guidance(add_text_embeds, negative_pooled_prompt_embeds, self.do_classifier_free_guidance)
-            add_time_ids = self._prepare_perturbed_attention_guidance(add_time_ids, negative_add_time_ids, self.do_classifier_free_guidance)
+            prompt_embeds = self._prepare_perturbed_attention_guidance(
+                prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
+            )
+            add_text_embeds = self._prepare_perturbed_attention_guidance(
+                add_text_embeds, negative_pooled_prompt_embeds, self.do_classifier_free_guidance
+            )
+            add_time_ids = self._prepare_perturbed_attention_guidance(
+                add_time_ids, negative_add_time_ids, self.do_classifier_free_guidance
+            )
 
         elif self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
@@ -1150,12 +1153,14 @@ class StableDiffusionXLPAGPipeline(
                 batch_size * num_images_per_prompt,
                 self.do_classifier_free_guidance,
             )
-        
+
             for i, image_embeds in enumerate(ip_adapter_image_embeds):
                 if self.do_classifier_free_guidance:
                     negative_image_embeds, image_embeds = image_embeds.chunk(2)
                 if self.do_perturbed_attention_guidance:
-                    image_embeds = self._prepare_perturbed_attention_guidance(image_embeds, negative_image_embeds, self.do_classifier_free_guidance)
+                    image_embeds = self._prepare_perturbed_attention_guidance(
+                        image_embeds, negative_image_embeds, self.do_classifier_free_guidance
+                    )
                 elif self.do_classifier_free_guidance:
                     image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
                 image_embeds = image_embeds.to(device)
@@ -1190,7 +1195,7 @@ class StableDiffusionXLPAGPipeline(
 
         if self.do_perturbed_attention_guidance:
             self._set_pag_attn_processor(self.do_classifier_free_guidance)
-        
+
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1253,7 +1258,7 @@ class StableDiffusionXLPAGPipeline(
                     )
                     add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
                     negative_add_time_ids = callback_outputs.pop("negative_add_time_ids", negative_add_time_ids)
-                
+
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 

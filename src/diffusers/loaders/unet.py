@@ -887,8 +887,6 @@ class UNet2DConditionLoadersMixin:
 
     def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
         from ..models.attention_processor import (
-            AttnProcessor,
-            AttnProcessor2_0,
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
         )
