@@ -548,7 +548,7 @@ class StableDiffusionXLPAGPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance, do_perturbed_attention_guidance
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
     ):
         image_embeds = []
         if do_classifier_free_guidance:
@@ -570,32 +570,26 @@ class StableDiffusionXLPAGPipeline(
                     single_ip_adapter_image, device, 1, output_hidden_state
                 )
 
-                image_embeds.append(single_image_embeds)
+
+                image_embeds.append(single_image_embeds[None,:])
                 if do_classifier_free_guidance:
-                    negative_image_embeds.append(single_negative_image_embeds)
+                    negative_image_embeds.append(single_negative_image_embeds[None,:])
         else:
             for single_image_embeds in ip_adapter_image_embeds:
                 if do_classifier_free_guidance:
                     single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
                     negative_image_embeds.append(single_negative_image_embeds)
                 image_embeds.append(single_image_embeds)
-        
-
             
         ip_adapter_image_embeds = []
         for i, single_image_embeds in enumerate(image_embeds):
-            single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
+            single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
             if do_classifier_free_guidance:
-                single_negative_image_embeds = torch.stack([negative_image_embeds[i]] * num_images_per_prompt, dim=0)
-            
-            if do_perturbed_attention_guidance:
-                single_image_embeds = self._prepare_perturbed_attention_guidance(single_image_embeds, single_negative_image_embeds, do_classifier_free_guidance)
-            elif do_classifier_free_guidance:
+                single_negative_image_embeds = torch.cat([negative_image_embeds[i]] * num_images_per_prompt, dim=0)
                 single_image_embeds =  torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
             
             single_image_embeds = single_image_embeds.to(device=device)
             ip_adapter_image_embeds.append(single_image_embeds)
-            
 
         return ip_adapter_image_embeds
 
@@ -1149,14 +1143,23 @@ class StableDiffusionXLPAGPipeline(
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(
+            ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
                 device,
                 batch_size * num_images_per_prompt,
                 self.do_classifier_free_guidance,
-                self.do_perturbed_attention_guidance,
             )
+        
+            for i, image_embeds in enumerate(ip_adapter_image_embeds):
+                if self.do_classifier_free_guidance:
+                    negative_image_embeds, image_embeds = image_embeds.chunk(2)
+                if self.do_perturbed_attention_guidance:
+                    image_embeds = self._prepare_perturbed_attention_guidance(image_embeds, negative_image_embeds, self.do_classifier_free_guidance)
+                elif self.do_classifier_free_guidance:
+                    image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
+                image_embeds = image_embeds.to(device)
+                ip_adapter_image_embeds[i] = image_embeds
 
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -1201,8 +1204,8 @@ class StableDiffusionXLPAGPipeline(
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-                if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-                    added_cond_kwargs["image_embeds"] = image_embeds
+                if ip_adapter_image_embeds is not None:
+                    added_cond_kwargs["image_embeds"] = ip_adapter_image_embeds
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
