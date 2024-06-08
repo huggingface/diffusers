@@ -184,7 +184,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
@@ -370,7 +370,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sig_proposed])
         return timesteps
 
-    # copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
         log_sigma = np.log(np.maximum(sigma, 1e-10))
@@ -394,7 +394,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         t = t.reshape(sigma.shape)
         return t
 
-    # copied from diffusers.schedulers.scheduling_euler_discrete._convert_to_karras
+    # copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.Tensor) -> torch.Tensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 

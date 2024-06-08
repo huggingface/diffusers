@@ -25,6 +25,7 @@ _import_structure = {
     "latent_diffusion": [],
     "ledits_pp": [],
     "pag": [],
+    "marigold": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -155,6 +156,7 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
+    _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -189,6 +191,12 @@ else:
         [
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
+        ]
+    )
+    _import_structure["marigold"].extend(
+        [
+            "MarigoldDepthPipeline",
+            "MarigoldNormalsPipeline",
         ]
     )
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
@@ -417,6 +425,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
+        from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
             KandinskyCombinedPipeline,
@@ -453,6 +462,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPInversionPipelineOutput,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
+        )
+        from .marigold import (
+            MarigoldDepthPipeline,
+            MarigoldNormalsPipeline,
         )
         from .musicldm import MusicLDMPipeline
         from .pag import StableDiffusionXLPAGPipeline

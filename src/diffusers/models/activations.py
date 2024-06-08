@@ -50,6 +50,18 @@ def get_activation(act_fn: str) -> nn.Module:
         raise ValueError(f"Unsupported activation function: {act_fn}")
 
 
+class FP32SiLU(nn.Module):
+    r"""
+    SiLU activation function with input upcasted to torch.float32.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        return F.silu(inputs.float(), inplace=False).to(inputs.dtype)
+
+
 class GELU(nn.Module):
     r"""
     GELU activation function with tanh approximation support with `approximate="tanh"`.
