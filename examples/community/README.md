@@ -1828,7 +1828,7 @@ Output Image
 
 ### Stable Diffusion on IPEX
 
-This diffusion pipeline aims to accelarate the inference of Stable-Diffusion on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+This diffusion pipeline aims to accelerate the inference of Stable-Diffusion on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
 
 To use this pipeline, you need to:
 
@@ -1853,7 +1853,7 @@ python -m pip install intel_extension_for_pytorch
 python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
 ```
 
-2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration. Supported inference datatypes are Float32 and BFloat16.
+2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX acceleration. Supported inference datatypes are Float32 and BFloat16.
 
 **Note:** The setting of generated image height/width for `prepare_for_ipex()` should be same as the setting of pipeline inference.
 
@@ -1931,7 +1931,7 @@ print("Latency of StableDiffusionPipeline--fp32", latency)
 
 ### Stable Diffusion XL on IPEX
 
-This diffusion pipeline aims to accelarate the inference of Stable-Diffusion XL on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+This diffusion pipeline aims to accelerate the inference of Stable-Diffusion XL on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
 
 To use this pipeline, you need to:
 
@@ -1956,7 +1956,7 @@ python -m pip install intel_extension_for_pytorch
 python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
 ```
 
-2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration. Supported inference datatypes are Float32 and BFloat16.
+2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX acceleration. Supported inference datatypes are Float32 and BFloat16.
 
 **Note:** The values of `height` and `width` used during preparation with `prepare_for_ipex()` should be the same when running inference with the prepared pipeline.
 
@@ -3036,7 +3036,7 @@ red blouse BREAK
 blue skirt
 ```
 
-### 2-Dimentional division
+### 2-Dimensional division
 
 The prompt consists of instructions separated by the term `BREAK` and is assigned to different regions of a two-dimensional space. The image is initially split in the main splitting direction, which in this case is rows, due to the presence of a single semicolon `;`, dividing the space into an upper and a lower section. Additional sub-splitting is then applied, indicated by commas. The upper row is split into ratios of `2:1:1`, while the lower row is split into a ratio of `4:6`. Rows themselves are split in a `1:2` ratio. According to the reference image, the blue sky is designated as the first region, green hair as the second, the bookshelf as the third, and so on, in a sequence based on their position from the top left. The terrarium is placed on the desk in the fourth region, and the orange dress and sofa are in the fifth region, conforming to their respective splits.
 
@@ -3305,7 +3305,7 @@ The Pipeline supports `compel` syntax. Input prompts using the `compel` structur
         return torch.sqrt(torch.sum((yhat-y)**2))
     ```
 
-- And next, as any other diffusion models, we need the score estimator and scheduler. As we are working with $256x256$ face images, we use ddmp-celebahq-256:
+- And next, as any other diffusion models, we need the score estimator and scheduler. As we are working with $256x256$ face images, we use ddpm-celebahq-256:
 
     ```python
     # set up scheduler
@@ -3737,7 +3737,7 @@ for frame in frames:
 controlnet = ControlNetModel.from_pretrained(
     "lllyasviel/sd-controlnet-canny").to('cuda')
 
-# You can use any fintuned SD here
+# You can use any finetuned SD here
 pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, custom_pipeline='rerender_a_video').to('cuda')
 
@@ -4172,6 +4172,6 @@ grid_image.save(grid_dir + "sample.png")
 
 ## PAG Parameters
 
-`pag_scale` : gudiance scale of PAG (ex: 5.0)
+`pag_scale` : guidance scale of PAG (ex: 5.0)
 
 `pag_applied_layers_index` : index of the layer to apply perturbation (ex: ['m0'])
