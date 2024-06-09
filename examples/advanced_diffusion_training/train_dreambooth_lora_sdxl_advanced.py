@@ -136,6 +136,14 @@ def save_model_card(
     diffusers_imports_pivotal = ""
     diffusers_example_pivotal = ""
     webui_example_pivotal = ""
+    license = ""
+    if "playground" in base_model:
+        license = """\n
+    ## License
+
+    Please adhere to the licensing terms as described [here](https://huggingface.co/playgroundai/playground-v2.5-1024px-aesthetic/blob/main/LICENSE.md).
+    """
+
     if train_text_encoder_ti:
         trigger_str = (
             "To trigger image generation of trained concept(or concepts) replace each concept identifier "
@@ -224,7 +232,7 @@ Pivotal tuning was enabled: {train_text_encoder_ti}.
 
 Special VAE used for training: {vae_path}.
 
-Please adhere to the licensing terms as described [here](https://huggingface.co/playgroundai/playground-v2.5-1024px-aesthetic/blob/main/LICENSE.md).
+{license}
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
