@@ -182,11 +182,7 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
         images = pipe(ids, generator=generator, num_inference_steps=25, output_type="np").images
         original_image_slice = images[0, -3:, -3:, -1].flatten()
 
-        print(", ".join([str((round(x, 4))) for x in original_image_slice.tolist()]))
+        expected_slice = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0001]
 
-        assert original_image_slice is None
-
-        expected_slice = []
-
-        max_diff = numpy_cosine_similarity_distance(pipe, expected_slice)
+        max_diff = numpy_cosine_similarity_distance(original_image_slice, expected_slice)
         self.assertLessEqual(max_diff, 1e-4)
