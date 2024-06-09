@@ -206,7 +206,6 @@ class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
         )
 
         pipe = StableUnCLIPPipeline.from_pretrained("fusing/stable-unclip-2-1-l", torch_dtype=torch.float16)
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         # stable unclip will oom when integration tests are run on a V100,
         # so turn on memory savings
@@ -228,7 +227,6 @@ class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
 
         pipe = StableUnCLIPPipeline.from_pretrained("fusing/stable-unclip-2-1-l", torch_dtype=torch.float16)
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
         pipe.enable_sequential_cpu_offload()
