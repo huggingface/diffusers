@@ -247,8 +247,7 @@ class StableDiffusionXLPAGPipeline(
         feature_extractor: CLIPImageProcessor = None,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
-        enable_pag: bool = False,
-        pag_applied_layers: Union[str, List[str]] = "mid",  # ["mid"],["down.1"]
+        pag_applied_layers: Union[str, List[str]] = "mid",  # ["mid"],["down.block_1"],["up.block_0.attentions_0"]
     ):
         super().__init__()
 
@@ -276,14 +275,7 @@ class StableDiffusionXLPAGPipeline(
         else:
             self.watermark = None
 
-        if enable_pag and pag_applied_layers is not None:
-            self._is_pag_enabled = True
-        else:
-            self._is_pag_enabled = False
-
-        if not isinstance(pag_applied_layers, list):
-            pag_applied_layers = [pag_applied_layers]
-        self.pag_applied_layers = pag_applied_layers
+        self.set_pag_applied_layers(pag_applied_layers)
 
     def encode_prompt(
         self,
@@ -1155,8 +1147,10 @@ class StableDiffusionXLPAGPipeline(
             )
 
             for i, image_embeds in enumerate(ip_adapter_image_embeds):
+                negative_image_embeds = None
                 if self.do_classifier_free_guidance:
                     negative_image_embeds, image_embeds = image_embeds.chunk(2)
+
                 if self.do_perturbed_attention_guidance:
                     image_embeds = self._prepare_perturbed_attention_guidance(
                         image_embeds, negative_image_embeds, self.do_classifier_free_guidance
@@ -1194,7 +1188,11 @@ class StableDiffusionXLPAGPipeline(
             ).to(device=device, dtype=latents.dtype)
 
         if self.do_perturbed_attention_guidance:
-            self._set_pag_attn_processor(self.do_classifier_free_guidance)
+            original_attn_proc = self.unet.attn_processors
+            self._set_pag_attn_processor(
+                pag_applied_layers=self.pag_applied_layers,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+            )
 
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1311,7 +1309,7 @@ class StableDiffusionXLPAGPipeline(
         self.maybe_free_model_hooks()
 
         if self.do_perturbed_attention_guidance:
-            self._reset_attn_processor()
+            self.unet.set_attn_processor(original_attn_proc)
 
         if not return_dict:
             return (image,)

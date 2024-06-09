@@ -335,7 +335,9 @@ class AutoPipelineForText2Image(ConfigMixin):
         if "controlnet" in kwargs:
             orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
         if "enable_pag" in kwargs:
-            orig_class_name = config["_class_name"].replace("Pipeline", "PAGPipeline")
+            enable_pag = kwargs.pop("enable_pag")
+            if enable_pag:
+                orig_class_name = config["_class_name"].replace("Pipeline", "PAGPipeline")
 
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
@@ -390,7 +392,8 @@ class AutoPipelineForText2Image(ConfigMixin):
                 )
 
         if "enable_pag" in kwargs:
-            if kwargs["enable_pag"] is not None:
+            enable_pag = kwargs.pop("enable_pag")
+            if enable_pag:
                 text_2_image_cls = _get_task_class(
                     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
                     text_2_image_cls.__name__.replace("PAG", "").replace("Pipeline", "PAGPipeline"),

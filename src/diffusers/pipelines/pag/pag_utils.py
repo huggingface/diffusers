@@ -15,7 +15,6 @@
 import torch
 
 from ...models.attention_processor import (
-    AttnProcessor2_0,
     PAGCFGIdentitySelfAttnProcessor2_0,
     PAGIdentitySelfAttnProcessor2_0,
 )
@@ -30,7 +29,15 @@ class PAGMixin:
 
     @staticmethod
     def _check_input_pag_applied_layer(layer):
+        r"""
+        Check if each layer input in `applied_pag_layers` is valid. It should be either one of these 3 formats:
+        "{block_type}", "{block_type}.{block_index}", or "{block_type}.{block_index}.{attention_index}". `block_type`
+        can be "down", "mid", "up". `block_index` should be in the format of "block_{i}". `attention_index` should be
+        in the format of "attentions_{j}".
+        """
+
         layer_splits = layer.split(".")
+
         if len(layer_splits) > 3:
             raise ValueError(f"pag layer should only contains block_type, block_index and attention_index{layer}.")
 
@@ -48,79 +55,102 @@ class PAGMixin:
             if not layer_splits[2].startswith("attentions_"):
                 raise ValueError(f"Invalid attention_index in pag layer: {layer}. Should start with 'attentions_'")
 
-    def _set_attn_processor_pag_applied_layers(self, replace_processor):
-        def is_self_attn(name):
-            return "attn1" in name and "to" not in name
+    def _set_pag_attn_processor(self, pag_applied_layers, do_classifier_free_guidance):
+        r"""
+        Set the attention processor for the PAG layers.
+        """
+        if do_classifier_free_guidance:
+            pag_attn_proc = PAGCFGIdentitySelfAttnProcessor2_0()
+        else:
+            pag_attn_proc = PAGIdentitySelfAttnProcessor2_0()
 
-        def get_block_type(name):
+        def is_self_attn(module_name):
+            r"""
+            Check if the module is self-attention module based on its name.
+            """
+            return "attn1" in module_name and "to" not in name
+
+        def get_block_type(module_name):
+            r"""
+            Get the block type from the module name. can be "down", "mid", "up".
+            """
             # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "down"
-            return name.split(".")[0].split("_")[0]
+            return module_name.split(".")[0].split("_")[0]
 
-        def get_block_index(name):
-            # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "blocks_1"
-            return f"block_{name.split('.')[1]}"
+        def get_block_index(module_name):
+            r"""
+            Get the block index from the module name. can be "block_0", "block_1", ... If there is only one block (e.g.
+            mid_block) and index is ommited from the name, it will be "block_0".
+            """
+            # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "block_1"
+            # mid_block.attentions.0.transformer_blocks.0.attn1 -> "block_0"
+            if "attentions" in module_name.split(".")[1]:
+                return "block_0"
+            else:
+                return f"block_{module_name.split('.')[1]}"
 
-        def get_attn_index(name):
+        def get_attn_index(module_name):
+            r"""
+            Get the attention index from the module name. can be "attentions_0", "attentions_1", ...
+            """
             # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "attentions_0"
-            return f"attentions_{name.split('.')[3]}"
+            # mid_block.attentions.0.transformer_blocks.0.attn1 -> "attentions_0"
+            if "attentions" in module_name.split(".")[2]:
+                return f"attentions_{module_name.split('.')[3]}"
+            elif "attentions" in module_name.split(".")[1]:
+                return f"attentions_{module_name.split('.')[2]}"
 
-        for drop_layer in self.pag_applied_layers:
-            self._check_input_pag_applied_layer(drop_layer)
-            drop_layer_splits = drop_layer.split(".")
+        for pag_layer_input in pag_applied_layers:
+            # for each PAG layer input, we find corresponding self-attention layers in the unet model
+            target_modules = []
 
-            if len(drop_layer_splits) == 1:
-                # e.g. "mid"
-                block_type = drop_layer_splits[0]
-                target_modules = []
+            pag_layer_input_splits = pag_layer_input.split(".")
+
+            if len(pag_layer_input_splits) == 1:
+                # when the layer input only contains block_type. e.g. "mid", "down", "up"
+                block_type = pag_layer_input_splits[0]
                 for name, module in self.unet.named_modules():
-                    if not is_self_attn(name):
-                        continue
-                    if get_block_type(name) == block_type:
+                    if is_self_attn(name) and get_block_type(name) == block_type:
                         target_modules.append(module)
 
-            elif len(drop_layer_splits) == 2:
-                # e.g. "down.block_1"
-                block_type = drop_layer_splits[0]
-                block_index = drop_layer_splits[1]
-                target_modules = []
+            elif len(pag_layer_input_splits) == 2:
+                # when the layer inpput contains both block_type and block_index. e.g. "down.block_1", "mid.block_0"
+                block_type = pag_layer_input_splits[0]
+                block_index = pag_layer_input_splits[1]
                 for name, module in self.unet.named_modules():
-                    if not is_self_attn(name):
-                        continue
-                    if get_block_type(name) == block_type and get_block_index(name) == block_index:
-                        target_modules.append(module)
-
-            elif len(drop_layer_splits) == 3:
-                # e.g. "down.blocks_1.attentions_1"
-                block_type = drop_layer_splits[0]
-                block_index = drop_layer_splits[1]
-                attn_index = drop_layer_splits[2]
-                target_modules = []
-                for name, module in self.unet.named_modules():
-                    if not is_self_attn(name):
-                        continue
                     if (
-                        get_block_type(name) == block_type
+                        is_self_attn(name)
+                        and get_block_type(name) == block_type
+                        and get_block_index(name) == block_index
+                    ):
+                        target_modules.append(module)
+
+            elif len(pag_layer_input_splits) == 3:
+                # when the layer input contains block_type, block_index and attention_index. e.g. "down.blocks_1.attentions_1"
+                block_type = pag_layer_input_splits[0]
+                block_index = pag_layer_input_splits[1]
+                attn_index = pag_layer_input_splits[2]
+
+                for name, module in self.unet.named_modules():
+                    if (
+                        is_self_attn(name)
+                        and get_block_type(name) == block_type
                         and get_block_index(name) == block_index
                         and get_attn_index(name) == attn_index
                     ):
                         target_modules.append(module)
 
             if len(target_modules) == 0:
-                logger.warning(f"Cannot find pag layer to set attention processor: {drop_layer}")
+                raise ValueError(f"Cannot find pag layer to set attention processor for: {pag_layer_input}")
 
             for module in target_modules:
-                module.processor = replace_processor
-
-    def _set_pag_attn_processor(self, do_classifier_free_guidance):
-        if do_classifier_free_guidance:
-            self._set_attn_processor_pag_applied_layers(PAGCFGIdentitySelfAttnProcessor2_0())
-        else:
-            self._set_attn_processor_pag_applied_layers(PAGIdentitySelfAttnProcessor2_0())
-
-    def _reset_attn_processor(self):
-        self._set_attn_processor_pag_applied_layers(AttnProcessor2_0())
+                module.processor = pag_attn_proc
 
     def _get_pag_scale(self, t):
+        r"""
+        Get the scale factor for the perturbed attention guidance.
+        """
+
         if self.do_pag_adaptive_scaling:
             signal_scale = self.pag_scale - self.pag_adaptive_scale * (1000 - t)
             if signal_scale < 0:
@@ -130,6 +160,18 @@ class PAGMixin:
             return self.pag_scale
 
     def _apply_perturbed_attention_guidance(self, noise_pred, do_classifier_free_guidance, guidance_scale, t):
+        r"""
+        Apply perturbed attention guidance to the noise prediction.
+
+        Args:
+            noise_pred (torch.Tensor): The noise prediction tensor.
+            do_classifier_free_guidance (bool): Whether to apply classifier-free guidance.
+            guidance_scale (float): The scale factor for the guidance term.
+            t (int): The current time step.
+
+        Returns:
+            torch.Tensor: The updated noise prediction tensor after applying perturbed attention guidance.
+        """
         pag_scale = self._get_pag_scale(t)
         if do_classifier_free_guidance:
             noise_pred_uncond, noise_pred_text, noise_pred_perturb = noise_pred.chunk(3)
@@ -143,28 +185,76 @@ class PAGMixin:
             noise_pred = noise_pred_uncond + pag_scale * (noise_pred_uncond - noise_pred_perturb)
         return noise_pred
 
-    def _prepare_perturbed_attention_guidance(self, input, uncond_input, do_classifier_free_guidance):
-        input = torch.cat([input] * 2, dim=0)
+    def _prepare_perturbed_attention_guidance(self, cond, uncond, do_classifier_free_guidance):
+        """
+        Prepares the perturbed attention guidance for the PAG model.
+
+        Args:
+            cond (torch.Tensor): The conditional input tensor.
+            uncond (torch.Tensor): The unconditional input tensor.
+            do_classifier_free_guidance (bool): Flag indicating whether to perform classifier-free guidance.
+
+        Returns:
+            torch.Tensor: The prepared perturbed attention guidance tensor.
+        """
+
+        cond = torch.cat([cond] * 2, dim=0)
 
         if do_classifier_free_guidance:
-            input = torch.cat([uncond_input, input], dim=0)
-        return input
+            cond = torch.cat([uncond, cond], dim=0)
+        return cond
 
-    def _reset_attn_processor(self):
-        self._set_attn_processor_pag_applied_layers(AttnProcessor2_0())
+    def set_pag_applied_layers(self, pag_applied_layers):
+        r"""
+        set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
+        """
+
+        if not isinstance(pag_applied_layers, list):
+            pag_applied_layers = [pag_applied_layers]
+
+        for pag_layer in pag_applied_layers:
+            self._check_input_pag_applied_layer(pag_layer)
+
+        self.pag_applied_layers = pag_applied_layers
 
     @property
     def pag_scale(self):
+        """
+        Get the scale factor for the perturbed attention guidance.
+        """
         return self._pag_scale
 
     @property
     def pag_adaptive_scale(self):
+        """
+        Get the adaptive scale factor for the perturbed attention guidance.
+        """
         return self._pag_adaptive_scale
 
     @property
     def do_pag_adaptive_scaling(self):
-        return self._is_pag_enabled and self._pag_adaptive_scale > 0
+        """
+        Check if the adaptive scaling is enabled for the perturbed attention guidance.
+        """
+        return self._pag_adaptive_scale > 0 and self._pag_scale > 0 and len(self.pag_applied_layers) > 0
 
     @property
     def do_perturbed_attention_guidance(self):
-        return self._is_pag_enabled and self._pag_scale > 0
+        """
+        Check if the perturbed attention guidance is enabled.
+        """
+        return self._pag_scale > 0 and len(self.pag_applied_layers) > 0
+
+    @property
+    def pag_attn_processors(self):
+        r"""
+        Returns:
+            `dict` of PAG attention processors: A dictionary contains all PAG attention processors used in the model
+            with the key as the name of the layer.
+        """
+
+        processors = {}
+        for name, proc in self.unet.attn_processors.items():
+            if proc.__class__ in (PAGCFGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0):
+                processors[name] = proc
+        return processors
