@@ -18,13 +18,13 @@
 
 Upon having access to a TPU VM (TPUs higher than version 3), you should first install
 a TPU-compatible version of JAX:
-```
+```sh
 pip install jax[tpu] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
 ```
 
 Next, we can install [flax](https://github.com/google/flax) and the diffusers library:
 
-```
+```sh
 pip install flax diffusers transformers
 ```
 
