@@ -19,9 +19,23 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DiTTransformer2DModel, DPMSolverMultistepScheduler
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    DiTPipeline,
+    DiTTransformer2DModel,
+    DPMSolverMultistepScheduler,
+    Transformer2DModel,
+)
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    load_numpy,
+    nightly,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    torch_device,
+)
 
 from ..pipeline_params import (
     CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,
@@ -154,3 +168,25 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
             )
 
             assert np.abs((expected_image - image).max()) < 1e-1
+
+    def test_dit_legacy_class_loading_from_subfolder(self):
+        ckpt_id = "facebook/DiT-XL-2-512"
+        transformer = Transformer2DModel.from_pretrained(ckpt_id, subfolder="transformer")
+        pipe = DiTPipeline.from_pretrained(ckpt_id, transformer=transformer)
+        pipe.to("cuda")
+
+        words = ["vase", "umbrella"]
+        ids = pipe.get_label_ids(words)
+
+        generator = torch.manual_seed(0)
+        images = pipe(ids, generator=generator, num_inference_steps=25, output_type="np").images
+        original_image_slice = images[0, -3:, -3:, -1].flatten()
+
+        print(", ".join([str((round(x, 4))) for x in original_image_slice.tolist()]))
+
+        assert original_image_slice is None
+
+        expected_slice = []
+
+        max_diff = numpy_cosine_similarity_distance(pipe, expected_slice)
+        self.assertLessEqual(max_diff, 1e-4)
