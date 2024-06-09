@@ -26,6 +26,7 @@ from diffusers import (
     DDIMScheduler,
     PixArtSigmaPipeline,
     PixArtTransformer2DModel,
+    Transformer2DModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -396,10 +397,10 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
 
         assert not np.allclose(image_slice, no_res_bin_image_slice, atol=1e-4, rtol=1e-4)
 
-    def test_pixart_512_without_resolution_binning(self):
+    def test_pixart_512_without_resolution_binning_legacy_class(self):
         generator = torch.manual_seed(0)
 
-        transformer = PixArtTransformer2DModel.from_pretrained(
+        transformer = Transformer2DModel.from_pretrained(
             self.ckpt_id_512, subfolder="transformer", torch_dtype=torch.float16
         )
         pipe = PixArtSigmaPipeline.from_pretrained(
