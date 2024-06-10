@@ -18,7 +18,6 @@ from typing import Optional
 
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..models.model_loading_utils import _load_state_dict_into_model
 from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
@@ -281,10 +280,7 @@ class FromOriginalModelMixin:
                     f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
                 )
         else:
-            error_msgs = _load_state_dict_into_model(model, diffusers_format_checkpoint)
-            if error_msgs:
-                error_msgs = "\n".join(error_msgs)
-                logger.warning(f"There was an issue loading state_dict for {model.__class__.__name__}:\n{error_msgs}")
+            model.load_state_dict(diffusers_format_checkpoint)
 
         if torch_dtype is not None:
             model.to(torch_dtype)

@@ -1365,20 +1365,23 @@ def create_diffusers_clip_model_from_ldm(
 
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        if model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
     else:
+        expected_keys = model.state_dict().keys()
+        loaded_keys = diffusers_format_checkpoint.keys()
+        unexpected_keys = list(set(loaded_keys) - set(expected_keys))
+
         error_msgs = _load_state_dict_into_model(model, diffusers_format_checkpoint)
         if error_msgs:
-            error_msgs = "\n".join(error_msgs)
-            logger.warning(f"There was an issue loading state_dict for {model.__class__.__name__}:\n{error_msgs}")
+            raise RuntimeError(f"Error(s) in loading state_dict for {model.__class__.__name__}:\n\t{error_msgs}")
+
+    if model._keys_to_ignore_on_load_unexpected is not None:
+        for pat in model._keys_to_ignore_on_load_unexpected:
+            unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+    if len(unexpected_keys) > 0:
+        logger.warning(
+            f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+        )
 
     if torch_dtype is not None:
         model.to(torch_dtype)

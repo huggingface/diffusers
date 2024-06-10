@@ -24,6 +24,7 @@ python utils/update_metadata.py
 Script modified from:
 https://github.com/huggingface/transformers/blob/main/utils/update_metadata.py
 """
+
 import argparse
 import os
 import tempfile
