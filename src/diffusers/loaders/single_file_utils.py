@@ -1379,7 +1379,7 @@ def create_diffusers_clip_model_from_ldm(
             )
 
     else:
-        model.load_state_dict(diffusers_format_checkpoint)
+        model.load_state_dict(diffusers_format_checkpoint, strict=False)
 
     if torch_dtype is not None:
         model.to(torch_dtype)
