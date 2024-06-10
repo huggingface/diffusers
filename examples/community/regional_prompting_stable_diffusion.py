@@ -1,42 +1,25 @@
-#tested for diffusers >=0.28.0
+# tested for diffusers >=0.28.0
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
-import numpy as np
-import PIL.Image
 import torch
-
 import torchvision.transforms.functional as FF
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from diffusers import StableDiffusionPipeline
-
-from diffusers import AutoencoderKL, DiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.configuration_utils import FrozenDict, deprecate
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-
 from diffusers.models.lora import adjust_lora_scale_text_encoder
-
-from diffusers.models.attention import BasicTransformerBlock
-from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
-
-from diffusers.utils import PIL_INTERPOLATION, logging
-
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
-    PIL_INTERPOLATION,
     USE_PEFT_BACKEND,
     logging,
     scale_lora_layers,
     unscale_lora_layers,
 )
-
-from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
