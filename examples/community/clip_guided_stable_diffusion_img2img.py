@@ -25,7 +25,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        ```
+        ```py
         from io import BytesIO
 
         import requests
