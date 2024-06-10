@@ -135,6 +135,54 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert pipe.__class__.__name__ == "StableDiffusionPipeline"
         assert "controlnet" not in pipe.components
 
+    def test_from_pipe_pag_controlnet(self):
+        pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=controlnet, enable_pag=True)
+        assert pipe.__class__.__name__ == "StableDiffusionXLControlNetPAGPipeline"
+        assert "controlnet" in pipe.components
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=None)
+        assert pipe.__class__.__name__ == "StableDiffusionXLPAGPipeline"
+        assert "controlnet" not in pipe.components
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, enable_pag=False)
+        assert pipe.__class__.__name__ == "StableDiffusionXLPipeline"
+        assert "controlnet" not in pipe.components
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, enable_pag=True)
+        assert pipe.__class__.__name__ == "StableDiffusionXLPAGPipeline"
+        assert "controlnet" not in pipe.components
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=controlnet, enable_pag=False)
+        assert pipe.__class__.__name__ == "StableDiffusionXLControlNetPipeline"
+        assert "controlnet" in pipe.components
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=None)
+        assert pipe.__class__.__name__ == "StableDiffusionXLPipeline"
+        assert "controlnet" not in pipe.components
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=None, enable_pag=False)
+        assert pipe.__class__.__name__ == "StableDiffusionXLPipeline"
+        assert "controlnet" not in pipe.components
+
+        pipe = AutoPipelineForInpainting.from_pipe(pipe, enable_pag=True)
+        assert pipe.__class__.__name__ == "StableDiffusionXLPAGInpaintPipeline"
+        assert "controlnet" not in pipe.components
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=controlnet, enable_pag=False)
+        assert pipe.__class__.__name__ == "StableDiffusionXLControlNetPipeline"
+        assert "controlnet" in pipe.components
+
+        pipe = AutoPipelineForInpainting.from_pipe(pipe, controlnet=None, enable_pag=True)
+        assert pipe.__class__.__name__ == "StableDiffusionXLPAGInpaintPipeline"
+        assert "controlnet" not in pipe.components
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=controlnet)
+        assert pipe.__class__.__name__ == "StableDiffusionXLControlNetPAGPipeline"
+        assert "controlnet" in pipe.components
+
     def test_from_pipe_controlnet_img2img(self):
         pipe = AutoPipelineForImage2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe")
         controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")

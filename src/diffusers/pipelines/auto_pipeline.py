@@ -385,31 +385,30 @@ class AutoPipelineForText2Image(ConfigMixin):
         # derive the pipeline class to instantiate
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, original_cls_name)
 
-        to_replace = "Pipeline"
+        if "controlnet" in kwargs:
+            if kwargs["controlnet"] is not None:
+                to_replace = "PAGPipeline" if "PAG" in text_2_image_cls.__name__ else "Pipeline"
+                text_2_image_cls = _get_task_class(
+                    AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
+                    text_2_image_cls.__name__.replace("ControlNet", "").replace(to_replace, "ControlNet" + to_replace),
+                )
+            else:
+                text_2_image_cls = _get_task_class(
+                    AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
+                    text_2_image_cls.__name__.replace("ControlNet", ""),
+                )
+
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
                 text_2_image_cls = _get_task_class(
                     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
-                    text_2_image_cls.__name__.replace("PAG", "").replace(to_replace, "PAG" + to_replace),
+                    text_2_image_cls.__name__.replace("PAG", "").replace("Pipeline", "PAGPipeline"),
                 )
-                to_replace = "PAG" + to_replace
             else:
                 text_2_image_cls = _get_task_class(
                     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
                     text_2_image_cls.__name__.replace("PAG", ""),
-                )
-        if "controlnet" in kwargs:
-            if kwargs["controlnet"] is not None:
-                text_2_image_cls = _get_task_class(
-                    AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
-                    text_2_image_cls.__name__.replace("ControlNet", "").replace(to_replace, "ControlNet" + to_replace),
-                )
-                to_replace = "ControlNet" + to_replace
-            else:
-                text_2_image_cls = _get_task_class(
-                    AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
-                    text_2_image_cls.__name__.replace("ControlNet", ""),
                 )
 
         # define expected module and optional kwargs given the pipeline signature
