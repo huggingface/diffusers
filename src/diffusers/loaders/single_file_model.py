@@ -18,6 +18,7 @@ from typing import Optional
 
 from huggingface_hub.utils import validate_hf_hub_args
 
+from ..models.model_loading_utils import _load_state_dict_into_model
 from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
@@ -271,16 +272,24 @@ class FromOriginalModelMixin:
 
         if is_accelerate_available():
             unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-            if model._keys_to_ignore_on_load_unexpected is not None:
-                for pat in model._keys_to_ignore_on_load_unexpected:
-                    unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
-            if len(unexpected_keys) > 0:
-                logger.warning(
-                    f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-                )
         else:
-            model.load_state_dict(diffusers_format_checkpoint)
+            expected_keys = model.state_dict().keys()
+            loaded_keys = diffusers_format_checkpoint.keys()
+            unexpected_keys = list(set(loaded_keys) - set(expected_keys))
+
+            error_msgs = _load_state_dict_into_model(model, diffusers_format_checkpoint)
+            if error_msgs:
+                raise RuntimeError(f"Error(s) in loading state_dict for {model.__class__.__name__}:\n\t{error_msgs}")
+
+        if model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warning(
+                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
 
         if torch_dtype is not None:
             model.to(torch_dtype)
