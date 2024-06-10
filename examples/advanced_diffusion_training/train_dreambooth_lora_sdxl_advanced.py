@@ -223,7 +223,7 @@ Special VAE used for training: {vae_path}.
         "stable-diffusion-xl-diffusers",
         "text-to-image",
         "diffusers",
-        "lora",
+        lora,
         "template:sd-lora",
     ]
     model_card = populate_model_card(model_card, tags=tags)
