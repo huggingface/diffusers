@@ -113,19 +113,19 @@ accelerate launch train_lcm_distill_lora_sdxl_wds.py \
     --push_to_hub \
 ```
 
-We provide another version for LCM LoRA SDXL that follows best practices of `peft` and leverages the `datasets` library for quick experimentation. The script doesn't load two UNets unlike `train_lcm_distill_lora_sdxl_wds.py` which reduces the memory requirements quite a bit. 
+We provide another version for LCM LoRA SDXL that follows best practices of `peft` and leverages the `datasets` library for quick experimentation. The script doesn't load two UNets unlike `train_lcm_distill_lora_sdxl_wds.py` which reduces the memory requirements quite a bit.
 
-Below is an example training command that trains an LCM LoRA on the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions):
+Below is an example training command that trains an LCM LoRA on the [Narutos dataset](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions):
 
 ```bash
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 export VAE_PATH="madebyollin/sdxl-vae-fp16-fix"
 
 accelerate launch train_lcm_distill_lora_sdxl.py \
   --pretrained_teacher_model=${MODEL_NAME}  \
   --pretrained_vae_model_name_or_path=${VAE_PATH} \
-  --output_dir="pokemons-lora-lcm-sdxl" \
+  --output_dir="narutos-lora-lcm-sdxl" \
   --mixed_precision="fp16" \
   --dataset_name=$DATASET_NAME \
   --resolution=1024 \

@@ -130,7 +130,7 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
         )
 
     @apply_forward_hook
-    def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> VQEncoderOutput:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> VQEncoderOutput:
         h = self.in_block(x)
         h = self.down_blocks(h)
 
@@ -141,8 +141,8 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def decode(
-        self, h: torch.FloatTensor, force_not_quantize: bool = True, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+        self, h: torch.Tensor, force_not_quantize: bool = True, return_dict: bool = True
+    ) -> Union[DecoderOutput, torch.Tensor]:
         if not force_not_quantize:
             quant, _, _ = self.vquantizer(h)
         else:
@@ -155,10 +155,10 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=dec)
 
-    def forward(self, sample: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""
         Args:
-            sample (`torch.FloatTensor`): Input sample.
+            sample (`torch.Tensor`): Input sample.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
         """
