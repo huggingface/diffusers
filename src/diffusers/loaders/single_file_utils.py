@@ -23,7 +23,6 @@ from urllib.parse import urlparse
 import requests
 import yaml
 
-from ..models.model_loading_utils import _load_state_dict_into_model
 from ..models.modeling_utils import load_state_dict
 from ..schedulers import (
     DDIMScheduler,
@@ -1366,13 +1365,7 @@ def create_diffusers_clip_model_from_ldm(
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
     else:
-        expected_keys = model.state_dict().keys()
-        loaded_keys = diffusers_format_checkpoint.keys()
-        unexpected_keys = list(set(loaded_keys) - set(expected_keys))
-
-        error_msgs = _load_state_dict_into_model(model, diffusers_format_checkpoint)
-        if error_msgs:
-            raise RuntimeError(f"Error(s) in loading state_dict for {model.__class__.__name__}:\n\t{error_msgs}")
+        _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
 
     if model._keys_to_ignore_on_load_unexpected is not None:
         for pat in model._keys_to_ignore_on_load_unexpected:
