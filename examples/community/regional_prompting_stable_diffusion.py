@@ -207,22 +207,7 @@ class RegionalPromptingStableDiffusionPipeline(
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    def _default_height_width(
-        self,
-        height: Optional[int],
-        width: Optional[int],
-        image: Union[PIL.Image.Image, torch.Tensor, List[PIL.Image.Image]],
-    ) -> Tuple[int, int]:
-        r"""
-        Calculate the default height and width for the given image.
-        Args:
-            height (int or None): The desired height of the image. If None, the height will be determined based on the input image.
-            width (int or None): The desired width of the image. If None, the width will be determined based on the input image.
-            image (PIL.Image.Image or torch.Tensor or list[PIL.Image.Image]): The input image or a list of images.
-        Returns:
-            Tuple[int, int]: A tuple containing the calculated height and width.
-        """
-        # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt: Optional[Union[str, List[str]]],
@@ -307,54 +292,6 @@ class RegionalPromptingStableDiffusionPipeline(
             raise ValueError(
                 "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
             )
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
-    def _encode_prompt(
-        self,
-        prompt: Union[str, List[str]],
-        device: torch.device,
-        num_images_per_prompt: int,
-        do_classifier_free_guidance: bool,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        lora_scale: Optional[float] = None,
-        **kwargs,
-    ) -> torch.FloatTensor:
-        r"""
-        Encodes the prompt into embeddings.
-        Args:
-            prompt (Union[str, List[str]]): The prompt text or a list of prompt texts.
-            device (torch.device): The device to use for encoding.
-            num_images_per_prompt (int): The number of images per prompt.
-            do_classifier_free_guidance (bool): Whether to use classifier-free guidance.
-            negative_prompt (Optional[Union[str, List[str]]], optional): The negative prompt text or a list of negative prompt texts. Defaults to None.
-            prompt_embeds (Optional[torch.FloatTensor], optional): The prompt embeddings. Defaults to None.
-            negative_prompt_embeds (Optional[torch.FloatTensor], optional): The negative prompt embeddings. Defaults to None.
-            lora_scale (Optional[float], optional): The LoRA scale. Defaults to None.
-            **kwargs: Additional keyword arguments.
-        Returns:
-            torch.FloatTensor: The encoded prompt embeddings.
-        """
-        deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
-        deprecate("_encode_prompt()", "1.0.0", deprecation_message, standard_warn=False)
-
-        prompt_embeds_tuple = self.encode_prompt(
-            prompt=prompt,
-            device=device,
-            num_images_per_prompt=num_images_per_prompt,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            negative_prompt=negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=lora_scale,
-            **kwargs,
-        )
-
-        # concatenate for backwards comp
-        prompt_embeds = torch.cat([prompt_embeds_tuple[1], prompt_embeds_tuple[0]])
-
-        return prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
@@ -536,77 +473,6 @@ class RegionalPromptingStableDiffusionPipeline(
             unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(
-        self,
-        batch_size: int,
-        num_channels_latents: int,
-        height: int,
-        width: int,
-        dtype: torch.dtype,
-        device: torch.device,
-        generator: Union[torch.Generator, List[torch.Generator]],
-        latents: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        r"""
-        Prepare the latent vectors for diffusion.
-        Args:
-            batch_size (int): The number of samples in the batch.
-            num_channels_latents (int): The number of channels in the latent vectors.
-            height (int): The height of the latent vectors.
-            width (int): The width of the latent vectors.
-            dtype (torch.dtype): The data type of the latent vectors.
-            device (torch.device): The device to place the latent vectors on.
-            generator (Union[torch.Generator, List[torch.Generator]]): The generator(s) to use for random number generation.
-            latents (Optional[torch.Tensor]): The pre-existing latent vectors. If None, new latent vectors will be generated.
-        Returns:
-            torch.Tensor: The prepared latent vectors.
-        """
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
-
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
-        return latents
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
-    def prepare_extra_step_kwargs(
-        self, generator: Union[torch.Generator, List[torch.Generator]], eta: float
-    ) -> Dict[str, Any]:
-        r"""
-        Prepare extra keyword arguments for the scheduler step.
-        Args:
-            generator (Union[torch.Generator, List[torch.Generator]]): The generator used for sampling.
-            eta (float): The value of eta (η) used with the DDIMScheduler. Should be between 0 and 1.
-        Returns:
-            Dict[str, Any]: A dictionary containing the extra keyword arguments for the scheduler step.
-        """
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
-
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_step_kwargs = {}
-        if accepts_eta:
-            extra_step_kwargs["eta"] = eta
-
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
-        return extra_step_kwargs
-
 
     @torch.no_grad()
     def __call__(
