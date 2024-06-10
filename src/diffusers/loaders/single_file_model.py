@@ -67,6 +67,23 @@ SINGLE_FILE_LOADABLE_CLASSES = {
 }
 
 
+def _is_subclass(src_cls, dst_cls_str):
+    """
+    Find if src_cls is a subclass of dst_cls whose name is dst_cls_str
+    """
+    for cls in src_cls.__mro__:
+        if cls.__name__ == dst_cls_str:
+            return True
+    return False
+
+
+def _get_single_file_loadable_mapping_class(cls):
+    for dst_cls_str in SINGLE_FILE_LOADABLE_CLASSES:
+        if _is_subclass(cls, dst_cls_str):
+            return dst_cls_str
+    return None
+
+
 def _get_mapping_function_kwargs(mapping_fn, **kwargs):
     parameters = inspect.signature(mapping_fn).parameters
 
@@ -144,8 +161,9 @@ class FromOriginalModelMixin:
         ```
         """
 
-        class_name = cls.__name__
-        if class_name not in SINGLE_FILE_LOADABLE_CLASSES:
+        mapping_class_name = _get_single_file_loadable_mapping_class(cls)
+        # if class_name not in SINGLE_FILE_LOADABLE_CLASSES:
+        if mapping_class_name is None:
             raise ValueError(
                 f"FromOriginalModelMixin is currently only compatible with {', '.join(SINGLE_FILE_LOADABLE_CLASSES.keys())}"
             )
@@ -190,7 +208,7 @@ class FromOriginalModelMixin:
                 revision=revision,
             )
 
-        mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[class_name]
+        mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
         if original_config:
@@ -202,7 +220,7 @@ class FromOriginalModelMixin:
             if config_mapping_fn is None:
                 raise ValueError(
                     (
-                        f"`original_config` has been provided for {class_name} but no mapping function"
+                        f"`original_config` has been provided for {mapping_class_name} but no mapping function"
                         "was found to convert the original config to a Diffusers config in"
                         "`diffusers.loaders.single_file_utils`"
                     )
@@ -262,7 +280,7 @@ class FromOriginalModelMixin:
         )
         if not diffusers_format_checkpoint:
             raise SingleFileComponentError(
-                f"Failed to load {class_name}. Weights for this component appear to be missing in the checkpoint."
+                f"Failed to load {mapping_class_name}. Weights for this component appear to be missing in the checkpoint."
             )
 
         ctx = init_empty_weights if is_accelerate_available() else nullcontext
