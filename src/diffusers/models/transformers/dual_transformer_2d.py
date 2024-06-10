@@ -15,7 +15,8 @@ from typing import Optional
 
 from torch import nn
 
-from .transformer_2d import Transformer2DModel, Transformer2DModelOutput
+from ..modeling_outputs import Transformer2DModelOutput
+from .transformer_2d import Transformer2DModel
 
 
 class DualTransformer2DModel(nn.Module):
