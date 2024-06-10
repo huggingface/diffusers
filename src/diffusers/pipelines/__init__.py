@@ -140,6 +140,7 @@ else:
     _import_structure["pag"].extend(
         [
             "StableDiffusionXLPAGPipeline",
+            "StableDiffusionXLPAGInpaintPipeline",
         ]
     )
     _import_structure["controlnet_xs"].extend(
@@ -468,7 +469,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .musicldm import MusicLDMPipeline
-        from .pag import StableDiffusionXLPAGPipeline
+        from .pag import StableDiffusionXLPAGInpaintPipeline, StableDiffusionXLPAGPipeline
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline

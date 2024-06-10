@@ -45,7 +45,7 @@ from .kandinsky2_2 import (
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
-from .pag import StableDiffusionXLPAGPipeline
+from .pag import StableDiffusionXLPAGInpaintPipeline, StableDiffusionXLPAGPipeline
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
@@ -103,6 +103,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky22", KandinskyV22InpaintCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
+        ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
     ]
 )
 
@@ -900,6 +901,10 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         if "controlnet" in kwargs:
             orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
+        if "enable_pag" in kwargs:
+            enable_pag = kwargs.pop("enable_pag")
+            if enable_pag:
+                orig_class_name = config["_class_name"].replace("Pipeline", "PAGPipeline")
 
         inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
 
@@ -954,6 +959,19 @@ class AutoPipelineForInpainting(ConfigMixin):
                 inpainting_cls = _get_task_class(
                     AUTO_INPAINT_PIPELINES_MAPPING,
                     inpainting_cls.__name__.replace("ControlNetInpaintPipeline", "InpaintPipeline"),
+                )
+
+        if "enable_pag" in kwargs:
+            enable_pag = kwargs.pop("enable_pag")
+            if enable_pag:
+                inpainting_cls = _get_task_class(
+                    AUTO_INPAINT_PIPELINES_MAPPING,
+                    inpainting_cls.__name__.replace("PAG", "").replace("InpaintPipeline", "PAGInpaintPipeline"),
+                )
+            else:
+                inpainting_cls = _get_task_class(
+                    AUTO_INPAINT_PIPELINES_MAPPING,
+                    inpainting_cls.__name__.replace("PAGInpaintPipeline", "InpaintPipeline"),
                 )
 
         # define expected module and optional kwargs given the pipeline signature

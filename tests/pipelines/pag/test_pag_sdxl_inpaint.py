@@ -15,32 +15,43 @@
 
 import gc
 import inspect
+import random
 import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from PIL import Image
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import (
     AutoencoderKL,
-    AutoPipelineForText2Image,
+    AutoPipelineForInpainting,
     EulerDiscreteScheduler,
-    StableDiffusionXLPAGPipeline,
-    StableDiffusionXLPipeline,
+    StableDiffusionXLInpaintPipeline,
+    StableDiffusionXLPAGInpaintPipeline,
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    floats_tensor,
+    load_image,
     require_torch_gpu,
     slow,
     torch_device,
 )
 
 from ..pipeline_params import (
-    TEXT_TO_IMAGE_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
-    TEXT_TO_IMAGE_IMAGE_PARAMS,
-    TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import (
     IPAdapterTesterMixin,
@@ -54,7 +65,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class StableDiffusionXLPAGPipelineFastTests(
+class StableDiffusionXLPAGInpaintPipelineFastTests(
     PipelineTesterMixin,
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
@@ -62,23 +73,27 @@ class StableDiffusionXLPAGPipelineFastTests(
     SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
-    pipeline_class = StableDiffusionXLPAGPipeline
-    params = TEXT_TO_IMAGE_PARAMS.union({"pag_scale", "pag_adaptive_scale"})
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"add_text_embeds", "add_time_ids"})
+    pipeline_class = StableDiffusionXLPAGInpaintPipeline
+    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS.union({"pag_scale", "pag_adaptive_scale"})
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    image_params = frozenset([])
+    image_latents_params = frozenset([])
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
+        {"add_text_embeds", "add_time_ids", "mask", "masked_image_latents"}
+    )
 
-    def get_dummy_components(self, time_cond_proj_dim=None):
-        # Copied from tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl.StableDiffusionXLPipelineFastTests.get_dummy_components
+    def get_dummy_components(
+        self, skip_first_text_encoder=False, time_cond_proj_dim=None, requires_aesthetics_score=False
+    ):
+        # copied from tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipelineFastTests.get_dummy_components
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(2, 4),
+            block_out_channels=(32, 64),
             layers_per_block=2,
-            time_cond_proj_dim=time_cond_proj_dim,
             sample_size=32,
             in_channels=4,
             out_channels=4,
+            time_cond_proj_dim=time_cond_proj_dim,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             # SD2-specific config below
@@ -87,9 +102,8 @@ class StableDiffusionXLPAGPipelineFastTests(
             addition_embed_type="text_time",
             addition_time_embed_dim=8,
             transformer_layers_per_block=(1, 2),
-            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
-            cross_attention_dim=64,
-            norm_num_groups=1,
+            projection_class_embeddings_input_dim=72 if requires_aesthetics_score else 80,  # 5 * 8 + 32
+            cross_attention_dim=64 if not skip_first_text_encoder else 32,
         )
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085,
@@ -129,29 +143,66 @@ class StableDiffusionXLPAGPipelineFastTests(
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
+        torch.manual_seed(0)
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=32,
+            image_size=224,
+            projection_dim=32,
+            intermediate_size=37,
+            num_attention_heads=4,
+            num_channels=3,
+            num_hidden_layers=5,
+            patch_size=14,
+        )
+
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
+
+        feature_extractor = CLIPImageProcessor(
+            crop_size=224,
+            do_center_crop=True,
+            do_normalize=True,
+            do_resize=True,
+            image_mean=[0.48145466, 0.4578275, 0.40821073],
+            image_std=[0.26862954, 0.26130258, 0.27577711],
+            resample=3,
+            size=224,
+        )
+
         components = {
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
-            "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
+            "text_encoder": text_encoder if not skip_first_text_encoder else None,
+            "tokenizer": tokenizer if not skip_first_text_encoder else None,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
-            "image_encoder": None,
-            "feature_extractor": None,
+            "image_encoder": image_encoder,
+            "feature_extractor": feature_extractor,
+            "requires_aesthetics_score": requires_aesthetics_score,
         }
         return components
 
     def get_dummy_inputs(self, device, seed=0):
+        # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
+        # create mask
+        image[8:, 8:, :] = 255
+        mask_image = Image.fromarray(np.uint8(image)).convert("L").resize((64, 64))
+
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
+            "image": init_image,
+            "mask_image": mask_image,
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 5.0,
+            "guidance_scale": 6.0,
+            "strength": 1.0,
             "pag_scale": 0.9,
             "output_type": "np",
         }
@@ -159,10 +210,10 @@ class StableDiffusionXLPAGPipelineFastTests(
 
     def test_pag_disable_enable(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
+        components = self.get_dummy_components(requires_aesthetics_score=True)
 
-        # base  pipeline (expect same output when pag is disabled)
-        pipe_sd = StableDiffusionXLPipeline(**components)
+        # base pipeline
+        pipe_sd = StableDiffusionXLInpaintPipeline(**components)
         pipe_sd = pipe_sd.to(device)
         pipe_sd.set_progress_bar_config(disable=None)
 
@@ -196,78 +247,9 @@ class StableDiffusionXLPAGPipelineFastTests(
     def test_save_load_optional_components(self):
         self._test_save_load_optional_components()
 
-    def test_pag_applied_layers(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-
-        # base pipeline
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # pag_applied_layers = ["mid","up","down"] should apply to all self-attention layers
-        all_self_attn_layers = [k for k in pipe.unet.attn_processors.keys() if "attn1" in k]
-        original_attn_procs = pipe.unet.attn_processors
-        pag_layers = ["mid", "down", "up"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(all_self_attn_layers)
-
-        # pag_applied_layers = ["mid"], or ["mid.block_0"] or ["mid.block_0.attentions_0"] should apply to all self-attention layers in mid_block, i.e.
-        # mid_block.attentions.0.transformer_blocks.0.attn1.processor
-        # mid_block.attentions.0.transformer_blocks.1.attn1.processor
-        all_self_attn_mid_layers = [
-            "mid_block.attentions.0.transformer_blocks.0.attn1.processor",
-            "mid_block.attentions.0.transformer_blocks.1.attn1.processor",
-        ]
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0.attentions_0"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
-
-        # pag_applied_layers = ["mid.block_0.attentions_1"] does not exist in the model
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0.attentions_1"]
-        with self.assertRaises(ValueError):
-            pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-
-        # pag_applied_layers = "down" should apply to all self-attention layers in down_blocks
-        # down_blocks.1.attentions.0.transformer_blocks.0.attn1.processor
-        # down_blocks.1.attentions.0.transformer_blocks.1.attn1.processor
-        # down_blocks.1.attentions.1.transformer_blocks.0.attn1.processor
-        # down_blocks.1.attentions.1.transformer_blocks.1.attn1.processor
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 4
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_0"]
-        with self.assertRaises(ValueError):
-            pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_1"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 4
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_1.attentions_1"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 2
-
     def test_pag_inference(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
+        components = self.get_dummy_components(requires_aesthetics_score=True)
 
         pipe_pag = self.pipeline_class(**components, pag_applied_layers=["mid", "up", "down"])
         pipe_pag = pipe_pag.to(device)
@@ -284,17 +266,16 @@ class StableDiffusionXLPAGPipelineFastTests(
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
         expected_slice = np.array(
-            [0.55341685, 0.55503535, 0.47299808, 0.43274558, 0.4965323, 0.46310428, 0.51455414, 0.5015592, 0.46913484]
+            [0.8115454, 0.53986573, 0.5825281, 0.6028964, 0.67128646, 0.7046922, 0.6418713, 0.5933924, 0.5154763]
         )
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
 
 
 @slow
 @require_torch_gpu
-class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
-    pipeline_class = StableDiffusionXLPAGPipeline
+class StableDiffusionXLPAGInpaintPipelineIntegrationTests(unittest.TestCase):
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
 
     def setUp(self):
@@ -308,11 +289,19 @@ class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_inputs(self, device, generator_device="cpu", seed=0, guidance_scale=7.0):
+        img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+        mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+        init_image = load_image(img_url).convert("RGB")
+        mask_image = load_image(mask_url).convert("RGB")
+
         generator = torch.Generator(device=generator_device).manual_seed(seed)
         inputs = {
-            "prompt": "a polar bear sitting in a chair drinking a milkshake",
-            "negative_prompt": "deformed, ugly, wrong proportion, low res, bad anatomy, worst quality, low quality",
+            "prompt": "A majestic tiger sitting on a bench",
             "generator": generator,
+            "image": init_image,
+            "mask_image": mask_image,
+            "strength": 0.8,
             "num_inference_steps": 3,
             "guidance_scale": guidance_scale,
             "pag_scale": 3.0,
@@ -321,7 +310,7 @@ class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
         return inputs
 
     def test_pag_cfg(self):
-        pipeline = AutoPipelineForText2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
+        pipeline = AutoPipelineForInpainting.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
@@ -331,14 +320,14 @@ class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
         assert image.shape == (1, 1024, 1024, 3)
         expected_slice = np.array(
-            [0.3123679, 0.31725878, 0.32026544, 0.327533, 0.3266391, 0.3303998, 0.33544615, 0.34181812, 0.34102726]
+            [0.41385046, 0.39608297, 0.4360491, 0.26872507, 0.32187328, 0.4242474, 0.2603805, 0.34167895, 0.46561807]
         )
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
         ), f"output is different from expected, {image_slice.flatten()}"
 
     def test_pag_uncond(self):
-        pipeline = AutoPipelineForText2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
+        pipeline = AutoPipelineForInpainting.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
@@ -348,7 +337,7 @@ class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
         assert image.shape == (1, 1024, 1024, 3)
         expected_slice = np.array(
-            [0.47400922, 0.48650584, 0.4839625, 0.4724013, 0.4890427, 0.49544555, 0.51707107, 0.54299414, 0.5224372]
+            [0.41597816, 0.39302617, 0.44287828, 0.2687074, 0.28315824, 0.40582314, 0.20877528, 0.2380802, 0.39447647]
         )
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
