@@ -163,6 +163,7 @@ def load_model_dict_into_meta(
 
 
 def _load_state_dict_into_model(model_to_load, state_dict: OrderedDict) -> List[str]:
+    # Convert old format to new format if needed from a PyTorch state_dict
     # copy state_dict so _load_from_state_dict can modify it
     state_dict = state_dict.copy()
     error_msgs = []
