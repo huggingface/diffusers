@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 import requests
 import yaml
 
+from ..models.model_loading_utils import _load_state_dict_into_model
 from ..models.modeling_utils import load_state_dict
 from ..schedulers import (
     DDIMScheduler,
@@ -1236,8 +1237,6 @@ def convert_open_clip_checkpoint(
     else:
         text_proj_dim = LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
 
-    text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
-
     keys = list(checkpoint.keys())
     keys_to_ignore = SD_2_TEXT_ENCODER_KEYS_TO_IGNORE
 
@@ -1285,9 +1284,6 @@ def convert_open_clip_checkpoint(
             text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :].clone().detach()
         else:
             text_model_dict[diffusers_key] = checkpoint.get(key)
-
-    if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
-        text_model_dict.pop("text_model.embeddings.position_ids", None)
 
     return text_model_dict
 
@@ -1379,7 +1375,10 @@ def create_diffusers_clip_model_from_ldm(
             )
 
     else:
-        model.load_state_dict(diffusers_format_checkpoint)
+        error_msgs = _load_state_dict_into_model(model, diffusers_format_checkpoint)
+        if error_msgs:
+            error_msgs = "\n".join(error_msgs)
+            logger.warning(f"There was an issue loading state_dict for {model.__class__.__name__}:\n{error_msgs}")
 
     if torch_dtype is not None:
         model.to(torch_dtype)
