@@ -67,16 +67,6 @@ SINGLE_FILE_LOADABLE_CLASSES = {
 }
 
 
-def _is_subclass(src_cls, dst_cls_str):
-    """
-    Find if src_cls is a subclass of dst_cls whose name is dst_cls_str
-    """
-    for cls in src_cls.__mro__:
-        if cls.__name__ == dst_cls_str:
-            return True
-    return False
-
-
 def _get_single_file_loadable_mapping_class(cls):
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     for loadable_class_str in SINGLE_FILE_LOADABLE_CLASSES:
@@ -85,10 +75,6 @@ def _get_single_file_loadable_mapping_class(cls):
         if issubclass(cls, loadable_class):
             return loadable_class_str
 
-    return None
-    for dst_cls_str in SINGLE_FILE_LOADABLE_CLASSES:
-        if _is_subclass(cls, dst_cls_str):
-            return dst_cls_str
     return None
 
 
