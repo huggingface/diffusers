@@ -34,16 +34,16 @@ class DDPMParallelSchedulerOutput(BaseOutput):
     Output class for the scheduler's `step` function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
             `pred_original_sample` can be used to preview progress or for guidance.
     """
 
-    prev_sample: torch.FloatTensor
-    pred_original_sample: Optional[torch.FloatTensor] = None
+    prev_sample: torch.Tensor
+    pred_original_sample: Optional[torch.Tensor] = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -98,11 +98,11 @@ def rescale_zero_terminal_snr(betas):
 
 
     Args:
-        betas (`torch.FloatTensor`):
+        betas (`torch.Tensor`):
             the betas that the scheduler is being initialized with.
 
     Returns:
-        `torch.FloatTensor`: rescaled betas with zero terminal SNR
+        `torch.Tensor`: rescaled betas with zero terminal SNR
     """
     # Convert betas to alphas_bar_sqrt
     alphas = 1.0 - betas
@@ -219,7 +219,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
             betas = torch.linspace(-6, 6, num_train_timesteps)
             self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         # Rescale for zero SNR
         if rescale_betas_zero_snr:
@@ -240,19 +240,19 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         self.variance_type = variance_type
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.scale_model_input
-    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
             timestep (`int`, *optional*):
                 The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
         return sample
@@ -375,7 +375,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         return variance
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
-    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+    def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """
         "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
         prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
@@ -410,9 +410,9 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         timestep: int,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
     ) -> Union[DDPMParallelSchedulerOutput, Tuple]:
@@ -421,9 +421,9 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
+            model_output (`torch.Tensor`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 current instance of sample being created by diffusion process.
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than DDPMParallelSchedulerOutput class
@@ -506,10 +506,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
 
     def batch_step_no_noise(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         timesteps: List[int],
-        sample: torch.FloatTensor,
-    ) -> torch.FloatTensor:
+        sample: torch.Tensor,
+    ) -> torch.Tensor:
         """
         Batched version of the `step` function, to be able to reverse the SDE for multiple samples/timesteps at once.
         Also, does not add any noise to the predicted sample, which is necessary for parallel sampling where the noise
@@ -519,14 +519,14 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
+            model_output (`torch.Tensor`): direct output from learned diffusion model.
             timesteps (`List[int]`):
                 current discrete timesteps in the diffusion chain. This is now a list of integers.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 current instance of sample being created by diffusion process.
 
         Returns:
-            `torch.FloatTensor`: sample tensor at previous timestep.
+            `torch.Tensor`: sample tensor at previous timestep.
         """
         t = timesteps
         num_inference_steps = self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps
@@ -587,10 +587,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
         timesteps: torch.IntTensor,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
         # for the subsequent add_noise calls
@@ -612,9 +612,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         return noisy_samples
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
-    def get_velocity(
-        self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
-    ) -> torch.FloatTensor:
+    def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor) -> torch.Tensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
         self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
         alphas_cumprod = self.alphas_cumprod.to(dtype=sample.dtype)

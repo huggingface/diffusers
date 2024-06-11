@@ -24,6 +24,7 @@ _import_structure = {
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
+    "marigold": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -114,6 +115,7 @@ else:
     _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
     _import_structure["animatediff"] = [
         "AnimateDiffPipeline",
+        "AnimateDiffSDXLPipeline",
         "AnimateDiffVideoToVideoPipeline",
     ]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
@@ -148,6 +150,7 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
+    _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -182,6 +185,12 @@ else:
         [
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
+        ]
+    )
+    _import_structure["marigold"].extend(
+        [
+            "MarigoldDepthPipeline",
+            "MarigoldNormalsPipeline",
         ]
     )
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
@@ -367,7 +376,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
         from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
-        from .animatediff import AnimateDiffPipeline, AnimateDiffVideoToVideoPipeline
+        from .animatediff import AnimateDiffPipeline, AnimateDiffSDXLPipeline, AnimateDiffVideoToVideoPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import (
             AudioLDM2Pipeline,
@@ -410,6 +419,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
+        from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
             KandinskyCombinedPipeline,
@@ -446,6 +456,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPInversionPipelineOutput,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
+        )
+        from .marigold import (
+            MarigoldDepthPipeline,
+            MarigoldNormalsPipeline,
         )
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline

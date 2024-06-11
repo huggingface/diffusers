@@ -31,19 +31,19 @@ class KarrasVeOutput(BaseOutput):
     Output class for the scheduler's step function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        derivative (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        derivative (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Derivative of predicted original image sample (x_0).
-        pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             The predicted denoised sample (x_{0}) based on the model output from the current timestep.
             `pred_original_sample` can be used to preview progress or for guidance.
     """
 
-    prev_sample: torch.FloatTensor
-    derivative: torch.FloatTensor
-    pred_original_sample: Optional[torch.FloatTensor] = None
+    prev_sample: torch.Tensor
+    derivative: torch.Tensor
+    pred_original_sample: Optional[torch.Tensor] = None
 
 
 class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
@@ -94,21 +94,21 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps: int = None
         self.timesteps: np.IntTensor = None
-        self.schedule: torch.FloatTensor = None  # sigma(t_i)
+        self.schedule: torch.Tensor = None  # sigma(t_i)
 
-    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
             timestep (`int`, *optional*):
                 The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
         return sample
@@ -136,14 +136,14 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.schedule = torch.tensor(schedule, dtype=torch.float32, device=device)
 
     def add_noise_to_input(
-        self, sample: torch.FloatTensor, sigma: float, generator: Optional[torch.Generator] = None
-    ) -> Tuple[torch.FloatTensor, float]:
+        self, sample: torch.Tensor, sigma: float, generator: Optional[torch.Generator] = None
+    ) -> Tuple[torch.Tensor, float]:
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a `gamma_i ≥ 0` to reach a
         higher noise level `sigma_hat = sigma_i + gamma_i*sigma_i`.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
             sigma (`float`):
             generator (`torch.Generator`, *optional*):
@@ -163,10 +163,10 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         sigma_hat: float,
         sigma_prev: float,
-        sample_hat: torch.FloatTensor,
+        sample_hat: torch.Tensor,
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
         """
@@ -174,11 +174,11 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
             sigma_hat (`float`):
             sigma_prev (`float`):
-            sample_hat (`torch.FloatTensor`):
+            sample_hat (`torch.Tensor`):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~schedulers.scheduling_karras_ve.KarrasVESchedulerOutput`] or `tuple`.
 
@@ -202,25 +202,25 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
     def step_correct(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         sigma_hat: float,
         sigma_prev: float,
-        sample_hat: torch.FloatTensor,
-        sample_prev: torch.FloatTensor,
-        derivative: torch.FloatTensor,
+        sample_hat: torch.Tensor,
+        sample_prev: torch.Tensor,
+        derivative: torch.Tensor,
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
         """
         Corrects the predicted sample based on the `model_output` of the network.
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
-            sample_hat (`torch.FloatTensor`): TODO
-            sample_prev (`torch.FloatTensor`): TODO
-            derivative (`torch.FloatTensor`): TODO
+            sample_hat (`torch.Tensor`): TODO
+            sample_prev (`torch.Tensor`): TODO
+            derivative (`torch.Tensor`): TODO
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~schedulers.scheduling_ddpm.DDPMSchedulerOutput`] or `tuple`.
 
