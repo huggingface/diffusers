@@ -146,10 +146,6 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             self.alphas = torch.cat([alphas_cumprod[:1], alphas])
             self.betas = 1 - self.alphas
 
-    def __len__(self) -> int:
-        """Returns the number of inference steps or the number of training timesteps or 1000, whichever is set."""
-        return self.num_inference_steps or self.config.num_train_timesteps or 1000
-
     def log_snr(self, timesteps: torch.Tensor) -> torch.Tensor:
         """
         Computes the logarithm of the signal-to-noise ratio for given timesteps using the configured beta schedule.
@@ -292,31 +288,6 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def add_noise(self, original_samples: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor) -> torch.Tensor:
-        """
-        Adds noise to the original samples according to the noise schedule and the specified timesteps.
-
-        This method calculates the noisy samples by combining the original samples with Gaussian noise scaled according
-        to the time-dependent noise levels dictated by the signal-to-noise ratio.
-
-        Args:
-            original_samples (torch.Tensor): The original samples from the data distribution before noise is added.
-            noise (torch.Tensor): Gaussian noise to be added to the samples.
-            timesteps (torch.Tensor): Timesteps at which the samples are processed.
-
-        Returns:
-            torch.Tensor: The noisy samples after adding scaled Gaussian noise according to the SNR.
-        """
-        gamma = self.log_snr(timesteps).to(original_samples.device)
-        #  Reshape from (1,) to (B, ...) where B is the batch size and ... are the spatial dimensions
-        gamma = gamma.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
-
-        sqrt_alpha_prod = torch.sqrt(torch.sigmoid(gamma))
-        sqrt_one_minus_alpha_prod = torch.sqrt(torch.sigmoid(-gamma))  # sqrt(sigma)
-
-        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
-        return noisy_samples
-
     def step(
         self,
         model_output: torch.Tensor,
@@ -370,8 +341,14 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = (sample - torch.sqrt(sigma) * model_output) / torch.sqrt(alpha)  # Sec. 3.4, eq. 10
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
+        elif self.config.prediction_type == "v_prediction":
+            pred_original_sample = torch.sqrt(alpha) * sample + torch.sqrt(sigma) * model_output
         else:
-            raise ValueError("`prediction_type` must be either `epsilon` or `sample`.")
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` or"
+                f" `v_prediction`  for the {self.__class__.__name__}."
+            )
+            
 
         # 3. Clip or threshold "predicted x_0"
         if self.config.thresholding:
@@ -402,3 +379,43 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             return (pred_prev_sample,)
 
         return VDMSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
+
+    def add_noise(self, original_samples: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor) -> torch.Tensor:
+        """
+        Adds noise to the original samples according to the noise schedule and the specified timesteps.
+
+        This method calculates the noisy samples by combining the original samples with Gaussian noise scaled according
+        to the time-dependent noise levels dictated by the signal-to-noise ratio.
+
+        Args:
+            original_samples (torch.Tensor): The original samples from the data distribution before noise is added.
+            noise (torch.Tensor): Gaussian noise to be added to the samples.
+            timesteps (torch.Tensor): Timesteps at which the samples are processed.
+
+        Returns:
+            torch.Tensor: The noisy samples after adding scaled Gaussian noise according to the SNR.
+        """
+        gamma = self.log_snr(timesteps).to(original_samples.device)
+        #  Reshape from (1,) to (B, ...) where B is the batch size and ... are the spatial dimensions
+        gamma = gamma.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
+
+        sqrt_alpha_prod = torch.sqrt(torch.sigmoid(gamma))
+        sqrt_one_minus_alpha_prod = torch.sqrt(torch.sigmoid(-gamma))  # sqrt(sigma)
+
+        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        return noisy_samples
+
+    def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor) -> torch.Tensor:
+        gamma = self.log_snr(timesteps).to(original_samples.device)
+        #  Reshape from (1,) to (B, ...) where B is the batch size and ... are the spatial dimensions
+        gamma = gamma.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
+
+        sqrt_alpha_prod = torch.sqrt(torch.sigmoid(gamma))
+        sqrt_one_minus_alpha_prod = torch.sqrt(torch.sigmoid(-gamma))  # sqrt(sigma)
+
+        velocity = sqrt_alpha_prod * noise - sqrt_one_minus_alpha_prod * sample
+        return velocity
+
+    def __len__(self) -> int:
+        """Returns the number of inference steps or the number of training timesteps or 1000, whichever is set."""
+        return self.num_inference_steps or self.config.num_train_timesteps or 1000
