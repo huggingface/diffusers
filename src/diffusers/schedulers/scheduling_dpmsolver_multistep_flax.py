@@ -182,9 +182,9 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         # settings for DPM-Solver
         if self.config.algorithm_type not in ["dpmsolver", "dpmsolver++"]:
-            raise NotImplementedError(f"{self.config.algorithm_type} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{self.config.algorithm_type} is not implemented for {self.__class__}")
         if self.config.solver_type not in ["midpoint", "heun"]:
-            raise NotImplementedError(f"{self.config.solver_type} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{self.config.solver_type} is not implemented for {self.__class__}")
 
         # standard deviation of the initial noise distribution
         init_noise_sigma = jnp.array(1.0, dtype=self.dtype)

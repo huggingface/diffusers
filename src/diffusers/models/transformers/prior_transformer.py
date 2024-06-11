@@ -266,13 +266,13 @@ class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Pef
             attention_mask (`torch.BoolTensor` of shape `(batch_size, num_embeddings)`):
                 Text mask for the text embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.prior_transformer.PriorTransformerOutput`] instead of a plain
-                tuple.
+                Whether or not to return a [`~models.transformers.prior_transformer.PriorTransformerOutput`] instead of
+                a plain tuple.
 
         Returns:
-            [`~models.prior_transformer.PriorTransformerOutput`] or `tuple`:
-                If return_dict is True, a [`~models.prior_transformer.PriorTransformerOutput`] is returned, otherwise a
-                tuple is returned where the first element is the sample tensor.
+            [`~models.transformers.prior_transformer.PriorTransformerOutput`] or `tuple`:
+                If return_dict is True, a [`~models.transformers.prior_transformer.PriorTransformerOutput`] is
+                returned, otherwise a tuple is returned where the first element is the sample tensor.
         """
         batch_size = hidden_states.shape[0]
 

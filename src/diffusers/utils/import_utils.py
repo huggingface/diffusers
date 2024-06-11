@@ -131,7 +131,6 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _unidecode_available = False
 
-
 _onnxruntime_version = "N/A"
 _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:
@@ -295,6 +294,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
+_matplotlib_available = importlib.util.find_spec("matplotlib") is not None
+try:
+    _matplotlib_version = importlib_metadata.version("matplotlib")
+    logger.debug(f"Successfully imported matplotlib version {_matplotlib_version}")
+except importlib_metadata.PackageNotFoundError:
+    _matplotlib_available = False
+
 _timm_available = importlib.util.find_spec("timm") is not None
 if _timm_available:
     try:
@@ -423,6 +429,10 @@ def is_peft_available():
 
 def is_torchvision_available():
     return _torchvision_available
+
+
+def is_matplotlib_available():
+    return _matplotlib_available
 
 
 def is_safetensors_available():
