@@ -360,7 +360,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
 
         # 4. Computed predicted previous sample x_{t-1}
         c = -torch.expm1(log_snr - prev_log_snr)
-        if self.config.thresholding or self.config.clip_sample or self.config.prediction_type == "sample":
+        if self.config.thresholding or self.config.clip_sample or self.config.prediction_type != "epsilon":
             pred_prev_sample = torch.sqrt(prev_alpha) * (
                 sample * (1 - c) / torch.sqrt(alpha) + c * pred_original_sample
             )
@@ -396,7 +396,6 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
             torch.Tensor: The noisy samples after adding scaled Gaussian noise according to the SNR.
         """
         gamma = self.log_snr(timesteps).to(original_samples.device)
-        #  Reshape from (1,) to (B, ...) where B is the batch size and ... are the spatial dimensions
         gamma = gamma.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
 
         sqrt_alpha_prod = torch.sqrt(torch.sigmoid(gamma))
@@ -405,10 +404,9 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
 
-    def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor) -> torch.Tensor:
-        gamma = self.log_snr(timesteps).to(original_samples.device)
-        #  Reshape from (1,) to (B, ...) where B is the batch size and ... are the spatial dimensions
-        gamma = gamma.view(timesteps.size(0), *((1,) * (original_samples.ndim - 1)))
+    def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor) -> torch.Tensor:
+        gamma = self.log_snr(timesteps).to(sample.device)
+        gamma = gamma.view(timesteps.size(0), *((1,) * (sample.ndim - 1)))
 
         sqrt_alpha_prod = torch.sqrt(torch.sigmoid(gamma))
         sqrt_one_minus_alpha_prod = torch.sqrt(torch.sigmoid(-gamma))  # sqrt(sigma)
