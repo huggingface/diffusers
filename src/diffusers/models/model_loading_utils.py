@@ -14,16 +14,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import inspect
 import os
 from collections import OrderedDict
+from pathlib import Path
 from typing import List, Optional, Union
 
 import safetensors
 import torch
+from huggingface_hub.utils import EntryNotFoundError
 
 from ..utils import (
+    SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
+    WEIGHTS_INDEX_NAME,
+    _add_variant,
+    _get_model_file,
     is_accelerate_available,
     is_torch_version,
     logging,
@@ -31,6 +38,13 @@ from ..utils import (
 
 
 logger = logging.get_logger(__name__)
+
+_CLASS_REMAPPING_DICT = {
+    "Transformer2DModel": {
+        "ada_norm_zero": "DiTTransformer2DModel",
+        "ada_norm_single": "PixArtTransformer2DModel",
+    }
+}
 
 
 if is_accelerate_available():
@@ -59,6 +73,26 @@ def _determine_device_map(model: torch.nn.Module, device_map, max_memory, torch_
         device_map = infer_auto_device_map(model, dtype=torch_dtype, **device_map_kwargs)
 
     return device_map
+
+
+def _fetch_remapped_cls_from_config(config, old_class):
+    previous_class_name = old_class.__name__
+    remapped_class_name = _CLASS_REMAPPING_DICT.get(previous_class_name).get(config["norm_type"], None)
+
+    # Details:
+    # https://github.com/huggingface/diffusers/pull/7647#discussion_r1621344818
+    if remapped_class_name:
+        # load diffusers library to import compatible and original scheduler
+        diffusers_library = importlib.import_module(__name__.split(".")[0])
+        remapped_class = getattr(diffusers_library, remapped_class_name)
+        logger.info(
+            f"Changing class object to be of `{remapped_class_name}` type from `{previous_class_name}` type."
+            f"This is because `{previous_class_name}` is scheduled to be deprecated in a future version. Note that this"
+            " DOESN'T affect the final results."
+        )
+        return remapped_class
+    else:
+        return old_class
 
 
 def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None):
@@ -147,3 +181,52 @@ def _load_state_dict_into_model(model_to_load, state_dict: OrderedDict) -> List[
     load(model_to_load)
 
     return error_msgs
+
+
+def _fetch_index_file(
+    is_local,
+    pretrained_model_name_or_path,
+    subfolder,
+    use_safetensors,
+    cache_dir,
+    variant,
+    force_download,
+    resume_download,
+    proxies,
+    local_files_only,
+    token,
+    revision,
+    user_agent,
+    commit_hash,
+):
+    if is_local:
+        index_file = Path(
+            pretrained_model_name_or_path,
+            subfolder or "",
+            _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
+        )
+    else:
+        index_file_in_repo = Path(
+            subfolder or "",
+            _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
+        ).as_posix()
+        try:
+            index_file = _get_model_file(
+                pretrained_model_name_or_path,
+                weights_name=index_file_in_repo,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+                commit_hash=commit_hash,
+            )
+            index_file = Path(index_file)
+        except (EntryNotFoundError, EnvironmentError):
+            index_file = None
+
+    return index_file

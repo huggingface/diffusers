@@ -93,13 +93,13 @@ cd diffusers
 
 **PyTorch의 경우**
 
-```
+```sh
 pip install -e ".[torch]"
 ```
 
 **Flax의 경우**
 
-```
+```sh
 pip install -e ".[flax]"
 ```
 

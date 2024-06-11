@@ -51,8 +51,8 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableUnCLIPImg2ImgPipeline
 
         >>> pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
-        ...     "fusing/stable-unclip-2-1-l-img2img", torch_dtype=torch.float16
-        ... )  # TODO update model path
+        ...     "stabilityai/stable-diffusion-2-1-unclip-small", torch_dtype=torch.float16
+        ... )
         >>> pipe = pipe.to("cuda")
 
         >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
@@ -63,7 +63,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> prompt = "A fantasy landscape, trending on artstation"
 
-        >>> images = pipe(prompt, init_image).images
+        >>> images = pipe(init_image, prompt).images
         >>> images[0].save("fantasy_landscape.png")
         ```
 """
@@ -422,9 +422,10 @@ class StableUnCLIPImg2ImgPipeline(
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
-            # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder, lora_scale)
+        if self.text_encoder is not None:
+            if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
 
