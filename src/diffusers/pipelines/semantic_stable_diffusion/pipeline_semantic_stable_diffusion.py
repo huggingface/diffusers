@@ -657,9 +657,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                         concept_weights_tmp = concept_weights_tmp / concept_weights_tmp.sum(dim=0)
                         # concept_weights_tmp = torch.nan_to_num(concept_weights_tmp)
 
-                        noise_guidance_edit_tmp = torch.index_select(
-                            noise_guidance_edit.to(device), 0, warmup_inds
-                        )
+                        noise_guidance_edit_tmp = torch.index_select(noise_guidance_edit.to(device), 0, warmup_inds)
                         noise_guidance_edit_tmp = torch.einsum(
                             "cb,cbijk->bijk", concept_weights_tmp, noise_guidance_edit_tmp
                         )
