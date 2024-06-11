@@ -297,9 +297,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size
                 lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5GB"`).
                 If expressed as an integer, the unit is bytes. Note that this limit will be decreased after a certain
-                period of time (starting from Oct 2024) to allow users to upgrade to the latest version of `diffusers`. This is to
-                establish a common default size for this argument across different libraries in the Hugging Face
-                ecosystem (`transformers`, and `accelerate`, for example).
+                period of time (starting from Oct 2024) to allow users to upgrade to the latest version of `diffusers`.
+                This is to establish a common default size for this argument across different libraries in the Hugging
+                Face ecosystem (`transformers`, and `accelerate`, for example).
             push_to_hub (`bool`, *optional*, defaults to `False`):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
