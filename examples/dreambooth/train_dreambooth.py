@@ -1305,7 +1305,7 @@ def main(args):
                         # Velocity objective needs to be floored to an SNR weight of one.
                         snr = snr + 1             
                     
-                    base_weight = (
+                    mse_loss_weights = (
                         torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                     )
 
