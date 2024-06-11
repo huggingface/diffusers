@@ -130,12 +130,13 @@ class LattePipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
-        num_videos_per_prompt: int = 1,
+        num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
         mask_feature: bool = True,
+        dtype = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -149,7 +150,7 @@ class LattePipeline(DiffusionPipeline):
                 Latte, this should be "".
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 whether to use classifier free guidance or not
-            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
                 number of video that should be generated per prompt
             device: (`torch.device`, *optional*):
                 torch device to place the resulting embeddings on
@@ -221,10 +222,10 @@ class LattePipeline(DiffusionPipeline):
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
         prompt_embeds_attention_mask = prompt_embeds_attention_mask.view(bs_embed, -1)
-        prompt_embeds_attention_mask = prompt_embeds_attention_mask.repeat(num_videos_per_prompt, 1)
+        prompt_embeds_attention_mask = prompt_embeds_attention_mask.repeat(num_images_per_prompt, 1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -254,8 +255,8 @@ class LattePipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -514,7 +515,7 @@ class LattePipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
         guidance_scale: float = 7.5,
-        num_videos_per_prompt: Optional[int] = 1,
+        num_images_per_prompt: Optional[int] = 1,
         video_length: int = 16,
         height: int = 512,
         width: int = 512,
@@ -556,7 +557,7 @@ class LattePipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate videos that are closely linked to the text `prompt`,
                 usually at the expense of lower video quality.
-            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             height (`int`, *optional*, defaults to self.unet.config.sample_size):
                 The height in pixels of the generated video.
@@ -632,7 +633,7 @@ class LattePipeline(DiffusionPipeline):
             prompt,
             do_classifier_free_guidance,
             negative_prompt=negative_prompt,
-            num_videos_per_prompt=num_videos_per_prompt,
+            num_images_per_prompt=num_images_per_prompt,
             device=device,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -649,7 +650,7 @@ class LattePipeline(DiffusionPipeline):
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
-            batch_size * num_videos_per_prompt,
+            batch_size * num_images_per_prompt,
             latent_channels,
             video_length,
             height,
@@ -666,8 +667,8 @@ class LattePipeline(DiffusionPipeline):
         # 6.1 Prepare micro-conditions.
         added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
         if self.transformer.config.sample_size == 128:
-            resolution = torch.tensor([height, width]).repeat(batch_size * num_videos_per_prompt, 1)
-            aspect_ratio = torch.tensor([float(height / width)]).repeat(batch_size * num_videos_per_prompt, 1)
+            resolution = torch.tensor([height, width]).repeat(batch_size * num_images_per_prompt, 1)
+            aspect_ratio = torch.tensor([float(height / width)]).repeat(batch_size * num_images_per_prompt, 1)
             resolution = resolution.to(dtype=prompt_embeds.dtype, device=device)
             aspect_ratio = aspect_ratio.to(dtype=prompt_embeds.dtype, device=device)
             added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
