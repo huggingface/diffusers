@@ -234,7 +234,7 @@ def _download_diffusers_model_config_from_hub(
     local_files_only=None,
     token=None,
 ):
-    allow_patterns = ["**/*.json", "*.json", "*.txt", "**/*.txt"]
+    allow_patterns = ["**/*.json", "*.json", "*.txt", "**/*.txt", "**/*.model"]
     cached_model_path = snapshot_download(
         pretrained_model_name_or_path,
         cache_dir=cache_dir,
