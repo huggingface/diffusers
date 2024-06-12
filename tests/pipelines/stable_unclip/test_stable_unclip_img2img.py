@@ -209,6 +209,12 @@ class StableUnCLIPImg2ImgPipelineFastTests(
 @nightly
 @require_torch_gpu
 class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -227,7 +233,6 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
             "fusing/stable-unclip-2-1-l-img2img", torch_dtype=torch.float16
         )
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         # stable unclip will oom when integration tests are run on a V100,
         # so turn on memory savings
@@ -255,7 +260,6 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
             "fusing/stable-unclip-2-1-h-img2img", torch_dtype=torch.float16
         )
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         # stable unclip will oom when integration tests are run on a V100,
         # so turn on memory savings
@@ -283,7 +287,6 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
             "fusing/stable-unclip-2-1-h-img2img", torch_dtype=torch.float16
         )
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
         pipe.enable_sequential_cpu_offload()

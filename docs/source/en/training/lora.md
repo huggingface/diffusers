@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -77,7 +77,7 @@ accelerate config default
 
 Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
-```bash
+```py
 from accelerate.utils import write_basic_config
 
 write_basic_config()
@@ -113,36 +113,50 @@ The dataset preprocessing code and training loop are found in the [`main()`](htt
 
 As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) training guide. Instead, this guide takes a look at the LoRA relevant parts of the script.
 
-The script begins by adding the [new LoRA weights](https://github.com/huggingface/diffusers/blob/dd9a5caf61f04d11c0fa9f3947b69ab0010c9a0f/examples/text_to_image/train_text_to_image_lora.py#L447) to the attention layers. This involves correctly configuring the weight size for each block in the UNet. You'll see the `rank` parameter is used to create the [`~models.attention_processor.LoRAAttnProcessor`]:
+<hfoptions id="lora">
+<hfoption id="UNet">
+
+Diffusers uses [`~peft.LoraConfig`] from the [PEFT](https://hf.co/docs/peft) library to set up the parameters of the LoRA adapter such as the rank, alpha, and which modules to insert the LoRA weights into. The adapter is added to the UNet, and only the LoRA layers are filtered for optimization in `lora_layers`.
 
 ```py
-lora_attn_procs = {}
-for name in unet.attn_processors.keys():
-    cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
-    if name.startswith("mid_block"):
-        hidden_size = unet.config.block_out_channels[-1]
-    elif name.startswith("up_blocks"):
-        block_id = int(name[len("up_blocks.")])
-        hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
-    elif name.startswith("down_blocks"):
-        block_id = int(name[len("down_blocks.")])
-        hidden_size = unet.config.block_out_channels[block_id]
+unet_lora_config = LoraConfig(
+    r=args.rank,
+    lora_alpha=args.rank,
+    init_lora_weights="gaussian",
+    target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+)
 
-    lora_attn_procs[name] = LoRAAttnProcessor(
-        hidden_size=hidden_size,
-        cross_attention_dim=cross_attention_dim,
-        rank=args.rank,
-    )
-
-unet.set_attn_processor(lora_attn_procs)
-lora_layers = AttnProcsLayers(unet.attn_processors)
+unet.add_adapter(unet_lora_config)
+lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
 ```
 
-The [optimizer](https://github.com/huggingface/diffusers/blob/dd9a5caf61f04d11c0fa9f3947b69ab0010c9a0f/examples/text_to_image/train_text_to_image_lora.py#L519) is initialized with the `lora_layers` because these are the only weights that'll be optimized:
+</hfoption>
+<hfoption id="text encoder">
+
+Diffusers also supports finetuning the text encoder with LoRA from the [PEFT](https://hf.co/docs/peft) library when necessary such as finetuning Stable Diffusion XL (SDXL). The [`~peft.LoraConfig`] is used to configure the parameters of the LoRA adapter which are then added to the text encoder, and only the LoRA layers are filtered for training.
+
+```py
+text_lora_config = LoraConfig(
+    r=args.rank,
+    lora_alpha=args.rank,
+    init_lora_weights="gaussian",
+    target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+)
+
+text_encoder_one.add_adapter(text_lora_config)
+text_encoder_two.add_adapter(text_lora_config)
+text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
+text_lora_parameters_two = list(filter(lambda p: p.requires_grad, text_encoder_two.parameters()))
+```
+
+</hfoption>
+</hfoptions>
+
+The [optimizer](https://github.com/huggingface/diffusers/blob/e4b8f173b97731686e290b2eb98e7f5df2b1b322/examples/text_to_image/train_text_to_image_lora.py#L529) is initialized with the `lora_layers` because these are the only weights that'll be optimized:
 
 ```py
 optimizer = optimizer_cls(
-    lora_layers.parameters(),
+    lora_layers,
     lr=args.learning_rate,
     betas=(args.adam_beta1, args.adam_beta2),
     weight_decay=args.adam_weight_decay,
@@ -156,7 +170,7 @@ Aside from setting up the LoRA layers, the training script is more or less the s
 
 Once you've made all your changes or you're okay with the default configuration, you're ready to launch the training script! 🚀
 
-Let's train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate our yown Pokémon. Set the environment variables `MODEL_NAME` and `DATASET_NAME` to the model and dataset respectively. You should also specify where to save the model in `OUTPUT_DIR`, and the name of the model to save to on the Hub with `HUB_MODEL_ID`. The script creates and saves the following files to your repository:
+Let's train on the [Naruto BLIP captions](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) dataset to generate your own Naruto characters. Set the environment variables `MODEL_NAME` and `DATASET_NAME` to the model and dataset respectively. You should also specify where to save the model in `OUTPUT_DIR`, and the name of the model to save to on the Hub with `HUB_MODEL_ID`. The script creates and saves the following files to your repository:
 
 - saved model checkpoints
 - `pytorch_lora_weights.safetensors` (the trained LoRA weights)
@@ -171,9 +185,9 @@ A full training run takes ~5 hours on a 2080 Ti GPU with 11GB of VRAM.
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export OUTPUT_DIR="/sddata/finetune/lora/pokemon"
-export HUB_MODEL_ID="pokemon-lora"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export OUTPUT_DIR="/sddata/finetune/lora/naruto"
+export HUB_MODEL_ID="naruto-lora"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image_lora.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -194,7 +208,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_lora.py \
   --hub_model_id=${HUB_MODEL_ID} \
   --report_to=wandb \
   --checkpointing_steps=500 \
-  --validation_prompt="A pokemon with blue eyes." \
+  --validation_prompt="A naruto with blue eyes." \
   --seed=1337
 ```
 
@@ -206,7 +220,7 @@ import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
 pipeline.load_lora_weights("path/to/lora/model", weight_name="pytorch_lora_weights.safetensors")
-image = pipeline("A pokemon with blue eyes").images[0]
+image = pipeline("A naruto with blue eyes").images[0]
 ```
 
 ## Next steps

@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import USE_PEFT_BACKEND
-from .lora import LoRACompatibleConv
+from ..utils import deprecate
 from .normalization import RMSNorm
 from .upsampling import upfirdn2d_native
 
@@ -103,7 +102,6 @@ class Downsample2D(nn.Module):
         self.padding = padding
         stride = 2
         self.name = name
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
 
         if norm_type == "ln_norm":
             self.norm = nn.LayerNorm(channels, eps, elementwise_affine)
@@ -115,7 +113,7 @@ class Downsample2D(nn.Module):
             raise ValueError(f"unknown norm_type: {norm_type}")
 
         if use_conv:
-            conv = conv_cls(
+            conv = nn.Conv2d(
                 self.channels, self.out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias
             )
         else:
@@ -131,7 +129,10 @@ class Downsample2D(nn.Module):
         else:
             self.conv = conv
 
-    def forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
         assert hidden_states.shape[1] == self.channels
 
         if self.norm is not None:
@@ -143,13 +144,7 @@ class Downsample2D(nn.Module):
 
         assert hidden_states.shape[1] == self.channels
 
-        if not USE_PEFT_BACKEND:
-            if isinstance(self.conv, LoRACompatibleConv):
-                hidden_states = self.conv(hidden_states, scale)
-            else:
-                hidden_states = self.conv(hidden_states)
-        else:
-            hidden_states = self.conv(hidden_states)
+        hidden_states = self.conv(hidden_states)
 
         return hidden_states
 
@@ -185,24 +180,24 @@ class FirDownsample2D(nn.Module):
 
     def _downsample_2d(
         self,
-        hidden_states: torch.FloatTensor,
-        weight: Optional[torch.FloatTensor] = None,
-        kernel: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        weight: Optional[torch.Tensor] = None,
+        kernel: Optional[torch.Tensor] = None,
         factor: int = 2,
         gain: float = 1,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """Fused `Conv2d()` followed by `downsample_2d()`.
         Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
         efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of
         arbitrary order.
 
         Args:
-            hidden_states (`torch.FloatTensor`):
+            hidden_states (`torch.Tensor`):
                 Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-            weight (`torch.FloatTensor`, *optional*):
+            weight (`torch.Tensor`, *optional*):
                 Weight tensor of the shape `[filterH, filterW, inChannels, outChannels]`. Grouped convolution can be
                 performed by `inChannels = x.shape[0] // numGroups`.
-            kernel (`torch.FloatTensor`, *optional*):
+            kernel (`torch.Tensor`, *optional*):
                 FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
                 corresponds to average pooling.
             factor (`int`, *optional*, default to `2`):
@@ -211,7 +206,7 @@ class FirDownsample2D(nn.Module):
                 Scaling factor for signal magnitude.
 
         Returns:
-            output (`torch.FloatTensor`):
+            output (`torch.Tensor`):
                 Tensor of the shape `[N, C, H // factor, W // factor]` or `[N, H // factor, W // factor, C]`, and same
                 datatype as `x`.
         """
@@ -249,7 +244,7 @@ class FirDownsample2D(nn.Module):
 
         return output
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.use_conv:
             downsample_input = self._downsample_2d(hidden_states, weight=self.Conv2d_0.weight, kernel=self.fir_kernel)
             hidden_states = downsample_input + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
@@ -291,11 +286,11 @@ class KDownsample2D(nn.Module):
 
 
 def downsample_2d(
-    hidden_states: torch.FloatTensor,
-    kernel: Optional[torch.FloatTensor] = None,
+    hidden_states: torch.Tensor,
+    kernel: Optional[torch.Tensor] = None,
     factor: int = 2,
     gain: float = 1,
-) -> torch.FloatTensor:
+) -> torch.Tensor:
     r"""Downsample2D a batch of 2D images with the given filter.
     Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and downsamples each image with the
     given filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the
@@ -303,9 +298,9 @@ def downsample_2d(
     shape is a multiple of the downsampling factor.
 
     Args:
-        hidden_states (`torch.FloatTensor`)
+        hidden_states (`torch.Tensor`)
             Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-        kernel (`torch.FloatTensor`, *optional*):
+        kernel (`torch.Tensor`, *optional*):
             FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
             corresponds to average pooling.
         factor (`int`, *optional*, default to `2`):
@@ -314,7 +309,7 @@ def downsample_2d(
             Scaling factor for signal magnitude.
 
     Returns:
-        output (`torch.FloatTensor`):
+        output (`torch.Tensor`):
             Tensor of the shape `[N, C, H // factor, W // factor]`
     """
 

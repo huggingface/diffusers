@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import logging
+from ..utils import deprecate, logging
 from ..utils.import_utils import is_transformers_available
 
 
@@ -82,6 +82,9 @@ def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0):
 
 class PatchedLoraProjection(torch.nn.Module):
     def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
+        deprecation_message = "Use of `PatchedLoraProjection` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
+        deprecate("PatchedLoraProjection", "1.0.0", deprecation_message)
+
         super().__init__()
         from ..models.lora import LoRALinearLayer
 
@@ -201,6 +204,9 @@ class LoRALinearLayer(nn.Module):
     ):
         super().__init__()
 
+        deprecation_message = "Use of `LoRALinearLayer` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
+        deprecate("LoRALinearLayer", "1.0.0", deprecation_message)
+
         self.down = nn.Linear(in_features, rank, bias=False, device=device, dtype=dtype)
         self.up = nn.Linear(rank, out_features, bias=False, device=device, dtype=dtype)
         # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
@@ -261,6 +267,9 @@ class LoRAConv2dLayer(nn.Module):
     ):
         super().__init__()
 
+        deprecation_message = "Use of `LoRAConv2dLayer` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
+        deprecate("LoRAConv2dLayer", "1.0.0", deprecation_message)
+
         self.down = nn.Conv2d(in_features, rank, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
         # according to the official kohya_ss trainer kernel_size are always fixed for the up layer
         # # see: https://github.com/bmaltais/kohya_ss/blob/2accb1305979ba62f5077a23aabac23b4c37e935/networks/lora_diffusers.py#L129
@@ -293,10 +302,16 @@ class LoRACompatibleConv(nn.Conv2d):
     """
 
     def __init__(self, *args, lora_layer: Optional[LoRAConv2dLayer] = None, **kwargs):
+        deprecation_message = "Use of `LoRACompatibleConv` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
+        deprecate("LoRACompatibleConv", "1.0.0", deprecation_message)
+
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
 
     def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
+        deprecation_message = "Use of `set_lora_layer()` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
+        deprecate("set_lora_layer", "1.0.0", deprecation_message)
+
         self.lora_layer = lora_layer
 
     def _fuse_lora(self, lora_scale: float = 1.0, safe_fusing: bool = False):
@@ -352,16 +367,19 @@ class LoRACompatibleConv(nn.Conv2d):
         self.w_down = None
 
     def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
-        if self.lora_layer is None:
-            # make sure to the functional Conv2D function as otherwise torch.compile's graph will break
-            # see: https://github.com/huggingface/diffusers/pull/4315
-            return F.conv2d(
-                hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
-            )
+        if self.padding_mode != "zeros":
+            hidden_states = F.pad(hidden_states, self._reversed_padding_repeated_twice, mode=self.padding_mode)
+            padding = (0, 0)
         else:
-            original_outputs = F.conv2d(
-                hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
-            )
+            padding = self.padding
+
+        original_outputs = F.conv2d(
+            hidden_states, self.weight, self.bias, self.stride, padding, self.dilation, self.groups
+        )
+
+        if self.lora_layer is None:
+            return original_outputs
+        else:
             return original_outputs + (scale * self.lora_layer(hidden_states))
 
 
@@ -371,10 +389,15 @@ class LoRACompatibleLinear(nn.Linear):
     """
 
     def __init__(self, *args, lora_layer: Optional[LoRALinearLayer] = None, **kwargs):
+        deprecation_message = "Use of `LoRACompatibleLinear` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
+        deprecate("LoRACompatibleLinear", "1.0.0", deprecation_message)
+
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
 
     def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
+        deprecation_message = "Use of `set_lora_layer()` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
+        deprecate("set_lora_layer", "1.0.0", deprecation_message)
         self.lora_layer = lora_layer
 
     def _fuse_lora(self, lora_scale: float = 1.0, safe_fusing: bool = False):

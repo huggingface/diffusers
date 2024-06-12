@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,9 +42,10 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            sample_size=32,
+            block_out_channels=(4, 8),
+            layers_per_block=1,
+            norm_num_groups=4,
+            sample_size=8,
             in_channels=3,
             out_channels=3,
             down_block_types=("DownBlock2D", "AttnDownBlock2D"),
@@ -63,7 +64,7 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "batch_size": 1,
             "generator": generator,
             "num_inference_steps": 2,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -79,10 +80,8 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        self.assertEqual(image.shape, (1, 32, 32, 3))
-        expected_slice = np.array(
-            [1.000e00, 5.717e-01, 4.717e-01, 1.000e00, 0.000e00, 1.000e00, 3.000e-04, 0.000e00, 9.000e-04]
-        )
+        self.assertEqual(image.shape, (1, 8, 8, 3))
+        expected_slice = np.array([0.0, 9.979e-01, 0.0, 9.999e-01, 9.986e-01, 9.991e-01, 7.106e-04, 0.0, 0.0])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
@@ -113,7 +112,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         ddim.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddim(generator=generator, eta=0.0, output_type="numpy").images
+        image = ddim(generator=generator, eta=0.0, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -133,7 +132,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
+        image = ddpm(generator=generator, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
 

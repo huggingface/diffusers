@@ -739,8 +739,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
         """
         Args:
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
-                When continuous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
-                hidden_states
+                When continuous, `torch.Tensor` of shape `(batch size, channel, height, width)`): Input hidden_states
             encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
@@ -752,7 +751,8 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
             cross_attention_kwargs (*optional*):
                 Keyword arguments to supply to the cross attention layers, if used.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+                Whether or not to return a [`models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                tuple.
             hidden_states_is_embedding (`bool`, *optional*, defaults to `False`):
                 Whether or not hidden_states is an embedding directly usable by the transformer. In this case we will
                 ignore input handling (e.g. continuous, vectorized, etc.) and directly feed hidden_states into the
@@ -1037,9 +1037,9 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        latent_image_embeds: torch.FloatTensor,
-        image_embeds: torch.FloatTensor,
-        prompt_embeds: torch.FloatTensor,
+        latent_image_embeds: torch.Tensor,
+        image_embeds: torch.Tensor,
+        prompt_embeds: torch.Tensor,
         timestep_img: Union[torch.Tensor, float, int],
         timestep_text: Union[torch.Tensor, float, int],
         data_type: Optional[Union[torch.Tensor, float, int]] = 1,
@@ -1048,11 +1048,11 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
     ):
         """
         Args:
-            latent_image_embeds (`torch.FloatTensor` of shape `(batch size, latent channels, height, width)`):
+            latent_image_embeds (`torch.Tensor` of shape `(batch size, latent channels, height, width)`):
                 Latent image representation from the VAE encoder.
-            image_embeds (`torch.FloatTensor` of shape `(batch size, 1, clip_img_dim)`):
+            image_embeds (`torch.Tensor` of shape `(batch size, 1, clip_img_dim)`):
                 CLIP-embedded image representation (unsqueezed in the first dimension).
-            prompt_embeds (`torch.FloatTensor` of shape `(batch size, seq_len, text_dim)`):
+            prompt_embeds (`torch.Tensor` of shape `(batch size, seq_len, text_dim)`):
                 CLIP-embedded text representation.
             timestep_img (`torch.long` or `float` or `int`):
                 Current denoising step for the image.

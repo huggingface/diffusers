@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
-    numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
@@ -40,6 +39,12 @@ enable_full_determinism()
 
 
 class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -377,6 +382,12 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -461,7 +472,6 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
             model_id,
             torch_dtype=torch.float16,
         )
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
@@ -480,36 +490,3 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.9 GB is allocated
         assert mem_bytes < 2.9 * 10**9
-
-    def test_download_ckpt_diff_format_is_same(self):
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/sd2-upscale/low_res_cat.png"
-        )
-
-        prompt = "a cat sitting on a park bench"
-        model_id = "stabilityai/stable-diffusion-x4-upscaler"
-        pipe = StableDiffusionUpscalePipeline.from_pretrained(model_id)
-        pipe.enable_model_cpu_offload()
-
-        generator = torch.Generator("cpu").manual_seed(0)
-        output = pipe(prompt=prompt, image=image, generator=generator, output_type="np", num_inference_steps=3)
-        image_from_pretrained = output.images[0]
-
-        single_file_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/x4-upscaler-ema.safetensors"
-        )
-        pipe_from_single_file = StableDiffusionUpscalePipeline.from_single_file(single_file_path)
-        pipe_from_single_file.enable_model_cpu_offload()
-
-        generator = torch.Generator("cpu").manual_seed(0)
-        output_from_single_file = pipe_from_single_file(
-            prompt=prompt, image=image, generator=generator, output_type="np", num_inference_steps=3
-        )
-        image_from_single_file = output_from_single_file.images[0]
-
-        assert image_from_pretrained.shape == (512, 512, 3)
-        assert image_from_single_file.shape == (512, 512, 3)
-        assert (
-            numpy_cosine_similarity_distance(image_from_pretrained.flatten(), image_from_single_file.flatten()) < 1e-3
-        )

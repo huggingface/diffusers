@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 import re
 
-from ..utils import logging
+from ..utils import is_peft_version, logging
 
 
 logger = logging.get_logger(__name__)
@@ -128,6 +128,15 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
     te_state_dict = {}
     te2_state_dict = {}
     network_alphas = {}
+    is_unet_dora_lora = any("dora_scale" in k and "lora_unet_" in k for k in state_dict)
+    is_te_dora_lora = any("dora_scale" in k and ("lora_te_" in k or "lora_te1_" in k) for k in state_dict)
+    is_te2_dora_lora = any("dora_scale" in k and "lora_te2_" in k for k in state_dict)
+
+    if is_unet_dora_lora or is_te_dora_lora or is_te2_dora_lora:
+        if is_peft_version("<", "0.9.0"):
+            raise ValueError(
+                "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+            )
 
     # every down weight has a corresponding up weight and potentially an alpha weight
     lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
@@ -198,61 +207,61 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
                 unet_state_dict[diffusers_name] = state_dict.pop(key)
                 unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-        elif lora_name.startswith("lora_te_"):
-            diffusers_name = key.replace("lora_te_", "").replace("_", ".")
+            if is_unet_dora_lora:
+                dora_scale_key_to_replace = "_lora.down." if "_lora.down." in diffusers_name else ".lora.down."
+                unet_state_dict[
+                    diffusers_name.replace(dora_scale_key_to_replace, ".lora_magnitude_vector.")
+                ] = state_dict.pop(key.replace("lora_down.weight", "dora_scale"))
+
+        elif lora_name.startswith(("lora_te_", "lora_te1_", "lora_te2_")):
+            if lora_name.startswith(("lora_te_", "lora_te1_")):
+                key_to_replace = "lora_te_" if lora_name.startswith("lora_te_") else "lora_te1_"
+            else:
+                key_to_replace = "lora_te2_"
+
+            diffusers_name = key.replace(key_to_replace, "").replace("_", ".")
             diffusers_name = diffusers_name.replace("text.model", "text_model")
             diffusers_name = diffusers_name.replace("self.attn", "self_attn")
             diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
             diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
             diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
             diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+            diffusers_name = diffusers_name.replace("text.projection", "text_projection")
+
             if "self_attn" in diffusers_name:
-                te_state_dict[diffusers_name] = state_dict.pop(key)
-                te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                if lora_name.startswith(("lora_te_", "lora_te1_")):
+                    te_state_dict[diffusers_name] = state_dict.pop(key)
+                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                else:
+                    te2_state_dict[diffusers_name] = state_dict.pop(key)
+                    te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
             elif "mlp" in diffusers_name:
                 # Be aware that this is the new diffusers convention and the rest of the code might
                 # not utilize it yet.
                 diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
-                te_state_dict[diffusers_name] = state_dict.pop(key)
-                te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-
-        # (sayakpaul): Duplicate code. Needs to be cleaned.
-        elif lora_name.startswith("lora_te1_"):
-            diffusers_name = key.replace("lora_te1_", "").replace("_", ".")
-            diffusers_name = diffusers_name.replace("text.model", "text_model")
-            diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-            diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
-            diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
-            diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
-            diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
-            if "self_attn" in diffusers_name:
-                te_state_dict[diffusers_name] = state_dict.pop(key)
-                te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-            elif "mlp" in diffusers_name:
-                # Be aware that this is the new diffusers convention and the rest of the code might
-                # not utilize it yet.
-                diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
-                te_state_dict[diffusers_name] = state_dict.pop(key)
-                te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-
-        # (sayakpaul): Duplicate code. Needs to be cleaned.
-        elif lora_name.startswith("lora_te2_"):
-            diffusers_name = key.replace("lora_te2_", "").replace("_", ".")
-            diffusers_name = diffusers_name.replace("text.model", "text_model")
-            diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-            diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
-            diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
-            diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
-            diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
-            if "self_attn" in diffusers_name:
+                if lora_name.startswith(("lora_te_", "lora_te1_")):
+                    te_state_dict[diffusers_name] = state_dict.pop(key)
+                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+                else:
+                    te2_state_dict[diffusers_name] = state_dict.pop(key)
+                    te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+            # OneTrainer specificity
+            elif "text_projection" in diffusers_name and lora_name.startswith("lora_te2_"):
                 te2_state_dict[diffusers_name] = state_dict.pop(key)
                 te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-            elif "mlp" in diffusers_name:
-                # Be aware that this is the new diffusers convention and the rest of the code might
-                # not utilize it yet.
-                diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
-                te2_state_dict[diffusers_name] = state_dict.pop(key)
-                te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+
+            if (is_te_dora_lora or is_te2_dora_lora) and lora_name.startswith(("lora_te_", "lora_te1_", "lora_te2_")):
+                dora_scale_key_to_replace_te = (
+                    "_lora.down." if "_lora.down." in diffusers_name else ".lora_linear_layer."
+                )
+                if lora_name.startswith(("lora_te_", "lora_te1_")):
+                    te_state_dict[
+                        diffusers_name.replace(dora_scale_key_to_replace_te, ".lora_magnitude_vector.")
+                    ] = state_dict.pop(key.replace("lora_down.weight", "dora_scale"))
+                elif lora_name.startswith("lora_te2_"):
+                    te2_state_dict[
+                        diffusers_name.replace(dora_scale_key_to_replace_te, ".lora_magnitude_vector.")
+                    ] = state_dict.pop(key.replace("lora_down.weight", "dora_scale"))
 
         # Rename the alphas so that they can be mapped appropriately.
         if lora_name_alpha in state_dict:
@@ -267,7 +276,7 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
             network_alphas.update({new_name: alpha})
 
     if len(state_dict) > 0:
-        raise ValueError(f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}")
+        raise ValueError(f"The following keys have not been correctly renamed: \n\n {', '.join(state_dict.keys())}")
 
     logger.info("Kohya-style checkpoint detected.")
     unet_state_dict = {f"{unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}

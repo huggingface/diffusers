@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    skip_mps,
     torch_all_close,
     torch_device,
 )
@@ -36,6 +37,7 @@ logger = logging.get_logger(__name__)
 enable_full_determinism()
 
 
+@skip_mps
 class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNetSpatioTemporalConditionModel
     main_input_name = "sample"

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,9 +17,12 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import USE_PEFT_BACKEND
-from .lora import LoRACompatibleLinear
+from ..utils import deprecate
+from ..utils.import_utils import is_torch_npu_available
 
+
+if is_torch_npu_available():
+    import torch_npu
 
 ACTIVATION_FUNCTIONS = {
     "swish": nn.SiLU(),
@@ -45,6 +48,18 @@ def get_activation(act_fn: str) -> nn.Module:
         return ACTIVATION_FUNCTIONS[act_fn]
     else:
         raise ValueError(f"Unsupported activation function: {act_fn}")
+
+
+class FP32SiLU(nn.Module):
+    r"""
+    SiLU activation function with input upcasted to torch.float32.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        return F.silu(inputs.float(), inplace=False).to(inputs.dtype)
 
 
 class GELU(nn.Module):
@@ -87,9 +102,7 @@ class GEGLU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int, bias: bool = True):
         super().__init__()
-        linear_cls = LoRACompatibleLinear if not USE_PEFT_BACKEND else nn.Linear
-
-        self.proj = linear_cls(dim_in, dim_out * 2, bias=bias)
+        self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
         if gate.device.type != "mps":
@@ -97,10 +110,17 @@ class GEGLU(nn.Module):
         # mps: gelu is not implemented for float16
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
-    def forward(self, hidden_states, scale: float = 1.0):
-        args = () if USE_PEFT_BACKEND else (scale,)
-        hidden_states, gate = self.proj(hidden_states, *args).chunk(2, dim=-1)
-        return hidden_states * self.gelu(gate)
+    def forward(self, hidden_states, *args, **kwargs):
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+        hidden_states = self.proj(hidden_states)
+        if is_torch_npu_available():
+            # using torch_npu.npu_geglu can run faster and save memory on NPU.
+            return torch_npu.npu_geglu(hidden_states, dim=-1, approximate=1)[0]
+        else:
+            hidden_states, gate = hidden_states.chunk(2, dim=-1)
+            return hidden_states * self.gelu(gate)
 
 
 class ApproximateGELU(nn.Module):
