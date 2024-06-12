@@ -71,7 +71,7 @@ This will also allow us to push the trained LoRA parameters to the Hugging Face 
 Now, we can launch training using:
 
 ```bash
-export MODEL_NAME="stabilityai/stable-diffusion-3-medium"
+export MODEL_NAME="stabilityai/stable-diffusion-3-medium-diffusers"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="trained-sd3"
 
@@ -110,7 +110,7 @@ To better track our training experiments, we're using the following flags in the
 To perform DreamBooth with LoRA, run:
 
 ```bash
-export MODEL_NAME="stabilityai/stable-diffusion-3-medium"
+export MODEL_NAME="stabilityai/stable-diffusion-3-medium-diffusers"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="trained-sd3-lora"
 
