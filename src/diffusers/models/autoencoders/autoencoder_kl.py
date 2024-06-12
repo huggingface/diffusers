@@ -438,7 +438,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.
