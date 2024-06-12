@@ -186,7 +186,7 @@ pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgrap
 pipe.vae.decode = torch.compile(pipe.vae.decode, mode="max-autotune", fullgraph=True)
 
 # Warm Up
-prompt = "a photo of a cat holding a sign that says hello world",
+prompt = "a photo of a cat holding a sign that says hello world"
 for _ in range(3):
     _ = pipe(prompt=prompt, generator=torch.manual_seed(1))
 
