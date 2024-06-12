@@ -22,7 +22,7 @@ specific language governing permissions and limitations under the License.
 ## 성능보다는 사용성을
 
 - Diffusers는 많은 내장 성능 향상 기능을 갖고 있지만 (자세한 내용은 [메모리와 속도](https://huggingface.co/docs/diffusers/optimization/fp16) 참조), 모델은 항상 가장 높은 정밀도와 최소한의 최적화로 로드됩니다. 따라서 기본적인 diffusion 파이프라인은 따로 정의하지 않는다면 CPU에서 float32 정밀도로 인스턴스화됩니다. 이는 다양한 플랫폼과 가속기에서의 사용성을 보장하며, 라이브러리를 실행하기 위해 복잡한 설치가 필요하지 않음을 의미합니다.
-- Diffusers는 **가벼운** 패키지를 지향하며, 따라서 매우 적은 필수 종속성이 있고, 대신에 성능을 향상시킬 수 있는 많은 선택적 종속성이 있습니다 (`accelerate`, `safetensors`, `onnx` 등). 우리는 라이브러리를 가능한 한 가볍게 유지하여 다른 패키지와의 종속성으로 인해 걱정할 필요가 없도록 노력합니다.
+- Diffusers는 **가벼운** 패키지를 지향하기 때문에 필수 종속성은 거의 없지만 성능을 향상시킬 수 있는 많은 선택적 종속성이 있습니다 (`accelerate`, `safetensors`, `onnx` 등). 저희는 라이브러리를 가능한 한 가볍게 유지하여 다른 패키지에 대한 종속성 걱정이 없도록 노력하고 있습니다.
 - Diffusers는 간결하고 이해하기 쉬운 코드를 선호합니다. 이는 람다 함수나 고급 PyTorch 연산자와 같은 압축된 코드 구문을 자주 사용하지 않는 것을 의미합니다.
 
 ## 쉬움보다는 간단함을
