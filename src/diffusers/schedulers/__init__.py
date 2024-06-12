@@ -152,6 +152,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_edm_euler import EDMEulerScheduler
         from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
         from .scheduling_euler_discrete import EulerDiscreteScheduler
+        from .scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
         from .scheduling_heun_discrete import HeunDiscreteScheduler
         from .scheduling_ipndm import IPNDMScheduler
         from .scheduling_k_dpm_2_ancestral_discrete import KDPM2AncestralDiscreteScheduler
