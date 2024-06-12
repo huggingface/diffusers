@@ -121,9 +121,7 @@ def save_model_card(
                 {"text": validation_prompt if validation_prompt else " ", "output": {"url": f"image_{i}.png"}}
             )
     else:
-        widget_dict.append(
-            {"text": instance_prompt}
-        )
+        widget_dict.append({"text": instance_prompt})
     embeddings_filename = f"{repo_folder}_emb"
     instance_prompt_webui = re.sub(r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1))
     ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
