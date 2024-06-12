@@ -32,7 +32,7 @@ The SD3 pipeline uses three text encoders to generate an image. Model offloading
 import torch
 from diffusers import StableDiffusion3Pipeline
 
-pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium", torch_dtype=torch.float16)
+pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16)
 pipe.to("cuda")
 
 image = pipe(
@@ -59,7 +59,7 @@ The most basic memory optimization available in Diffusers allows you to offload 
 import torch
 from diffusers import StableDiffusion3Pipeline
 
-pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium", torch_dtype=torch.float16)
+pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
 image = pipe(
@@ -83,7 +83,7 @@ import torch
 from diffusers import StableDiffusion3Pipeline
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
-    "stabilityai/stable-diffusion-3-medium",
+    "stabilityai/stable-diffusion-3-medium-diffusers",
     text_encoder_3=None,
     tokenizer_3=None,
     torch_dtype=torch.float16
@@ -121,7 +121,7 @@ from transformers import T5EncoderModel, BitsAndBytesConfig
 
 quantization_config = BitsAndBytesConfig(load_in_8bit=True)
 
-model_id = "stabilityai/stable-diffusion-3-medium"
+model_id = "stabilityai/stable-diffusion-3-medium-diffusers"
 text_encoder = T5EncoderModel.from_pretrained(
     model_id,
     subfolder="text_encoder_3",
@@ -164,7 +164,7 @@ torch._inductor.config.epilogue_fusion = False
 torch._inductor.config.coordinate_descent_check_all_directions = True
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
-    "stabilityai/stable-diffusion-3-medium",
+    "stabilityai/stable-diffusion-3-medium-diffusers",
     torch_dtype=torch.float16
 ).to("cuda")
 pipe.set_progress_bar_config(disable=True)

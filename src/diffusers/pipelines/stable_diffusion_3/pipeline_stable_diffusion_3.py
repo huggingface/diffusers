@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableDiffusion3Pipeline
 
         >>> pipe = StableDiffusion3Pipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-3-medium", torch_dtype=torch.float16
+        ...     "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
         ... )
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"

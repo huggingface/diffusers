@@ -216,7 +216,7 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 @require_torch_gpu
 class StableDiffusion3PipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Pipeline
-    repo_id = "diffusers-internal-dev/private-model"
+    repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
 
     def setUp(self):
         super().setUp()
