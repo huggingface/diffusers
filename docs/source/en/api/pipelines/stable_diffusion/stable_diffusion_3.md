@@ -146,6 +146,8 @@ image = pipe(
 image.save("sd3_hello_world-8bit-T5.png")
 ```
 
+You can find the end-to-end script [here](https://gist.github.com/sayakpaul/82acb5976509851f2db1a83456e504f1). 
+
 ## Performance Optimizations for SD3
 
 ### Using Torch Compile to Speed Up Inference
