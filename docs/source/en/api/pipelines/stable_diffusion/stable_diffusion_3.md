@@ -21,6 +21,14 @@ The abstract from the paper is:
 
 ## Usage Example
 
+_As the model is gated, before using it with diffusers you first need to go to the [Stable Diffusion 3 Medium Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers), fill in the form and accept the gate. Once you are in, you need to login so that your system knows you’ve accepted the gate._ 
+
+Use the command below to log in: 
+
+```bash
+huggingface-cli login
+```
+
 <Tip>
 
 The SD3 pipeline uses three text encoders to generate an image. Model offloading is necessary in order for it to run on most commodity hardware. Please use the `torch.float16` data type for additional memory savings.
