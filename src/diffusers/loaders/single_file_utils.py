@@ -101,7 +101,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
         "subfolder": "prior_lite",
     },
     "sd3": {
-        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3-medium-diffusers-diffusers",
+        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3-medium-diffusers",
     },
 }
 
