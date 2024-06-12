@@ -83,6 +83,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            SD3Transformer2DModel,
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
