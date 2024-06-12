@@ -71,6 +71,7 @@ CHECKPOINT_KEY_NAMES = {
     "open_clip_sdxl_refiner": "conditioner.embedders.0.model.text_projection",
     "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
+    "sd3": "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -96,6 +97,9 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "stable_cascade_stage_c_lite": {
         "pretrained_model_name_or_path": "stabilityai/stable-cascade-prior",
         "subfolder": "prior_lite",
+    },
+    "sd3": {
+        "pretrained_model_name_or_path": "diffusers/sd3-config",
     },
 }
 
@@ -456,6 +460,9 @@ def infer_diffusers_model_type(checkpoint):
         and checkpoint[CHECKPOINT_KEY_NAMES["stable_cascade_stage_b"]].shape[-1] == 640
     ):
         model_type = "stable_cascade_stage_b"
+
+    elif CHECKPOINT_KEY_NAMES["sd3"] in checkpoint:
+        model_type = "sd3"
 
     else:
         model_type = "v1"
@@ -1573,12 +1580,12 @@ def swap_scale_shift(weight, dim):
 def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
     keys = list(checkpoint.keys())
-    num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "joint_blocks" in k))[-1] + 1  # noqa: C401
-    caption_projection_dim = 1536
-
     for k in keys:
         if "model.diffusion_model." in k:
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
+    num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "joint_blocks" in k))[-1] + 1  # noqa: C401
+    caption_projection_dim = 1536
 
     # Positional and patch embeddings.
     converted_state_dict["pos_embed.pos_embed"] = checkpoint.pop("pos_embed")

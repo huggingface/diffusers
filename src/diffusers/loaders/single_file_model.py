@@ -67,6 +67,7 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "SD3Transformer2DModel": {
         "checkpoint_mapping_fn": convert_sd3_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
     },
 }
 
