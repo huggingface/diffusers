@@ -533,7 +533,8 @@ class VaeImageProcessor(ConfigMixin):
 
         if not is_valid_image_imagelist(image):
             raise ValueError(
-                f"Input is in incorrect format. Currently, we only support {', '.join(supported_formats)}"
+                f"Input is in incorrect format: {type(image)}. "
+                f"Currently, we only support {', '.join([str(s.__name__) for s in supported_formats])}"
             )
         if not isinstance(image, list):
             image = [image]
