@@ -114,7 +114,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         """
-        Foward process in flow-matching
+        Forward process in flow-matching
 
         Args:
             sample (`torch.FloatTensor`):
