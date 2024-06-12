@@ -342,7 +342,7 @@ class VDMScheduler(SchedulerMixin, ConfigMixin):
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
         elif self.config.prediction_type == "v_prediction":
-            pred_original_sample = torch.sqrt(alpha) * sample + torch.sqrt(sigma) * model_output
+            pred_original_sample = torch.sqrt(alpha) * sample - torch.sqrt(sigma) * model_output
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` or"
