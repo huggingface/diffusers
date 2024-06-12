@@ -114,7 +114,7 @@ export MODEL_NAME="stabilityai/stable-diffusion-3-medium-diffusers"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="trained-sd3-lora"
 
-accelerate launch train_dreambooth_sd3.py \
+accelerate launch train_dreambooth_lora_sd3.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
