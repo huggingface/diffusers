@@ -1,4 +1,4 @@
-# Copyright 2024 HunyuanDiT Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 HunyuanDiT Authors, Qixun Wang and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -437,6 +437,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         image_meta_size=None,
         style=None,
         image_rotary_emb=None,
+        controlnet_block_samples=None,
         return_dict=True,
     ):
         """
@@ -488,6 +489,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
         encoder_hidden_states = torch.where(text_embedding_mask, encoder_hidden_states, self.text_embedding_padding)
 
+        if controlnet_block_samples is not None:
+            control_inter_control = len(self.blocks) // len(controlnet_block_samples)
+
         skips = []
         for layer, block in enumerate(self.blocks):
             if layer > self.config.num_layers // 2:
@@ -506,6 +510,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     image_rotary_emb=image_rotary_emb,
                 )  # (N, L, D)
+
+            if controlnet_block_samples is not None:
+                hidden_states = hidden_states + controlnet_block_samples[layer // control_inter_control]
 
             if layer < (self.config.num_layers // 2 - 1):
                 skips.append(hidden_states)

@@ -82,6 +82,8 @@ else:
             "ConsistencyDecoderVAE",
             "ControlNetModel",
             "ControlNetXSAdapter",
+            "ControlNetHunyuanDiT2DModel",
+            "MultiControlNetHunyuanDiT2DModel",
             "DiTTransformer2DModel",
             "HunyuanDiT2DModel",
             "I2VGenXLUNet",

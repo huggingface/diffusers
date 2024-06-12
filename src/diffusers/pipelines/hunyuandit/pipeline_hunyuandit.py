@@ -1,4 +1,4 @@
-# Copyright 2024 HunyuanDiT Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 HunyuanDiT Authors, Qixun Wang and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ import inspect
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from copy import deepcopy
 import torch
 from transformers import BertModel, BertTokenizer, CLIPImageProcessor, MT5Tokenizer, T5EncoderModel
 
@@ -25,6 +26,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, HunyuanDiT2DModel
 from ...models.embeddings import get_2d_rotary_pos_embed
+from ...models.controlnet_hunyuan import ControlNetHunyuanDiT2DModel, MultiControlNetHunyuanDiT2DModel
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import DDPMScheduler
 from ...utils import (
@@ -175,6 +177,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         "tokenizer_2",
         "text_encoder",
         "tokenizer",
+        "controlnet_list",
     ]
     _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = [
@@ -197,8 +200,15 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         requires_safety_checker: bool = True,
         text_encoder_2=T5EncoderModel,
         tokenizer_2=MT5Tokenizer,
+        controlnet_list: List = [],
     ):
         super().__init__()
+
+        controlnet_model_list = []
+        for ctn in controlnet_list:
+            ctn = ControlNetHunyuanDiT2DModel.from_pretrained(ctn, low_cpu_mem_usage=False, device_map=None)
+            controlnet_model_list.append(ctn)
+        controlnet_list = MultiControlNetHunyuanDiT2DModel(controlnet_model_list)
 
         self.register_modules(
             vae=vae,
@@ -210,6 +220,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
             text_encoder_2=text_encoder_2,
+            controlnet_list=controlnet_list,
         )
 
         if safety_checker is None and requires_safety_checker:
@@ -232,6 +243,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.control_image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
         self.default_sample_size = (
             self.transformer.config.sample_size
@@ -536,6 +548,75 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+
+    def _prepare_control_image(
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
+    ):
+        if isinstance(image, torch.Tensor):
+            # for controlnet-inpainting
+            pass
+        else:
+            image = self.control_image_processor.preprocess(image, height=height, width=width)
+        
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
+
+        return image
+
+
+    def _prepare_controlnet_conditioning(
+        self,
+        controlnet_conditioning,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance,
+        guess_mode,
+    ):
+        for idx in range(len(controlnet_conditioning)):
+            cc_info = controlnet_conditioning[idx]
+
+            # control_image
+            cc_info['control_image'] = self._prepare_control_image(
+                image=cc_info['control_image'],
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=dtype,
+                do_classifier_free_guidance=do_classifier_free_guidance,
+                guess_mode=guess_mode,
+            )
+
+        return controlnet_conditioning
+
+
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -592,6 +673,10 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         target_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         use_resolution_binning: bool = True,
+
+        # controlnet
+        controlnet_conditioning: List = [],
+
     ):
         r"""
         The call function to the pipeline for generation with HunyuanDiT.
@@ -718,6 +803,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+        dtype = self.transformer.dtype
 
         # 3. Encode input prompt
 
@@ -758,6 +844,19 @@ class HunyuanDiTPipeline(DiffusionPipeline):
             negative_prompt_attention_mask=negative_prompt_attention_mask_2,
             max_sequence_length=256,
             text_encoder_index=1,
+        )
+
+        # 3.1 Prepare control_image
+        controlnet_conditioning = self._prepare_controlnet_conditioning(
+            controlnet_conditioning,
+            width,
+            height,
+            batch_size,
+            num_images_per_prompt,
+            device,
+            dtype,
+            self.do_classifier_free_guidance,
+            False,
         )
 
         # 4. Prepare timesteps
@@ -829,6 +928,51 @@ class HunyuanDiTPipeline(DiffusionPipeline):
                     dtype=latent_model_input.dtype
                 )
 
+                # controlnet(s) inference
+                if len(controlnet_conditioning) > 0:
+                    control_block_samples_list = []
+
+                    for cc_info in controlnet_conditioning:
+                        # input
+                        control_model_input = latent_model_input
+                        controlnet_added_cond_kwargs = deepcopy(add_time_ids)
+
+                        # control image
+                        controlnet_conditioning_image = cc_info['control_image']
+                        controlnet_conditioning_image = self.vae.encode(controlnet_conditioning_image).latent_dist.sample()
+                        controlnet_conditioning_image = controlnet_conditioning_image * self.vae.config.scaling_factor
+
+                        # cfg
+                        controlnet = self.controlnet_list.nets[int(cc_info['control_index'])]
+                        controlnet_conditioning_scale = cc_info['control_weight']
+
+                        # controlnet infer
+                        control_block_samples = controlnet(
+                            hidden_states=control_model_input,
+                            timestep=t_expand,
+                            controlnet_cond=controlnet_conditioning_image,
+                            conditioning_scale=controlnet_conditioning_scale,
+                            encoder_hidden_states=prompt_embeds,
+                            text_embedding_mask=prompt_attention_mask,
+                            encoder_hidden_states_t5=prompt_embeds_2,
+                            text_embedding_mask_t5=prompt_attention_mask_2,
+                            image_meta_size=controlnet_added_cond_kwargs,
+                            style=style,
+                            image_rotary_emb=image_rotary_emb,
+                            return_dict=False,
+                        )[0]
+
+                        control_block_samples_list.append(control_block_samples)
+
+                    # merge multi-control output
+                    control_block_samples = [0] * len(control_block_samples_list[0])
+                    for idx_controlnet in range(len(control_block_samples_list)):
+                        for idx_block in range(len(control_block_samples_list[idx_controlnet])):
+                            control_block_samples[idx_block] += control_block_samples_list[idx_controlnet][idx_block]
+
+                else:
+                    control_block_samples = None
+
                 # predict the noise residual
                 noise_pred = self.transformer(
                     latent_model_input,
@@ -840,6 +984,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
                     image_meta_size=add_time_ids,
                     style=style,
                     image_rotary_emb=image_rotary_emb,
+                    controlnet_block_samples=control_block_samples,
                     return_dict=False,
                 )[0]
 

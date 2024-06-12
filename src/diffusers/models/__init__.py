@@ -34,6 +34,8 @@ if is_torch_available():
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["controlnet"] = ["ControlNetModel"]
     _import_structure["controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
+    _import_structure["controlnet_hunyuan"] = ["ControlNetHunyuanDiT2DModel"]
+    _import_structure["controlnet_hunyuan"] = ["MultiControlNetHunyuanDiT2DModel"]
     _import_structure["dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
