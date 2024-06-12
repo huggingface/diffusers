@@ -66,9 +66,11 @@ CHECKPOINT_KEY_NAMES = {
     "inpainting": "model.diffusion_model.input_blocks.0.0.weight",
     "clip": "cond_stage_model.transformer.text_model.embeddings.position_embedding.weight",
     "clip_sdxl": "conditioner.embedders.0.transformer.text_model.embeddings.position_embedding.weight",
+    "clip_sd3": "text_encoders.clip_l.transformer.text_model.embeddings.position_embedding.weight",
     "open_clip": "cond_stage_model.model.token_embedding.weight",
     "open_clip_sdxl": "conditioner.embedders.1.model.positional_embedding",
     "open_clip_sdxl_refiner": "conditioner.embedders.0.model.text_projection",
+    "open_clip_sd3": "text_encoders.clip_g.transformer.text_model.embeddings.position_embedding.weight",
     "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
     "sd3": "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
@@ -99,7 +101,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
         "subfolder": "prior_lite",
     },
     "sd3": {
-        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3-medium-diffusers",
+        "pretrained_model_name_or_path": "diffusers/sd3-config",
     },
 }
 
@@ -247,7 +249,11 @@ LDM_VAE_DEFAULT_SCALING_FACTOR = 0.18215
 PLAYGROUND_VAE_SCALING_FACTOR = 0.5
 LDM_UNET_KEY = "model.diffusion_model."
 LDM_CONTROLNET_KEY = "control_model."
-LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
+LDM_CLIP_PREFIX_TO_REMOVE = [
+    "cond_stage_model.transformer.",
+    "conditioner.embedders.0.transformer.",
+    "text_encoders.clip_l.transformer.",
+]
 OPEN_CLIP_PREFIX = "conditioner.embedders.0.model."
 LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
 
@@ -371,6 +377,13 @@ def is_clip_sdxl_model(checkpoint):
     return False
 
 
+def is_clip_sd3_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["clip_sd3"] in checkpoint:
+        return True
+
+    return False
+
+
 def is_open_clip_model(checkpoint):
     if CHECKPOINT_KEY_NAMES["open_clip"] in checkpoint:
         return True
@@ -385,8 +398,12 @@ def is_open_clip_sdxl_model(checkpoint):
     return False
 
 
+def is_open_clip_sd3_model(checkpoint):
+    is_open_clip_sdxl_refiner_model(checkpoint)
+
+
 def is_open_clip_sdxl_refiner_model(checkpoint):
-    if CHECKPOINT_KEY_NAMES["open_clip_sdxl_refiner"] in checkpoint:
+    if CHECKPOINT_KEY_NAMES["open_clip_sd3"] in checkpoint:
         return True
 
     return False
@@ -396,9 +413,11 @@ def is_clip_model_in_single_file(class_obj, checkpoint):
     is_clip_in_checkpoint = any(
         [
             is_clip_model(checkpoint),
+            is_clip_sd3_model(checkpoint),
             is_open_clip_model(checkpoint),
             is_open_clip_sdxl_model(checkpoint),
             is_open_clip_sdxl_refiner_model(checkpoint),
+            is_open_clip_sd3_model(checkpoint),
         ]
     )
     if (
@@ -1370,6 +1389,10 @@ def create_diffusers_clip_model_from_ldm(
 
     elif is_open_clip_sdxl_refiner_model(checkpoint):
         prefix = "conditioner.embedders.0.model."
+        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
+
+    elif is_open_clip_sd3_model(checkpoint):
+        prefix = "text_encoders.clip_g.transformer."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
     else:
