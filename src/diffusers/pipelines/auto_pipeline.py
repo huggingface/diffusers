@@ -52,6 +52,10 @@ from .stable_diffusion import (
     StableDiffusionInpaintPipeline,
     StableDiffusionPipeline,
 )
+from .stable_diffusion_3 import (
+    StableDiffusion3Img2ImgPipeline,
+    StableDiffusion3Pipeline,
+)
 from .stable_diffusion_xl import (
     StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLInpaintPipeline,
@@ -64,6 +68,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
     [
         ("stable-diffusion", StableDiffusionPipeline),
         ("stable-diffusion-xl", StableDiffusionXLPipeline),
+        ("stable-diffusion-3", StableDiffusion3Pipeline),
         ("if", IFPipeline),
         ("kandinsky", KandinskyCombinedPipeline),
         ("kandinsky22", KandinskyV22CombinedPipeline),
@@ -82,6 +87,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
     [
         ("stable-diffusion", StableDiffusionImg2ImgPipeline),
         ("stable-diffusion-xl", StableDiffusionXLImg2ImgPipeline),
+        ("stable-diffusion-3", StableDiffusion3Img2ImgPipeline),
         ("if", IFImg2ImgPipeline),
         ("kandinsky", KandinskyImg2ImgCombinedPipeline),
         ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
