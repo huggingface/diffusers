@@ -24,6 +24,7 @@ from .single_file_utils import (
     convert_controlnet_checkpoint,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
+    convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
@@ -63,6 +64,9 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "ControlNetModel": {
         "checkpoint_mapping_fn": convert_controlnet_checkpoint,
         "config_mapping_fn": create_controlnet_diffusers_config_from_ldm,
+    },
+    "SD3Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_sd3_transformer_checkpoint_to_diffusers,
     },
 }
 

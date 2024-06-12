@@ -165,24 +165,16 @@ class PatchEmbed(nn.Module):
         else:
             grid_size = int(num_patches**0.5)
 
-        self.patch_size = patch_size
-        # See:
-        # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L161
-        self.height, self.width = height // patch_size, width // patch_size
-        self.base_size = height // patch_size
-        self.interpolation_scale = interpolation_scale
         if pos_embed_type is None:
             self.pos_embed = None
         elif pos_embed_type == "sincos":
             pos_embed = get_2d_sincos_pos_embed(
                 embed_dim, grid_size, base_size=self.base_size, interpolation_scale=self.interpolation_scale
             )
-            self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
+            persistent = True if pos_embed_max_size else False
+            self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=persistent)
         else:
             raise ValueError(f"Unsupported pos_embed_type: {pos_embed_type}")
-
-        persistent = True if pos_embed_max_size else False
-        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=persistent)
 
     def cropped_pos_embed(self, height, width):
         """Crops positional embeddings for SD3 compatibility."""

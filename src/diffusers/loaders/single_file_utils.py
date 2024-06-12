@@ -21,6 +21,7 @@ from io import BytesIO
 from urllib.parse import urlparse
 
 import requests
+import torch
 import yaml
 
 from ..models.modeling_utils import load_state_dict
@@ -1559,3 +1560,155 @@ def _legacy_load_safety_checker(local_files_only, torch_dtype):
     )
 
     return {"safety_checker": safety_checker, "feature_extractor": feature_extractor}
+
+
+# in SD3 original implementation of AdaLayerNormContinuous, it split linear projection output into shift, scale;
+# while in diffusers it split into scale, shift. Here we swap the linear projection weights in order to be able to use diffusers implementation
+def swap_scale_shift(weight, dim):
+    shift, scale = weight.chunk(2, dim=0)
+    new_weight = torch.cat([scale, shift], dim=0)
+    return new_weight
+
+
+def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {}
+    keys = list(checkpoint.keys())
+    num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "joint_blocks" in k))[-1] + 1  # noqa: C401
+    caption_projection_dim = 1536
+
+    for k in keys:
+        if "model.diffusion_model." in k:
+            checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
+    # Positional and patch embeddings.
+    converted_state_dict["pos_embed.pos_embed"] = checkpoint.pop("pos_embed")
+    converted_state_dict["pos_embed.proj.weight"] = checkpoint.pop("x_embedder.proj.weight")
+    converted_state_dict["pos_embed.proj.bias"] = checkpoint.pop("x_embedder.proj.bias")
+
+    # Timestep embeddings.
+    converted_state_dict["time_text_embed.timestep_embedder.linear_1.weight"] = checkpoint.pop(
+        "t_embedder.mlp.0.weight"
+    )
+    converted_state_dict["time_text_embed.timestep_embedder.linear_1.bias"] = checkpoint.pop("t_embedder.mlp.0.bias")
+    converted_state_dict["time_text_embed.timestep_embedder.linear_2.weight"] = checkpoint.pop(
+        "t_embedder.mlp.2.weight"
+    )
+    converted_state_dict["time_text_embed.timestep_embedder.linear_2.bias"] = checkpoint.pop("t_embedder.mlp.2.bias")
+
+    # Context projections.
+    converted_state_dict["context_embedder.weight"] = checkpoint.pop("context_embedder.weight")
+    converted_state_dict["context_embedder.bias"] = checkpoint.pop("context_embedder.bias")
+
+    # Pooled context projection.
+    converted_state_dict["time_text_embed.text_embedder.linear_1.weight"] = checkpoint.pop("y_embedder.mlp.0.weight")
+    converted_state_dict["time_text_embed.text_embedder.linear_1.bias"] = checkpoint.pop("y_embedder.mlp.0.bias")
+    converted_state_dict["time_text_embed.text_embedder.linear_2.weight"] = checkpoint.pop("y_embedder.mlp.2.weight")
+    converted_state_dict["time_text_embed.text_embedder.linear_2.bias"] = checkpoint.pop("y_embedder.mlp.2.bias")
+
+    # Transformer blocks 🎸.
+    for i in range(num_layers):
+        # Q, K, V
+        sample_q, sample_k, sample_v = torch.chunk(
+            checkpoint.pop(f"joint_blocks.{i}.x_block.attn.qkv.weight"), 3, dim=0
+        )
+        context_q, context_k, context_v = torch.chunk(
+            checkpoint.pop(f"joint_blocks.{i}.context_block.attn.qkv.weight"), 3, dim=0
+        )
+        sample_q_bias, sample_k_bias, sample_v_bias = torch.chunk(
+            checkpoint.pop(f"joint_blocks.{i}.x_block.attn.qkv.bias"), 3, dim=0
+        )
+        context_q_bias, context_k_bias, context_v_bias = torch.chunk(
+            checkpoint.pop(f"joint_blocks.{i}.context_block.attn.qkv.bias"), 3, dim=0
+        )
+
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_q.weight"] = torch.cat([sample_q])
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_q.bias"] = torch.cat([sample_q_bias])
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_k.weight"] = torch.cat([sample_k])
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_k.bias"] = torch.cat([sample_k_bias])
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_v.weight"] = torch.cat([sample_v])
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_v.bias"] = torch.cat([sample_v_bias])
+
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_q_proj.weight"] = torch.cat([context_q])
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_q_proj.bias"] = torch.cat([context_q_bias])
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_k_proj.weight"] = torch.cat([context_k])
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_k_proj.bias"] = torch.cat([context_k_bias])
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_v_proj.weight"] = torch.cat([context_v])
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_v_proj.bias"] = torch.cat([context_v_bias])
+
+        # output projections.
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_out.0.weight"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.attn.proj.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_out.0.bias"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.attn.proj.bias"
+        )
+        if not (i == num_layers - 1):
+            converted_state_dict[f"transformer_blocks.{i}.attn.to_add_out.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.attn.proj.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.to_add_out.bias"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.attn.proj.bias"
+            )
+
+        # norms.
+        converted_state_dict[f"transformer_blocks.{i}.norm1.linear.weight"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.adaLN_modulation.1.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{i}.norm1.linear.bias"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.adaLN_modulation.1.bias"
+        )
+        if not (i == num_layers - 1):
+            converted_state_dict[f"transformer_blocks.{i}.norm1_context.linear.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.adaLN_modulation.1.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.norm1_context.linear.bias"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.adaLN_modulation.1.bias"
+            )
+        else:
+            converted_state_dict[f"transformer_blocks.{i}.norm1_context.linear.weight"] = swap_scale_shift(
+                checkpoint.pop(f"joint_blocks.{i}.context_block.adaLN_modulation.1.weight"),
+                dim=caption_projection_dim,
+            )
+            converted_state_dict[f"transformer_blocks.{i}.norm1_context.linear.bias"] = swap_scale_shift(
+                checkpoint.pop(f"joint_blocks.{i}.context_block.adaLN_modulation.1.bias"),
+                dim=caption_projection_dim,
+            )
+
+        # ffs.
+        converted_state_dict[f"transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.mlp.fc1.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{i}.ff.net.0.proj.bias"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.mlp.fc1.bias"
+        )
+        converted_state_dict[f"transformer_blocks.{i}.ff.net.2.weight"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.mlp.fc2.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{i}.ff.net.2.bias"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.mlp.fc2.bias"
+        )
+        if not (i == num_layers - 1):
+            converted_state_dict[f"transformer_blocks.{i}.ff_context.net.0.proj.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.mlp.fc1.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.ff_context.net.0.proj.bias"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.mlp.fc1.bias"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.ff_context.net.2.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.mlp.fc2.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.ff_context.net.2.bias"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.mlp.fc2.bias"
+            )
+
+    # Final blocks.
+    converted_state_dict["proj_out.weight"] = checkpoint.pop("final_layer.linear.weight")
+    converted_state_dict["proj_out.bias"] = checkpoint.pop("final_layer.linear.bias")
+    converted_state_dict["norm_out.linear.weight"] = swap_scale_shift(
+        checkpoint.pop("final_layer.adaLN_modulation.1.weight"), dim=caption_projection_dim
+    )
+    converted_state_dict["norm_out.linear.bias"] = swap_scale_shift(
+        checkpoint.pop("final_layer.adaLN_modulation.1.bias"), dim=caption_projection_dim
+    )
+
+    return converted_state_dict
