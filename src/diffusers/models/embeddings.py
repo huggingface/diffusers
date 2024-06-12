@@ -200,14 +200,18 @@ class PatchEmbed(nn.Module):
         return spatial_pos_embed
 
     def forward(self, latent):
-        height, width = latent.shape[-2:]
+        if self.pos_embed_max_size is not None:
+            height, width = latent.shape[-2:]
+        else:
+            height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
 
         latent = self.proj(latent)
         if self.flatten:
             latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
         if self.layer_norm:
             latent = self.norm(latent)
-
+        if self.pos_embed is None:
+            return latent.to(latent.dtype)
         # Interpolate or crop positional embeddings as needed
         if self.pos_embed_max_size:
             pos_embed = self.cropped_pos_embed(height, width)
