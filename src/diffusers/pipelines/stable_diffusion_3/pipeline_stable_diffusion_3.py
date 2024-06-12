@@ -198,7 +198,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin):
         self.default_sample_size = (
             self.transformer.config.sample_size
             if hasattr(self, "transformer") and self.transformer is not None
-            else 64
+            else 128
         )
 
     def _get_t5_prompt_embeds(
