@@ -1742,3 +1742,60 @@ def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     )
 
     return converted_state_dict
+
+
+def is_t5_in_single_file(checkpoint):
+    if "text_encoders.t5xxl.transformer.shared.weight" in checkpoint:
+        return True
+
+    return False
+
+
+def convert_sd3_t5_checkpoint_to_diffusers(checkpoint):
+    keys = list(checkpoint.keys())
+    text_model_dict = {}
+
+    remove_prefixes = ["text_encoders.t5xxl.transformer.encoder."]
+
+    for key in keys:
+        for prefix in remove_prefixes:
+            if key.startswith(prefix):
+                diffusers_key = key.replace(prefix, "")
+                text_model_dict[diffusers_key] = checkpoint.get(key)
+
+    return text_model_dict
+
+
+def create_diffusers_t5_model_from_checkpoint(
+    cls,
+    checkpoint,
+    subfolder="",
+    config=None,
+    torch_dtype=None,
+    local_files_only=None,
+):
+    if config:
+        config = {"pretrained_model_name_or_path": config}
+    else:
+        config = fetch_diffusers_config(checkpoint)
+
+    model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        model = cls(model_config)
+
+    diffusers_format_checkpoint = convert_sd3_t5_checkpoint_to_diffusers(checkpoint)
+
+    if is_accelerate_available():
+        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warning(
+                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
+
+    else:
+        model.load_state_dict(diffusers_format_checkpoint)
