@@ -75,6 +75,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
         )
         from .controlnet import ControlNetModel
+        from .controlnet_hunyuan import ControlNetHunyuanDiT2DModel, MultiControlNetHunyuanDiT2DModel
         from .controlnet_xs import ControlNetXSAdapter, UNetControlNetXSModel
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
