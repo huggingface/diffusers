@@ -434,7 +434,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
