@@ -384,7 +384,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def tiled_decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""
         Decode a batch of images using a tiled decoder.
 
