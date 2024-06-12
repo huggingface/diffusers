@@ -146,7 +146,7 @@ image = pipe(
 image.save("sd3_hello_world-8bit-T5.png")
 ```
 
-You can find the end-to-end script [here](https://gist.github.com/sayakpaul/82acb5976509851f2db1a83456e504f1). 
+You can find the end-to-end script [here](https://gist.github.com/sayakpaul/82acb5976509851f2db1a83456e504f1).
 
 ## Performance Optimizations for SD3
 
@@ -187,7 +187,33 @@ image = pipe(prompt=prompt, generator=torch.manual_seed(1)).images[0]
 image.save("sd3_hello_world.png")
 ```
 
-Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f454900813da5d42ca97). 
+Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f454900813da5d42ca97).
+
+## Loading the original checkpoints via `from_single_file`
+
+The `SD3Transformer2DModel` and `StableDiffusion3Pipeline` classes support loading the original checkpoints via the `from_single_file` method. This method allows you to load the original checkpoint files that were used to train the models.
+
+## Loading the original checkpoints for the `SD3Transformer2DModel`
+
+```python
+from diffusers import SD3Transformer2DModel
+
+model = SD3Transformer2DModel.from_single_file("https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium.safetensors")
+```
+
+## Loading the single checkpoint for the `StableDiffusion3Pipeline`
+
+```python
+from diffusers import StableDiffusion3Pipeline
+from transformers import T5EncoderModel
+
+text_encoder_3 = T5EncoderModel.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", subfolder="text_encoder_3", torch_dtype=torch.float16)
+pipe = StableDiffusion3Pipeline.from_single_file("https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium_incl_clips.safetensors", torch_dtype=torch.float16, text_encoder_3=text_encoder_3)
+```
+
+<Tip>
+`from_single_file` support for the `fp8` version of the checkpoints is coming soon. Watch this space.
+</Tip>
 
 ## StableDiffusion3Pipeline
 
