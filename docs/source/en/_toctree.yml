@@ -350,6 +350,8 @@
         title: Safe Stable Diffusion
       - local: api/pipelines/stable_diffusion/stable_diffusion_2
         title: Stable Diffusion 2
+      - local: api/pipelines/stable_diffusion/stable_diffusion_3
+        title: Stable Diffusion 3
       - local: api/pipelines/stable_diffusion/stable_diffusion_xl
         title: Stable Diffusion XL
       - local: api/pipelines/stable_diffusion/sdxl_turbo

@@ -81,9 +81,12 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         norm_num_groups: int = 32,
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
+        shift_factor: Optional[float] = None,
         latents_mean: Optional[Tuple[float]] = None,
         latents_std: Optional[Tuple[float]] = None,
         force_upcast: float = True,
+        use_quant_conv: bool = True,
+        use_post_quant_conv: bool = True,
     ):
         super().__init__()
 
@@ -110,8 +113,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             act_fn=act_fn,
         )
 
-        self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
-        self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
+        self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_quant_conv else None
+        self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1) if use_post_quant_conv else None
 
         self.use_slicing = False
         self.use_tiling = False
@@ -237,21 +240,19 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     @apply_forward_hook
     def encode(
-        self, x: torch.Tensor, return_dict: bool = True
+        self, x: torch.FloatTensor, return_dict: bool = True
     ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 
         Args:
-            x (`torch.Tensor`): Input batch of images.
+            x (`torch.FloatTensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether to return a [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] instead of a plain
-                tuple.
+                Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
 
         Returns:
                 The latent representations of the encoded images. If `return_dict` is True, a
-                [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is
-                returned.
+                [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         if self.use_tiling and (x.shape[-1] > self.tile_sample_min_size or x.shape[-2] > self.tile_sample_min_size):
             return self.tiled_encode(x, return_dict=return_dict)
@@ -262,7 +263,11 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         else:
             h = self.encoder(x)
 
-        moments = self.quant_conv(h)
+        if self.quant_conv is not None:
+            moments = self.quant_conv(h)
+        else:
+            moments = h
+
         posterior = DiagonalGaussianDistribution(moments)
 
         if not return_dict:
@@ -270,11 +275,13 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
             return self.tiled_decode(z, return_dict=return_dict)
 
-        z = self.post_quant_conv(z)
+        if self.post_quant_conv is not None:
+            z = self.post_quant_conv(z)
+
         dec = self.decoder(z)
 
         if not return_dict:
@@ -283,12 +290,14 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True, generator=None) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(
+        self, z: torch.FloatTensor, return_dict: bool = True, generator=None
+    ) -> Union[DecoderOutput, torch.FloatTensor]:
         """
         Decode a batch of images.
 
         Args:
-            z (`torch.Tensor`): Input batch of latent vectors.
+            z (`torch.FloatTensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
 
@@ -302,7 +311,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
         else:
-            decoded = self._decode(z, return_dict=False)[0]
+            decoded = self._decode(z).sample
 
         if not return_dict:
             return (decoded,)
@@ -321,7 +330,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
-    def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> AutoencoderKLOutput:
+    def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
@@ -331,15 +340,14 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         output, but they should be much less noticeable.
 
         Args:
-            x (`torch.Tensor`): Input batch of images.
+            x (`torch.FloatTensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] or `tuple`:
-                If return_dict is True, a [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] is returned,
-                otherwise a plain `tuple` is returned.
+            [`~models.autoencoder_kl.AutoencoderKLOutput`] or `tuple`:
+                If return_dict is True, a [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain
+                `tuple` is returned.
         """
         overlap_size = int(self.tile_sample_min_size * (1 - self.tile_overlap_factor))
         blend_extent = int(self.tile_latent_min_size * self.tile_overlap_factor)
@@ -376,12 +384,12 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def tiled_decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""
         Decode a batch of images using a tiled decoder.
 
         Args:
-            z (`torch.Tensor`): Input batch of latent vectors.
+            z (`torch.FloatTensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
 
@@ -426,14 +434,14 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def forward(
         self,
-        sample: torch.Tensor,
+        sample: torch.FloatTensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""
         Args:
-            sample (`torch.Tensor`): Input sample.
+            sample (`torch.FloatTensor`): Input sample.
             sample_posterior (`bool`, *optional*, defaults to `False`):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):

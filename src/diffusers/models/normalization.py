@@ -57,10 +57,12 @@ class AdaLayerNormZero(nn.Module):
         num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
-    def __init__(self, embedding_dim: int, num_embeddings: int):
+    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None):
         super().__init__()
-
-        self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
+        if num_embeddings is not None:
+            self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
+        else:
+            self.emb = None
 
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
