@@ -108,7 +108,7 @@ You should use {instance_prompt} to trigger the image generation.
 
 ## License
 
-Please adhere to the licensing terms as described `[here](...)`.
+Please adhere to the licensing terms as described `[here](https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/LICENSE)`.
 """
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
@@ -1042,7 +1042,6 @@ def main(args):
             repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name,
                 exist_ok=True,
-                private=True,
             ).repo_id
 
     # Load the tokenizers
