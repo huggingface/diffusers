@@ -389,7 +389,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         Decode a batch of images using a tiled decoder.
 
         Args:
-            z (`torch.FloatTensor`): Input batch of latent vectors.
+            z (`torch.Tensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
 
