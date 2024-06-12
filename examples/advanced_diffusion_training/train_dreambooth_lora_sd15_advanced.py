@@ -100,9 +100,7 @@ def save_model_card(
                 {"text": validation_prompt if validation_prompt else " ", "output": {"url": f"image_{i}.png"}}
             )
     else:
-        widget_dict.append(
-            {"text": instance_prompt}
-        )
+        widget_dict.append({"text": instance_prompt})
     embeddings_filename = f"{repo_folder}_emb"
     instance_prompt_webui = re.sub(r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1))
     ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
@@ -196,16 +194,18 @@ Special VAE used for training: {vae_path}.
         widget=widget_dict,
     )
 
-    tags = ["text-to-image", 
-            "diffusers", 
-            "diffusers-training",
-            lora,
-            "template:sd-lora"
-            "stable-diffusion", 
-            "stable-diffusion-diffusers"]
+    tags = [
+        "text-to-image",
+        "diffusers",
+        "diffusers-training",
+        lora,
+        "template:sd-lora" "stable-diffusion",
+        "stable-diffusion-diffusers",
+    ]
     model_card = populate_model_card(model_card, tags=tags)
 
     model_card.save(os.path.join(repo_folder, "README.md"))
+
 
 def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
