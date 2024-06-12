@@ -185,6 +185,8 @@ image = pipe(prompt=prompt, generator=torch.manual_seed(1)).images[0]
 image.save("sd3_hello_world.png")
 ```
 
+Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f454900813da5d42ca97). 
+
 ## StableDiffusion3Pipeline
 
 [[autodoc]] StableDiffusion3Pipeline
