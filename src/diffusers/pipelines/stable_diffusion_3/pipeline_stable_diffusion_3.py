@@ -24,6 +24,7 @@ from transformers import (
 )
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import SD3LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import SD3Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -124,7 +125,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusion3Pipeline(DiffusionPipeline):
+class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin):
     r"""
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -603,8 +604,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline):
         return self._guidance_scale > 1
 
     @property
-    def cross_attention_kwargs(self):
-        return self._cross_attention_kwargs
+    def joint_attention_kwargs(self):
+        return self._joint_attention_kwargs
 
     @property
     def num_timesteps(self):
@@ -638,7 +639,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline):
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -712,7 +713,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
                 of a plain tuple.
-            cross_attention_kwargs (`dict`, *optional*):
+            joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -756,7 +757,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline):
 
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
-        self._cross_attention_kwargs = cross_attention_kwargs
+        self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
 
         # 2. Define call parameters
@@ -829,6 +830,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline):
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     pooled_projections=pooled_prompt_embeds,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
 

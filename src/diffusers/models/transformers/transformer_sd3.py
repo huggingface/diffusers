@@ -24,9 +24,12 @@ from ...models.attention import JointTransformerBlock
 from ...models.attention_processor import Attention, AttentionProcessor
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
-from ...utils import is_torch_version
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
 from .transformer_2d import Transformer2DModelOutput
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
@@ -242,6 +245,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         encoder_hidden_states: torch.FloatTensor = None,
         pooled_projections: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
@@ -256,14 +260,32 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 from the embeddings of input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
+            joint_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
 
         Returns:
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
+        if joint_attention_kwargs is not None:
+            joint_attention_kwargs = joint_attention_kwargs.copy()
+            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            logger.warning(
+                "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
+            )
+
         height, width = hidden_states.shape[-2:]
 
         hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
@@ -311,6 +333,10 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         output = hidden_states.reshape(
             shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
         )
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)
