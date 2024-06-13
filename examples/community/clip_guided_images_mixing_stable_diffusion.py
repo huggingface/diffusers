@@ -233,8 +233,8 @@ class CLIPGuidedImagesMixingStableDiffusion(DiffusionPipeline, StableDiffusionMi
     @torch.no_grad()
     def __call__(
         self,
-        style_image: Union[torch.FloatTensor, PIL.Image.Image],
-        content_image: Union[torch.FloatTensor, PIL.Image.Image],
+        style_image: Union[torch.Tensor, PIL.Image.Image],
+        content_image: Union[torch.Tensor, PIL.Image.Image],
         style_prompt: Optional[str] = None,
         content_prompt: Optional[str] = None,
         height: Optional[int] = 512,

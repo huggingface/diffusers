@@ -32,7 +32,7 @@ And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) e
 accelerate config
 ```
 
-### Pokemon example
+### Naruto example
 
 You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree.
 
@@ -51,11 +51,11 @@ If you have already cloned the repo, then you won't need to go through these ste
 ## Use ONNXRuntime to accelerate training
 In order to leverage onnxruntime to accelerate training, please use train_text_to_image.py
 
-The command to train a DDPM UNetCondition model on the Pokemon dataset with onnxruntime:
+The command to train a DDPM UNetCondition model on the Naruto dataset with onnxruntime:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export dataset_name="lambdalabs/naruto-blip-captions"
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$dataset_name \
@@ -68,7 +68,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model"
+  --output_dir="sd-naruto-model"
 ```
 
 Please contact Prathik Rao (prathikr), Sunghoon Choi (hanbitmyths), Ashwini Khade (askhade), or Peng Wang (pengwa) on github with any questions.

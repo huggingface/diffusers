@@ -104,7 +104,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         rp_args: Dict[str, str] = None,
@@ -168,7 +168,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
             orig_hw = (height, width)
             revers = True
 
-            def pcallback(s_self, step: int, timestep: int, latents: torch.FloatTensor, selfs=None):
+            def pcallback(s_self, step: int, timestep: int, latents: torch.Tensor, selfs=None):
                 if "PRO" in mode:  # in Prompt mode, make masks from sum of attension maps
                     self.step = step
 
@@ -198,10 +198,10 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
             def hook_forward(module):
                 # diffusers==0.23.2
                 def forward(
-                    hidden_states: torch.FloatTensor,
-                    encoder_hidden_states: Optional[torch.FloatTensor] = None,
-                    attention_mask: Optional[torch.FloatTensor] = None,
-                    temb: Optional[torch.FloatTensor] = None,
+                    hidden_states: torch.Tensor,
+                    encoder_hidden_states: Optional[torch.Tensor] = None,
+                    attention_mask: Optional[torch.Tensor] = None,
+                    temb: Optional[torch.Tensor] = None,
                     scale: float = 1.0,
                 ) -> torch.Tensor:
                     attn = module

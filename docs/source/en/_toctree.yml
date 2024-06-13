@@ -29,10 +29,8 @@
     title: Load community pipelines and components
   - local: using-diffusers/schedulers
     title: Load schedulers and models
-  - local: using-diffusers/using_safetensors
-    title: Load safetensors
   - local: using-diffusers/other-formats
-    title: Load different Stable Diffusion formats
+    title: Model files and layouts
   - local: using-diffusers/loading_adapters
     title: Load adapters
   - local: using-diffusers/push_to_hub
@@ -59,6 +57,8 @@
     title: Distributed inference with multiple GPUs
   - local: using-diffusers/merge_loras
     title: Merge LoRAs
+  - local: using-diffusers/scheduler_features
+    title: Scheduler features
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
@@ -68,6 +68,10 @@
   - local: using-diffusers/weighted_prompts
     title: Prompt techniques
   title: Inference techniques
+- sections:
+  - local: advanced_inference/outpaint
+    title: Outpainting
+  title: Advanced inference
 - sections:
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
@@ -81,24 +85,20 @@
     title: ControlNet
   - local: using-diffusers/t2i_adapter
     title: T2I-Adapter
+  - local: using-diffusers/inference_with_lcm
+    title: Latent Consistency Model
   - local: using-diffusers/textual_inversion_inference
     title: Textual inversion
   - local: using-diffusers/shap-e
     title: Shap-E
   - local: using-diffusers/diffedit
     title: DiffEdit
-  - local: using-diffusers/custom_pipeline_examples
-    title: Community pipelines
-  - local: using-diffusers/contribute_pipeline
-    title: Contribute a community pipeline
-  - local: using-diffusers/inference_with_lcm_lora
-    title: Latent Consistency Model-LoRA
-  - local: using-diffusers/inference_with_lcm
-    title: Latent Consistency Model
   - local: using-diffusers/inference_with_tcd_lora
     title: Trajectory Consistency Distillation-LoRA
   - local: using-diffusers/svd
     title: Stable Video Diffusion
+  - local: using-diffusers/marigold_usage
+    title: Marigold Computer Vision
   title: Specific pipeline examples
 - sections:
   - local: training/overview
@@ -107,7 +107,8 @@
     title: Create a dataset for training
   - local: training/adapt_a_model
     title: Adapt a model to a new task
-  - sections:
+  - isExpanded: false
+    sections:
     - local: training/unconditional_training
       title: Unconditional image generation
     - local: training/text2image
@@ -125,8 +126,8 @@
     - local: training/instructpix2pix
       title: InstructPix2Pix
     title: Models
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: training/text_inversion
       title: Textual Inversion
     - local: training/dreambooth
@@ -140,13 +141,10 @@
     - local: training/ddpo
       title: Reinforcement learning training with DDPO
     title: Methods
-    isExpanded: false
   title: Training
 - sections:
   - local: optimization/fp16
     title: Speed up inference
-  - local: using-diffusers/distilled_sd
-    title: Distilled Stable Diffusion inference
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/torch2.0
@@ -189,7 +187,8 @@
     title: Evaluating Diffusion Models
   title: Conceptual Guides
 - sections:
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/configuration
       title: Configuration
     - local: api/logging
@@ -197,8 +196,8 @@
     - local: api/outputs
       title: Outputs
     title: Main Classes
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/loaders/ip_adapter
       title: IP-Adapter
     - local: api/loaders/lora
@@ -212,8 +211,8 @@
     - local: api/loaders/peft
       title: PEFT
     title: Loaders
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/models/overview
       title: Overview
     - local: api/models/unet
@@ -239,16 +238,24 @@
     - local: api/models/consistency_decoder_vae
       title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
-      title: Transformer2D
+      title: Transformer2DModel
+    - local: api/models/pixart_transformer2d
+      title: PixArtTransformer2DModel
+    - local: api/models/dit_transformer2d
+      title: DiTTransformer2DModel
+    - local: api/models/hunyuan_transformer2d
+      title: HunyuanDiT2DModel
     - local: api/models/transformer_temporal
-      title: Transformer Temporal
+      title: TransformerTemporalModel
+    - local: api/models/sd3_transformer2d
+      title: SD3Transformer2DModel
     - local: api/models/prior_transformer
-      title: Prior Transformer
+      title: PriorTransformer
     - local: api/models/controlnet
-      title: ControlNet
+      title: ControlNetModel
     title: Models
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/pipelines/overview
       title: Overview
     - local: api/pipelines/amused
@@ -287,6 +294,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/hunyuandit
+      title: Hunyuan-DiT
     - local: api/pipelines/i2vgenxl
       title: I2VGen-XL
     - local: api/pipelines/pix2pix
@@ -303,6 +312,8 @@
       title: Latent Diffusion
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/marigold
+      title: Marigold
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
@@ -313,6 +324,8 @@
       title: Personalized Image Animator (PIA)
     - local: api/pipelines/pixart
       title: PixArt-α
+    - local: api/pipelines/pixart_sigma
+      title: PixArt-Σ
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
@@ -340,6 +353,8 @@
         title: Safe Stable Diffusion
       - local: api/pipelines/stable_diffusion/stable_diffusion_2
         title: Stable Diffusion 2
+      - local: api/pipelines/stable_diffusion/stable_diffusion_3
+        title: Stable Diffusion 3
       - local: api/pipelines/stable_diffusion/stable_diffusion_xl
         title: Stable Diffusion XL
       - local: api/pipelines/stable_diffusion/sdxl_turbo
@@ -372,8 +387,8 @@
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
     title: Pipelines
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/schedulers/overview
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
@@ -404,6 +419,8 @@
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler
       title: EulerDiscreteScheduler
+    - local: api/schedulers/flow_match_euler_discrete
+      title: FlowMatchEulerDiscreteScheduler
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
@@ -433,8 +450,8 @@
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
     title: Schedulers
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/internal_classes_overview
       title: Overview
     - local: api/attnprocessor
@@ -447,6 +464,7 @@
       title: Utilities
     - local: api/image_processor
       title: VAE Image Processor
+    - local: api/video_processor
+      title: Video Processor
     title: Internal classes
-    isExpanded: false
   title: API
