@@ -20,6 +20,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import accelerate
@@ -44,7 +45,7 @@ from transformers.utils import ContextManagers
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import EMAModel, compute_snr
+from diffusers.training_utils import EMAModel, compute_dream_and_update_latents, compute_snr
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
@@ -56,12 +57,12 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.29.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
 DATASET_NAME_MAPPING = {
-    "lambdalabs/pokemon-blip-captions": ("image", "text"),
+    "lambdalabs/naruto-blip-captions": ("image", "text"),
 }
 
 
@@ -164,7 +165,12 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
 
     images = []
     for i in range(len(args.validation_prompts)):
-        with torch.autocast("cuda"):
+        if torch.backends.mps.is_available():
+            autocast_ctx = nullcontext()
+        else:
+            autocast_ctx = torch.autocast(accelerator.device.type)
+
+        with autocast_ctx:
             image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
 
         images.append(image)
@@ -356,6 +362,20 @@ def parse_args():
         "More details here: https://arxiv.org/abs/2303.09556.",
     )
     parser.add_argument(
+        "--dream_training",
+        action="store_true",
+        help=(
+            "Use the DREAM training method, which makes training more efficient and accurate at the ",
+            "expense of doing an extra forward pass. See: https://arxiv.org/abs/2312.00210",
+        ),
+    )
+    parser.add_argument(
+        "--dream_detail_preservation",
+        type=float,
+        default=1.0,
+        help="Dream detail preservation factor p (should be greater than 0; default=1.0, as suggested in the paper)",
+    )
+    parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument(
@@ -522,6 +542,10 @@ def main():
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -937,6 +961,18 @@ def main():
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+                if args.dream_training:
+                    noisy_latents, target = compute_dream_and_update_latents(
+                        unet,
+                        noise_scheduler,
+                        timesteps,
+                        noise,
+                        noisy_latents,
+                        target,
+                        encoder_hidden_states,
+                        args.dream_detail_preservation,
+                    )
 
                 # Predict the noise residual and compute loss
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]

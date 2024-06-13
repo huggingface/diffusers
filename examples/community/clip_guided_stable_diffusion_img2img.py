@@ -27,7 +27,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        ```
+        ```py
         from io import BytesIO
 
         import requests
@@ -327,7 +327,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         prompt: Union[str, List[str]],
         height: Optional[int] = 512,
         width: Optional[int] = 512,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Union[torch.Tensor, PIL.Image.Image] = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -338,7 +338,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         num_cutouts: Optional[int] = 4,
         use_cutouts: Optional[bool] = True,
         generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
@@ -380,6 +380,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
 
         # Preprocess image
         image = preprocess(image, width, height)
+<<<<<<< HEAD
         latents = self.prepare_latents(
             image,
             latent_timestep,
@@ -389,6 +390,18 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
             self.device,
             generator,
         )
+=======
+        if latents is None:
+            latents = self.prepare_latents(
+                image,
+                latent_timestep,
+                batch_size,
+                num_images_per_prompt,
+                text_embeddings.dtype,
+                self.device,
+                generator,
+            )
+>>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
 
         if clip_guidance_scale > 0:
             if clip_prompt is not None:

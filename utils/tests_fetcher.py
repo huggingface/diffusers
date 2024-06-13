@@ -692,7 +692,7 @@ def print_tree_deps_of(module, all_edges=None):
 
 def init_test_examples_dependencies() -> Tuple[Dict[str, List[str]], List[str]]:
     """
-    The test examples do not import from the examples (which are just scripts, not modules) so we need som extra
+    The test examples do not import from the examples (which are just scripts, not modules) so we need some extra
     care initializing the dependency map, which is the goal of this function. It initializes the dependency map for
     example files by linking each example to the example test file for the example framework.
 

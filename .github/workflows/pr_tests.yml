@@ -40,9 +40,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install .[quality]
       - name: Check quality
-        run: |
-          ruff check examples tests src utils scripts
-          ruff format examples tests src utils scripts --check
+        run: make quality
       - name: Check if failure
         if: ${{ failure() }}
         run: |
@@ -61,7 +59,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .[quality]
-      - name: Check quality
+      - name: Check repo consistency
         run: |
           python utils/check_copies.py
           python utils/check_dummies.py
@@ -79,6 +77,7 @@ jobs:
         config:
           - name: Fast PyTorch Pipeline CPU tests
             framework: pytorch_pipelines
+<<<<<<< HEAD
             report: pytorch_pipelines
           - name: Fast PyTorch Models & Schedulers CPU tests
             framework: pytorch_models
@@ -89,6 +88,26 @@ jobs:
           - name: PyTorch Example CPU tests
             framework: pytorch_examples
             report: pytorch_examples
+=======
+            runner: [ self-hosted, intel-cpu, 32-cpu, 256-ram, ci ]
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu_pipelines
+          - name: Fast PyTorch Models & Schedulers CPU tests
+            framework: pytorch_models
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu_models_schedulers
+          - name: Fast Flax CPU tests
+            framework: flax
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-flax-cpu
+            report: flax_cpu
+          - name: PyTorch Example CPU tests
+            framework: pytorch_examples
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_example_cpu
+>>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
 
     name: ${{ matrix.config.name }}
 
@@ -106,7 +125,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         pip install uv
         python -m uv pip install -e [quality,test]
@@ -121,7 +139,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 8 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
@@ -130,7 +148,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
@@ -139,11 +157,23 @@ jobs:
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests
 
+<<<<<<< HEAD
+=======
+    - name: Run example PyTorch CPU tests
+      if: ${{ matrix.config.framework == 'pytorch_examples' }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install peft timm
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          --make-reports=tests_${{ matrix.config.report }} \
+          examples
+
+>>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
     - name: Failure short reports
       if: ${{ failure() }}
       run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
@@ -163,6 +193,11 @@ jobs:
         config:
           - name: Hub tests for models, schedulers, and pipelines
             framework: hub_tests_pytorch
+<<<<<<< HEAD
+=======
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-pytorch-cpu
+>>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
             report: torch_hub
 
     name: ${{ matrix.config.name }}
@@ -181,7 +216,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         pip install uv
         python -m uv pip install -e [quality,test]

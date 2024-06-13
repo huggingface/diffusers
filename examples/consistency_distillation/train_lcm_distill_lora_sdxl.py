@@ -22,6 +22,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import accelerate
@@ -65,12 +66,12 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.29.0.dev0")
 
 logger = get_logger(__name__)
 
 DATASET_NAME_MAPPING = {
-    "lambdalabs/pokemon-blip-captions": ("image", "text"),
+    "lambdalabs/naruto-blip-captions": ("image", "text"),
 }
 
 
@@ -146,7 +147,12 @@ def log_validation(vae, args, accelerator, weight_dtype, step, unet=None, is_fin
 
     for _, prompt in enumerate(validation_prompts):
         images = []
-        with torch.autocast("cuda", dtype=weight_dtype):
+        if torch.backends.mps.is_available():
+            autocast_ctx = nullcontext()
+        else:
+            autocast_ctx = torch.autocast(accelerator.device.type, dtype=weight_dtype)
+
+        with autocast_ctx:
             images = pipeline(
                 prompt=prompt,
                 num_inference_steps=4,

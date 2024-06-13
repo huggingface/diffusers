@@ -557,7 +557,7 @@ def convert_ldm_unet_checkpoint(
                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
             )
 
-            output_block_list = {k: sorted(v) for k, v in output_block_list.items()}
+            output_block_list = {k: sorted(v) for k, v in sorted(output_block_list.items())}
             if ["conv.bias", "conv.weight"] in output_block_list.values():
                 index = list(output_block_list.values()).index(["conv.bias", "conv.weight"])
                 new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.weight"] = unet_state_dict[
@@ -1153,6 +1153,8 @@ def download_from_original_stable_diffusion_ckpt(
     controlnet: Optional[bool] = None,
     adapter: Optional[bool] = None,
     load_safety_checker: bool = True,
+    safety_checker: Optional[StableDiffusionSafetyChecker] = None,
+    feature_extractor: Optional[AutoFeatureExtractor] = None,
     pipeline_class: DiffusionPipeline = None,
     local_files_only=False,
     vae_path=None,
@@ -1205,6 +1207,12 @@ def download_from_original_stable_diffusion_ckpt(
             If `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch.
         load_safety_checker (`bool`, *optional*, defaults to `True`):
             Whether to load the safety checker or not. Defaults to `True`.
+        safety_checker (`StableDiffusionSafetyChecker`, *optional*, defaults to `None`):
+            Safety checker to use. If this parameter is `None`, the function will load a new instance of
+            [StableDiffusionSafetyChecker] by itself, if needed.
+        feature_extractor (`AutoFeatureExtractor`, *optional*, defaults to `None`):
+            Feature extractor to use. If this parameter is `None`, the function will load a new instance of
+            [AutoFeatureExtractor] by itself, if needed.
         pipeline_class (`str`, *optional*, defaults to `None`):
             The pipeline class to use. Pass `None` to determine automatically.
         local_files_only (`bool`, *optional*, defaults to `False`):
@@ -1530,8 +1538,8 @@ def download_from_original_stable_diffusion_ckpt(
                     unet=unet,
                     scheduler=scheduler,
                     controlnet=controlnet,
-                    safety_checker=None,
-                    feature_extractor=None,
+                    safety_checker=safety_checker,
+                    feature_extractor=feature_extractor,
                 )
                 if hasattr(pipe, "requires_safety_checker"):
                     pipe.requires_safety_checker = False
@@ -1551,8 +1559,8 @@ def download_from_original_stable_diffusion_ckpt(
                     unet=unet,
                     scheduler=scheduler,
                     low_res_scheduler=low_res_scheduler,
-                    safety_checker=None,
-                    feature_extractor=None,
+                    safety_checker=safety_checker,
+                    feature_extractor=feature_extractor,
                 )
 
             else:
@@ -1562,8 +1570,8 @@ def download_from_original_stable_diffusion_ckpt(
                     tokenizer=tokenizer,
                     unet=unet,
                     scheduler=scheduler,
-                    safety_checker=None,
-                    feature_extractor=None,
+                    safety_checker=safety_checker,
+                    feature_extractor=feature_extractor,
                 )
                 if hasattr(pipe, "requires_safety_checker"):
                     pipe.requires_safety_checker = False
@@ -1684,9 +1692,6 @@ def download_from_original_stable_diffusion_ckpt(
             feature_extractor = AutoFeatureExtractor.from_pretrained(
                 "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
             )
-        else:
-            safety_checker = None
-            feature_extractor = None
 
         if controlnet:
             pipe = pipeline_class(
@@ -1838,6 +1843,8 @@ def download_controlnet_from_original_ckpt(
     while "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
 
+    with open(original_config_file, "r") as f:
+        original_config_file = f.read()
     original_config = yaml.safe_load(original_config_file)
 
     if num_in_channels is not None:

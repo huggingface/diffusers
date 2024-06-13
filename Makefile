@@ -42,7 +42,12 @@ repo-consistency:
 quality:
 	ruff check $(check_dirs) setup.py
 	ruff format --check $(check_dirs) setup.py
+<<<<<<< HEAD
 	python3 utils/check_doc_toc.py
+=======
+	doc-builder style src/diffusers docs/source --max_len 119 --check_only
+	python utils/check_doc_toc.py
+>>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
 
 # Format source code automatically and check is there are any problems left that need manual fixing
 
@@ -55,6 +60,7 @@ extra_style_checks:
 style:
 	ruff check $(check_dirs) setup.py --fix
 	ruff format $(check_dirs) setup.py
+	doc-builder style src/diffusers docs/source --max_len 119
 	${MAKE} autogenerate_code
 	${MAKE} extra_style_checks
 

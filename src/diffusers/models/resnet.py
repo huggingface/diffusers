@@ -58,7 +58,7 @@ class ResnetBlockCondNorm2D(nn.Module):
         non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
         time_embedding_norm (`str`, *optional*, default to `"ada_group"` ):
             The normalization layer for time embedding `temb`. Currently only support "ada_group" or "spatial".
-        kernel (`torch.FloatTensor`, optional, default to None): FIR filter, see
+        kernel (`torch.Tensor`, optional, default to None): FIR filter, see
             [`~models.resnet.FirUpsample2D`] and [`~models.resnet.FirDownsample2D`].
         output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
         use_in_shortcut (`bool`, *optional*, default to `True`):
@@ -101,8 +101,6 @@ class ResnetBlockCondNorm2D(nn.Module):
         self.output_scale_factor = output_scale_factor
         self.time_embedding_norm = time_embedding_norm
 
-        conv_cls = nn.Conv2d
-
         if groups_out is None:
             groups_out = groups
 
@@ -113,7 +111,7 @@ class ResnetBlockCondNorm2D(nn.Module):
         else:
             raise ValueError(f" unsupported time_embedding_norm: {self.time_embedding_norm}")
 
-        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if self.time_embedding_norm == "ada_group":  # ada_group
             self.norm2 = AdaGroupNorm(temb_channels, out_channels, groups_out, eps=eps)
@@ -125,7 +123,7 @@ class ResnetBlockCondNorm2D(nn.Module):
         self.dropout = torch.nn.Dropout(dropout)
 
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
         self.nonlinearity = get_activation(non_linearity)
 
@@ -139,7 +137,7 @@ class ResnetBlockCondNorm2D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = conv_cls(
+            self.conv_shortcut = nn.Conv2d(
                 in_channels,
                 conv_2d_out_channels,
                 kernel_size=1,
@@ -148,7 +146,7 @@ class ResnetBlockCondNorm2D(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.Tensor, temb: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -204,9 +202,9 @@ class ResnetBlock2D(nn.Module):
         eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
         non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
         time_embedding_norm (`str`, *optional*, default to `"default"` ): Time scale shift config.
-            By default, apply timestep embedding conditioning with a simple shift mechanism. Choose "scale_shift"
-            for a stronger conditioning with scale and shift.
-        kernel (`torch.FloatTensor`, optional, default to None): FIR filter, see
+            By default, apply timestep embedding conditioning with a simple shift mechanism. Choose "scale_shift" for a
+            stronger conditioning with scale and shift.
+        kernel (`torch.Tensor`, optional, default to None): FIR filter, see
             [`~models.resnet.FirUpsample2D`] and [`~models.resnet.FirDownsample2D`].
         output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
         use_in_shortcut (`bool`, *optional*, default to `True`):
@@ -234,7 +232,7 @@ class ResnetBlock2D(nn.Module):
         non_linearity: str = "swish",
         skip_time_act: bool = False,
         time_embedding_norm: str = "default",  # default, scale_shift,
-        kernel: Optional[torch.FloatTensor] = None,
+        kernel: Optional[torch.Tensor] = None,
         output_scale_factor: float = 1.0,
         use_in_shortcut: Optional[bool] = None,
         up: bool = False,
@@ -263,21 +261,18 @@ class ResnetBlock2D(nn.Module):
         self.time_embedding_norm = time_embedding_norm
         self.skip_time_act = skip_time_act
 
-        linear_cls = nn.Linear
-        conv_cls = nn.Conv2d
-
         if groups_out is None:
             groups_out = groups
 
         self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
-        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
             if self.time_embedding_norm == "default":
-                self.time_emb_proj = linear_cls(temb_channels, out_channels)
+                self.time_emb_proj = nn.Linear(temb_channels, out_channels)
             elif self.time_embedding_norm == "scale_shift":
-                self.time_emb_proj = linear_cls(temb_channels, 2 * out_channels)
+                self.time_emb_proj = nn.Linear(temb_channels, 2 * out_channels)
             else:
                 raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
         else:
@@ -287,7 +282,7 @@ class ResnetBlock2D(nn.Module):
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
         self.nonlinearity = get_activation(non_linearity)
 
@@ -313,7 +308,7 @@ class ResnetBlock2D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = conv_cls(
+            self.conv_shortcut = nn.Conv2d(
                 in_channels,
                 conv_2d_out_channels,
                 kernel_size=1,
@@ -322,7 +317,7 @@ class ResnetBlock2D(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.Tensor, temb: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -610,7 +605,7 @@ class TemporalResnetBlock(nn.Module):
                 padding=0,
             )
 
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states)
@@ -690,8 +685,8 @@ class SpatioTemporalResBlock(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
     ):
         num_frames = image_only_indicator.shape[-1]

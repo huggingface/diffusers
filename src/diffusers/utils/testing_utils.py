@@ -33,6 +33,7 @@ from .import_utils import (
     is_onnx_available,
     is_opencv_available,
     is_peft_available,
+    is_timm_available,
     is_torch_available,
     is_torch_version,
     is_torchsde_available,
@@ -156,8 +157,8 @@ def get_tests_dir(append_path=None):
 # https://github.com/huggingface/accelerate/pull/1964
 def str_to_bool(value) -> int:
     """
-    Converts a string representation of truth to `True` (1) or `False` (0).
-    True values are `y`, `yes`, `t`, `true`, `on`, and `1`; False value are `n`, `no`, `f`, `false`, `off`, and `0`;
+    Converts a string representation of truth to `True` (1) or `False` (0). True values are `y`, `yes`, `t`, `true`,
+    `on`, and `1`; False value are `n`, `no`, `f`, `false`, `off`, and `0`;
     """
     value = value.lower()
     if value in ("y", "yes", "t", "true", "on", "1"):
@@ -255,6 +256,20 @@ def require_torch_accelerator(test_case):
     )
 
 
+def require_torch_multi_gpu(test_case):
+    """
+    Decorator marking a test that requires a multi-GPU setup (in PyTorch). These tests are skipped on a machine without
+    multiple GPUs. To run *only* the multi_gpu tests, assuming all test names contain multi_gpu: $ pytest -sv ./tests
+    -k "multi_gpu"
+    """
+    if not is_torch_available():
+        return unittest.skip("test requires PyTorch")(test_case)
+
+    import torch
+
+    return unittest.skipUnless(torch.cuda.device_count() > 1, "test requires multiple GPUs")(test_case)
+
+
 def require_torch_accelerator_with_fp16(test_case):
     """Decorator marking a test that requires an accelerator with support for the FP16 data type."""
     return unittest.skipUnless(_is_torch_fp16_available(torch_device), "test requires accelerator with fp16 support")(
@@ -326,6 +341,13 @@ def require_peft_backend(test_case):
     return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
 
 
+def require_timm(test_case):
+    """
+    Decorator marking a test that requires timm. These tests are skipped when timm isn't installed.
+    """
+    return unittest.skipUnless(is_timm_available(), "test requires timm")(test_case)
+
+
 def require_peft_version_greater(peft_version):
     """
     Decorator marking a test that requires PEFT backend with a specific version, this would require some specific
@@ -338,6 +360,18 @@ def require_peft_version_greater(peft_version):
         ) > version.parse(peft_version)
         return unittest.skipUnless(
             correct_peft_version, f"test requires PEFT backend with the version greater than {peft_version}"
+        )(test_case)
+
+    return decorator
+
+
+def require_accelerate_version_greater(accelerate_version):
+    def decorator(test_case):
+        correct_accelerate_version = is_peft_available() and version.parse(
+            version.parse(importlib.metadata.version("accelerate")).base_version
+        ) > version.parse(accelerate_version)
+        return unittest.skipUnless(
+            correct_accelerate_version, f"Test requires accelerate with the version greater than {accelerate_version}."
         )(test_case)
 
     return decorator

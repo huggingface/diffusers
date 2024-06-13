@@ -32,7 +32,12 @@ from diffusers import (
 from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, skip_mps, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineFromPipeTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -40,7 +45,11 @@ enable_full_determinism()
 
 @skip_mps
 class StableDiffusionPanoramaPipelineFastTests(
-    IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+    PipelineFromPipeTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionPanoramaPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -340,7 +349,7 @@ class StableDiffusionPanoramaNightlyTests(unittest.TestCase):
     def test_stable_diffusion_panorama_intermediate_state(self):
         number_of_steps = 0
 
-        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+        def callback_fn(step: int, timestep: int, latents: torch.Tensor) -> None:
             callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
@@ -406,7 +415,6 @@ class StableDiffusionPanoramaNightlyTests(unittest.TestCase):
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
         pipe = StableDiffusionPanoramaPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()

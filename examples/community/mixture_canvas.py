@@ -154,7 +154,7 @@ class Text2ImageRegion(DiffusionRegion):
 class Image2ImageRegion(DiffusionRegion):
     """Class defining a region where an image guided diffusion process is acting"""
 
-    reference_image: torch.FloatTensor = None
+    reference_image: torch.Tensor = None
     strength: float = 0.8  # Strength of the image
 
     def __post_init__(self):

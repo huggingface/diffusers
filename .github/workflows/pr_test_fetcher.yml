@@ -15,7 +15,7 @@ concurrency:
 jobs:
   setup_pr_tests:
     name: Setup PR Tests
-    runs-on: docker-cpu
+    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
     container:
       image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
@@ -32,7 +32,6 @@ jobs:
         fetch-depth: 0
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
     - name: Environment
@@ -74,7 +73,7 @@ jobs:
       max-parallel: 2
       matrix:
         modules: ${{ fromJson(needs.setup_pr_tests.outputs.matrix) }}
-    runs-on: docker-cpu
+    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
     container:
       image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
@@ -89,7 +88,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pip install -e [quality,test]
         python -m pip install accelerate
@@ -125,7 +123,7 @@ jobs:
         config:
           - name: Hub tests for models, schedulers, and pipelines
             framework: hub_tests_pytorch
-            runner: docker-cpu
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-pytorch-cpu
             report: torch_hub
 
@@ -147,7 +145,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pip install -e [quality,test]
 

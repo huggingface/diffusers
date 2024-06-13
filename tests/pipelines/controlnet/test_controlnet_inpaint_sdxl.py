@@ -19,7 +19,15 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -34,6 +42,7 @@ from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_BATCH_PARAMS,
+    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
@@ -55,8 +64,17 @@ class ControlNetPipelineSDXLFastTests(
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = frozenset(IMAGE_TO_IMAGE_IMAGE_PARAMS.union({"mask_image", "control_image"}))
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
+        {
+            "add_text_embeds",
+            "add_time_ids",
+            "mask",
+            "masked_image_latents",
+        }
+    )
 
     def get_dummy_components(self):
+        torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
@@ -74,6 +92,7 @@ class ControlNetPipelineSDXLFastTests(
             projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
             cross_attention_dim=64,
         )
+        torch.manual_seed(0)
         controlnet = ControlNetModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
@@ -123,8 +142,33 @@ class ControlNetPipelineSDXLFastTests(
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
+        torch.manual_seed(0)
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=32,
+            image_size=224,
+            projection_dim=32,
+            intermediate_size=37,
+            num_attention_heads=4,
+            num_channels=3,
+            num_hidden_layers=5,
+            patch_size=14,
+        )
+
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
+
+        feature_extractor = CLIPImageProcessor(
+            crop_size=224,
+            do_center_crop=True,
+            do_normalize=True,
+            do_resize=True,
+            image_mean=[0.48145466, 0.4578275, 0.40821073],
+            image_std=[0.26862954, 0.26130258, 0.27577711],
+            resample=3,
+            size=224,
+        )
 
         components = {
             "unet": unet,
@@ -135,6 +179,8 @@ class ControlNetPipelineSDXLFastTests(
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "image_encoder": image_encoder,
+            "feature_extractor": feature_extractor,
         }
         return components
 
@@ -181,6 +227,12 @@ class ControlNetPipelineSDXLFastTests(
 
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        expected_slice = None
+        if torch_device == "cpu":
+            expected_slice = np.array([0.5490, 0.5053, 0.4676, 0.5816, 0.5364, 0.4830, 0.5937, 0.5719, 0.4318])
+        super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -289,9 +341,7 @@ class ControlNetPipelineSDXLFastTests(
 
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
-        expected_slice = np.array(
-            [0.5381963, 0.4836803, 0.45821992, 0.5577731, 0.51210403, 0.4794795, 0.59282357, 0.5647199, 0.43100584]
-        )
+        expected_slice = np.array([0.549, 0.5053, 0.4676, 0.5816, 0.5364, 0.483, 0.5937, 0.5719, 0.4318])
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4

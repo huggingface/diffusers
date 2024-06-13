@@ -23,6 +23,7 @@ import os
 import random
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -85,7 +86,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.29.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -220,18 +221,12 @@ def log_validation(
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
-    enable_autocast = True
-    if torch.backends.mps.is_available() or (
-        accelerator.mixed_precision == "fp16" or accelerator.mixed_precision == "bf16"
-    ):
-        enable_autocast = False
-    if "playground" in args.pretrained_model_name_or_path:
-        enable_autocast = False
+    if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
 
-    with torch.autocast(
-        accelerator.device.type,
-        enabled=enable_autocast,
-    ):
+    with autocast_ctx:
         images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
 
     for tracker in accelerator.trackers:
@@ -980,7 +975,7 @@ def collate_fn(examples, with_prior_preservation=False):
 
 
 class PromptDataset(Dataset):
-    "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
+    """A simple dataset to prepare the prompts to generate class images on multiple GPUs."""
 
     def __init__(self, prompt, num_samples):
         self.prompt = prompt
@@ -1065,6 +1060,10 @@ def main(args):
         project_config=accelerator_project_config,
         kwargs_handlers=[kwargs],
     )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     if args.report_to == "wandb":
         if not is_wandb_available():

@@ -73,3 +73,48 @@ class AttnAddedKVProcessorTests(unittest.TestCase):
         only_cross_attn_out = attn(**forward_args)
 
         self.assertTrue((only_cross_attn_out != self_and_cross_attn_out).all())
+<<<<<<< HEAD
+=======
+
+
+class DeprecatedAttentionBlockTests(unittest.TestCase):
+    def test_conversion_when_using_device_map(self):
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+
+        pre_conversion = pipe(
+            "foo",
+            num_inference_steps=2,
+            generator=torch.Generator("cpu").manual_seed(0),
+            output_type="np",
+        ).images
+
+        # the initial conversion succeeds
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", device_map="balanced", safety_checker=None
+        )
+
+        conversion = pipe(
+            "foo",
+            num_inference_steps=2,
+            generator=torch.Generator("cpu").manual_seed(0),
+            output_type="np",
+        ).images
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # save the converted model
+            pipe.save_pretrained(tmpdir)
+
+            # can also load the converted weights
+            pipe = DiffusionPipeline.from_pretrained(tmpdir, device_map="balanced", safety_checker=None)
+        after_conversion = pipe(
+            "foo",
+            num_inference_steps=2,
+            generator=torch.Generator("cpu").manual_seed(0),
+            output_type="np",
+        ).images
+
+        self.assertTrue(np.allclose(pre_conversion, conversion, atol=1e-3))
+        self.assertTrue(np.allclose(conversion, after_conversion, atol=1e-3))
+>>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241

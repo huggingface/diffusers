@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Optional
 
@@ -74,7 +75,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.29.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -820,7 +821,7 @@ class TokenEmbeddingsHandler:
 
             idx += 1
 
-    # copied from train_dreambooth_lora_sdxl_advanced.py
+    # Copied from train_dreambooth_lora_sdxl_advanced.py
     def save_embeddings(self, file_path: str):
         assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
         tensors = {}
@@ -1046,7 +1047,7 @@ def collate_fn(examples, with_prior_preservation=False):
 
 
 class PromptDataset(Dataset):
-    "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
+    """A simple dataset to prepare the prompts to generate class images on multiple GPUs."""
 
     def __init__(self, prompt, num_samples):
         self.prompt = prompt
@@ -1938,7 +1939,12 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.cuda.amp.autocast():
+            if torch.backends.mps.is_available():
+                autocast_ctx = nullcontext()
+            else:
+                autocast_ctx = torch.autocast(accelerator.device.type)
+
+                with autocast_ctx:
                     images = [
                         pipeline(**pipeline_args, generator=generator).images[0]
                         for _ in range(args.num_validation_images)

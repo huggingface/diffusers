@@ -52,7 +52,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.29.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -457,6 +457,10 @@ def main():
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -892,7 +896,6 @@ def main():
         images = []
         if args.validation_prompts is not None:
             logger.info("Running inference for collecting generated images...")
-            pipeline = pipeline.to(accelerator.device)
             pipeline.torch_dtype = weight_dtype
             pipeline.set_progress_bar_config(disable=True)
             pipeline.enable_model_cpu_offload()

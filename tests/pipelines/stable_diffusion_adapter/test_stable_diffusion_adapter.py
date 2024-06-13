@@ -46,7 +46,7 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import PipelineFromPipeTesterMixin, PipelineTesterMixin, assert_mean_pixel_difference
 
 
 enable_full_determinism()
@@ -337,7 +337,9 @@ class AdapterTests:
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
-class StableDiffusionFullAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionFullAdapterPipelineFastTests(
+    AdapterTests, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase
+):
     def get_dummy_components(self, time_cond_proj_dim=None):
         return super().get_dummy_components("full_adapter", time_cond_proj_dim=time_cond_proj_dim)
 
@@ -807,7 +809,6 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
         adapter = T2IAdapter.from_pretrained(adapter_model, torch_dtype=torch.float16)
 
         pipe = StableDiffusionAdapterPipeline.from_pretrained(sd_model, adapter=adapter, safety_checker=None)
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_model_cpu_offload()
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -940,7 +941,6 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionAdapterPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", adapter=adapter, safety_checker=None
         )
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()

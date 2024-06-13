@@ -23,12 +23,13 @@ To create the package for PyPI.
    If releasing on a special branch, copy the updated README.md on the main branch for the commit you will make
    for the post-release and run `make fix-copies` on the main branch as well.
 
-2. Run Tests for Amazon Sagemaker. The documentation is located in `./tests/sagemaker/README.md`, otherwise @philschmid.
+2. Unpin specific versions from setup.py that use a git install.
 
-3. Unpin specific versions from setup.py that use a git install.
-
-4. Checkout the release branch (v<RELEASE>-release, for example v4.19-release), and commit these changes with the
+3. Checkout the release branch (v<RELEASE>-release, for example v4.19-release), and commit these changes with the
    message: "Release: <RELEASE>" and push.
+
+4. Manually trigger the "Nightly and release tests on main/release branch" workflow from the release branch. Wait for
+   the tests to complete. We can safely ignore the known test failures.
 
 5. Wait for the tests on main to be completed and be green (otherwise revert and fix bugs).
 
@@ -94,13 +95,13 @@ from setuptools import Command, find_packages, setup
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
-    "accelerate>=0.11.0",
+    "accelerate>=0.29.3",
     "compel==0.1.8",
     "datasets",
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.20.2",
+    "huggingface-hub>=0.23.2",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -133,6 +134,7 @@ _deps = [
     "torchvision",
     "transformers>=4.25.1",
     "urllib3<=2.0.0",
+    "black",
 ]
 
 # this is a lookup table with items like:
@@ -251,16 +253,27 @@ install_requires = [
 version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
+<<<<<<< HEAD
     name="diffusers_plus_plus",
     version="0.28.0.rc1",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch (FORK).",
+=======
+    name="diffusers",
+    version="0.29.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    description="State-of-the-art diffusion in PyTorch and JAX.",
+>>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     keywords="deep learning diffusion jax pytorch stable diffusion audioldm",
     license="Apache 2.0 License",
     author="The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/diffusers/graphs/contributors)",
+<<<<<<< HEAD
     author_email="",
     url="https://github.com/modelslab/diffusers_plus_plus",
+=======
+    author_email="diffusers@huggingface.co",
+    url="https://github.com/huggingface/diffusers",
+>>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
     package_dir={"": "src"},
     packages=find_packages("src"),
     package_data={"diffusers": ["py.typed"]},

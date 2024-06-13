@@ -50,9 +50,9 @@ def bits_to_decimal(x, bits=BITS):
 # modified scheduler step functions for clamping the predicted x_0 between -bit_scale and +bit_scale
 def ddim_bit_scheduler_step(
     self,
-    model_output: torch.FloatTensor,
+    model_output: torch.Tensor,
     timestep: int,
-    sample: torch.FloatTensor,
+    sample: torch.Tensor,
     eta: float = 0.0,
     use_clipped_model_output: bool = True,
     generator=None,
@@ -62,9 +62,9 @@ def ddim_bit_scheduler_step(
     Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
     process from the learned model outputs (most often the predicted noise).
     Args:
-        model_output (`torch.FloatTensor`): direct output from learned diffusion model.
+        model_output (`torch.Tensor`): direct output from learned diffusion model.
         timestep (`int`): current discrete timestep in the diffusion chain.
-        sample (`torch.FloatTensor`):
+        sample (`torch.Tensor`):
             current instance of sample being created by diffusion process.
         eta (`float`): weight of noise for added noise in diffusion step.
         use_clipped_model_output (`bool`): TODO
@@ -140,9 +140,9 @@ def ddim_bit_scheduler_step(
 
 def ddpm_bit_scheduler_step(
     self,
-    model_output: torch.FloatTensor,
+    model_output: torch.Tensor,
     timestep: int,
-    sample: torch.FloatTensor,
+    sample: torch.Tensor,
     prediction_type="epsilon",
     generator=None,
     return_dict: bool = True,
@@ -151,9 +151,9 @@ def ddpm_bit_scheduler_step(
     Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
     process from the learned model outputs (most often the predicted noise).
     Args:
-        model_output (`torch.FloatTensor`): direct output from learned diffusion model.
+        model_output (`torch.Tensor`): direct output from learned diffusion model.
         timestep (`int`): current discrete timestep in the diffusion chain.
-        sample (`torch.FloatTensor`):
+        sample (`torch.Tensor`):
             current instance of sample being created by diffusion process.
         prediction_type (`str`, default `epsilon`):
             indicates whether the model predicts the noise (epsilon), or the samples (`sample`).
