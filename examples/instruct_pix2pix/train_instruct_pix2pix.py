@@ -1066,37 +1066,6 @@ def main():
                     torch_dtype=weight_dtype,
                 )
 
-<<<<<<< HEAD
-                # run inference
-                original_image = download_image(args.val_image_url)
-                edited_images = []
-                with torch.autocast(
-                    str(accelerator.device).replace(":0", ""),
-                    enabled=accelerator.mixed_precision == "fp16",
-                ):
-                    for _ in range(args.num_validation_images):
-                        edited_images.append(
-                            pipeline(
-                                args.validation_prompt,
-                                image=original_image,
-                                num_inference_steps=20,
-                                image_guidance_scale=1.5,
-                                guidance_scale=7,
-                                generator=generator,
-                            ).images[0]
-                        )
-
-                for tracker in accelerator.trackers:
-                    if tracker.name == "wandb":
-                        wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
-                        for edited_image in edited_images:
-                            wandb_table.add_data(
-                                wandb.Image(original_image),
-                                wandb.Image(edited_image),
-                                args.validation_prompt,
-                            )
-                        tracker.log({"validation": wandb_table})
-=======
                 log_validation(
                     pipeline,
                     args,
@@ -1104,7 +1073,6 @@ def main():
                     generator,
                 )
 
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
                     ema_unet.restore(unet.parameters())
@@ -1136,35 +1104,6 @@ def main():
                 ignore_patterns=["step_*", "epoch_*"],
             )
 
-<<<<<<< HEAD
-        if args.validation_prompt is not None:
-            edited_images = []
-            pipeline = pipeline.to(accelerator.device)
-            with torch.autocast(str(accelerator.device).replace(":0", "")):
-                for _ in range(args.num_validation_images):
-                    edited_images.append(
-                        pipeline(
-                            args.validation_prompt,
-                            image=original_image,
-                            num_inference_steps=20,
-                            image_guidance_scale=1.5,
-                            guidance_scale=7,
-                            generator=generator,
-                        ).images[0]
-                    )
-
-            for tracker in accelerator.trackers:
-                if tracker.name == "wandb":
-                    wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
-                    for edited_image in edited_images:
-                        wandb_table.add_data(
-                            wandb.Image(original_image),
-                            wandb.Image(edited_image),
-                            args.validation_prompt,
-                        )
-                    tracker.log({"test": wandb_table})
-
-=======
         if (args.val_image_url is not None) and (args.validation_prompt is not None):
             log_validation(
                 pipeline,
@@ -1172,7 +1111,6 @@ def main():
                 accelerator,
                 generator,
             )
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
     accelerator.end_training()
 
 

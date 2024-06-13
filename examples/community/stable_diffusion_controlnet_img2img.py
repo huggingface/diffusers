@@ -622,14 +622,7 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline, StableDiffusio
         prompt: Union[str, List[str]] = None,
         image: Union[torch.Tensor, PIL.Image.Image] = None,
         controlnet_conditioning_image: Union[
-<<<<<<< HEAD
-            torch.FloatTensor,
-            PIL.Image.Image,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-=======
             torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
         ] = None,
         strength: float = 0.8,
         height: Optional[int] = None,

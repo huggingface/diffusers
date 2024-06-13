@@ -656,31 +656,12 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusio
                 f" Please verify the config of `pipeline.unet` and the `mask_image` and `image` inputs."
             )
 
-<<<<<<< HEAD
-    def prepare_latents(
-        self,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-        latents=None,
-    ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-=======
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (
             batch_size,
             num_channels_latents,
             int(height) // self.vae_scale_factor,
             int(width) // self.vae_scale_factor,
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
         )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -805,14 +786,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusio
         image: Union[torch.Tensor, PIL.Image.Image] = None,
         mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
         controlnet_conditioning_image: Union[
-<<<<<<< HEAD
-            torch.FloatTensor,
-            PIL.Image.Image,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-=======
             torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,

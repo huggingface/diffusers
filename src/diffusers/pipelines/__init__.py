@@ -24,11 +24,8 @@ _import_structure = {
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
-<<<<<<< HEAD
     "plus_pipelines": [],
-=======
     "marigold": [],
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -471,12 +468,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
-<<<<<<< HEAD
-        from .pixart_alpha import PixArtAlphaPipeline
         from .plus_pipelines import ClothAdapter, OmsDiffusionPipeline
-=======
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_cascade import (
