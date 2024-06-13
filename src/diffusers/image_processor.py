@@ -569,7 +569,7 @@ class VaeImageProcessor(ConfigMixin):
 
             channel = image.shape[1]
             # don't need any preprocess if the image is latents
-            if channel == 4:
+            if channel == self.vae_latent_channels:
                 return image
 
             height, width = self.get_default_height_width(image, height, width)
@@ -585,12 +585,14 @@ class VaeImageProcessor(ConfigMixin):
                 FutureWarning,
             )
             do_normalize = False
-
+        print(f" do_normalize: {do_normalize}")
         if do_normalize:
             image = self.normalize(image)
 
         if self.config.do_binarize:
+            print(f" binarize: {image.shape}")
             image = self.binarize(image)
+            print(f" image: {image.shape}, {image[0,0,:3,:3]}")
 
         return image
 
