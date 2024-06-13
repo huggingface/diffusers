@@ -260,7 +260,7 @@ Then, you'll need a way to evaluate the model. For evaluation, you can use the [
 ...     # The default pipeline output type is `List[PIL.Image]`
 ...     images = pipeline(
 ...         batch_size=config.eval_batch_size,
-...         generator=torch.manual_seed(config.seed),
+...         generator=torch.Generator(device='cpu').manual_seed(config.seed), # Use a separate torch generator to avoid rewinding the random state of the main training loop
 ...     ).images
 
 ...     # Make a grid out of the images

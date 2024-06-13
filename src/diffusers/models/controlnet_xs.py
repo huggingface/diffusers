@@ -851,8 +851,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel
     @property
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
@@ -911,7 +911,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
@@ -927,7 +927,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
 
         self.set_attn_processor(processor)
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
 
@@ -952,7 +952,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             setattr(upsample_block, "b1", b1)
             setattr(upsample_block, "b2", b2)
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.disable_freeu
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.disable_freeu
     def disable_freeu(self):
         """Disables the FreeU mechanism."""
         freeu_keys = {"s1", "s2", "b1", "b2"}
@@ -961,7 +961,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
     def fuse_qkv_projections(self):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
@@ -985,7 +985,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
-    # copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 

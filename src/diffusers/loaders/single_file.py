@@ -234,7 +234,7 @@ def _download_diffusers_model_config_from_hub(
     local_files_only=None,
     token=None,
 ):
-    allow_patterns = ["**/*.json", "*.json", "*.txt", "**/*.txt"]
+    allow_patterns = ["**/*.json", "*.json", "*.txt", "**/*.txt", "**/*.model"]
     cached_model_path = snapshot_download(
         pretrained_model_name_or_path,
         cache_dir=cache_dir,
@@ -340,7 +340,7 @@ class FromSingleFileMixin:
             deprecate("original_config_file", "1.0.0", deprecation_message)
             original_config = original_config_file
 
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
