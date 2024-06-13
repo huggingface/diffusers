@@ -1462,7 +1462,19 @@ def main(args):
                 bsz = model_input.shape[0]
 
                 # Sample a random timestep for each image
-                indices = torch.randint(0, noise_scheduler_copy.config.num_train_timesteps, (bsz,))
+                # for weighting schemes where we sample timesteps non-uniformly
+                if args.weighting_scheme == "logit_normal":
+                    # See 3.1 in the SD3 paper ($rf/lognorm(0.00,1.00)$).
+                    u = torch.normal(mean=args.logit_mean, std=args.logit_std, size=(bsz,), device=accelerator.device)
+                    u = torch.nn.functional.sigmoid(u)
+                elif args.weighting_scheme == "mode":
+                    u = torch.rand(size=(bsz,), device=accelerator.device)
+                    u = 1 - u - args.mode_scale * (torch.cos(math.pi * u / 2) ** 2 - 1 + u)
+                else:
+                    u = torch.rand(size=(bsz,), device=accelerator.device)
+
+                
+                indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
                 # Add noise according to flow matching.
@@ -1483,18 +1495,10 @@ def main(args):
                 model_pred = model_pred * (-sigmas) + noisy_model_input
 
                 # TODO (kashif, sayakpaul): weighting sceme needs to be experimented with :)
+                # these weighting schemes use a uniform timestep sampling
+                # and instead post-weight the loss
                 if args.weighting_scheme == "sigma_sqrt":
                     weighting = (sigmas**-2.0).float()
-                elif args.weighting_scheme == "logit_normal":
-                    # See 3.1 in the SD3 paper ($rf/lognorm(0.00,1.00)$).
-                    # A better approach is just to sample the timestamps non-uniformly.
-                    m = args.logit_mean
-                    s = args.logit_std
-                    weighting = torch.exp(-(torch.logit(sigmas) - m)**2 / (2 * s**2))
-                    weighting = weighting / (sigmas * (1 - sigmas) * s * math.sqrt(2 * math.pi))
-                elif args.weighting_scheme == "mode":
-                    # See sec 3.1 in the SD3 paper (20).
-                    raise NotImplementedError("Mode weighting scheme is not implemented.")
                 elif args.weighting_scheme == "cosmap":
                     bot = (1 - 2*sigmas + 2*sigmas**2)
                     weighting = 2/(math.pi*bot)
