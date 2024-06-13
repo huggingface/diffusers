@@ -1819,12 +1819,8 @@ class PipelineTesterMixin:
         self.assertTrue(
             hasattr(pipe, "unet")
             and isinstance(
-<<<<<<< HEAD
-                pipe.unet, (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, ELLAProxyUNet)
-=======
                 pipe.unet,
                 (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, UNetControlNetXSModel),
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
             )
         )
 

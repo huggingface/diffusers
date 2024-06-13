@@ -164,8 +164,6 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         steps_offset (`int`, defaults to 0):
             An offset added to the inference steps, as required by some model families.
-<<<<<<< HEAD
-=======
         final_sigmas_type (`str`, defaults to `"zero"`):
             The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final
             sigma is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
@@ -173,7 +171,6 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
             dark samples instead of limiting it to samples with medium brightness. Loosely related to
             [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -200,11 +197,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas: Optional[bool] = False,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
-<<<<<<< HEAD
-=======
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
         rescale_betas_zero_snr: bool = False,
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)

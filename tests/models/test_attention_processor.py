@@ -73,8 +73,6 @@ class AttnAddedKVProcessorTests(unittest.TestCase):
         only_cross_attn_out = attn(**forward_args)
 
         self.assertTrue((only_cross_attn_out != self_and_cross_attn_out).all())
-<<<<<<< HEAD
-=======
 
 
 class DeprecatedAttentionBlockTests(unittest.TestCase):
@@ -117,4 +115,3 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(pre_conversion, conversion, atol=1e-3))
         self.assertTrue(np.allclose(conversion, after_conversion, atol=1e-3))
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241

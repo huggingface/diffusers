@@ -80,11 +80,8 @@ from .import_utils import (
     is_safetensors_available,
     is_scipy_available,
     is_tensorboard_available,
-<<<<<<< HEAD
     is_torch2_available,
-=======
     is_timm_available,
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
     is_torch_available,
     is_torch_npu_available,
     is_torch_version,
