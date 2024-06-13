@@ -1501,7 +1501,7 @@ def main(args):
                     weighting = (sigmas**-2.0).float()
                 elif args.weighting_scheme == "cosmap":
                     bot = 1 - 2 * sigmas + 2 * sigmas**2
-                    weighting = 2/(math.pi*bot)
+                    weighting = 2 / (math.pi * bot)
                 else:
                     weighting = torch.ones_like(sigmas)
 
