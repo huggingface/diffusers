@@ -41,7 +41,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
         hf-doc-builder \
         huggingface-hub \
         Jinja2 \
-        librosa \        
+        librosa \
         numpy \
         scipy \
         tensorboard \
