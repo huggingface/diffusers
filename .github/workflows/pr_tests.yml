@@ -77,7 +77,6 @@ jobs:
         config:
           - name: Fast PyTorch Pipeline CPU tests
             framework: pytorch_pipelines
-<<<<<<< HEAD
             report: pytorch_pipelines
           - name: Fast PyTorch Models & Schedulers CPU tests
             framework: pytorch_models
@@ -88,26 +87,6 @@ jobs:
           - name: PyTorch Example CPU tests
             framework: pytorch_examples
             report: pytorch_examples
-=======
-            runner: [ self-hosted, intel-cpu, 32-cpu, 256-ram, ci ]
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_pipelines
-          - name: Fast PyTorch Models & Schedulers CPU tests
-            framework: pytorch_models
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_models_schedulers
-          - name: Fast Flax CPU tests
-            framework: flax
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
-            image: diffusers/diffusers-flax-cpu
-            report: flax_cpu
-          - name: PyTorch Example CPU tests
-            framework: pytorch_examples
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_example_cpu
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
 
     name: ${{ matrix.config.name }}
 
@@ -162,8 +141,6 @@ jobs:
           --make-reports=tests_${{ matrix.config.report }} \
           tests
 
-<<<<<<< HEAD
-=======
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
@@ -173,7 +150,6 @@ jobs:
           --make-reports=tests_${{ matrix.config.report }} \
           examples
 
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
     - name: Failure short reports
       if: ${{ failure() }}
       run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
@@ -193,11 +169,8 @@ jobs:
         config:
           - name: Hub tests for models, schedulers, and pipelines
             framework: hub_tests_pytorch
-<<<<<<< HEAD
-=======
             runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-pytorch-cpu
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
             report: torch_hub
 
     name: ${{ matrix.config.name }}
