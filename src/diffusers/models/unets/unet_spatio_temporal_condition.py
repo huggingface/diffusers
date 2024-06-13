@@ -57,9 +57,9 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             The dimension of the cross attention features.
         transformer_layers_per_block (`int`, `Tuple[int]`, or `Tuple[Tuple]` , *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
-            [`~models.unet_3d_blocks.CrossAttnDownBlockSpatioTemporal`],
-            [`~models.unet_3d_blocks.CrossAttnUpBlockSpatioTemporal`],
-            [`~models.unet_3d_blocks.UNetMidBlockSpatioTemporal`].
+            [`~models.unets.unet_3d_blocks.CrossAttnDownBlockSpatioTemporal`],
+            [`~models.unets.unet_3d_blocks.CrossAttnUpBlockSpatioTemporal`],
+            [`~models.unets.unet_3d_blocks.UNetMidBlockSpatioTemporal`].
         num_attention_heads (`int`, `Tuple[int]`, defaults to `(5, 10, 10, 20)`):
             The number of attention heads.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.

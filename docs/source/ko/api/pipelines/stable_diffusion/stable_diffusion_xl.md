@@ -34,7 +34,7 @@ Stable Diffusion XL은 Dustin Podell, Zion English, Kyle Lacey, Andreas Blattman
 SDXL을 사용하기 전에 `transformers`, `accelerate`, `safetensors` 와 `invisible_watermark`를 설치하세요.
 다음과 같이 라이브러리를 설치할 수 있습니다:
 
-```
+```sh
 pip install transformers
 pip install accelerate
 pip install safetensors
@@ -46,7 +46,7 @@ pip install invisible-watermark>=0.2.0
 Stable Diffusion XL로 이미지를 생성할 때 워터마크가 보이지 않도록 추가하는 것을 권장하는데, 이는 다운스트림(downstream) 어플리케이션에서 기계에 합성되었는지를 식별하는데 도움을 줄 수 있습니다. 그렇게 하려면 [invisible_watermark 라이브러리](https://pypi.org/project/invisible-watermark/)를 통해 설치해주세요:
 
 
-```
+```sh
 pip install invisible-watermark>=0.2.0
 ```
 
@@ -75,11 +75,11 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipe(prompt=prompt).images[0]
 ```
 
-### Image-to-image 
+### Image-to-image
 
 *image-to-image*를 위해 다음과 같이 SDXL을 사용할 수 있습니다:
 
-```py 
+```py
 import torch
 from diffusers import StableDiffusionXLImg2ImgPipeline
 from diffusers.utils import load_image
@@ -99,7 +99,7 @@ image = pipe(prompt, image=init_image).images[0]
 
 *inpainting*를 위해 다음과 같이 SDXL을 사용할 수 있습니다:
 
-```py 
+```py
 import torch
 from diffusers import StableDiffusionXLInpaintPipeline
 from diffusers.utils import load_image
@@ -352,7 +352,7 @@ out-of-memory 에러가 난다면, [`StableDiffusionXLPipeline.enable_model_cpu_
 
 **참고** Stable Diffusion XL을 `torch`가 2.0 버전 미만에서 실행시키고 싶을 때, xformers 어텐션을 사용해주세요:
 
-```
+```sh
 pip install xformers
 ```
 
