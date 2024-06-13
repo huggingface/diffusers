@@ -54,7 +54,7 @@ jobs:
           else
             # e.g. refs/tags/v0.28.1 -> v0.28.1
             echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
-            echo "PATH_IN_REPO=${${{ github.ref }}#refs/tags/}" >> $GITHUB_ENV
+            echo "PATH_IN_REPO=$(echo ${{ github.ref }} | sed 's/^refs\/tags\///')" >> $GITHUB_ENV
           fi
       - name: Print env vars
         run: |
