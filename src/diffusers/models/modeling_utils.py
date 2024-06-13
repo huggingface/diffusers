@@ -813,12 +813,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             model._temp_convert_self_to_deprecated_attention_blocks()
                             accelerate.load_checkpoint_and_dispatch(
                                 model,
-                                model_file,
+                                model_file if not is_sharded else sharded_ckpt_cached_folder,
                                 device_map,
                                 max_memory=max_memory,
                                 offload_folder=offload_folder,
                                 offload_state_dict=offload_state_dict,
                                 dtype=torch_dtype,
+                                force_hook=force_hook,
+                                strict=True,
                             )
                             model._undo_temp_convert_self_to_deprecated_attention_blocks()
                         else:
