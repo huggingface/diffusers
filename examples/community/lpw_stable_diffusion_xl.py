@@ -1178,13 +1178,9 @@ class SDXLLongPromptWeightingPipeline(
             shape = (
                 batch_size,
                 num_channels_latents,
-<<<<<<< HEAD
-                height // self.vae_scale_factor,
-                width // self.vae_scale_factor,
-=======
                 int(height) // self.vae_scale_factor,
                 int(width) // self.vae_scale_factor,
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
+
             )
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
