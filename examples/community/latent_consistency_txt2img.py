@@ -174,30 +174,12 @@ class LatentConsistencyModelPipeline(DiffusionPipeline):
             )
         return image, has_nsfw_concept
 
-<<<<<<< HEAD
-    def prepare_latents(
-        self,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        dtype,
-        device,
-        latents=None,
-    ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-=======
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, latents=None):
         shape = (
             batch_size,
             num_channels_latents,
             int(height) // self.vae_scale_factor,
             int(width) // self.vae_scale_factor,
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
         )
         if latents is None:
             latents = torch.randn(shape, dtype=dtype).to(device)
@@ -750,16 +732,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         return noisy_samples
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
-<<<<<<< HEAD
-    def get_velocity(
-        self,
-        sample: torch.FloatTensor,
-        noise: torch.FloatTensor,
-        timesteps: torch.IntTensor,
-    ) -> torch.FloatTensor:
-=======
     def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor) -> torch.Tensor:
->>>>>>> 7f51f286a5397cb3e5c5a25693681aa4955e6241
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
         alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
         timesteps = timesteps.to(sample.device)
