@@ -778,7 +778,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     device_map = _determine_device_map(model, device_map, max_memory, torch_dtype)
                     if device_map is None and is_sharded:
                         # we load the parameters on the cpu
-                        device_map = {"":"cpu"}
+                        device_map = {"": "cpu"}
                         force_hook = False
                     try:
                         accelerate.load_checkpoint_and_dispatch(
@@ -790,7 +790,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             offload_state_dict=offload_state_dict,
                             dtype=torch_dtype,
                             force_hooks=force_hook,
-                            strict=True
+                            strict=True,
                         )
                     except AttributeError as e:
                         # When using accelerate loading, we do not have the ability to load the state
