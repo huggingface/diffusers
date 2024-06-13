@@ -591,8 +591,6 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
             )
 
         image = image.to(device=device, dtype=dtype)
-        if image.shape[1] == self.vae.config.latent_channels:
-            init_latents = image
 
         batch_size = batch_size * num_images_per_prompt
         if image.shape[1] == self.vae.config.latent_channels:
