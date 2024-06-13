@@ -1537,7 +1537,6 @@ def main(args):
                 else:
                     u = torch.rand(size=(bsz,), device=accelerator.device)
 
-                
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
