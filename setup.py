@@ -254,7 +254,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers_plus_plus",
-    version="0.28.0.rc1",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.29.0.rc1",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch (FORK).",
 
     long_description=open("README.md", "r", encoding="utf-8").read(),
