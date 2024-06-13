@@ -147,11 +147,11 @@ prompt = "cat, hiding in the leaves, ((rain)), zazie rainyday, beautiful eyes, m
 neg_prompt = "(deformed iris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, mutated hands and fingers:1.4), (deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, disconnected limbs, mutation, mutated, ugly, disgusting, amputation"
 generator = torch.Generator(device="cpu").manual_seed(20)
 out_lpw = pipe_lpw(
-    prompt, 
-    negative_prompt=neg_prompt, 
+    prompt,
+    negative_prompt=neg_prompt,
     width=512,
     height=512,
-    max_embeddings_multiples=3, 
+    max_embeddings_multiples=3,
     num_inference_steps=50,
     generator=generator,
     ).images[0]
@@ -237,7 +237,7 @@ from diffusers.utils import load_image
 pipeline = DiffusionPipeline.from_pretrained(
     "Lykon/dreamshaper-8-inpainting",
     custom_pipeline="hd_painter"
-)
+).to("cuda")
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hd-painter.jpg")
 mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hd-painter-mask.png")
@@ -300,7 +300,7 @@ In steps 4 and 5, the custom [UNet](https://github.com/showlab/Show-1/blob/main/
 
 </Tip>
 
-4. Now you'll load a [custom UNet](https://github.com/showlab/Show-1/blob/main/showone/models/unet_3d_condition.py), which in this example, has already been implemented in [showone_unet_3d_condition.py](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py) for your convenience. You'll notice the [`UNet3DConditionModel`] class name is changed to `ShowOneUNet3DConditionModel` because [`UNet3DConditionModel`] already exists in Diffusers. Any components needed for the `ShowOneUNet3DConditionModel` class should be placed in showone_unet_3d_condition.py.
+4. Now you'll load a [custom UNet](https://github.com/showlab/Show-1/blob/main/showone/models/unet_3d_condition.py), which in this example, has already been implemented in [showone_unet_3d_condition.py](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py) for your convenience. You'll notice the [`UNet3DConditionModel`] class name is changed to `ShowOneUNet3DConditionModel` because [`UNet3DConditionModel`] already exists in Diffusers. Any components needed for the `ShowOneUNet3DConditionModel` class should be placed in `showone_unet_3d_condition.py`.
 
     Once this is done, you can initialize the UNet:
 
@@ -310,7 +310,7 @@ In steps 4 and 5, the custom [UNet](https://github.com/showlab/Show-1/blob/main/
     unet = ShowOneUNet3DConditionModel.from_pretrained(pipe_id, subfolder="unet")
     ```
 
-5. Finally, you'll load the custom pipeline code. For this example, it has already been created for you in [pipeline_t2v_base_pixel.py](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/pipeline_t2v_base_pixel.py). This script contains a custom `TextToVideoIFPipeline` class for generating videos from text. Just like the custom UNet, any code needed for the custom pipeline to work should go in pipeline_t2v_base_pixel.py.
+5. Finally, you'll load the custom pipeline code. For this example, it has already been created for you in [pipeline_t2v_base_pixel.py](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/pipeline_t2v_base_pixel.py). This script contains a custom `TextToVideoIFPipeline` class for generating videos from text. Just like the custom UNet, any code needed for the custom pipeline to work should go in `pipeline_t2v_base_pixel.py`.
 
 Once everything is in place, you can initialize the `TextToVideoIFPipeline` with the `ShowOneUNet3DConditionModel`:
 
