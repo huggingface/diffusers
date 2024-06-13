@@ -1572,7 +1572,6 @@ def main(args):
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                 # Preconditioning of the model outputs.
                 model_pred = model_pred * (-sigmas) + noisy_model_input
-                
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 if args.weighting_scheme == "sigma_sqrt":
