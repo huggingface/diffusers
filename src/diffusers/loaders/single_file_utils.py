@@ -252,7 +252,6 @@ LDM_CONTROLNET_KEY = "control_model."
 LDM_CLIP_PREFIX_TO_REMOVE = [
     "cond_stage_model.transformer.",
     "conditioner.embedders.0.transformer.",
-    "text_encoders.clip_l.transformer.",
 ]
 OPEN_CLIP_PREFIX = "conditioner.embedders.0.model."
 LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
@@ -399,11 +398,14 @@ def is_open_clip_sdxl_model(checkpoint):
 
 
 def is_open_clip_sd3_model(checkpoint):
-    is_open_clip_sdxl_refiner_model(checkpoint)
+    if CHECKPOINT_KEY_NAMES["open_clip_sd3"] in checkpoint:
+        return True
+
+    return False
 
 
 def is_open_clip_sdxl_refiner_model(checkpoint):
-    if CHECKPOINT_KEY_NAMES["open_clip_sd3"] in checkpoint:
+    if CHECKPOINT_KEY_NAMES["open_clip_sdxl_refiner"] in checkpoint:
         return True
 
     return False
@@ -1233,11 +1235,14 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     return new_checkpoint
 
 
-def convert_ldm_clip_checkpoint(checkpoint):
+def convert_ldm_clip_checkpoint(checkpoint, remove_prefix=None):
     keys = list(checkpoint.keys())
     text_model_dict = {}
 
-    remove_prefixes = LDM_CLIP_PREFIX_TO_REMOVE
+    remove_prefixes = []
+    remove_prefixes.extend(LDM_CLIP_PREFIX_TO_REMOVE)
+    if remove_prefix:
+        remove_prefixes.append(remove_prefix)
 
     for key in keys:
         for prefix in remove_prefixes:
@@ -1376,6 +1381,13 @@ def create_diffusers_clip_model_from_ldm(
     ):
         diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
 
+    elif (
+        is_clip_sd3_model(checkpoint)
+        and checkpoint[CHECKPOINT_KEY_NAMES["clip_sd3"]].shape[-1] == position_embedding_dim
+    ):
+        diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint, "text_encoders.clip_l.transformer.")
+        diffusers_format_checkpoint["text_projection.weight"] = torch.eye(position_embedding_dim)
+
     elif is_open_clip_model(checkpoint):
         prefix = "cond_stage_model.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
@@ -1391,9 +1403,11 @@ def create_diffusers_clip_model_from_ldm(
         prefix = "conditioner.embedders.0.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
-    elif is_open_clip_sd3_model(checkpoint):
-        prefix = "text_encoders.clip_g.transformer."
-        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
+    elif (
+        is_open_clip_sd3_model(checkpoint)
+        and checkpoint[CHECKPOINT_KEY_NAMES["open_clip_sd3"]].shape[-1] == position_embedding_dim
+    ):
+        diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint, "text_encoders.clip_g.transformer.")
 
     else:
         raise ValueError("The provided checkpoint does not seem to contain a valid CLIP model.")
@@ -1755,7 +1769,7 @@ def convert_sd3_t5_checkpoint_to_diffusers(checkpoint):
     keys = list(checkpoint.keys())
     text_model_dict = {}
 
-    remove_prefixes = ["text_encoders.t5xxl.transformer.encoder."]
+    remove_prefixes = ["text_encoders.t5xxl.transformer."]
 
     for key in keys:
         for prefix in remove_prefixes:
