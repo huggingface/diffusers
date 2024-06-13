@@ -27,6 +27,7 @@ from .controlnet import (
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
+from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
     KandinskyImg2ImgCombinedPipeline,
@@ -70,6 +71,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl", StableDiffusionXLPipeline),
         ("stable-diffusion-3", StableDiffusion3Pipeline),
         ("if", IFPipeline),
+        ("hunyuan", HunyuanDiTPipeline),
         ("kandinsky", KandinskyCombinedPipeline),
         ("kandinsky22", KandinskyV22CombinedPipeline),
         ("kandinsky3", Kandinsky3Pipeline),
