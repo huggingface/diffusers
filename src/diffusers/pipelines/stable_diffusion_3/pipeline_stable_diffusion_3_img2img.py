@@ -213,8 +213,7 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
             vae_scale_factor=self.vae_scale_factor, vae_latent_channels=self.vae.config.latent_channels
         )
 
-        self.tokenizer_max_length = 77
-
+        self.tokenizer_max_length = self.tokenizer.model_max_length
         self.default_sample_size = self.transformer.config.sample_size
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_t5_prompt_embeds
@@ -228,7 +227,9 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
 
-        self.tokenizer_max_length = self.tokenizer_3.model_max_length
+        self.tokenizer_max_length = (
+                    self.tokenizer_3.model_max_length if hasattr(self, "tokenizer_3") and self.tokenizer_3 is not None else self.tokenizer_max_length
+                )
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
@@ -281,8 +282,6 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         clip_model_index: int = 0,
     ):
         device = device or self._execution_device
-
-        self.tokenizer_max_length = self.tokenizer.model_max_length
 
         clip_tokenizers = [self.tokenizer, self.tokenizer_2]
         clip_text_encoders = [self.text_encoder, self.text_encoder_2]
