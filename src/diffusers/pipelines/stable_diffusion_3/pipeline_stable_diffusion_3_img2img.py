@@ -286,6 +286,8 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         clip_tokenizers = [self.tokenizer, self.tokenizer_2]
         clip_text_encoders = [self.text_encoder, self.text_encoder_2]
 
+        self.tokenizer_max_length = self.tokenizer.model_max_length
+
         tokenizer = clip_tokenizers[clip_model_index]
         text_encoder = clip_text_encoders[clip_model_index]
 
