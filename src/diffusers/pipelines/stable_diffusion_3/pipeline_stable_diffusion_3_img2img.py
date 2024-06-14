@@ -212,7 +212,16 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, vae_latent_channels=self.vae.config.latent_channels
         )
-        self.tokenizer_max_length = self.tokenizer.model_max_length
+        
+        if hasattr(self, "tokenizer") and self.tokenizer is not None:
+            self.tokenizer_max_length = self.tokenizer.model_max_length
+        elif hasattr(self, "tokenizer_2") and self.tokenizer_2 is not None:
+            self.tokenizer_max_length = self.tokenizer_2.model_max_length
+        elif hasattr(self, "tokenizer_3") and self.tokenizer_3 is not None:
+            self.tokenizer_max_length = self.tokenizer_3.model_max_length
+        else:
+            self.tokenizer_max_length = 77
+
         self.default_sample_size = self.transformer.config.sample_size
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_t5_prompt_embeds
