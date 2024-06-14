@@ -193,14 +193,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-        if hasattr(self, "tokenizer") and self.tokenizer is not None:
-            self.tokenizer_max_length = self.tokenizer.model_max_length
-        elif hasattr(self, "tokenizer_2") and self.tokenizer_2 is not None:
-            self.tokenizer_max_length = self.tokenizer_2.model_max_length
-        elif hasattr(self, "tokenizer_3") and self.tokenizer_3 is not None:
-            self.tokenizer_max_length = self.tokenizer_3.model_max_length
-        else:
-            self.tokenizer_max_length = 77
+        tokenizers = ["tokenizer", "tokenizer_2", "tokenizer_3"]
+        self.tokenizer_max_length = 77
+
+        for tokenizer_name in reversed(tokenizers):
+            tokenizer = getattr(self, tokenizer_name, None)
+            if tokenizer is not None:
+                self.tokenizer_max_length = tokenizer.model_max_length
+                break
 
         self.default_sample_size = (
             self.transformer.config.sample_size
