@@ -299,6 +299,12 @@ def parse_args(input_args=None):
         help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
+        "--max_sequence_length",
+        type=int,
+        default=256,
+        help="Maximum sequence length to use with with the T5 text encoder",
+    )
+    parser.add_argument(
         "--validation_prompt",
         type=str,
         default=None,
@@ -830,6 +836,7 @@ def tokenize_prompt(tokenizer, prompt):
 def _encode_prompt_with_t5(
     text_encoder,
     tokenizer,
+    max_sequence_length,
     prompt=None,
     num_images_per_prompt=1,
     device=None,
@@ -840,7 +847,7 @@ def _encode_prompt_with_t5(
     text_inputs = tokenizer(
         prompt,
         padding="max_length",
-        max_length=77,
+        max_length=max_sequence_length,
         truncation=True,
         add_special_tokens=True,
         return_tensors="pt",
@@ -897,6 +904,7 @@ def encode_prompt(
     text_encoders,
     tokenizers,
     prompt: str,
+    max_sequence_length,
     device=None,
     num_images_per_prompt: int = 1,
 ):
@@ -924,6 +932,7 @@ def encode_prompt(
     t5_prompt_embed = _encode_prompt_with_t5(
         text_encoders[-1],
         tokenizers[-1],
+        max_sequence_length,
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
         device=device if device is not None else text_encoders[-1].device,
@@ -1297,7 +1306,9 @@ def main(args):
 
     def compute_text_embeddings(prompt, text_encoders, tokenizers):
         with torch.no_grad():
-            prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
+            prompt_embeds, pooled_prompt_embeds = encode_prompt(
+                text_encoders, tokenizers, prompt, args.max_sequence_length
+            )
             prompt_embeds = prompt_embeds.to(accelerator.device)
             pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
         return prompt_embeds, pooled_prompt_embeds
