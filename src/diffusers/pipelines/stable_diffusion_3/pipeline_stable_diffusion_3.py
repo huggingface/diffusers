@@ -212,8 +212,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         dtype = dtype or self.text_encoder.dtype
 
         self.tokenizer_max_length = (
-                    self.tokenizer_3.model_max_length if hasattr(self, "tokenizer_3") and self.tokenizer_3 is not None else self.tokenizer_max_length
-                )
+            self.tokenizer_3.model_max_length if hasattr(self, "tokenizer_3") and self.tokenizer_3 is not None else self.tokenizer_max_length
+        )
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
