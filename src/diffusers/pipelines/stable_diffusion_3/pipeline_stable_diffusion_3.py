@@ -192,9 +192,16 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.tokenizer_max_length = (
-            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
-        )
+
+        if hasattr(self, "tokenizer") and self.tokenizer is not None:
+            self.tokenizer_max_length = self.tokenizer.model_max_length
+        elif hasattr(self, "tokenizer_2") and self.tokenizer_2 is not None:
+            self.tokenizer_max_length = self.tokenizer_2.model_max_length
+        elif hasattr(self, "tokenizer_3") and self.tokenizer_3 is not None:
+            self.tokenizer_max_length = self.tokenizer_3.model_max_length
+        else:
+            self.tokenizer_max_length = 77
+
         self.default_sample_size = (
             self.transformer.config.sample_size
             if hasattr(self, "transformer") and self.transformer is not None
@@ -348,7 +355,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             negative_prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in all the text-encoders.
-            negative_prompt_2 (`str` or `List[str]`, *optional*):
+            negative_prompt_3 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_3` and
                 `text_encoder_3`. If not defined, `negative_prompt` is used in both text-encoders
             prompt_embeds (`torch.FloatTensor`, *optional*):
