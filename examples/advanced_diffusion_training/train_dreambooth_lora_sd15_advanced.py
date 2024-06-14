@@ -326,7 +326,7 @@ def parse_args(input_args=None):
         type=str,
         default="TOK",
         help="identifier specifying the instance(or instances) as used in instance_prompt, validation prompt, "
-        "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma seperated string - e.g. "
+        "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma separated string - e.g. "
         "'TOK,TOK2,TOK3' etc.",
     )
 
@@ -736,7 +736,7 @@ class TokenEmbeddingsHandler:
             # random initialization of new tokens
             std_token_embedding = text_encoder.text_model.embeddings.token_embedding.weight.data.std()
 
-            print(f"{idx} text encodedr's std_token_embedding: {std_token_embedding}")
+            print(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
 
             text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
                 torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
@@ -1626,7 +1626,7 @@ def main(args):
                 optimizer.param_groups[1]["lr"] = 0.0
 
             else:
-                # still optimizng the text encoder
+                # still optimizing the text encoder
                 text_encoder_one.train()
                 # set top parameter requires_grad = True for gradient checkpointing works
                 if args.train_text_encoder:
@@ -1967,7 +1967,7 @@ def main(args):
                         }
                     )
 
-        # Conver to WebUI format
+        # Convert to WebUI format
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
         peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
         kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)

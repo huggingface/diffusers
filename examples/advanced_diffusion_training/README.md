@@ -114,7 +114,7 @@ Now we'll simply specify the name of the dataset and caption column (in this cas
 ```
 
 You can also load a dataset straight from by specifying it's name in `dataset_name`.
-Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loadin your own caption dataset.
+Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loading your own caption dataset.
 
 - **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer
 - **pivotal tuning**
@@ -393,7 +393,7 @@ The advanced script now supports custom choice of U-net blocks to train during D
 > In light of this, we're introducing a new feature to the advanced script to allow for configurable U-net learned blocks.
 
 **Usage**
-Configure LoRA learned U-net blocks adding a `lora_unet_blocks` flag, with a comma seperated string specifying the targeted blocks.
+Configure LoRA learned U-net blocks adding a `lora_unet_blocks` flag, with a comma separated string specifying the targeted blocks.
 e.g:
 ```bash
 --lora_unet_blocks="unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1"
@@ -436,7 +436,7 @@ lora_path  = "lora-library/B-LoRA-pen_sketch"
 
 state_dict = lora_lora_unet_blocks(content_B_lora_path,alpha=1,target_blocks=["unet.up_blocks.0.attentions.0"])
 
-# Load traine dlora layers into the unet
+# Load trained lora layers into the unet
 pipeline.load_lora_into_unet(state_dict, None, pipeline.unet)
 
 #generate
