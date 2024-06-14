@@ -28,9 +28,11 @@ from .single_file_utils import (
     _legacy_load_safety_checker,
     _legacy_load_scheduler,
     create_diffusers_clip_model_from_ldm,
+    create_diffusers_t5_model_from_checkpoint,
     fetch_diffusers_config,
     fetch_original_config,
     is_clip_model_in_single_file,
+    is_t5_in_single_file,
     load_single_file_checkpoint,
 )
 
@@ -116,6 +118,16 @@ def load_single_file_sub_model(
             torch_dtype=torch_dtype,
             local_files_only=local_files_only,
             is_legacy_loading=is_legacy_loading,
+        )
+
+    elif is_transformers_model and is_t5_in_single_file(checkpoint):
+        loaded_sub_model = create_diffusers_t5_model_from_checkpoint(
+            class_obj,
+            checkpoint=checkpoint,
+            config=cached_model_config_path,
+            subfolder=name,
+            torch_dtype=torch_dtype,
+            local_files_only=local_files_only,
         )
 
     elif is_tokenizer and is_legacy_loading:
@@ -234,7 +246,7 @@ def _download_diffusers_model_config_from_hub(
     local_files_only=None,
     token=None,
 ):
-    allow_patterns = ["**/*.json", "*.json", "*.txt", "**/*.txt"]
+    allow_patterns = ["**/*.json", "*.json", "*.txt", "**/*.txt", "**/*.model"]
     cached_model_path = snapshot_download(
         pretrained_model_name_or_path,
         cache_dir=cache_dir,
