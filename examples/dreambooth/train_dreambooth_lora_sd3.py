@@ -1465,15 +1465,15 @@ def main(args):
                 # for weighting schemes where we sample timesteps non-uniformly
                 if args.weighting_scheme == "logit_normal":
                     # See 3.1 in the SD3 paper ($rf/lognorm(0.00,1.00)$).
-                    u = torch.normal(mean=args.logit_mean, std=args.logit_std, size=(bsz,), device=accelerator.device)
+                    u = torch.normal(mean=args.logit_mean, std=args.logit_std, size=(bsz,), device="cpu")
                     u = torch.nn.functional.sigmoid(u)
                 elif args.weighting_scheme == "mode":
-                    u = torch.rand(size=(bsz,), device=accelerator.device)
+                    u = torch.rand(size=(bsz,), device="cpu")
                     u = 1 - u - args.mode_scale * (torch.cos(math.pi * u / 2) ** 2 - 1 + u)
                 else:
-                    u = torch.rand(size=(bsz,), device=accelerator.device)
+                    u = torch.rand(size=(bsz,), device="cpu")
 
-                indices = (u * noise_scheduler_copy.config.num_train_timesteps).long().cpu()
+                indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
                 # Add noise according to flow matching.
