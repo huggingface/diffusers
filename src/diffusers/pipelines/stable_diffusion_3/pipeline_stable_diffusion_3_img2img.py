@@ -212,7 +212,7 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, vae_latent_channels=self.vae.config.latent_channels
         )
-        
+
         if hasattr(self, "tokenizer") and self.tokenizer is not None:
             self.tokenizer_max_length = self.tokenizer.model_max_length
         elif hasattr(self, "tokenizer_2") and self.tokenizer_2 is not None:
@@ -374,7 +374,7 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
             negative_prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in all the text-encoders.
-            negative_prompt_2 (`str` or `List[str]`, *optional*):
+            negative_prompt_3 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_3` and
                 `text_encoder_3`. If not defined, `negative_prompt` is used in both text-encoders
             prompt_embeds (`torch.FloatTensor`, *optional*):
