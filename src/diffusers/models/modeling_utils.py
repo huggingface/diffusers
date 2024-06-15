@@ -1162,7 +1162,7 @@ class LegacyModelMixin(ModelMixin):
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
-        # To prevent depedency import problem.
+        # To prevent dependency import problem.
         from .model_loading_utils import _fetch_remapped_cls_from_config
 
         # Create a copy of the kwargs so that we don't mess with the keyword arguments in the downstream calls.
