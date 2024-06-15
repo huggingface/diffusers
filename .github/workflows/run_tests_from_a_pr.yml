@@ -7,7 +7,7 @@ on:
         default: 'diffusers/diffusers-pytorch-cuda'
         description: 'Name of the Docker image'
         required: true
-      branch: 
+      branch:
         description: 'PR Branch to test on'
         required: true
       test:
@@ -34,19 +34,19 @@ jobs:
     steps:
       - name: Validate test files input
         id: validate_test_files
-        env: 
+        env:
           PY_TEST: ${{ github.event.inputs.test }}
         run: |
           if [[ ! "$PY_TEST" =~ ^tests/ ]]; then
             echo "Error: The input string must start with 'tests/'."
             exit 1
           fi
-          
+
           if [[ ! "$PY_TEST" =~ ^tests/(models|pipelines) ]]; then
             echo "Error: The input string must contain either 'models' or 'pipelines' after 'tests/'."
             exit 1
           fi
-          
+
           if [[ "$PY_TEST" == *";"* ]]; then
             echo "Error: The input string must not contain ';'."
             exit 1
@@ -60,14 +60,14 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
 
 
-      - name: Install pytest 
-        run: | 
+      - name: Install pytest
+        run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install peft
-      
+
       - name: Run tests
-        env: 
+        env:
             PY_TEST: ${{ github.event.inputs.test }}
         run: |
           pytest "$PY_TEST"
