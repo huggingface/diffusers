@@ -1556,8 +1556,14 @@ def main(args):
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
+    if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+    if num_training_steps_for_scheduler != args.max_train_steps * accelerator.num_processes:
+        logger.warning(
+            f"The length of the 'train_dataloader' after 'accelerator.prepare' ({len(train_dataloader)}) does not match "
+            f"the expected length ({len_train_dataloader_after_sharding}) when the learning rate scheduler was created. "
+            f"This inconsistency may result in the learning rate scheduler not functioning properly."
+        )
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
