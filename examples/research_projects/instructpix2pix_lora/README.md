@@ -42,7 +42,6 @@ input_image_path = "/path/to/input_image"
 input_image = Image.open(input_image_path)
 edited_images = pipe_lora(num_images_per_prompt=1, prompt=args.edit_prompt, image=input_image, num_inference_steps=1000).images
 edited_images[0].show()
-
 ```
 
 ## Results
