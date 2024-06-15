@@ -616,7 +616,7 @@ class StableDiffusionUpscalePipeline(
         >>> # load model and scheduler
         >>> model_id = "stabilityai/stable-diffusion-x4-upscaler"
         >>> pipeline = StableDiffusionUpscalePipeline.from_pretrained(
-        ...     model_id, revision="fp16", torch_dtype=torch.float16
+        ...     model_id, variant="fp16", torch_dtype=torch.float16
         ... )
         >>> pipeline = pipeline.to("cuda")
 
