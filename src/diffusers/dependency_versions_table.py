@@ -40,7 +40,7 @@ deps = {
     "tensorboard": "tensorboard",
     "torch": "torch>=1.4",
     "torchvision": "torchvision",
-    "transformers": "transformers>=4.25.1",
+    "transformers": "transformers>=4.41.2",
     "urllib3": "urllib3<=2.0.0",
     "black": "black",
 }
