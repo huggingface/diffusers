@@ -421,7 +421,7 @@ import torch
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    revision='fp16',
+    variant='fp16',
     torch_dtype=torch.float16,
     safety_checker=None,  # Very important for videos...lots of false positives while interpolating
     custom_pipeline="interpolate_stable_diffusion",
@@ -462,7 +462,7 @@ def download_image(url):
     response = requests.get(url)
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
-pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_mega", torch_dtype=torch.float16, revision="fp16")
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_mega", torch_dtype=torch.float16, variant="fp16")
 pipe.to("cuda")
 pipe.enable_attention_slicing()
 
@@ -1506,12 +1506,12 @@ scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
 
 pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
                                                 custom_pipeline="stable_diffusion_tensorrt_txt2img",
-                                                revision='fp16',
+                                                variant='fp16',
                                                 torch_dtype=torch.float16,
                                                 scheduler=scheduler,)
 
 # re-use cached folder to save ONNX models and TensorRT Engines
-pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", revision='fp16',)
+pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", variant='fp16',)
 
 pipe = pipe.to("cuda")
 
@@ -1568,7 +1568,7 @@ text_encoder = CLIPTextModel.from_pretrained(
 pipeline = DiffusionPipeline.from_pretrained(
     pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4",
     custom_pipeline="edict_pipeline",
-    revision="fp16",
+    variant="fp16",
     scheduler=scheduler,
     text_encoder=text_encoder,
     leapfrog_steps=True,
@@ -1660,12 +1660,12 @@ scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
 
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
                                                 custom_pipeline="stable_diffusion_tensorrt_img2img",
-                                                revision='fp16',
+                                                variant='fp16',
                                                 torch_dtype=torch.float16,
                                                 scheduler=scheduler,)
 
 # re-use cached folder to save ONNX models and TensorRT Engines
-pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", revision='fp16',)
+pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", variant='fp16',)
 
 pipe = pipe.to("cuda")
 
@@ -2251,13 +2251,13 @@ scheduler = PNDMScheduler.from_pretrained("stabilityai/stable-diffusion-2-inpain
 
 pipe = StableDiffusionInpaintPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
     custom_pipeline="stable_diffusion_tensorrt_inpaint",
-    revision='fp16',
+    variant='fp16',
     torch_dtype=torch.float16,
     scheduler=scheduler,
     )
 
 # re-use cached folder to save ONNX models and TensorRT Engines
-pipe.set_cached_folder("stabilityai/stable-diffusion-2-inpainting", revision='fp16',)
+pipe.set_cached_folder("stabilityai/stable-diffusion-2-inpainting", variant='fp16',)
 
 pipe = pipe.to("cuda")
 
