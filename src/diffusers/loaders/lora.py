@@ -30,6 +30,7 @@ from ..utils import (
     _get_model_file,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
+    convert_unet_state_dict_to_peft,
     delete_adapter_layers,
     get_adapter_name,
     get_peft_kwargs,
@@ -1540,6 +1541,7 @@ class SD3LoraLoaderMixin:
         state_dict = {
             k.replace(f"{cls.transformer_name}.", ""): v for k, v in state_dict.items() if k in transformer_keys
         }
+        state_dict = convert_unet_state_dict_to_peft(state_dict)
 
         if len(state_dict.keys()) > 0:
             if adapter_name in getattr(transformer, "peft_config", {}):
