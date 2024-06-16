@@ -34,7 +34,7 @@ if is_torch_available():
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["controlnet"] = ["ControlNetModel"]
     _import_structure["controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
-    _import_structure["controlnet_sd3"] = ["ControlNetSD3Model", "MultiControlNetSD3Model"]
+    _import_structure["controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
@@ -75,8 +75,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
         )
         from .controlnet import ControlNetModel
+        from .controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
         from .controlnet_xs import ControlNetXSAdapter, UNetControlNetXSModel
-        from .controlnet_sd3 import ControlNetSD3Model, MultiControlNetSD3Model
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (

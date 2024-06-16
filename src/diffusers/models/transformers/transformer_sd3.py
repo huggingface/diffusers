@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional, Union, List
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -245,7 +245,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         encoder_hidden_states: torch.FloatTensor = None,
         pooled_projections: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
-        controlnet_block_samples: List = None,
+        block_controlnet_hidden_states: List = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
@@ -261,6 +261,8 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 from the embeddings of input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
+            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
+                A list of tensors that if specified are added to the residuals of transformer blocks.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -320,10 +322,10 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 )
 
-            # controlnet
-            if controlnet_block_samples is not None and not block.context_pre_only:
-                interval_control = len(self.transformer_blocks) // len(controlnet_block_samples)
-                hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
+            # controlnet residual
+            if block_controlnet_hidden_states is not None and not block.context_pre_only:
+                interval_control = len(self.transformer_blocks) // len(block_controlnet_hidden_states)
+                hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
 
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)

@@ -13,8 +13,8 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional, Union, Tuple
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -24,11 +24,10 @@ from ..loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ..models.attention import JointTransformerBlock
 from ..models.attention_processor import Attention, AttentionProcessor
 from ..models.modeling_utils import ModelMixin
-from ..models.normalization import AdaLayerNormContinuous
 from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from .controlnet import BaseOutput, zero_module
 from .embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
 from .transformers.transformer_2d import Transformer2DModelOutput
-from .controlnet import zero_module, BaseOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -39,8 +38,7 @@ class ControlNetOutput(BaseOutput):
     controlnet_block_samples: Tuple[torch.Tensor]
 
 
-class ControlNetSD3Model(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
-
+class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -97,7 +95,7 @@ class ControlNetSD3Model(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             controlnet_block = nn.Linear(self.inner_dim, self.inner_dim)
             controlnet_block = zero_module(controlnet_block)
             self.controlnet_blocks.append(controlnet_block)
-        self.pos_embed_input = PatchEmbed(
+        pos_embed_input = PatchEmbed(
             height=sample_size,
             width=sample_size,
             patch_size=patch_size,
@@ -106,7 +104,7 @@ class ControlNetSD3Model(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             pos_embed_type=None,
             # pos_embed_max_size=pos_embed_max_size,  # hard-code for now.
         )
-        self.pos_embed_input = zero_module(self.pos_embed_input)
+        self.pos_embed_input = zero_module(pos_embed_input)
 
         self.gradient_checkpointing = False
 
@@ -245,24 +243,8 @@ class ControlNetSD3Model(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
     @classmethod
     def from_transformer(cls, transformer, num_layers=None, load_weights_from_transformer=True):
         config = transformer.config
-        config['num_layers'] = num_layers or config.num_layers
+        config["num_layers"] = num_layers or config.num_layers
         controlnet = cls(**config)
-        # controlnet = cls(
-        #     conditioning_channels=conditioning_channels,
-        #     num_layers=num_layers,
-        #     activation_fn=activation_fn,
-        #     attention_head_dim=attention_head_dim,
-        #     cross_attention_dim=cross_attention_dim,
-        #     cross_attention_dim_t5=cross_attention_dim_t5,
-        #     hidden_size=hidden_size,
-        #     in_channels=in_channels,
-        #     mlp_ratio=mlp_ratio,
-        #     num_attention_heads=num_attention_heads,
-        #     patch_size=patch_size,
-        #     sample_size=sample_size,
-        #     text_len=text_len,
-        #     text_len_t5=text_len_t5,
-        # )
 
         if load_weights_from_transformer:
             controlnet.pos_embed.load_state_dict(transformer.pos_embed.state_dict(), strict=False)
@@ -273,9 +255,8 @@ class ControlNetSD3Model(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
             controlnet.pos_embed_input = zero_module(controlnet.pos_embed_input)
 
-            print(f"=> controlnet load from transformer.")
+            print("=> controlnet load from transformer.")
         return controlnet
-
 
     def forward(
         self,
@@ -294,6 +275,10 @@ class ControlNetSD3Model(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         Args:
             hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
                 Input `hidden_states`.
+            controlnet_cond (`torch.Tensor`):
+                The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            conditioning_scale (`float`, defaults to `1.0`):
+                The scale factor for ControlNet outputs.
             encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
             pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
@@ -334,7 +319,6 @@ class ControlNetSD3Model(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         # add
-        # hidden_states = torch.zeros_like(hidden_states) + self.pos_embed_input(controlnet_cond)
         hidden_states = hidden_states + self.pos_embed_input(controlnet_cond)
 
         block_res_samples = ()
@@ -364,8 +348,8 @@ class ControlNetSD3Model(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 )
-            
-            block_res_samples = block_res_samples + (hidden_states, )
+
+            block_res_samples = block_res_samples + (hidden_states,)
 
         controlnet_block_res_samples = ()
         for block_res_sample, controlnet_block in zip(block_res_samples, self.controlnet_blocks):
@@ -375,24 +359,63 @@ class ControlNetSD3Model(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         # 6. scaling
         controlnet_block_res_samples = [sample * conditioning_scale for sample in controlnet_block_res_samples]
 
-
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
-            return (controlnet_block_res_samples, )
-        
+            return controlnet_block_res_samples
+
         return ControlNetOutput(controlnet_block_samples=controlnet_block_res_samples)
 
 
-class MultiControlNetSD3Model(ModelMixin):
+class SD3MultiControlNetModel(ModelMixin):
+    r"""
+    Multiple `SD3ControlNetModel` wrapper class for Multi-SD3ControlNet
+
+    This module is a wrapper for multiple instances of the `SD3ControlNetModel`. The `forward()` API is designed to be
+    compatible with `SD3ControlNetModel`.
+
+    Args:
+        controlnets (`List[SD3ControlNetModel]`):
+            Provides additional conditioning to the unet during the denoising process. You must set multiple
+            `SD3ControlNetModel` as a list.
+    """
+
     def __init__(self, controlnets):
         super().__init__()
-        controlnets = [
-            ControlNetSD3Model.from_pretrained(c, low_cpu_mem_usage=False, device_map=None) if isinstance(c, str) else c
-            for c in controlnets
-        ]
         self.nets = nn.ModuleList(controlnets)
 
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        controlnet_cond: List[torch.tensor],
+        conditioning_scale: List[float],
+        pooled_projections: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        timestep: torch.LongTensor = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        return_dict: bool = True,
+    ) -> Union[ControlNetOutput, Tuple]:
+        for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
+            block_samples = controlnet(
+                hidden_states=hidden_states,
+                timestep=timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                pooled_projections=pooled_projections,
+                controlnet_cond=image,
+                conditioning_scale=scale,
+                joint_attention_kwargs=joint_attention_kwargs,
+                return_dict=return_dict,
+            )
 
+            # merge samples
+            if i == 0:
+                control_block_samples = block_samples
+            else:
+                control_block_samples = [
+                    control_block_sample + block_sample
+                    for control_block_sample, block_sample in zip(control_block_samples, block_samples)
+                ]
+
+        return control_block_samples

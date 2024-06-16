@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import (
@@ -23,20 +23,20 @@ from transformers import (
     T5TokenizerFast,
 )
 
-from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, SD3LoraLoaderMixin
-from diffusers.models.autoencoders import AutoencoderKL
-from diffusers.models.transformers import SD3Transformer2DModel
-from diffusers.models.controlnet_sd3 import ControlNetSD3Model, MultiControlNetSD3Model
-from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
-from diffusers.utils import (
+from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin
+from ...models.autoencoders import AutoencoderKL
+from ...models.controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
+from ...models.transformers import SD3Transformer2DModel
+from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...utils import (
     is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
-from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion_3.pipeline_output import StableDiffusion3PipelineOutput
+from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline
+from ..stable_diffusion_3.pipeline_output import StableDiffusion3PipelineOutput
 
 
 if is_torch_xla_available():
@@ -53,14 +53,19 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusion3Pipeline
+        >>> from diffusers import StableDiffusion3ControlNetPipeline
+        >>> from diffusers.models import SD3ControlNetModel, SD3MultiControlNetModel
+        >>> from diffusers.utils import load_image
 
-        >>> pipe = StableDiffusion3Pipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
+        >>> controlnet = SD3ControlNetModel.from_pretrained("InstantX/SD3-Controlnet-Canny", torch_dtype=torch.float16)
+
+        >>> pipe = StableDiffusion3ControlNetPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-3-medium-diffusers", controlnet=controlnet, torch_dtype=torch.float16
         ... )
         >>> pipe.to("cuda")
-        >>> prompt = "A cat holding a sign that says hello world"
-        >>> image = pipe(prompt).images[0]
+        >>> control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")
+        >>> prompt = "A girl holding a sign that says InstantX"
+        >>> image = pipe(prompt, control_image=control_image, controlnet_conditioning_scale=0.7).images[0]
         >>> image.save("sd3.png")
         ```
 """
@@ -126,7 +131,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
+class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
     r"""
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -158,6 +163,10 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
         tokenizer_3 (`T5TokenizerFast`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
+        controlnet ([`SD3ControlNetModel`] or `List[SD3ControlNetModel]` or [`SD3MultiControlNetModel`]):
+            Provides additional conditioning to the `unet` during the denoising process. If you set multiple
+            ControlNets as a list, the outputs from each ControlNet are added together to create one combined
+            additional conditioning.
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->transformer->vae"
@@ -175,12 +184,12 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
         tokenizer_2: CLIPTokenizer,
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
-        controlnet_list: MultiControlNetSD3Model,
+        controlnet: Union[
+            SD3ControlNetModel, List[SD3ControlNetModel], Tuple[SD3ControlNetModel], SD3MultiControlNetModel
+        ],
     ):
         super().__init__()
 
-        controlnet_list = MultiControlNetSD3Model(controlnet_list)
-        
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -191,7 +200,7 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
             tokenizer_3=tokenizer_3,
             transformer=transformer,
             scheduler=scheduler,
-            controlnet_list=controlnet_list,
+            controlnet=controlnet,
         )
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
@@ -206,6 +215,7 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
             else 128
         )
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -257,6 +267,7 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -312,6 +323,7 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
 
         return prompt_embeds, pooled_prompt_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -562,6 +574,7 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -573,9 +586,6 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
         generator,
         latents=None,
     ):
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
-
         shape = (
             batch_size,
             num_channels_latents,
@@ -589,10 +599,14 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device=device, dtype=dtype)
 
         return latents
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.prepare_image
     def _prepare_control_image(
         self,
         image,
@@ -610,7 +624,7 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
             pass
         else:
             image = self.image_processor.preprocess(image, height=height, width=width)
-        
+
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
@@ -627,41 +641,6 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
             image = torch.cat([image] * 2)
 
         return image
-
-    def _prepare_controlnet_conditioning(
-        self,
-        controlnet_conditioning,
-        width,
-        height,
-        batch_size,
-        num_images_per_prompt,
-        device,
-        dtype,
-        do_classifier_free_guidance,
-        guess_mode,
-    ):
-        for idx in range(len(controlnet_conditioning)):
-            cc_info = controlnet_conditioning[idx]
-
-            # control_image
-            cc_info['control_image'] = self._prepare_control_image(
-                image=cc_info['control_image'],
-                width=width,
-                height=height,
-                batch_size=batch_size * num_images_per_prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                device=device,
-                dtype=dtype,
-                do_classifier_free_guidance=do_classifier_free_guidance,
-                guess_mode=guess_mode,
-            )
-
-            controlnet_conditioning_image = cc_info['control_image']
-            controlnet_conditioning_image = self.vae.encode(controlnet_conditioning_image).latent_dist.sample()
-            controlnet_conditioning_image = controlnet_conditioning_image * self.vae.config.scaling_factor
-            cc_info['control_image'] = controlnet_conditioning_image
-            
-        return controlnet_conditioning
 
     @property
     def guidance_scale(self):
@@ -702,7 +681,11 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
         num_inference_steps: int = 28,
         timesteps: List[int] = None,
         guidance_scale: float = 7.0,
-        controlnet_conditioning: List[dict] = [],
+        control_guidance_start: Union[float, List[float]] = 0.0,
+        control_guidance_end: Union[float, List[float]] = 1.0,
+        control_image: PipelineImageInput = None,
+        controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
+        controlnet_pooled_projections: Optional[torch.FloatTensor] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         negative_prompt_3: Optional[Union[str, List[str]]] = None,
@@ -750,6 +733,24 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
+                The percentage of total steps at which the ControlNet starts applying.
+            control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The percentage of total steps at which the ControlNet stops applying.
+            control_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
+                    `List[List[torch.Tensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
+                The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
+                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
+                as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
+                width are passed, `image` is resized accordingly. If multiple ControlNets are specified in `init`,
+                images must be passed as a list such that each element of the list can be correctly batched for input
+                to a single ControlNet.
+            controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
+                the corresponding scale as a list.
+            controlnet_pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
+                from the embeddings of controlnet input conditions.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
@@ -814,6 +815,18 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 
+        # align format for control guidance
+        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
+            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
+        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
+            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(self.controlnet.nets) if isinstance(self.controlnet, SD3MultiControlNetModel) else 1
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -873,19 +886,53 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
+        # 3. Prepare control image
+        if isinstance(self.controlnet, SD3ControlNetModel):
+            control_image = self._prepare_control_image(
+                image=control_image,
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=dtype,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+                guess_mode=False,
+            )
+            height, width = control_image.shape[-2:]
 
-        # 3.1 Prepare control_image
-        controlnet_conditioning = self._prepare_controlnet_conditioning(
-            controlnet_conditioning,
-            width,
-            height,
-            batch_size,
-            num_images_per_prompt,
-            device,
-            dtype,
-            self.do_classifier_free_guidance,
-            False,
-        )
+            control_image = self.vae.encode(control_image).latent_dist.sample()
+            control_image = control_image * self.vae.config.scaling_factor
+
+        elif isinstance(self.controlnet, SD3MultiControlNetModel):
+            control_images = []
+
+            for control_image_ in control_image:
+                control_image_ = self._prepare_control_image(
+                    image=control_image_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=dtype,
+                    do_classifier_free_guidance=self.do_classifier_free_guidance,
+                    guess_mode=False,
+                )
+
+                control_image_ = self.vae.encode(control_image_).latent_dist.sample()
+                control_image_ = control_image_ * self.vae.config.scaling_factor
+
+                control_images.append(control_image_)
+
+            control_image = control_images
+        else:
+            assert False
+
+        if controlnet_pooled_projections is None:
+            controlnet_pooled_projections = torch.zeros_like(pooled_prompt_embeds)
+        else:
+            controlnet_pooled_projections = controlnet_pooled_projections or pooled_prompt_embeds
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
@@ -905,7 +952,16 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
             latents,
         )
 
-        # 6. Denoising loop
+        # 6. Create tensor stating which controlnets to keep
+        controlnet_keep = []
+        for i in range(len(timesteps)):
+            keeps = [
+                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
+                for s, e in zip(control_guidance_start, control_guidance_end)
+            ]
+            controlnet_keep.append(keeps[0] if isinstance(self.controlnet, SD3ControlNetModel) else keeps)
+
+        # 7. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -916,66 +972,32 @@ class StableDiffusion3CommonPipeline(DiffusionPipeline, SD3LoraLoaderMixin, From
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
+                if isinstance(controlnet_keep[i], list):
+                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+                else:
+                    controlnet_cond_scale = controlnet_conditioning_scale
+                    if isinstance(controlnet_cond_scale, list):
+                        controlnet_cond_scale = controlnet_cond_scale[0]
+                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
                 # controlnet(s) inference
-                if len(controlnet_conditioning) > 0:
-                    control_block_samples_list = []
-
-                    for cc_info in controlnet_conditioning:
-                        # input
-                        control_model_input = latent_model_input
-
-                        # control image
-                        controlnet_conditioning_image = cc_info['control_image']
-
-                        # control encoder_hidden_states
-                        control_encoder_hidden_states = cc_info.get('control_encoder_hidden_states', None)
-                        control_encoder_hidden_states = control_encoder_hidden_states or prompt_embeds
-
-                        # control pooled_projections
-                        control_pooled_projections = cc_info.get('control_pooled_projections', None)
-                        if control_pooled_projections == 'zeros':
-                            control_pooled_projections = torch.zeros_like(pooled_prompt_embeds)
-                        else:
-                            control_pooled_projections = control_pooled_projections or pooled_prompt_embeds
-
-                        # control joint_attention_kwargs
-                        control_joint_attention_kwargs = cc_info.get('control_joint_attention_kwargs', None)
-                        control_joint_attention_kwargs = control_joint_attention_kwargs or self.joint_attention_kwargs
-
-                        # cfg
-                        controlnet = self.controlnet_list.nets[int(cc_info['control_index'])]
-                        controlnet_conditioning_scale = cc_info['control_weight']
-
-                        # controlnet infer
-                        control_block_samples = controlnet(
-                            hidden_states=control_model_input,
-                            timestep=timestep,
-                            encoder_hidden_states=control_encoder_hidden_states,
-                            pooled_projections=control_pooled_projections,
-                            joint_attention_kwargs=control_joint_attention_kwargs,
-                            controlnet_cond=controlnet_conditioning_image,
-                            conditioning_scale=controlnet_conditioning_scale,
-                            return_dict=False,
-                        )[0]
-
-                        control_block_samples_list.append(control_block_samples)
-
-                    # merge multi-control output
-                    control_block_samples = [0] * len(control_block_samples_list[0])
-                    for idx_controlnet in range(len(control_block_samples_list)):
-                        for idx_block in range(len(control_block_samples_list[idx_controlnet])):
-                            control_block_samples[idx_block] += control_block_samples_list[idx_controlnet][idx_block]
-
-                else:
-                    control_block_samples = None
+                control_block_samples = self.controlnet(
+                    hidden_states=latent_model_input,
+                    timestep=timestep,
+                    encoder_hidden_states=prompt_embeds,
+                    pooled_projections=controlnet_pooled_projections,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
+                    controlnet_cond=control_image,
+                    conditioning_scale=cond_scale,
+                    return_dict=False,
+                )
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     pooled_projections=pooled_prompt_embeds,
-                    controlnet_block_samples=control_block_samples,
+                    block_controlnet_hidden_states=control_block_samples,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
