@@ -277,6 +277,13 @@ class Attention(nn.Module):
                 LoRAAttnAddedKVProcessor,
             ),
         )
+        is_joint_processor = hasattr(self, "processor") and isinstance(
+            self.processor,
+            (
+                JointAttnProcessor2_0,
+                XFormersJointAttnProcessor,
+            ),
+        )
 
         if use_memory_efficient_attention_xformers:
             if is_added_kv_processor and (is_lora or is_custom_diffusion):
@@ -338,6 +345,8 @@ class Attention(nn.Module):
                     "Memory efficient attention with `xformers` might currently not work correctly if an attention mask is required for the attention operation."
                 )
                 processor = XFormersAttnAddedKVProcessor(attention_op=attention_op)
+            elif is_joint_processor:
+                processor = XFormersJointAttnProcessor(attention_op=attention_op)
             else:
                 processor = XFormersAttnProcessor(attention_op=attention_op)
         else:
@@ -1221,6 +1230,89 @@ class FusedJointAttnProcessor2_0:
         hidden_states, encoder_hidden_states = (
             hidden_states[:, : residual.shape[1]],
             hidden_states[:, residual.shape[1] :],
+        )
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+        if not attn.context_pre_only:
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+        if context_input_ndim == 4:
+            encoder_hidden_states = encoder_hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        return hidden_states, encoder_hidden_states
+
+
+class XFormersJointAttnProcessor:
+    r"""
+    Processor for implementing memory efficient attention using xFormers.
+
+    Args:
+        attention_op (`Callable`, *optional*, defaults to `None`):
+            The base
+            [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
+            use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
+            operator.
+    """
+
+    def __init__(self, attention_op: Optional[Callable] = None):
+        self.attention_op = attention_op
+
+    def __call__(
+            self,
+            attn: Attention,
+            hidden_states: torch.FloatTensor,
+            encoder_hidden_states: torch.FloatTensor = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            *args,
+            **kwargs,
+    ) -> torch.FloatTensor:
+        residual = hidden_states
+
+        input_ndim = hidden_states.ndim
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+        context_input_ndim = encoder_hidden_states.ndim
+        if context_input_ndim == 4:
+            batch_size, channel, height, width = encoder_hidden_states.shape
+            encoder_hidden_states = encoder_hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size = encoder_hidden_states.shape[0]
+
+        # `sample` projections.
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        # `context` projections.
+        encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+
+        # attention
+        query = torch.cat([query, encoder_hidden_states_query_proj], dim=1)
+        key = torch.cat([key, encoder_hidden_states_key_proj], dim=1)
+        value = torch.cat([value, encoder_hidden_states_value_proj], dim=1)
+
+        query = attn.head_to_batch_dim(query).contiguous()
+        key = attn.head_to_batch_dim(key).contiguous()
+        value = attn.head_to_batch_dim(value).contiguous()
+
+        hidden_states = xformers.ops.memory_efficient_attention(
+            query, key, value, attn_bias=attention_mask, op=self.attention_op, scale=attn.scale
+        )
+        hidden_states = hidden_states.to(query.dtype)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # Split the attention outputs.
+        hidden_states, encoder_hidden_states = (
+            hidden_states[:, : residual.shape[1]],
+            hidden_states[:, residual.shape[1]:],
         )
 
         # linear proj
