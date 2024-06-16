@@ -20,8 +20,8 @@ from ..utils import (
 _dummy_objects = {}
 _import_structure = {
     "controlnet": [],
-    "controlnet_xs": [],
     "controlnet_sd3": [],
+    "controlnet_xs": [],
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],

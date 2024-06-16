@@ -607,7 +607,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         return latents
 
     # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.prepare_image
-    def _prepare_control_image(
+    def prepare_image(
         self,
         image,
         width,
@@ -749,8 +749,8 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
                 The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
                 to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
                 the corresponding scale as a list.
-            controlnet_pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
-                from the embeddings of controlnet input conditions.
+            controlnet_pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`):
+                Embeddings projected from the embeddings of controlnet input conditions.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
@@ -888,7 +888,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
 
         # 3. Prepare control image
         if isinstance(self.controlnet, SD3ControlNetModel):
-            control_image = self._prepare_control_image(
+            control_image = self.prepare_image(
                 image=control_image,
                 width=width,
                 height=height,
@@ -908,7 +908,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             control_images = []
 
             for control_image_ in control_image:
-                control_image_ = self._prepare_control_image(
+                control_image_ = self.prepare_image(
                     image=control_image_,
                     width=width,
                     height=height,
@@ -990,7 +990,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
                     controlnet_cond=control_image,
                     conditioning_scale=cond_scale,
                     return_dict=False,
-                )
+                )[0]
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,

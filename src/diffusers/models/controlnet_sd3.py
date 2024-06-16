@@ -34,7 +34,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
-class ControlNetOutput(BaseOutput):
+class SD3ControlNetOutput(BaseOutput):
     controlnet_block_samples: Tuple[torch.Tensor]
 
 
@@ -366,7 +366,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         if not return_dict:
             return controlnet_block_res_samples
 
-        return ControlNetOutput(controlnet_block_samples=controlnet_block_res_samples)
+        return SD3ControlNetOutput(controlnet_block_samples=controlnet_block_res_samples)
 
 
 class SD3MultiControlNetModel(ModelMixin):
@@ -396,7 +396,7 @@ class SD3MultiControlNetModel(ModelMixin):
         timestep: torch.LongTensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[ControlNetOutput, Tuple]:
+    ) -> Union[SD3ControlNetOutput, Tuple]:
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             block_samples = controlnet(
                 hidden_states=hidden_states,
@@ -415,7 +415,8 @@ class SD3MultiControlNetModel(ModelMixin):
             else:
                 control_block_samples = [
                     control_block_sample + block_sample
-                    for control_block_sample, block_sample in zip(control_block_samples, block_samples)
+                    for control_block_sample, block_sample in zip(control_block_samples[0], block_samples[0])
                 ]
+                control_block_samples = (tuple(control_block_samples),)
 
         return control_block_samples
