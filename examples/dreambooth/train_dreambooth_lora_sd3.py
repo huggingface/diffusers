@@ -1316,6 +1316,9 @@ def main(args):
     # Clear the memory here
     if not train_dataset.custom_instance_prompts:
         del tokenizers, text_encoders
+        # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
+        del tokenizer_one, tokenizer_two, tokenizer_three
+        del text_encoder_one, text_encoder_two, text_encoder_three
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
