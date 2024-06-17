@@ -228,7 +228,7 @@ image = pipe("a picture of a cat holding a sign that says hello world").images[0
 image.save('sd3-single-file.png')
 ```
 
-### Loading the single file checkpoint without T5
+### Loading the single file checkpoint with T5
 
 ```python
 import torch
