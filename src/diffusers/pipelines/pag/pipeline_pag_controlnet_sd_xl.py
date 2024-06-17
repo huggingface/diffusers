@@ -632,11 +632,18 @@ class StableDiffusionXLControlNetPAGPipeline(
         ip_adapter_image=None,
         ip_adapter_image_embeds=None,
         negative_pooled_prompt_embeds=None,
-        controlnet_conditioning_scale=1.0,
-        control_guidance_start=0.0,
-        control_guidance_end=1.0,
+        controlnet_conditioning_scale=None,
+        control_guidance_start=None,
+        control_guidance_end=None,
         callback_on_step_end_tensor_inputs=None,
-    ):
+        guidance_scale=None,
+        pag_scale=None,
+        guess_mode=None,
+    ):  
+        if guess_mode and pag_scale > 0 and guidance_scale > 1:
+            raise ValueError(
+                "guess_mode cannot work with PAG and guidance scale together. Please set either `pag_scale` or `guidance_scale`; or set `guess_mode` to False."
+            )
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -1229,6 +1236,9 @@ class StableDiffusionXLControlNetPAGPipeline(
             control_guidance_start,
             control_guidance_end,
             callback_on_step_end_tensor_inputs,
+            guidance_scale,
+            pag_scale,
+            guess_mode,
         )
 
         self._guidance_scale = guidance_scale
@@ -1432,6 +1442,11 @@ class StableDiffusionXLControlNetPAGPipeline(
                     image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
                 image_embeds = image_embeds.to(device)
                 ip_adapter_image_embeds[i] = image_embeds
+        
+        # for guess_mode, we do not need to apply guidance on controlnet inputs
+        if guess_mode:
+            controlnet_prompt_embeds = prompt_embeds
+            controlnet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
         if self.do_perturbed_attention_guidance:
             prompt_embeds = self._prepare_perturbed_attention_guidance(
@@ -1451,6 +1466,11 @@ class StableDiffusionXLControlNetPAGPipeline(
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
+        added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+        if not guess_mode:
+            controlnet_prompt_embeds = prompt_embeds
+            controlnet_added_cond_kwargs = added_cond_kwargs
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -1491,22 +1511,13 @@ class StableDiffusionXLControlNetPAGPipeline(
                 latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-
                 # controlnet(s) inference
-                if guess_mode and self.do_classifier_free_guidance:
+                if guess_mode:
                     # Infer ControlNet only for the conditional batch.
                     control_model_input = latents
                     control_model_input = self.scheduler.scale_model_input(control_model_input, t)
-                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
-                    controlnet_added_cond_kwargs = {
-                        "text_embeds": add_text_embeds.chunk(2)[1],
-                        "time_ids": add_time_ids.chunk(2)[1],
-                    }
                 else:
                     control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds
-                    controlnet_added_cond_kwargs = added_cond_kwargs
 
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
@@ -1527,7 +1538,7 @@ class StableDiffusionXLControlNetPAGPipeline(
                     return_dict=False,
                 )
 
-                if guess_mode and self.do_classifier_free_guidance:
+                if guess_mode and (self.do_classifier_free_guidance or self.do_perturbed_attention_guidance):
                     # Infered ControlNet only for the conditional batch.
                     # To apply the output of ControlNet to both the unconditional and conditional batches,
                     # add 0 to the unconditional batch to keep it unchanged.
