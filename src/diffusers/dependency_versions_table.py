@@ -5,7 +5,7 @@ deps = {
     "Pillow": "Pillow",
     "accelerate": "accelerate>=0.31.0",
     "compel": "compel==0.1.8",
-    "datasets": "datasets",
+    "datasets": "datasets<2.20.0",  # Temporary upper version
     "filelock": "filelock",
     "flax": "flax>=0.4.1",
     "hf-doc-builder": "hf-doc-builder>=0.3.0",

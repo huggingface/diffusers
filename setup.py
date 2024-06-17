@@ -97,7 +97,7 @@ _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.31.0",
     "compel==0.1.8",
-    "datasets",
+    "datasets<2.20.0",  # Temporary upper version
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
