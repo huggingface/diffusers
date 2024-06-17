@@ -639,7 +639,7 @@ class StableDiffusionXLControlNetPAGPipeline(
         guidance_scale=None,
         pag_scale=None,
         guess_mode=None,
-    ):  
+    ):
         if guess_mode and pag_scale > 0 and guidance_scale > 1:
             raise ValueError(
                 "guess_mode cannot work with PAG and guidance scale together. Please set either `pag_scale` or `guidance_scale`; or set `guess_mode` to False."
@@ -1442,7 +1442,7 @@ class StableDiffusionXLControlNetPAGPipeline(
                     image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
                 image_embeds = image_embeds.to(device)
                 ip_adapter_image_embeds[i] = image_embeds
-        
+
         # for guess_mode, we do not need to apply guidance on controlnet inputs
         if guess_mode:
             controlnet_prompt_embeds = prompt_embeds
