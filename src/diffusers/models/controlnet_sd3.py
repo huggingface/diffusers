@@ -364,7 +364,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
-            return controlnet_block_res_samples
+            return (controlnet_block_res_samples, )
 
         return SD3ControlNetOutput(controlnet_block_samples=controlnet_block_res_samples)
 
