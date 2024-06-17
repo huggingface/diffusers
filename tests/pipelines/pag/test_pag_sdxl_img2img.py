@@ -20,7 +20,6 @@ import unittest
 
 import numpy as np
 import torch
-from PIL import Image
 from transformers import (
     CLIPImageProcessor,
     CLIPTextConfig,
@@ -33,10 +32,10 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKL,
-    AutoPipelineForInpainting,
+    AutoPipelineForImage2Image,
     EulerDiscreteScheduler,
-    StableDiffusionXLInpaintPipeline,
-    StableDiffusionXLPAGInpaintPipeline,
+    StableDiffusionXLImg2ImgPipeline,
+    StableDiffusionXLPAGImg2ImgPipeline,
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
@@ -49,8 +48,9 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import (
-    TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
-    TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
 from ..test_pipelines_common import (
@@ -65,7 +65,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class StableDiffusionXLPAGInpaintPipelineFastTests(
+class StableDiffusionXLPAGImg2ImgPipelineFastTests(
     PipelineTesterMixin,
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
@@ -73,16 +73,16 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
     SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
-    pipeline_class = StableDiffusionXLPAGInpaintPipeline
-    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS.union({"pag_scale", "pag_adaptive_scale"})
-    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset([])
-    image_latents_params = frozenset([])
+    pipeline_class = StableDiffusionXLPAGImg2ImgPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS.union({"pag_scale", "pag_adaptive_scale"}) - {"height", "width"}
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
-        {"add_text_embeds", "add_time_ids", "mask", "masked_image_latents"}
+        {"add_text_embeds", "add_time_ids", "add_neg_time_ids"}
     )
 
-    # based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipelineFastTests.get_dummy_components
+    #  based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_img2img_pipeline.get_dummy_components
     def get_dummy_components(
         self, skip_first_text_encoder=False, time_cond_proj_dim=None, requires_aesthetics_score=False
     ):
@@ -123,27 +123,6 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
             sample_size=128,
         )
         torch.manual_seed(0)
-        text_encoder_config = CLIPTextConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=32,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
-            pad_token_id=1,
-            vocab_size=1000,
-            # SD2-specific config below
-            hidden_act="gelu",
-            projection_dim=32,
-        )
-        text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-
-        text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
-        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-
-        torch.manual_seed(0)
         image_encoder_config = CLIPVisionConfig(
             hidden_size=32,
             image_size=224,
@@ -168,6 +147,27 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
             size=224,
         )
 
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+            # SD2-specific config below
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
         components = {
             "unet": unet,
             "scheduler": scheduler,
@@ -176,35 +176,30 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
             "tokenizer": tokenizer if not skip_first_text_encoder else None,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "requires_aesthetics_score": requires_aesthetics_score,
             "image_encoder": image_encoder,
             "feature_extractor": feature_extractor,
-            "requires_aesthetics_score": requires_aesthetics_score,
         }
         return components
 
+    # based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_img2img_pipeline.StableDiffusionXLImg2ImgPipelineFastTests
+    # add `pag_scale` to the inputs
     def get_dummy_inputs(self, device, seed=0):
-        # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        image = image.cpu().permute(0, 2, 3, 1)[0]
-        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
-        # create mask
-        image[8:, 8:, :] = 255
-        mask_image = Image.fromarray(np.uint8(image)).convert("L").resize((64, 64))
-
+        image = image / 2 + 0.5
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "image": init_image,
-            "mask_image": mask_image,
+            "image": image,
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 6.0,
-            "strength": 1.0,
-            "pag_scale": 0.9,
+            "guidance_scale": 5.0,
+            "pag_scale": 3.0,
             "output_type": "np",
+            "strength": 0.8,
         }
         return inputs
 
@@ -213,7 +208,7 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
         components = self.get_dummy_components(requires_aesthetics_score=True)
 
         # base pipeline
-        pipe_sd = StableDiffusionXLInpaintPipeline(**components)
+        pipe_sd = StableDiffusionXLImg2ImgPipeline(**components)
         pipe_sd = pipe_sd.to(device)
         pipe_sd.set_progress_bar_config(disable=None)
 
@@ -261,12 +256,12 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
 
         assert image.shape == (
             1,
-            64,
-            64,
+            32,
+            32,
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
         expected_slice = np.array(
-            [0.8115454, 0.53986573, 0.5825281, 0.6028964, 0.67128646, 0.7046922, 0.6418713, 0.5933924, 0.5154763]
+            [0.46703637, 0.4917526, 0.44394222, 0.6895079, 0.56251144, 0.45474228, 0.5957122, 0.6016377, 0.5276273]
         )
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
@@ -275,7 +270,7 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
 
 @slow
 @require_torch_gpu
-class StableDiffusionXLPAGInpaintPipelineIntegrationTests(unittest.TestCase):
+class StableDiffusionXLPAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
 
     def setUp(self):
@@ -289,18 +284,17 @@ class StableDiffusionXLPAGInpaintPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_inputs(self, device, generator_device="cpu", seed=0, guidance_scale=7.0):
-        img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
-        mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+        img_url = (
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
+        )
 
-        init_image = load_image(img_url).convert("RGB")
-        mask_image = load_image(mask_url).convert("RGB")
+        init_image = load_image(img_url)
 
         generator = torch.Generator(device=generator_device).manual_seed(seed)
         inputs = {
-            "prompt": "A majestic tiger sitting on a bench",
+            "prompt": "a dog catching a frisbee in the jungle",
             "generator": generator,
             "image": init_image,
-            "mask_image": mask_image,
             "strength": 0.8,
             "num_inference_steps": 3,
             "guidance_scale": guidance_scale,
@@ -310,7 +304,7 @@ class StableDiffusionXLPAGInpaintPipelineIntegrationTests(unittest.TestCase):
         return inputs
 
     def test_pag_cfg(self):
-        pipeline = AutoPipelineForInpainting.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
+        pipeline = AutoPipelineForImage2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
@@ -320,14 +314,14 @@ class StableDiffusionXLPAGInpaintPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
         assert image.shape == (1, 1024, 1024, 3)
         expected_slice = np.array(
-            [0.41385046, 0.39608297, 0.4360491, 0.26872507, 0.32187328, 0.4242474, 0.2603805, 0.34167895, 0.46561807]
+            [0.20301354, 0.21078318, 0.2021082, 0.20277798, 0.20681083, 0.19562206, 0.20121682, 0.21562952, 0.21277016]
         )
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
         ), f"output is different from expected, {image_slice.flatten()}"
 
     def test_pag_uncond(self):
-        pipeline = AutoPipelineForInpainting.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
+        pipeline = AutoPipelineForImage2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
@@ -337,7 +331,7 @@ class StableDiffusionXLPAGInpaintPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
         assert image.shape == (1, 1024, 1024, 3)
         expected_slice = np.array(
-            [0.41597816, 0.39302617, 0.44287828, 0.2687074, 0.28315824, 0.40582314, 0.20877528, 0.2380802, 0.39447647]
+            [0.21303111, 0.22188407, 0.2124992, 0.21365267, 0.18823743, 0.17569828, 0.21113116, 0.19419771, 0.18919235]
         )
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-3

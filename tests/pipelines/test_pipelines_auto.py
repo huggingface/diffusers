@@ -123,6 +123,21 @@ class AutoPipelineFastTest(unittest.TestCase):
 
         shutil.rmtree(tmpdirname.parent.parent)
 
+    def test_from_pretrained_text2img(self):
+        repo = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+        pipe = AutoPipelineForText2Image.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "StableDiffusionXLPipeline"
+
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+        pipe_control = AutoPipelineForText2Image.from_pretrained(repo, controlnet=controlnet)
+        assert pipe_control.__class__.__name__ == "StableDiffusionXLControlNetPipeline"
+
+        pipe_pag = AutoPipelineForText2Image.from_pretrained(repo, enable_pag=True)
+        assert pipe_pag.__class__.__name__ == "StableDiffusionXLPAGPipeline"
+
+        pipe_control_pag = AutoPipelineForText2Image.from_pretrained(repo, controlnet=controlnet, enable_pag=True)
+        assert pipe_control_pag.__class__.__name__ == "StableDiffusionXLControlNetPAGPipeline"
+
     def test_from_pipe_pag_text2img(self):
         # test from StableDiffusionXLPipeline
         pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
@@ -214,6 +229,42 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert pipe.__class__.__name__ == "StableDiffusionXLControlNetPipeline"
         assert "controlnet" in pipe.components
 
+    def test_from_pretrained_img2img(self):
+        repo = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+
+        pipe = AutoPipelineForImage2Image.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "StableDiffusionXLImg2ImgPipeline"
+
+        pipe_pag = AutoPipelineForImage2Image.from_pretrained(repo, enable_pag=True)
+        assert pipe_pag.__class__.__name__ == "StableDiffusionXLPAGImg2ImgPipeline"
+
+    def test_from_pipe_pag_img2img(self):
+        # test from tableDiffusionXLPAGImg2ImgPipeline
+        pipe = AutoPipelineForImage2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        # - test `enable_pag` flag
+        pipe_pag = AutoPipelineForImage2Image.from_pipe(pipe, enable_pag=True)
+        assert pipe_pag.__class__.__name__ == "StableDiffusionXLPAGImg2ImgPipeline"
+
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe, enable_pag=False)
+        assert pipe.__class__.__name__ == "StableDiffusionXLImg2ImgPipeline"
+
+        # testing from StableDiffusionXLPAGImg2ImgPipeline
+        # - test `enable_pag` flag
+        pipe_pag = AutoPipelineForImage2Image.from_pipe(pipe_pag, enable_pag=True)
+        assert pipe_pag.__class__.__name__ == "StableDiffusionXLPAGImg2ImgPipeline"
+
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe_pag, enable_pag=False)
+        assert pipe.__class__.__name__ == "StableDiffusionXLImg2ImgPipeline"
+
+    def test_from_pretrained_inpaint(self):
+        repo = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+
+        pipe = AutoPipelineForInpainting.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "StableDiffusionXLInpaintPipeline"
+
+        pipe_pag = AutoPipelineForInpainting.from_pretrained(repo, enable_pag=True)
+        assert pipe_pag.__class__.__name__ == "StableDiffusionXLPAGInpaintPipeline"
+
     def test_from_pipe_pag_inpaint(self):
         # test from tableDiffusionXLPAGInpaintPipeline
         pipe = AutoPipelineForInpainting.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
@@ -242,10 +293,23 @@ class AutoPipelineFastTest(unittest.TestCase):
         # text2img pag -> inpaint pag
         pipe_pag_inpaint = AutoPipelineForInpainting.from_pipe(pipe_pag_text2img)
         assert pipe_pag_inpaint.__class__.__name__ == "StableDiffusionXLPAGInpaintPipeline"
+        # text2img pag -> img2img pag
+        pipe_pag_img2img = AutoPipelineForImage2Image.from_pipe(pipe_pag_text2img)
+        assert pipe_pag_img2img.__class__.__name__ == "StableDiffusionXLPAGImg2ImgPipeline"
 
         # inpaint pag -> text2img pag
         pipe_pag_text2img = AutoPipelineForText2Image.from_pipe(pipe_pag_inpaint)
         assert pipe_pag_text2img.__class__.__name__ == "StableDiffusionXLPAGPipeline"
+        # inpaint pag -> img2img pag
+        pipe_pag_img2img = AutoPipelineForImage2Image.from_pipe(pipe_pag_inpaint)
+        assert pipe_pag_img2img.__class__.__name__ == "StableDiffusionXLPAGImg2ImgPipeline"
+
+        # img2img pag -> text2img pag
+        pipe_pag_text2img = AutoPipelineForText2Image.from_pipe(pipe_pag_img2img)
+        assert pipe_pag_text2img.__class__.__name__ == "StableDiffusionXLPAGPipeline"
+        # img2img pag -> inpaint pag
+        pipe_pag_inpaint = AutoPipelineForInpainting.from_pipe(pipe_pag_img2img)
+        assert pipe_pag_inpaint.__class__.__name__ == "StableDiffusionXLPAGInpaintPipeline"
 
     def test_from_pipe_controlnet_text2img(self):
         pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe")

@@ -26,6 +26,7 @@ else:
 
     _import_structure["pipeline_pag_sd_xl"] = ["StableDiffusionXLPAGPipeline"]
     _import_structure["pipeline_pag_sd_xl_inpaint"] = ["StableDiffusionXLPAGInpaintPipeline"]
+    _import_structure["pipeline_pag_sd_xl_img2img"] = ["StableDiffusionXLPAGImg2ImgPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -37,6 +38,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_pag_controlnet_sd_xl import StableDiffusionXLControlNetPAGPipeline
         from .pipeline_pag_sd_xl import StableDiffusionXLPAGPipeline
+        from .pipeline_pag_sd_xl_img2img import StableDiffusionXLPAGImg2ImgPipeline
         from .pipeline_pag_sd_xl_inpaint import StableDiffusionXLPAGInpaintPipeline
 
 else:
