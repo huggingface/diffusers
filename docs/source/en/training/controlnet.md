@@ -349,7 +349,7 @@ control_image = load_image("./conditioning_image_1.png")
 prompt = "pale golden rod circle with old lace background"
 
 generator = torch.manual_seed(0)
-image = pipe(prompt, num_inference_steps=20, generator=generator, image=control_image).images[0]
+image = pipeline(prompt, num_inference_steps=20, generator=generator, image=control_image).images[0]
 image.save("./output.png")
 ```
 
