@@ -341,7 +341,7 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         clip_skip: Optional[int] = None,
-        max_sequence_length: Optional[int] = None,
+        max_sequence_length: int = 256,
     ):
         r"""
 
@@ -694,7 +694,7 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        max_sequence_length: Optional[int] = None,
+        max_sequence_length: int = 256,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
