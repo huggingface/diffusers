@@ -40,7 +40,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
         huggingface-hub \
         Jinja2 \
         librosa \
-        numpy \
+        numpy==1.26.4 \
         scipy \
         tensorboard \
         transformers
