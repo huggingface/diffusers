@@ -21,9 +21,9 @@ The abstract from the paper is:
 
 ## Usage Example
 
-_As the model is gated, before using it with diffusers you first need to go to the [Stable Diffusion 3 Medium Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers), fill in the form and accept the gate. Once you are in, you need to login so that your system knows you’ve accepted the gate._ 
+_As the model is gated, before using it with diffusers you first need to go to the [Stable Diffusion 3 Medium Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers), fill in the form and accept the gate. Once you are in, you need to login so that your system knows you’ve accepted the gate._
 
-Use the command below to log in: 
+Use the command below to log in:
 
 ```bash
 huggingface-cli login
@@ -186,7 +186,7 @@ pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgrap
 pipe.vae.decode = torch.compile(pipe.vae.decode, mode="max-autotune", fullgraph=True)
 
 # Warm Up
-prompt = "a photo of a cat holding a sign that says hello world",
+prompt = "a photo of a cat holding a sign that says hello world"
 for _ in range(3):
     _ = pipe(prompt=prompt, generator=torch.manual_seed(1))
 
@@ -196,6 +196,28 @@ image.save("sd3_hello_world.png")
 ```
 
 Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f454900813da5d42ca97).
+
+## Tiny AutoEncoder for Stable Diffusion 3
+
+Tiny AutoEncoder for Stable Diffusion (TAESD3) is a tiny distilled version of Stable Diffusion 3's VAE by [Ollin Boer Bohan](https://github.com/madebyollin/taesd) that can decode [`StableDiffusion3Pipeline`] latents almost instantly.
+
+To use with Stable Diffusion 3:
+
+```python
+import torch
+from diffusers import StableDiffusion3Pipeline, AutoencoderTiny
+
+pipe = StableDiffusion3Pipeline.from_pretrained(
+    "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
+)
+pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd3", torch_dtype=torch.float16)
+pipe.vae.config.shift_factor = 0.0
+pipe = pipe.to("cuda")
+
+prompt = "slice of delicious New York-style berry cheesecake"
+image = pipe(prompt, num_inference_steps=25).images[0]
+image.save("cheesecake.png")
+```
 
 ## Loading the original checkpoints via `from_single_file`
 
@@ -211,17 +233,38 @@ model = SD3Transformer2DModel.from_single_file("https://huggingface.co/stability
 
 ## Loading the single checkpoint for the `StableDiffusion3Pipeline`
 
-```python
-from diffusers import StableDiffusion3Pipeline
-from transformers import T5EncoderModel
+### Loading the single file checkpoint without T5
 
-text_encoder_3 = T5EncoderModel.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", subfolder="text_encoder_3", torch_dtype=torch.float16)
-pipe = StableDiffusion3Pipeline.from_single_file("https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium_incl_clips.safetensors", torch_dtype=torch.float16, text_encoder_3=text_encoder_3)
+```python
+import torch
+from diffusers import StableDiffusion3Pipeline
+
+pipe = StableDiffusion3Pipeline.from_single_file(
+    "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium_incl_clips.safetensors",
+    torch_dtype=torch.float16,
+    text_encoder_3=None
+)
+pipe.enable_model_cpu_offload()
+
+image = pipe("a picture of a cat holding a sign that says hello world").images[0]
+image.save('sd3-single-file.png')
 ```
 
-<Tip>
-`from_single_file` support for the `fp8` version of the checkpoints is coming soon. Watch this space.
-</Tip>
+### Loading the single file checkpoint without T5
+
+```python
+import torch
+from diffusers import StableDiffusion3Pipeline
+
+pipe = StableDiffusion3Pipeline.from_single_file(
+    "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium_incl_clips_t5xxlfp8.safetensors",
+    torch_dtype=torch.float16,
+)
+pipe.enable_model_cpu_offload()
+
+image = pipe("a picture of a cat holding a sign that says hello world").images[0]
+image.save('sd3-single-file-t5-fp8.png')
+```
 
 ## StableDiffusion3Pipeline
 

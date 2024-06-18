@@ -252,7 +252,6 @@ LDM_CONTROLNET_KEY = "control_model."
 LDM_CLIP_PREFIX_TO_REMOVE = [
     "cond_stage_model.transformer.",
     "conditioner.embedders.0.transformer.",
-    "text_encoders.clip_l.transformer.",
 ]
 OPEN_CLIP_PREFIX = "conditioner.embedders.0.model."
 LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
@@ -399,11 +398,14 @@ def is_open_clip_sdxl_model(checkpoint):
 
 
 def is_open_clip_sd3_model(checkpoint):
-    is_open_clip_sdxl_refiner_model(checkpoint)
+    if CHECKPOINT_KEY_NAMES["open_clip_sd3"] in checkpoint:
+        return True
+
+    return False
 
 
 def is_open_clip_sdxl_refiner_model(checkpoint):
-    if CHECKPOINT_KEY_NAMES["open_clip_sd3"] in checkpoint:
+    if CHECKPOINT_KEY_NAMES["open_clip_sdxl_refiner"] in checkpoint:
         return True
 
     return False
@@ -1233,11 +1235,14 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     return new_checkpoint
 
 
-def convert_ldm_clip_checkpoint(checkpoint):
+def convert_ldm_clip_checkpoint(checkpoint, remove_prefix=None):
     keys = list(checkpoint.keys())
     text_model_dict = {}
 
-    remove_prefixes = LDM_CLIP_PREFIX_TO_REMOVE
+    remove_prefixes = []
+    remove_prefixes.extend(LDM_CLIP_PREFIX_TO_REMOVE)
+    if remove_prefix:
+        remove_prefixes.append(remove_prefix)
 
     for key in keys:
         for prefix in remove_prefixes:
@@ -1262,8 +1267,6 @@ def convert_open_clip_checkpoint(
         text_proj_dim = text_model.config.projection_dim
     else:
         text_proj_dim = LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
-
-    text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
 
     keys = list(checkpoint.keys())
     keys_to_ignore = SD_2_TEXT_ENCODER_KEYS_TO_IGNORE
@@ -1312,9 +1315,6 @@ def convert_open_clip_checkpoint(
             text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :].clone().detach()
         else:
             text_model_dict[diffusers_key] = checkpoint.get(key)
-
-    if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
-        text_model_dict.pop("text_model.embeddings.position_ids", None)
 
     return text_model_dict
 
@@ -1376,6 +1376,13 @@ def create_diffusers_clip_model_from_ldm(
     ):
         diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
 
+    elif (
+        is_clip_sd3_model(checkpoint)
+        and checkpoint[CHECKPOINT_KEY_NAMES["clip_sd3"]].shape[-1] == position_embedding_dim
+    ):
+        diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint, "text_encoders.clip_l.transformer.")
+        diffusers_format_checkpoint["text_projection.weight"] = torch.eye(position_embedding_dim)
+
     elif is_open_clip_model(checkpoint):
         prefix = "cond_stage_model.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
@@ -1391,26 +1398,28 @@ def create_diffusers_clip_model_from_ldm(
         prefix = "conditioner.embedders.0.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
-    elif is_open_clip_sd3_model(checkpoint):
-        prefix = "text_encoders.clip_g.transformer."
-        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
+    elif (
+        is_open_clip_sd3_model(checkpoint)
+        and checkpoint[CHECKPOINT_KEY_NAMES["open_clip_sd3"]].shape[-1] == position_embedding_dim
+    ):
+        diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint, "text_encoders.clip_g.transformer.")
 
     else:
         raise ValueError("The provided checkpoint does not seem to contain a valid CLIP model.")
 
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        if model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
     else:
-        model.load_state_dict(diffusers_format_checkpoint)
+        _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
+
+    if model._keys_to_ignore_on_load_unexpected is not None:
+        for pat in model._keys_to_ignore_on_load_unexpected:
+            unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+    if len(unexpected_keys) > 0:
+        logger.warning(
+            f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+        )
 
     if torch_dtype is not None:
         model.to(torch_dtype)
@@ -1755,7 +1764,7 @@ def convert_sd3_t5_checkpoint_to_diffusers(checkpoint):
     keys = list(checkpoint.keys())
     text_model_dict = {}
 
-    remove_prefixes = ["text_encoders.t5xxl.transformer.encoder."]
+    remove_prefixes = ["text_encoders.t5xxl.transformer."]
 
     for key in keys:
         for prefix in remove_prefixes:
