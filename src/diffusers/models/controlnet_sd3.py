@@ -367,7 +367,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
 class SD3MultiControlNetModel(ModelMixin):
     r"""
-    Multiple `SD3ControlNetModel` wrapper class for Multi-SD3ControlNet
+    `SD3ControlNetModel` wrapper class for Multi-SD3ControlNet
 
     This module is a wrapper for multiple instances of the `SD3ControlNetModel`. The `forward()` API is designed to be
     compatible with `SD3ControlNetModel`.

@@ -220,6 +220,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         self,
         prompt: Union[str, List[str]] = None,
         num_images_per_prompt: int = 1,
+        max_sequence_length: int = 256,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -239,7 +240,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         text_inputs = self.tokenizer_3(
             prompt,
             padding="max_length",
-            max_length=self.tokenizer_max_length,
+            max_length=max_sequence_length,
             truncation=True,
             add_special_tokens=True,
             return_tensors="pt",
@@ -250,8 +251,8 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
             removed_text = self.tokenizer_3.batch_decode(untruncated_ids[:, self.tokenizer_max_length - 1 : -1])
             logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer_max_length} tokens: {removed_text}"
+                "The following part of your input was truncated because `max_sequence_length` is set to "
+                f" {max_sequence_length} tokens: {removed_text}"
             )
 
         prompt_embeds = self.text_encoder_3(text_input_ids.to(device))[0]
@@ -340,6 +341,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         clip_skip: Optional[int] = None,
+        max_sequence_length: int = 256,
     ):
         r"""
 
@@ -420,6 +422,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             t5_prompt_embed = self._get_t5_prompt_embeds(
                 prompt=prompt_3,
                 num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
                 device=device,
             )
 
@@ -473,7 +476,10 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             negative_clip_prompt_embeds = torch.cat([negative_prompt_embed, negative_prompt_2_embed], dim=-1)
 
             t5_negative_prompt_embed = self._get_t5_prompt_embeds(
-                prompt=negative_prompt_3, num_images_per_prompt=num_images_per_prompt, device=device
+                prompt=negative_prompt_3,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+                device=device,
             )
 
             negative_clip_prompt_embeds = torch.nn.functional.pad(
@@ -574,7 +580,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -586,6 +592,9 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         generator,
         latents=None,
     ):
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype)
+
         shape = (
             batch_size,
             num_channels_latents,
@@ -599,14 +608,10 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device=device, dtype=dtype)
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         return latents
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.prepare_image
     def prepare_image(
         self,
         image,
@@ -620,7 +625,6 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         guess_mode=False,
     ):
         if isinstance(image, torch.Tensor):
-            # for controlnet-inpainting
             pass
         else:
             image = self.image_processor.preprocess(image, height=height, width=width)

@@ -12,6 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # ControlNet with Stable Diffusion 3
 
+StableDiffusion3ControlNetPipeline is an implementation of ControlNet for Stable Diffusion 3.
+
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang, Anyi Rao, and Maneesh Agrawala.
 
 With a ControlNet model, you can provide an additional control image to condition and control Stable Diffusion generation. For example, if you provide a depth map, the ControlNet model generates an image that'll preserve the spatial information from the depth map. It is a more flexible and accurate way to control the image generation process.
