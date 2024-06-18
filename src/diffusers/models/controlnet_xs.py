@@ -603,7 +603,9 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             cond_proj_dim=time_cond_proj_dim,
         )
         if ctrl_learn_time_embedding:
-            self.ctrl_time_embedding = TimestepEmbedding(in_channels=time_embed_input_dim, time_embed_dim=time_embed_dim)
+            self.ctrl_time_embedding = TimestepEmbedding(
+                in_channels=time_embed_input_dim, time_embed_dim=time_embed_dim
+            )
         else:
             self.ctrl_time_embedding = None
 
