@@ -34,4 +34,4 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 	- __call__
 
 ## StableDiffusion3PipelineOutput
-[[autodoc]] pipelines.stable_diffusion_3.StableDiffusion3PipelineOutput
+[[autodoc]] pipelines.stable_diffusion_3.pipeline_output.StableDiffusion3PipelineOutput
