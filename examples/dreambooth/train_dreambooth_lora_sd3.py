@@ -902,11 +902,8 @@ def _encode_prompt_with_clip(
     text_input_ids=None,
     num_images_per_prompt: int = 1,
 ):
-    prompt = [prompt] if isinstance(prompt, str) else prompt
-    batch_size = len(prompt)
-
-
     if tokenizer is not None:
+        prompt = [prompt] if isinstance(prompt, str) else prompt
         text_inputs = tokenizer(
             prompt,
             padding="max_length",
@@ -925,10 +922,10 @@ def _encode_prompt_with_clip(
     prompt_embeds = prompt_embeds.hidden_states[-2]
     prompt_embeds = prompt_embeds.to(dtype=text_encoder.dtype, device=device)
 
-    _, seq_len, _ = prompt_embeds.shape
+    bs_embed, seq_len, _ = prompt_embeds.shape
     # duplicate text embeddings for each generation per prompt, using mps friendly method
     prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-    prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+    prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
 
     return prompt_embeds, pooled_prompt_embeds
 
@@ -1577,8 +1574,9 @@ def main(args):
                         tokens_three = tokenize_prompt(tokenizer_three, prompts)
                         prompt_embeds, pooled_prompt_embeds = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two],
-                            tokenizers=None,
+                            tokenizers=[tokenizer_one,tokenizer_two,tokenizer_three],
                             prompt=None,
+                            max_sequence_length=args.max_sequence_length,
                             text_input_ids_list=[tokens_one, tokens_two, tokens_three],
                         )
 
