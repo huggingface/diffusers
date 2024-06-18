@@ -462,8 +462,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
-                same device.
-                Defaults to `None`, meaning that the model will be loaded on CPU.
+                same device. Defaults to `None`, meaning that the model will be loaded on CPU.
 
                 Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
                 more information about each option see [designing a device
