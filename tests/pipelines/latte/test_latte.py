@@ -96,6 +96,7 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
+            "negative_prompt": "low quality",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
@@ -122,14 +123,6 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(generated_video - expected_video).max()
         # self.assertLessEqual(max_diff, 1e-3)
 
-    def test_sequential_cpu_offload_forward_pass(self):
-        pass
-
-    def test_sequential_offload_forward_pass_twice(self):
-        pass
-
-    def test_model_cpu_offload_forward_pass(self):
-        pass
 
     def test_save_load_float16(self):
         pass
@@ -143,23 +136,9 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_save_load_local(self):
         pass
 
-    def test_num_images_per_prompt(self):
-        pass
 
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    def test_inference_batch_consistent(self):
-        pass
-
-    def test_cpu_offload_forward_pass_twice(self):
-        pass
-
-    def test_dict_tuple_outputs_equivalent(self):
-        pass
-
-    def test_save_load_optional_components(self):
-        pass
+    # def test_save_load_optional_components(self):
+    #     pass
 
 @slow
 @require_torch_gpu
