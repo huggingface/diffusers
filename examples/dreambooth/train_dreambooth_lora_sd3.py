@@ -886,7 +886,8 @@ def _encode_prompt_with_t5(
     prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
     _, seq_len, _ = prompt_embeds.shape
-    # duplicate text embeddings for each generation per prompt, using mps friendly method
+
+    # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
     prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
     prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
