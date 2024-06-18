@@ -27,6 +27,7 @@ from .controlnet import (
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
+from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
     KandinskyImg2ImgCombinedPipeline,
@@ -53,6 +54,10 @@ from .stable_diffusion import (
     StableDiffusionInpaintPipeline,
     StableDiffusionPipeline,
 )
+from .stable_diffusion_3 import (
+    StableDiffusion3Img2ImgPipeline,
+    StableDiffusion3Pipeline,
+)
 from .stable_diffusion_xl import (
     StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLInpaintPipeline,
@@ -65,7 +70,9 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
     [
         ("stable-diffusion", StableDiffusionPipeline),
         ("stable-diffusion-xl", StableDiffusionXLPipeline),
+        ("stable-diffusion-3", StableDiffusion3Pipeline),
         ("if", IFPipeline),
+        ("hunyuan", HunyuanDiTPipeline),
         ("kandinsky", KandinskyCombinedPipeline),
         ("kandinsky22", KandinskyV22CombinedPipeline),
         ("kandinsky3", Kandinsky3Pipeline),
@@ -83,6 +90,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
     [
         ("stable-diffusion", StableDiffusionImg2ImgPipeline),
         ("stable-diffusion-xl", StableDiffusionXLImg2ImgPipeline),
+        ("stable-diffusion-3", StableDiffusion3Img2ImgPipeline),
         ("if", IFImg2ImgPipeline),
         ("kandinsky", KandinskyImg2ImgCombinedPipeline),
         ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
