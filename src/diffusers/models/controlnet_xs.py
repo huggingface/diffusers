@@ -1350,7 +1350,6 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         temb_channels = base_downblock.resnets[0].time_emb_proj.in_features
         num_groups = base_downblock.resnets[0].norm1.num_groups
         ctrl_num_groups = ctrl_downblock.resnets[0].norm1.num_groups
-        use_linear_projection = True # default SD2.1 set linear projection to True
         if hasattr(base_downblock, "attentions"):
             has_crossattn = True
             transformer_layers_per_block = len(base_downblock.attentions[0].transformer_blocks)
@@ -1358,8 +1357,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
             ctrl_num_attention_heads = get_first_cross_attention(ctrl_downblock).heads
             cross_attention_dim = get_first_cross_attention(base_downblock).cross_attention_dim
             upcast_attention = get_first_cross_attention(base_downblock).upcast_attention
-            if hasattr(base_downblock.attentions[0], "use_linear_projection"):
-                use_linear_projection = base_downblock.attentions[0].use_linear_projection
+            use_linear_projection = base_downblock.attentions[0].use_linear_projection
         else:
             has_crossattn = False
             transformer_layers_per_block = None
@@ -1367,6 +1365,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
             ctrl_num_attention_heads = None
             cross_attention_dim = None
             upcast_attention = None
+            use_linear_projection = None
         add_downsample = base_downblock.downsamplers is not None
 
         # create model
@@ -1610,9 +1609,7 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
         ctrl_num_attention_heads = get_first_cross_attention(ctrl_midblock).heads
         cross_attention_dim = get_first_cross_attention(base_midblock).cross_attention_dim
         upcast_attention = get_first_cross_attention(base_midblock).upcast_attention
-        use_linear_projection = True  # default SD2.1 set linear projection to True
-        if hasattr(base_midblock.attentions[0], "use_linear_projection"):
-            use_linear_projection = base_midblock.attentions[0].use_linear_projection
+        use_linear_projection = base_midblock.attentions[0].use_linear_projection
 
         # create model
         model = cls(
@@ -1772,21 +1769,20 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         temb_channels = base_upblock.resnets[0].time_emb_proj.in_features
         num_groups = base_upblock.resnets[0].norm1.num_groups
         resolution_idx = base_upblock.resolution_idx
-        use_linear_projection = True  # default SD2.1 set linear projection to True
         if hasattr(base_upblock, "attentions"):
             has_crossattn = True
             transformer_layers_per_block = len(base_upblock.attentions[0].transformer_blocks)
             num_attention_heads = get_first_cross_attention(base_upblock).heads
             cross_attention_dim = get_first_cross_attention(base_upblock).cross_attention_dim
             upcast_attention = get_first_cross_attention(base_upblock).upcast_attention
-            if hasattr(base_upblock.attentions[0], "use_linear_projection"):
-                use_linear_projection = base_upblock.attentions[0].use_linear_projection
+            use_linear_projection = base_upblock.attentions[0].use_linear_projection
         else:
             has_crossattn = False
             transformer_layers_per_block = None
             num_attention_heads = None
             cross_attention_dim = None
             upcast_attention = None
+            use_linear_projection = None
         add_upsample = base_upblock.upsamplers is not None
 
         # create model
