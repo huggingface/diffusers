@@ -67,7 +67,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             patch_size=patch_size,
             in_channels=in_channels,
             embed_dim=self.inner_dim,
-            pos_embed_max_size=pos_embed_max_size,  # hard-code for now.
+            pos_embed_max_size=pos_embed_max_size,
         )
         self.time_text_embed = CombinedTimestepTextProjEmbeddings(
             embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
@@ -82,7 +82,6 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=self.inner_dim,
-                    # context_pre_only=i == num_layers - 1,
                     context_pre_only=False,
                 )
                 for i in range(num_layers)
@@ -102,7 +101,6 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             in_channels=in_channels,
             embed_dim=self.inner_dim,
             pos_embed_type=None,
-            # pos_embed_max_size=pos_embed_max_size,  # hard-code for now.
         )
         self.pos_embed_input = zero_module(pos_embed_input)
 
@@ -248,14 +246,12 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
         if load_weights_from_transformer:
             controlnet.pos_embed.load_state_dict(transformer.pos_embed.state_dict(), strict=False)
-            controlnet.pos_embed_input.load_state_dict(transformer.pos_embed.state_dict(), strict=False)
             controlnet.time_text_embed.load_state_dict(transformer.time_text_embed.state_dict(), strict=False)
             controlnet.context_embedder.load_state_dict(transformer.context_embedder.state_dict(), strict=False)
-            controlnet.transformer_blocks.load_state_dict(transformer.transformer_blocks.state_dict(), strict=False)
+            controlnet.transformer_blocks.load_state_dict(transformer.transformer_blocks.state_dict())
 
             controlnet.pos_embed_input = zero_module(controlnet.pos_embed_input)
 
-            print("=> controlnet load from transformer.")
         return controlnet
 
     def forward(
@@ -364,7 +360,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
-            return (controlnet_block_res_samples, )
+            return (controlnet_block_res_samples,)
 
         return SD3ControlNetOutput(controlnet_block_samples=controlnet_block_res_samples)
 
