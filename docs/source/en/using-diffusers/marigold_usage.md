@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Marigold Pipelines for Computer Vision Tasks
 
-[Marigold](marigold) is a novel diffusion-based dense prediction approach, and a set of pipelines for various computer vision tasks, such as monocular depth estimation.
+[Marigold](../api/pipelines/marigold) is a novel diffusion-based dense prediction approach, and a set of pipelines for various computer vision tasks, such as monocular depth estimation.
 
 This guide will show you how to use Marigold to obtain fast and high-quality predictions for images and videos.
 
@@ -31,7 +31,7 @@ The original code can also be used to train new checkpoints.
 | Checkpoint                                                                                    | Modality | Comment                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 |-----------------------------------------------------------------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | [prs-eth/marigold-v1-0](https://huggingface.co/prs-eth/marigold-v1-0)                         | Depth    | The first Marigold Depth checkpoint, which predicts *affine-invariant depth* maps. The performance of this checkpoint in benchmarks was studied in the original [paper](https://huggingface.co/papers/2312.02145). Designed to be used with the `DDIMScheduler` at inference, it requires at least 10 steps to get reliable predictions. Affine-invariant depth prediction has a range of values in each pixel between 0 (near plane) and 1 (far plane); both planes are chosen by the model as part of the inference process. See the `MarigoldImageProcessor` reference for visualization utilities. |
-| [prs-eth/marigold-lcm-v1-0](https://huggingface.co/prs-eth/marigold-lcm-v1-0)                 | Depth    | The fast Marigold Depth checkpoint, fine-tuned from `prs-eth/marigold-v1-0`. Designed to be used with the `LCMScheduler` at inference, it requires as little as 1 step to get reliable predictions. The prediction reliability saturates at 4 steps and declines after that.                                                                                                                                                                                                                                                                                                                           |
+| [prs-eth/marigold-depth-lcm-v1-0](https://huggingface.co/prs-eth/marigold-depth-lcm-v1-0)     | Depth    | The fast Marigold Depth checkpoint, fine-tuned from `prs-eth/marigold-v1-0`. Designed to be used with the `LCMScheduler` at inference, it requires as little as 1 step to get reliable predictions. The prediction reliability saturates at 4 steps and declines after that.                                                                                                                                                                                                                                                                                                                           |
 | [prs-eth/marigold-normals-v0-1](https://huggingface.co/prs-eth/marigold-normals-v0-1)         | Normals  | A preview checkpoint for the Marigold Normals pipeline. Designed to be used with the `DDIMScheduler` at inference, it requires at least 10 steps to get reliable predictions. The surface normals predictions are unit-length 3D vectors with values in the range from -1 to 1. *This checkpoint will be phased out after the release of `v1-0` version.*                                                                                                                                                                                                                                              |
 | [prs-eth/marigold-normals-lcm-v0-1](https://huggingface.co/prs-eth/marigold-normals-lcm-v0-1) | Normals  | The fast Marigold Normals checkpoint, fine-tuned from `prs-eth/marigold-normals-v0-1`. Designed to be used with the `LCMScheduler` at inference, it requires as little as 1 step to get reliable predictions. The prediction reliability saturates at 4 steps and declines after that. *This checkpoint will be phased out after the release of `v1-0` version.*                                                                                                                                                                                                                                       |
 The examples below are mostly given for depth prediction, but they can be universally applied with other supported modalities.
@@ -76,13 +76,13 @@ Below are the raw and the visualized predictions; as can be seen, dark areas (mu
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_depth_16bit.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_lcm_depth_16bit.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Predicted depth (16-bit PNG)
     </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_depth.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_lcm_depth.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Predicted depth visualization (Spectral)
     </figcaption>
@@ -115,7 +115,7 @@ Below is the visualized prediction:
 
 <div class="flex gap-4" style="justify-content: center; width: 100%;">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_normals.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_lcm_normals.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Predicted surface normals visualization
     </figcaption>
@@ -133,36 +133,36 @@ The above quick start snippets are already optimized for speed: they load the LC
 The `pipe(image)` call completes in 280ms on RTX 3090 GPU.
 Internally, the input image is encoded with the Stable Diffusion VAE encoder, then the U-Net performs one denoising step, and finally, the prediction latent is decoded with the VAE decoder into pixel space.
 In this case, two out of three module calls are dedicated to converting between pixel and latent space of LDM.
-Because Marigold's latent space is compatible with the base Stable Diffusion, it is possible to speed up the pipeline call by more than 3x (85ms on RTX 3090) by using a [lightweight replacement of the SD VAE](autoencoder_tiny):
+Because Marigold's latent space is compatible with the base Stable Diffusion, it is possible to speed up the pipeline call by more than 3x (85ms on RTX 3090) by using a [lightweight replacement of the SD VAE](../api/models/autoencoder_tiny):
 
 ```diff
   import diffusers
   import torch
-  
+
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
       "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
   ).to("cuda")
-  
+
 + pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
 +     "madebyollin/taesd", torch_dtype=torch.float16
 + ).cuda()
-  
+
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
   depth = pipe(image)
 ```
 
-As suggested in [Optimizations](torch2.0), adding `torch.compile` may squeeze extra performance depending on the target hardware:
+As suggested in [Optimizations](../optimization/torch2.0#torch.compile), adding `torch.compile` may squeeze extra performance depending on the target hardware:
 
 ```diff
   import diffusers
   import torch
-  
+
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
       "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
   ).to("cuda")
-  
+
 + pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-  
+
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
   depth = pipe(image)
 ```
@@ -173,13 +173,13 @@ With the above speed optimizations, Marigold delivers predictions with more deta
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_depth.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_lcm_depth.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Marigold LCM fp16 with Tiny AutoEncoder
     </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/bfe7cb56ca1cc0811b328212472350879dfa7f8b/marigold/einstein_depthanything_large.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/einstein_depthanything_large.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Depth Anything Large
     </figcaption>
@@ -208,7 +208,7 @@ model_paper_kwargs = {
 	diffusers.schedulers.LCMScheduler: {
 		"num_inference_steps": 4,
 		"ensemble_size": 5,
-	},	
+	},
 }
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -224,13 +224,13 @@ vis[0].save("einstein_normals.png")
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_lcm_normals.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_lcm_normals.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Surface normals, no ensembling
     </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_normals.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_normals.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Surface normals, with ensembling
     </figcaption>
@@ -261,7 +261,7 @@ model_paper_kwargs = {
 	diffusers.schedulers.LCMScheduler: {
 		"num_inference_steps": 4,
 		"ensemble_size": 10,
-	},	
+	},
 }
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -303,13 +303,13 @@ uncertainty[0].save("einstein_depth_uncertainty.png")
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_depth_uncertainty.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_depth_uncertainty.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Depth uncertainty
     </figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/6838ae9b9148cfe22ce9bb4c0ab0907c757c4010/marigold/marigold_einstein_normals_uncertainty.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_normals_uncertainty.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Surface normals uncertainty
     </figcaption>
@@ -327,11 +327,11 @@ This becomes an obvious drawback compared to traditional end-to-end dense regres
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama.gif"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_obama.gif"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">Input video</figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama_depth_independent.gif"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_obama_depth_independent.gif"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">Marigold Depth applied to input video frames independently</figcaption>
   </div>
 </div>
@@ -351,7 +351,7 @@ path_in = "obama.mp4"
 path_out = "obama_depth.gif"
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
+    "prs-eth/marigold-depth-lcm-v1-0", variant="fp16", torch_dtype=torch.float16
 ).to(device)
 pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
     "madebyollin/taesd", torch_dtype=torch.float16
@@ -387,11 +387,11 @@ The result is much more stable now:
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama_depth_independent.gif"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_obama_depth_independent.gif"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">Marigold Depth applied to input video frames independently</figcaption>
   </div>
   <div style="flex: 1 1 50%; max-width: 50%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/25024b5443a6c1357492751fd09355bd3f967845/marigold/marigold_obama_depth_consistent.gif"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_obama_depth_consistent.gif"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">Marigold Depth with forced latents initialization</figcaption>
   </div>
 </div>
@@ -414,8 +414,8 @@ image = diffusers.utils.load_image(
 )
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-lcm-v1-0", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+    "prs-eth/marigold-depth-lcm-v1-0", torch_dtype=torch.float16, variant="fp16"
+).to(device)
 
 depth_image = pipe(image, generator=generator).prediction
 depth_image = pipe.image_processor.visualize_depth(depth_image, color_map="binary")
@@ -423,10 +423,10 @@ depth_image[0].save("motorcycle_controlnet_depth.png")
 
 controlnet = diffusers.ControlNetModel.from_pretrained(
     "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+).to(device)
 pipe = diffusers.StableDiffusionXLControlNetPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0", torch_dtype=torch.float16, variant="fp16", controlnet=controlnet
-).to("cuda")
+).to(device)
 pipe.scheduler = diffusers.DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 
 controlnet_out = pipe(
@@ -450,13 +450,13 @@ controlnet_out[0].save("motorcycle_controlnet_out.png")
     </figcaption>
   </div>
   <div style="flex: 1 1 33%; max-width: 33%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/8e61e31f9feb7756c0404ceff26f3f0e5d3fe610/marigold/motorcycle_controlnet_depth.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/motorcycle_controlnet_depth.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       Depth in the format compatible with ControlNet
     </figcaption>
   </div>
   <div style="flex: 1 1 33%; max-width: 33%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/8e61e31f9feb7756c0404ceff26f3f0e5d3fe610/marigold/motorcycle_controlnet_out.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/motorcycle_controlnet_out.png"/>
     <figcaption class="mt-1 text-center text-sm text-gray-500">
       ControlNet generation, conditioned on depth and prompt: "high quality photo of a sports bike, city"
     </figcaption>
