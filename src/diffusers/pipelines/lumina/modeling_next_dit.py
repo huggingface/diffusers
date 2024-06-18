@@ -309,7 +309,9 @@ class Attention(nn.Module):
         )
         if query_length == kv_seq_len:
             query_layer = index_first_axis(
-                query_layer.reshape(batch_size * kv_seq_len, self.num_attention_heads, head_dim),
+                query_layer.reshape(
+                    batch_size * kv_seq_len, self.num_attention_heads, head_dim
+                ),
                 indices_k,
             )
             cu_seqlens_q = cu_seqlens_k
@@ -438,7 +440,9 @@ class Attention(nn.Module):
                 xq.permute(0, 2, 1, 3),
                 yk.permute(0, 2, 1, 3),
                 yv.permute(0, 2, 1, 3),
-                y_mask.view(bsz, 1, 1, -1).expand(bsz, self.num_attention_heads, seqlen, -1),
+                y_mask.view(bsz, 1, 1, -1).expand(
+                    bsz, self.num_attention_heads, seqlen, -1
+                ),
             ).permute(0, 2, 1, 3)
             output_y = output_y * self.gate.tanh().view(1, 1, -1, 1)
             output = output + output_y
@@ -708,7 +712,9 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
         )
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
 
-        assert (hidden_size // num_attention_heads) % 4 == 0, "2d rope needs head dim to be divisible by 4"
+        assert (
+            hidden_size // num_attention_heads
+        ) % 4 == 0, "2d rope needs head dim to be divisible by 4"
         self.hidden_size = hidden_size
         self.freqs_cis = NextFlagDiffuserTransformer2DModel.precompute_freqs_cis(
             hidden_size // num_attention_heads,
@@ -855,7 +861,9 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
             )
 
         # 1. Patchify and Get embedding
-        hidden_states, mask, img_size, freqs_cis = self.patchify_and_embed(hidden_states)
+        hidden_states, mask, img_size, freqs_cis = self.patchify_and_embed(
+            hidden_states
+        )
         freqs_cis = freqs_cis.to(hidden_states.device)
 
         # 2. Get timestep embedding
@@ -863,22 +871,33 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
 
         # 3. Get encoder hidden_state
         encoder_attn_mask_float = encoder_attn_mask.float().unsqueeze(-1)
-        encoder_hidden_states_pool = (encoder_hidden_states * encoder_attn_mask_float).sum(dim=1) / encoder_attn_mask_float.sum(
-            dim=1
+        encoder_hidden_states_pool = (
+            encoder_hidden_states * encoder_attn_mask_float
+        ).sum(dim=1) / encoder_attn_mask_float.sum(dim=1)
+        encoder_hidden_states_pool = encoder_hidden_states_pool.to(
+            encoder_hidden_states
         )
-        encoder_hidden_states_pool = encoder_hidden_states_pool.to(encoder_hidden_states)
         cap_emb = self.cap_embedder(encoder_hidden_states_pool)
         encoder_attn_mask = encoder_attn_mask.bool()
-    
+
         adaln_input = timestep + cap_emb
         # 4. Get hidden_state from transformer
         for layer in self.layers:
-            hidden_states = layer(hidden_states, mask, freqs_cis, encoder_hidden_states, encoder_attn_mask, adaln_input=adaln_input)
+            hidden_states = layer(
+                hidden_states,
+                mask,
+                freqs_cis,
+                encoder_hidden_states,
+                encoder_attn_mask,
+                adaln_input=adaln_input,
+            )
 
         hidden_states = self.final_layer(hidden_states, adaln_input)
 
         if unpatchify:
-            hidden_states = self.unpatchify(hidden_states, img_size, return_tensor=hidden_states_is_tensor)
+            hidden_states = self.unpatchify(
+                hidden_states, img_size, return_tensor=hidden_states_is_tensor
+            )
         else:
             output = hidden_states
 
@@ -926,11 +945,13 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
                     f"override freqs_cis, rope_scaling {rope_scaling_factor}, ntk {ntk_factor}",
                     flush=True,
                 )
-                self.freqs_cis = NextFlagDiffuserTransformer2DModel.precompute_freqs_cis(
-                    self.hidden_size // self.num_attention_heads,
-                    384,
-                    rope_scaling_factor=rope_scaling_factor,
-                    ntk_factor=ntk_factor,
+                self.freqs_cis = (
+                    NextFlagDiffuserTransformer2DModel.precompute_freqs_cis(
+                        self.hidden_size // self.num_attention_heads,
+                        384,
+                        rope_scaling_factor=rope_scaling_factor,
+                        ntk_factor=ntk_factor,
+                    )
                 )
                 self.rope_scaling_factor = rope_scaling_factor
                 self.ntk_factor = ntk_factor
@@ -1031,4 +1052,6 @@ class NextFlagDiffuserTransformer2DModel(ModelMixin, ConfigMixin):
 #                                 NextFlagDiffuserTransformer2DModel Configs                               #
 #############################################################################
 def NextFlagDiffuserTransformer2DModel_2B_patch2(**kwargs):
-    return NextFlagDiffuserTransformer2DModel(patch_size=2, dim=2304, num_layers=24, n_heads=32, **kwargs)
+    return NextFlagDiffuserTransformer2DModel(
+        patch_size=2, dim=2304, num_layers=24, n_heads=32, **kwargs
+    )
