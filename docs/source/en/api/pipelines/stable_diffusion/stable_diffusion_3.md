@@ -211,7 +211,6 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
 )
 pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd3", torch_dtype=torch.float16)
-pipe.vae.config.shift_factor = 0.0
 pipe = pipe.to("cuda")
 
 prompt = "slice of delicious New York-style berry cheesecake"
