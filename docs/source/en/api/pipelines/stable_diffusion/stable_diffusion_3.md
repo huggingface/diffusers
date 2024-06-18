@@ -199,7 +199,7 @@ Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f
 
 ## Tiny AutoEncoder for Stable Diffusion 3
 
-Tiny AutoEncoder for Stable Diffusion (TAESD3) was introduced in [madebyollin/taesd](https://github.com/madebyollin/taesd) by Ollin Boer Bohan. It is a tiny distilled version of Stable Diffusion 3's VAE that can quickly decode the latents in a [`StableDiffusion3Pipeline`] almost instantly.
+Tiny AutoEncoder for Stable Diffusion (TAESD3) is a tiny distilled version of Stable Diffusion 3's VAE by [Ollin Boer Bohan](https://github.com/madebyollin/taesd) that can decode [`StableDiffusion3Pipeline`] latents almost instantly.
 
 To use with Stable Diffusion 3:
 
