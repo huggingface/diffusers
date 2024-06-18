@@ -874,6 +874,39 @@ class ModelTesterMixin:
     def test_sharded_checkpoints(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+
+        torch.manual_seed(0)
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
+            self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
+
+            # Now check if the right number of shards exists. First, let's get the number of shards.
+            # Since this number can be dependent on the model being tested, it's important that we calculate it
+            # instead of hardcoding it.
+            with open(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)) as f:
+                weight_map_dict = json.load(f)["weight_map"]
+                first_key = list(weight_map_dict.keys())[0]
+                weight_loc = weight_map_dict[first_key]  # e.g., diffusion_pytorch_model-00001-of-00002.safetensors
+                expected_num_shards = int(weight_loc.split("-")[-1].split(".")[0])
+
+            actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(".safetensors")])
+            self.assertTrue(actual_num_shards == expected_num_shards)
+
+            new_model = self.model_class.from_pretrained(tmp_dir)
+
+            torch.manual_seed(0)
+            new_output = new_model(**inputs_dict)
+            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_gpu
+    def test_sharded_checkpoints_device_map(self):
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
         if model._no_split_modules is None:
             return
         model = model.to(torch_device)
