@@ -119,7 +119,7 @@ class JointTransformerBlock(nn.Module):
                 f"Unknown context_norm_type: {context_norm_type}, currently only support `ada_norm_continous`, `ada_norm_zero`"
             )
         if hasattr(F, "scaled_dot_product_attention"):
-            processor = JointAttnProcessor2_0()
+            self.processor = JointAttnProcessor2_0()
         else:
             raise ValueError(
                 "The current PyTorch version does not support the `scaled_dot_product_attention` function."
@@ -133,7 +133,7 @@ class JointTransformerBlock(nn.Module):
             out_dim=attention_head_dim,
             context_pre_only=context_pre_only,
             bias=True,
-            processor=processor,
+            processor=self.processor,
         )
 
         self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
@@ -169,6 +169,7 @@ class JointTransformerBlock(nn.Module):
             )
 
         # Attention.
+        self.attn.set_processor(self.processor)
         attn_output, context_attn_output = self.attn(
             hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states
         )
