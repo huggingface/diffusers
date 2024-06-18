@@ -878,7 +878,7 @@ def _encode_prompt_with_t5(
         )
         text_input_ids = text_inputs.input_ids
     else:
-        assert text_input_ids_list is not None
+        assert text_input_ids is not None
 
     prompt_embeds = text_encoder(text_input_ids.to(device))[0]
 
@@ -914,7 +914,7 @@ def _encode_prompt_with_clip(
 
         text_input_ids = text_inputs.input_ids
     else:
-        assert text_input_ids_list is not None
+        assert text_input_ids is not None
 
     prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
 
@@ -1574,7 +1574,7 @@ def main(args):
                         tokens_three = tokenize_prompt(tokenizer_three, prompts)
                         prompt_embeds, pooled_prompt_embeds = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two],
-                            tokenizers=[tokenizer_one,tokenizer_two,tokenizer_three],
+                            tokenizers=[None, None, tokenizer_three],
                             prompt=None,
                             max_sequence_length=args.max_sequence_length,
                             text_input_ids_list=[tokens_one, tokens_two, tokens_three],
