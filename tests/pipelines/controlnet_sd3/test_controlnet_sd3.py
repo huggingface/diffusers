@@ -60,110 +60,53 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = SD3Transformer2DModel(
-            attention_head_dim=64,
-            caption_projection_dim=1536,
-            in_channels=16,
-            joint_attention_dim=4096,
-            num_attention_heads=24,
-            num_layers=24,
-            out_channels=16,
-            patch_size=2,
-            pooled_projection_dim=2048,
-            pos_embed_max_size=192,
-            sample_size=128,
-        )
-        clip_text_encoder_config = CLIPTextConfig(
-            attention_dropout=0.0,
-            bos_token_id=0,
-            dropout=0.0,
-            eos_token_id=2,
-            hidden_act="quick_gelu",
-            hidden_size=768,
-            initializer_factor=1.0,
-            initializer_range=0.02,
-            intermediate_size=3072,
-            layer_norm_eps=1e-05,
-            max_position_embeddings=77,
-            model_type="clip_text_model",
-            num_attention_heads=12,
-            num_hidden_layers=12,
-            pad_token_id=1,
-            projection_dim=768,
-            torch_dtype="float16",
-            vocab_size=49408,
-        )
-
-        clip_text_encoder_2_config = CLIPTextConfig(
-            attention_dropout=0.0,
-            bos_token_id=0,
-            dropout=0.0,
-            eos_token_id=2,
-            hidden_act="gelu",
-            hidden_size=1280,
-            initializer_factor=1.0,
-            initializer_range=0.02,
-            intermediate_size=5120,
-            layer_norm_eps=1e-05,
-            max_position_embeddings=77,
-            model_type="clip_text_model",
-            num_attention_heads=20,
-            num_hidden_layers=32,
-            pad_token_id=1,
-            projection_dim=1280,
-            torch_dtype="float16",
-            vocab_size=49408,
-        )
-
-        t5_text_encoder_3_config = CLIPTextConfig(
-            classifier_dropout=0.0,
-            d_ff=10240,
-            d_kv=64,
-            d_model=4096,
-            decoder_start_token_id=0,
-            dense_act_fn="gelu_new",
-            dropout_rate=0.1,
-            eos_token_id=1,
-            feed_forward_proj="gated-gelu",
-            initializer_factor=1.0,
-            is_encoder_decoder=True,
-            is_gated_act=True,
-            layer_norm_epsilon=1e-06,
-            model_type="t5",
-            num_decoder_layers=24,
-            num_heads=64,
-            num_layers=24,
-            output_past=True,
-            pad_token_id=0,
-            relative_attention_max_distance=128,
-            relative_attention_num_buckets=32,
-            tie_word_embeddings=False,
-            torch_dtype="float16",
-            use_cache=True,
-            vocab_size=32128,
+            sample_size=32,
+            patch_size=1,
+            in_channels=8,
+            num_layers=4,
+            attention_head_dim=8,
+            num_attention_heads=4,
+            joint_attention_dim=32,
+            caption_projection_dim=32,
+            pooled_projection_dim=64,
+            out_channels=8,
         )
 
         torch.manual_seed(0)
         controlnet = SD3ControlNetModel(
-            attention_head_dim=64,
-            caption_projection_dim=1536,
-            in_channels=16,
-            joint_attention_dim=4096,
-            num_attention_heads=24,
-            num_layers=6,
-            patch_size=2,
-            pooled_projection_dim=2048,
-            pos_embed_max_size=192,
-            sample_size=128,
+            sample_size=32,
+            patch_size=1,
+            in_channels=8,
+            num_layers=1,
+            attention_head_dim=8,
+            num_attention_heads=4,
+            joint_attention_dim=32,
+            caption_projection_dim=32,
+            pooled_projection_dim=64,
+            out_channels=8,
+        )
+        clip_text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+            hidden_act="gelu",
+            projection_dim=32,
         )
 
         torch.manual_seed(0)
         text_encoder = CLIPTextModelWithProjection(clip_text_encoder_config)
 
         torch.manual_seed(0)
-        text_encoder_2 = CLIPTextModelWithProjection(clip_text_encoder_2_config)
+        text_encoder_2 = CLIPTextModelWithProjection(clip_text_encoder_config)
 
         torch.manual_seed(0)
-        text_encoder_3 = T5EncoderModel(t5_text_encoder_3_config)
+        text_encoder_3 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -171,21 +114,17 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            act_fn="silu",
-            block_out_channels=[128, 256, 512, 512],
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
-            force_upcast=True,
+            sample_size=32,
             in_channels=3,
-            latent_channels=16,
-            layers_per_block=2,
-            norm_num_groups=32,
             out_channels=3,
-            sample_size=1024,
-            scaling_factor=1.5305,
-            shift_factor=0.0609,
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
-            use_post_quant_conv=False,
+            block_out_channels=(4,),
+            layers_per_block=1,
+            latent_channels=8,
+            norm_num_groups=1,
             use_quant_conv=False,
+            use_post_quant_conv=False,
+            shift_factor=0.0609,
+            scaling_factor=1.5035,
         )
 
         scheduler = FlowMatchEulerDiscreteScheduler()
@@ -210,7 +149,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             generator = torch.Generator(device="cpu").manual_seed(seed)
 
         control_image = randn_tensor(
-            (1, 3, 1024, 1024),
+            (1, 3, 32, 32),
             generator=generator,
             device=torch.device(device),
             dtype=torch.float16,
@@ -241,13 +180,15 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
-        assert image.shape == (1, 1024, 1024, 3)
+        assert image.shape == (1, 32, 32, 3)
 
         expected_slice = np.array(
-            [0.5024414, 0.49804688, 0.5136719, 0.49682617, 0.49560547, 0.5097656, 0.4934082, 0.48266602, 0.4765625]
+            [0.5761719, 0.71777344, 0.59228516, 0.578125, 0.6020508, 0.39453125, 0.46728516, 0.51708984, 0.58984375]
         )
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        ), f"Expected: {expected_slice}, got: {image_slice.flatten()}"
 
 
 @slow
