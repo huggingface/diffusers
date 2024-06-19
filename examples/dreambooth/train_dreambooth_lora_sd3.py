@@ -1576,7 +1576,7 @@ def main(args):
                         tokens_two = tokenize_prompt(tokenizer_two, prompts)
                         tokens_three = tokenize_prompt(tokenizer_three, prompts)
                         prompt_embeds, pooled_prompt_embeds = encode_prompt(
-                            text_encoders=[text_encoder_one, text_encoder_two],
+                            text_encoders=[text_encoder_one, text_encoder_two, text_encoder_three],
                             tokenizers=[None, None, tokenizer_three],
                             prompt=prompts,
                             max_sequence_length=args.max_sequence_length,
@@ -1655,7 +1655,7 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = (transformer_lora_parameters, text_lora_parameters_one, text_lora_parameters_two
+                    params_to_clip = itertools.chain(transformer_lora_parameters, text_lora_parameters_one, text_lora_parameters_two
                         if args.train_text_encoder
                         else transformer_lora_parameters
                     )
