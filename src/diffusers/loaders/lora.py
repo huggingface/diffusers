@@ -1595,6 +1595,8 @@ class SD3LoraLoaderMixin:
         cls,
         save_directory: Union[str, os.PathLike],
         transformer_lora_layers: Dict[str, torch.nn.Module] = None,
+        text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -1631,6 +1633,12 @@ class SD3LoraLoaderMixin:
 
         if transformer_lora_layers:
             state_dict.update(pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if text_encoder_lora_layers:
+            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+
+        if text_encoder_2_lora_layers:
+            state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
         # Save the model
         cls.write_lora_layers(
