@@ -55,6 +55,7 @@ from diffusers import (
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     cast_training_params,
+    _set_state_dict_into_text_encoder,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
 )
@@ -1203,13 +1204,9 @@ def main(args):
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                    text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
-                        get_peft_model_state_dict(model)
-                    )
+                    text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
                 elif isinstance(model, type(unwrap_model(text_encoder_two))):
-                    text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
-                        get_peft_model_state_dict(model)
-                    )
+                    text_encoder_two_lora_layers_to_save = get_peft_model_state_dict(model)
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
