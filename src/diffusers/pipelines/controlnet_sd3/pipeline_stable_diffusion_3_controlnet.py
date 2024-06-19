@@ -232,7 +232,11 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
 
         if self.text_encoder_3 is None:
             return torch.zeros(
-                (batch_size, self.tokenizer_max_length, self.transformer.config.joint_attention_dim),
+                (
+                    batch_size * num_images_per_prompt,
+                    self.tokenizer_max_length,
+                    self.transformer.config.joint_attention_dim,
+                ),
                 device=device,
                 dtype=dtype,
             )
