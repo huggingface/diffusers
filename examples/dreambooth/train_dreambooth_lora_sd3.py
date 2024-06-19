@@ -54,8 +54,8 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
-    cast_training_params,
     _set_state_dict_into_text_encoder,
+    cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
 )
