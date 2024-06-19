@@ -2404,20 +2404,21 @@ def main(args):
         kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
         save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")
 
+        save_model_card(
+            repo_id,
+            use_dora=args.use_dora,
+            images=images,
+            base_model=args.pretrained_model_name_or_path,
+            train_text_encoder=args.train_text_encoder,
+            train_text_encoder_ti=args.train_text_encoder_ti,
+            token_abstraction_dict=train_dataset.token_abstraction_dict,
+            instance_prompt=args.instance_prompt,
+            validation_prompt=args.validation_prompt,
+            repo_folder=args.output_dir,
+            vae_path=args.pretrained_vae_model_name_or_path,
+        )
+
         if args.push_to_hub:
-            save_model_card(
-                repo_id,
-                use_dora=args.use_dora,
-                images=images,
-                base_model=args.pretrained_model_name_or_path,
-                train_text_encoder=args.train_text_encoder,
-                train_text_encoder_ti=args.train_text_encoder_ti,
-                token_abstraction_dict=train_dataset.token_abstraction_dict,
-                instance_prompt=args.instance_prompt,
-                validation_prompt=args.validation_prompt,
-                repo_folder=args.output_dir,
-                vae_path=args.pretrained_vae_model_name_or_path,
-            )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
