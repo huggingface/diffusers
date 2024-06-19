@@ -13,46 +13,32 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...models.attention import JointTransformerBlock
-from ...models.attention_processor import Attention, AttentionProcessor
-from ...models.modeling_utils import ModelMixin
-from ...models.normalization import AdaLayerNormContinuous
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
-from .transformer_2d import Transformer2DModelOutput
+from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ..models.attention import JointTransformerBlock
+from ..models.attention_processor import Attention, AttentionProcessor
+from ..models.modeling_utils import ModelMixin
+from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from .controlnet import BaseOutput, zero_module
+from .embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
+from .transformers.transformer_2d import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
-    """
-    The Transformer model introduced in Stable Diffusion 3.
+@dataclass
+class SD3ControlNetOutput(BaseOutput):
+    controlnet_block_samples: Tuple[torch.Tensor]
 
-    Reference: https://arxiv.org/abs/2403.03206
 
-    Parameters:
-        sample_size (`int`): The width of the latent images. This is fixed during training since
-            it is used to learn a number of position embeddings.
-        patch_size (`int`): Patch size to turn the input data into small patches.
-        in_channels (`int`, *optional*, defaults to 16): The number of channels in the input.
-        num_layers (`int`, *optional*, defaults to 18): The number of layers of Transformer blocks to use.
-        attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
-        num_attention_heads (`int`, *optional*, defaults to 18): The number of heads to use for multi-head attention.
-        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        caption_projection_dim (`int`): Number of dimensions to use when projecting the `encoder_hidden_states`.
-        pooled_projection_dim (`int`): Number of dimensions to use when projecting the `pooled_projections`.
-        out_channels (`int`, defaults to 16): Number of output channels.
-
-    """
-
+class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -73,20 +59,20 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         super().__init__()
         default_out_channels = in_channels
         self.out_channels = out_channels if out_channels is not None else default_out_channels
-        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+        self.inner_dim = num_attention_heads * attention_head_dim
 
         self.pos_embed = PatchEmbed(
-            height=self.config.sample_size,
-            width=self.config.sample_size,
-            patch_size=self.config.patch_size,
-            in_channels=self.config.in_channels,
+            height=sample_size,
+            width=sample_size,
+            patch_size=patch_size,
+            in_channels=in_channels,
             embed_dim=self.inner_dim,
-            pos_embed_max_size=pos_embed_max_size,  # hard-code for now.
+            pos_embed_max_size=pos_embed_max_size,
         )
         self.time_text_embed = CombinedTimestepTextProjEmbeddings(
-            embedding_dim=self.inner_dim, pooled_projection_dim=self.config.pooled_projection_dim
+            embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
         )
-        self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.config.caption_projection_dim)
+        self.context_embedder = nn.Linear(joint_attention_dim, caption_projection_dim)
 
         # `attention_head_dim` is doubled to account for the mixing.
         # It needs to crafted when we get the actual checkpoints.
@@ -94,16 +80,29 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             [
                 JointTransformerBlock(
                     dim=self.inner_dim,
-                    num_attention_heads=self.config.num_attention_heads,
+                    num_attention_heads=num_attention_heads,
                     attention_head_dim=self.inner_dim,
-                    context_pre_only=i == num_layers - 1,
+                    context_pre_only=False,
                 )
-                for i in range(self.config.num_layers)
+                for i in range(num_layers)
             ]
         )
 
-        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
-        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
+        # controlnet_blocks
+        self.controlnet_blocks = nn.ModuleList([])
+        for _ in range(len(self.transformer_blocks)):
+            controlnet_block = nn.Linear(self.inner_dim, self.inner_dim)
+            controlnet_block = zero_module(controlnet_block)
+            self.controlnet_blocks.append(controlnet_block)
+        pos_embed_input = PatchEmbed(
+            height=sample_size,
+            width=sample_size,
+            patch_size=patch_size,
+            in_channels=in_channels,
+            embed_dim=self.inner_dim,
+            pos_embed_type=None,
+        )
+        self.pos_embed_input = zero_module(pos_embed_input)
 
         self.gradient_checkpointing = False
 
@@ -239,13 +238,30 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    @classmethod
+    def from_transformer(cls, transformer, num_layers=None, load_weights_from_transformer=True):
+        config = transformer.config
+        config["num_layers"] = num_layers or config.num_layers
+        controlnet = cls(**config)
+
+        if load_weights_from_transformer:
+            controlnet.pos_embed.load_state_dict(transformer.pos_embed.state_dict(), strict=False)
+            controlnet.time_text_embed.load_state_dict(transformer.time_text_embed.state_dict(), strict=False)
+            controlnet.context_embedder.load_state_dict(transformer.context_embedder.state_dict(), strict=False)
+            controlnet.transformer_blocks.load_state_dict(transformer.transformer_blocks.state_dict())
+
+            controlnet.pos_embed_input = zero_module(controlnet.pos_embed_input)
+
+        return controlnet
+
     def forward(
         self,
         hidden_states: torch.FloatTensor,
+        controlnet_cond: torch.Tensor,
+        conditioning_scale: float = 1.0,
         encoder_hidden_states: torch.FloatTensor = None,
         pooled_projections: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
-        block_controlnet_hidden_states: List = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
@@ -255,14 +271,16 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         Args:
             hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
                 Input `hidden_states`.
+            controlnet_cond (`torch.Tensor`):
+                The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            conditioning_scale (`float`, defaults to `1.0`):
+                The scale factor for ControlNet outputs.
             encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
             pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
                 from the embeddings of input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
-                A list of tensors that if specified are added to the residuals of transformer blocks.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -296,7 +314,12 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         temb = self.time_text_embed(timestep, pooled_projections)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        for index_block, block in enumerate(self.transformer_blocks):
+        # add
+        hidden_states = hidden_states + self.pos_embed_input(controlnet_cond)
+
+        block_res_samples = ()
+
+        for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
@@ -309,7 +332,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     return custom_forward
 
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
+                hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(block),
                     hidden_states,
                     encoder_hidden_states,
@@ -322,32 +345,74 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 )
 
-            # controlnet residual
-            if block_controlnet_hidden_states is not None and block.context_pre_only is False:
-                interval_control = len(self.transformer_blocks) // len(block_controlnet_hidden_states)
-                hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
+            block_res_samples = block_res_samples + (hidden_states,)
 
-        hidden_states = self.norm_out(hidden_states, temb)
-        hidden_states = self.proj_out(hidden_states)
+        controlnet_block_res_samples = ()
+        for block_res_sample, controlnet_block in zip(block_res_samples, self.controlnet_blocks):
+            block_res_sample = controlnet_block(block_res_sample)
+            controlnet_block_res_samples = controlnet_block_res_samples + (block_res_sample,)
 
-        # unpatchify
-        patch_size = self.config.patch_size
-        height = height // patch_size
-        width = width // patch_size
-
-        hidden_states = hidden_states.reshape(
-            shape=(hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels)
-        )
-        hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
-        output = hidden_states.reshape(
-            shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
-        )
+        # 6. scaling
+        controlnet_block_res_samples = [sample * conditioning_scale for sample in controlnet_block_res_samples]
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
-            return (output,)
+            return (controlnet_block_res_samples,)
 
-        return Transformer2DModelOutput(sample=output)
+        return SD3ControlNetOutput(controlnet_block_samples=controlnet_block_res_samples)
+
+
+class SD3MultiControlNetModel(ModelMixin):
+    r"""
+    `SD3ControlNetModel` wrapper class for Multi-SD3ControlNet
+
+    This module is a wrapper for multiple instances of the `SD3ControlNetModel`. The `forward()` API is designed to be
+    compatible with `SD3ControlNetModel`.
+
+    Args:
+        controlnets (`List[SD3ControlNetModel]`):
+            Provides additional conditioning to the unet during the denoising process. You must set multiple
+            `SD3ControlNetModel` as a list.
+    """
+
+    def __init__(self, controlnets):
+        super().__init__()
+        self.nets = nn.ModuleList(controlnets)
+
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        controlnet_cond: List[torch.tensor],
+        conditioning_scale: List[float],
+        pooled_projections: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        timestep: torch.LongTensor = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        return_dict: bool = True,
+    ) -> Union[SD3ControlNetOutput, Tuple]:
+        for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
+            block_samples = controlnet(
+                hidden_states=hidden_states,
+                timestep=timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                pooled_projections=pooled_projections,
+                controlnet_cond=image,
+                conditioning_scale=scale,
+                joint_attention_kwargs=joint_attention_kwargs,
+                return_dict=return_dict,
+            )
+
+            # merge samples
+            if i == 0:
+                control_block_samples = block_samples
+            else:
+                control_block_samples = [
+                    control_block_sample + block_sample
+                    for control_block_sample, block_sample in zip(control_block_samples[0], block_samples[0])
+                ]
+                control_block_samples = (tuple(control_block_samples),)
+
+        return control_block_samples
