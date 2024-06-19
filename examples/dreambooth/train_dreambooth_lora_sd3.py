@@ -1598,6 +1598,15 @@ def main(args):
                             max_sequence_length=args.max_sequence_length,
                             text_input_ids_list=[tokens_one, tokens_two, tokens_three],
                         )
+                else:
+                    if args.train_text_encoder:
+                        prompt_embeds, pooled_prompt_embeds = encode_prompt(
+                            text_encoders=[text_encoder_one, text_encoder_two, text_encoder_three],
+                            tokenizers=[None, None, tokenizer_three],
+                            prompt=prompts,
+                            max_sequence_length=args.max_sequence_length,
+                            text_input_ids_list=[tokens_one, tokens_two, tokens_three],
+                        )
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
