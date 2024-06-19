@@ -11,6 +11,8 @@ The `train_dreambooth_sd3.py` script shows how to implement the training procedu
 huggingface-cli login
 ```
 
+This will also allow us to push the trained model parameters to the Hugging Face Hub platform. 
+
 ## Running locally with PyTorch
 
 ### Installing the dependencies
@@ -116,6 +118,8 @@ To better track our training experiments, we're using the following flags in the
 
 [LoRA](https://huggingface.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) is a popular parameter-efficient fine-tuning technique that allows you to achieve full-finetuning like performance but with a fraction of learnable parameters.
 
+Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
+
 To perform DreamBooth with LoRA, run:
 
 ```bash
@@ -142,3 +146,7 @@ accelerate launch train_dreambooth_lora_sd3.py \
   --seed="0" \
   --push_to_hub
 ```
+
+## Other notes
+
+We default to the "logit_normal" weighting scheme for the loss following the SD3 paper. Thanks to @bghira for helping us discover that for other weighting schemes supported from the training script, training may incur numerical instabilities. 
