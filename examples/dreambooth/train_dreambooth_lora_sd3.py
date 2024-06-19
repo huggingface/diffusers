@@ -1197,10 +1197,20 @@ def main(args):
     def save_model_hook(models, weights, output_dir):
         if accelerator.is_main_process:
             transformer_lora_layers_to_save = None
+            text_encoder_one_lora_layers_to_save = None
+            text_encoder_two_lora_layers_to_save = None
 
             for model in models:
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
+                elif isinstance(model, type(unwrap_model(text_encoder_one))):
+                    text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
+                        get_peft_model_state_dict(model)
+                    )
+                elif isinstance(model, type(unwrap_model(text_encoder_two))):
+                    text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
+                        get_peft_model_state_dict(model)
+                    )
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1208,7 +1218,10 @@ def main(args):
                 weights.pop()
 
             StableDiffusion3Pipeline.save_lora_weights(
-                output_dir, transformer_lora_layers=transformer_lora_layers_to_save
+                output_dir,
+                transformer_lora_layers=transformer_lora_layers_to_save,
+                text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
+                text_encoder_2_lora_layers=text_encoder_two_lora_layers_to_save,
             )
 
     def load_model_hook(models, input_dir):
