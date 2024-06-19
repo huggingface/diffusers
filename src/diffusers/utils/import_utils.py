@@ -330,7 +330,7 @@ try:
             _is_notebook = True  # Jupyter notebook, Google colab or qtconsole
             break
 except NameError:
-    _is_notebook = any(k.startswith("JPY_") for k in os.environ)
+    _is_notebook = any(k.startswith("JPY_") or k == "VSCODE_CLI" for k in os.environ)
 
 _is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
 
