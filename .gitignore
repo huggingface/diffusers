@@ -125,9 +125,6 @@ dmypy.json
 .vs
 .vscode
 
-# shell
-.sh
-
 # Pycharm
 .idea
 
