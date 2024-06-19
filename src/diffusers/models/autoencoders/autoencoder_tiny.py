@@ -111,6 +111,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         latent_shift: float = 0.5,
         force_upcast: bool = False,
         scaling_factor: float = 1.0,
+        shift_factor: float = 0.0,
     ):
         super().__init__()
 
