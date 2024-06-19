@@ -321,7 +321,7 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _bitsandbytes_available = False
 
-# Taken from `huggingface_hub`.
+# try part is taken from `huggingface_hub`.
 _is_notebook = False
 try:
     shell_class = get_ipython().__class__  # type: ignore # noqa: F821
@@ -330,7 +330,7 @@ try:
             _is_notebook = True  # Jupyter notebook, Google colab or qtconsole
             break
 except NameError:
-    pass  # Probably standard Python interpreter
+    _is_notebook = any(k.startswith("JPY_") for k in os.environ)
 
 _is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
 
