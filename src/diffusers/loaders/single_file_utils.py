@@ -1808,3 +1808,4 @@ def create_diffusers_t5_model_from_checkpoint(
 
     else:
         model.load_state_dict(diffusers_format_checkpoint)
+    return model
