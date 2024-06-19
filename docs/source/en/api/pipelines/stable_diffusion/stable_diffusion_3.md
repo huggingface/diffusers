@@ -211,7 +211,6 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
 )
 pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd3", torch_dtype=torch.float16)
-pipe.vae.config.shift_factor = 0.0
 pipe = pipe.to("cuda")
 
 prompt = "slice of delicious New York-style berry cheesecake"
@@ -250,7 +249,7 @@ image = pipe("a picture of a cat holding a sign that says hello world").images[0
 image.save('sd3-single-file.png')
 ```
 
-### Loading the single file checkpoint without T5
+### Loading the single file checkpoint with T5
 
 ```python
 import torch
