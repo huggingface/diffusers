@@ -51,6 +51,7 @@ from diffusers import (
     StableDiffusion3Pipeline,
 )
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3
 from diffusers.utils import (
     check_min_version,
     is_wandb_available,
@@ -298,6 +299,12 @@ def parse_args(input_args=None):
         help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
+        "--max_sequence_length",
+        type=int,
+        default=77,
+        help="Maximum sequence length to use with with the T5 text encoder",
+    )
+    parser.add_argument(
         "--validation_prompt",
         type=str,
         default=None,
@@ -465,11 +472,23 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--weighting_scheme", type=str, default="sigma_sqrt", choices=["sigma_sqrt", "logit_normal", "mode"]
+        "--weighting_scheme",
+        type=str,
+        default="logit_normal",
+        choices=["sigma_sqrt", "logit_normal", "mode", "cosmap"],
     )
-    parser.add_argument("--logit_mean", type=float, default=0.0)
-    parser.add_argument("--logit_std", type=float, default=1.0)
-    parser.add_argument("--mode_scale", type=float, default=1.29)
+    parser.add_argument(
+        "--logit_mean", type=float, default=0.0, help="mean to use when using the `'logit_normal'` weighting scheme."
+    )
+    parser.add_argument(
+        "--logit_std", type=float, default=1.0, help="std to use when using the `'logit_normal'` weighting scheme."
+    )
+    parser.add_argument(
+        "--mode_scale",
+        type=float,
+        default=1.29,
+        help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
+    )
     parser.add_argument(
         "--optimizer",
         type=str,
@@ -828,6 +847,7 @@ def tokenize_prompt(tokenizer, prompt):
 def _encode_prompt_with_t5(
     text_encoder,
     tokenizer,
+    max_sequence_length,
     prompt=None,
     num_images_per_prompt=1,
     device=None,
@@ -838,7 +858,7 @@ def _encode_prompt_with_t5(
     text_inputs = tokenizer(
         prompt,
         padding="max_length",
-        max_length=77,
+        max_length=max_sequence_length,
         truncation=True,
         add_special_tokens=True,
         return_tensors="pt",
@@ -895,6 +915,7 @@ def encode_prompt(
     text_encoders,
     tokenizers,
     prompt: str,
+    max_sequence_length,
     device=None,
     num_images_per_prompt: int = 1,
 ):
@@ -922,6 +943,7 @@ def encode_prompt(
     t5_prompt_embed = _encode_prompt_with_t5(
         text_encoders[-1],
         tokenizers[-1],
+        max_sequence_length,
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
         device=device if device is not None else text_encoders[-1].device,
@@ -1324,7 +1346,9 @@ def main(args):
 
         def compute_text_embeddings(prompt, text_encoders, tokenizers):
             with torch.no_grad():
-                prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
+                prompt_embeds, pooled_prompt_embeds = encode_prompt(
+                    text_encoders, tokenizers, prompt, args.max_sequence_length
+                )
                 prompt_embeds = prompt_embeds.to(accelerator.device)
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
@@ -1347,6 +1371,9 @@ def main(args):
     # Clear the memory here
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
         del tokenizers, text_encoders
+        # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
+        del tokenizer_one, tokenizer_two, tokenizer_three
+        del text_encoder_one, text_encoder_two, text_encoder_three
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -1526,7 +1553,15 @@ def main(args):
                 bsz = model_input.shape[0]
 
                 # Sample a random timestep for each image
-                indices = torch.randint(0, noise_scheduler_copy.config.num_train_timesteps, (bsz,))
+                # for weighting schemes where we sample timesteps non-uniformly
+                u = compute_density_for_timestep_sampling(
+                    weighting_scheme=args.weighting_scheme,
+                    batch_size=bsz,
+                    logit_mean=args.logit_mean,
+                    logit_std=args.logit_std,
+                    mode_scale=args.mode_scale,
+                )
+                indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
                 # Add noise according to flow matching.
@@ -1560,21 +1595,11 @@ def main(args):
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                 # Preconditioning of the model outputs.
                 model_pred = model_pred * (-sigmas) + noisy_model_input
+                # these weighting schemes use a uniform timestep sampling
+                # and instead post-weight the loss
+                weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
-                # TODO (kashif, sayakpaul): weighting sceme needs to be experimented with :)
-                if args.weighting_scheme == "sigma_sqrt":
-                    weighting = (sigmas**-2.0).float()
-                elif args.weighting_scheme == "logit_normal":
-                    # See 3.1 in the SD3 paper ($rf/lognorm(0.00,1.00)$).
-                    u = torch.normal(mean=args.logit_mean, std=args.logit_std, size=(bsz,), device=accelerator.device)
-                    weighting = torch.nn.functional.sigmoid(u)
-                elif args.weighting_scheme == "mode":
-                    # See sec 3.1 in the SD3 paper (20).
-                    u = torch.rand(size=(bsz,), device=accelerator.device)
-                    weighting = 1 - u - args.mode_scale * (torch.cos(math.pi * u / 2) ** 2 - 1 + u)
-
-                # simplified flow matching aka 0-rectified flow matching loss
-                # target = model_input - noise
+                # flow matching loss
                 target = model_input
 
                 if args.with_prior_preservation:
