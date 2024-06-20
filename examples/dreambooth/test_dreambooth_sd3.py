@@ -33,7 +33,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class DreamBooth(ExamplesTestsAccelerate):
+class DreamBoothSD3(ExamplesTestsAccelerate):
     instance_data_dir = "docs/source/en/imgs"
     instance_prompt = "photo"
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sd3-pipe"
