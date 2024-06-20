@@ -148,7 +148,7 @@ class PAGMixin:
 
     def _get_pag_scale(self, t):
         r"""
-        Get the scale factor for the perturbed attention guidance.
+        Get the scale factor for the perturbed attention guidance at timestep `t`.
         """
 
         if self.do_pag_adaptive_scaling:
