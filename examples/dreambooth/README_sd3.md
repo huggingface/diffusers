@@ -11,7 +11,7 @@ The `train_dreambooth_sd3.py` script shows how to implement the training procedu
 huggingface-cli login
 ```
 
-This will also allow us to push the trained model parameters to the Hugging Face Hub platform. 
+This will also allow us to push the trained model parameters to the Hugging Face Hub platform.
 
 ## Running locally with PyTorch
 
@@ -149,4 +149,4 @@ accelerate launch train_dreambooth_lora_sd3.py \
 
 ## Other notes
 
-We default to the "logit_normal" weighting scheme for the loss following the SD3 paper. Thanks to @bghira for helping us discover that for other weighting schemes supported from the training script, training may incur numerical instabilities. 
+We default to the "logit_normal" weighting scheme for the loss following the SD3 paper. Thanks to @bghira for helping us discover that for other weighting schemes supported from the training script, training may incur numerical instabilities.
