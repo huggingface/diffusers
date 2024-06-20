@@ -2927,13 +2927,14 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 class PAGIdentitySelfAttnProcessor2_0:
     r"""
     Processor for implementing PAG using scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    
     PAG reference: https://arxiv.org/abs/2403.17377
     """
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("PAGIdentitySelfAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "PAGIdentitySelfAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
 
     def __call__(
         self,
@@ -2943,7 +2944,6 @@ class PAGIdentitySelfAttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
-
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -3036,12 +3036,15 @@ class PAGIdentitySelfAttnProcessor2_0:
 
 class PAGCFGIdentitySelfAttnProcessor2_0:
     r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
+    Processor for implementing PAG using scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
+    PAG reference: https://arxiv.org/abs/2403.17377
     """
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("PAGCFGIdentitySelfAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "PAGCFGIdentitySelfAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
 
     def __call__(
         self,
@@ -3051,7 +3054,6 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
-
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
