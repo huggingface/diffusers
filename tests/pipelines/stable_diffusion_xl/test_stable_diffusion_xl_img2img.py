@@ -516,6 +516,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
 def test_stable_diffusion_xl_img2img_playground():
     torch.manual_seed(0)
     model_path = "playgroundai/playground-v2.5-1024px-aesthetic"
+
     sd_pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
         model_path, torch_dtype=torch.float16, variant="fp16", add_watermarker=False
     )
