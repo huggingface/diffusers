@@ -1542,9 +1542,13 @@ class SD3LoraLoaderMixin:
         state_dict = {
             k.replace(f"{cls.transformer_name}.", ""): v for k, v in state_dict.items() if k in transformer_keys
         }
-        state_dict = convert_unet_state_dict_to_peft(state_dict)
 
         if len(state_dict.keys()) > 0:
+            # check with first key if is not in peft format
+            first_key = next(iter(state_dict.keys()), None)
+            if "lora_A" not in first_key:
+                state_dict = convert_unet_state_dict_to_peft(state_dict)
+
             if adapter_name in getattr(transformer, "peft_config", {}):
                 raise ValueError(
                     f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
