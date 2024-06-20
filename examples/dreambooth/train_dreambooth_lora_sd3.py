@@ -882,7 +882,7 @@ def _encode_prompt_with_t5(
         )
         text_input_ids = text_inputs.input_ids
     else:
-        if text_input_ids is not None:
+        if text_input_ids is None:
             raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
 
     prompt_embeds = text_encoder(text_input_ids.to(device))[0]
@@ -921,7 +921,7 @@ def _encode_prompt_with_clip(
 
         text_input_ids = text_inputs.input_ids
     else:
-        if text_input_ids is not None:
+        if text_input_ids is None:
             raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
 
     prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
