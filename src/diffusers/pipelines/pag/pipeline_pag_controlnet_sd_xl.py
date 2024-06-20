@@ -638,12 +638,7 @@ class StableDiffusionXLControlNetPAGPipeline(
         callback_on_step_end_tensor_inputs=None,
         guidance_scale=None,
         pag_scale=None,
-        guess_mode=None,
     ):
-        if guess_mode and pag_scale > 0 and guidance_scale > 1:
-            raise ValueError(
-                "guess_mode cannot work with PAG and guidance scale together. Please set either `pag_scale` or `guidance_scale`; or set `guess_mode` to False."
-            )
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -1027,7 +1022,6 @@ class StableDiffusionXLControlNetPAGPipeline(
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
-        guess_mode: bool = False,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
         original_size: Tuple[int, int] = None,
@@ -1139,9 +1133,6 @@ class StableDiffusionXLControlNetPAGPipeline(
                 The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
                 to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
                 the corresponding scale as a list.
-            guess_mode (`bool`, *optional*, defaults to `False`):
-                The ControlNet encoder tries to recognize the content of the input image even if you remove all
-                prompts. A `guidance_scale` value between 3.0 and 5.0 is recommended.
             control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
                 The percentage of total steps at which the ControlNet starts applying.
             control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
@@ -1238,7 +1229,6 @@ class StableDiffusionXLControlNetPAGPipeline(
             callback_on_step_end_tensor_inputs,
             guidance_scale,
             pag_scale,
-            guess_mode,
         )
 
         self._guidance_scale = guidance_scale
@@ -1260,13 +1250,6 @@ class StableDiffusionXLControlNetPAGPipeline(
 
         if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
-
-        global_pool_conditions = (
-            controlnet.config.global_pool_conditions
-            if isinstance(controlnet, ControlNetModel)
-            else controlnet.nets[0].config.global_pool_conditions
-        )
-        guess_mode = guess_mode or global_pool_conditions
 
         # 3.1 Encode input prompt
         text_encoder_lora_scale = (
@@ -1314,7 +1297,7 @@ class StableDiffusionXLControlNetPAGPipeline(
                 device=device,
                 dtype=controlnet.dtype,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
-                guess_mode=guess_mode,
+                guess_mode=False,
             )
             height, width = image.shape[-2:]
         elif isinstance(controlnet, MultiControlNetModel):
@@ -1330,7 +1313,7 @@ class StableDiffusionXLControlNetPAGPipeline(
                     device=device,
                     dtype=controlnet.dtype,
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
-                    guess_mode=guess_mode,
+                    guess_mode=False,
                 )
 
                 images.append(image_)
@@ -1411,22 +1394,21 @@ class StableDiffusionXLControlNetPAGPipeline(
         else:
             negative_add_time_ids = add_time_ids
 
-        if not guess_mode:
-            images = image if isinstance(image, list) else [image]
-            for i, single_image in enumerate(images):
-                if self.do_classifier_free_guidance:
-                    single_image = single_image.chunk(2)[0]
+        images = image if isinstance(image, list) else [image]
+        for i, single_image in enumerate(images):
+            if self.do_classifier_free_guidance:
+                single_image = single_image.chunk(2)[0]
 
-                if self.do_perturbed_attention_guidance:
-                    single_image = self._prepare_perturbed_attention_guidance(
-                        single_image, single_image, self.do_classifier_free_guidance
-                    )
-                elif self.do_classifier_free_guidance:
-                    single_image = torch.cat([single_image] * 2)
-                single_image = single_image.to(device)
-                images[i] = single_image
+            if self.do_perturbed_attention_guidance:
+                single_image = self._prepare_perturbed_attention_guidance(
+                    single_image, single_image, self.do_classifier_free_guidance
+                )
+            elif self.do_classifier_free_guidance:
+                single_image = torch.cat([single_image] * 2)
+            single_image = single_image.to(device)
+            images[i] = single_image
 
-            image = images if isinstance(image, list) else images[0]
+        image = images if isinstance(image, list) else images[0]
 
         if ip_adapter_image_embeds is not None:
             for i, image_embeds in enumerate(ip_adapter_image_embeds):
@@ -1442,11 +1424,6 @@ class StableDiffusionXLControlNetPAGPipeline(
                     image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
                 image_embeds = image_embeds.to(device)
                 ip_adapter_image_embeds[i] = image_embeds
-
-        # for guess_mode, we do not need to apply guidance on controlnet inputs
-        if guess_mode:
-            controlnet_prompt_embeds = prompt_embeds
-            controlnet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
         if self.do_perturbed_attention_guidance:
             prompt_embeds = self._prepare_perturbed_attention_guidance(
@@ -1468,9 +1445,8 @@ class StableDiffusionXLControlNetPAGPipeline(
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
         added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
-        if not guess_mode:
-            controlnet_prompt_embeds = prompt_embeds
-            controlnet_added_cond_kwargs = added_cond_kwargs
+        controlnet_prompt_embeds = prompt_embeds
+        controlnet_added_cond_kwargs = added_cond_kwargs
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -1512,12 +1488,7 @@ class StableDiffusionXLControlNetPAGPipeline(
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # controlnet(s) inference
-                if guess_mode:
-                    # Infer ControlNet only for the conditional batch.
-                    control_model_input = latents
-                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
-                else:
-                    control_model_input = latent_model_input
+                control_model_input = latent_model_input
 
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
@@ -1533,17 +1504,10 @@ class StableDiffusionXLControlNetPAGPipeline(
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=image,
                     conditioning_scale=cond_scale,
-                    guess_mode=guess_mode,
+                    guess_mode=False,
                     added_cond_kwargs=controlnet_added_cond_kwargs,
                     return_dict=False,
                 )
-
-                if guess_mode and (self.do_classifier_free_guidance or self.do_perturbed_attention_guidance):
-                    # Infered ControlNet only for the conditional batch.
-                    # To apply the output of ControlNet to both the unconditional and conditional batches,
-                    # add 0 to the unconditional batch to keep it unchanged.
-                    down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
-                    mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
                 if ip_adapter_image_embeds is not None:
                     added_cond_kwargs["image_embeds"] = ip_adapter_image_embeds
