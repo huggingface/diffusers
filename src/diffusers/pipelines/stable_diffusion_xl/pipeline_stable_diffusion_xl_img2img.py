@@ -728,6 +728,7 @@ class StableDiffusionXLImg2ImgPipeline(
                 latents_mean = latents_mean.to(device=device, dtype=dtype)
                 latents_std = latents_std.to(device=device, dtype=dtype)
                 init_latents = (init_latents - latents_mean) * self.vae.config.scaling_factor / latents_std
+
             else:
                 init_latents = self.vae.config.scaling_factor * init_latents
 
