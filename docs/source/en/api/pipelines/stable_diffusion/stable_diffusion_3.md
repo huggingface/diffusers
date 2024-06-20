@@ -155,44 +155,6 @@ image.save("sd3_hello_world-8bit-T5.png")
 
 You can find the end-to-end script [here](https://gist.github.com/sayakpaul/82acb5976509851f2db1a83456e504f1).
 
-### Using Long Prompts with the T5 Text Encoder
-
-By default, the prompt for the T5 Text Encoder uses a maximum sequence length of `256`. This can be adjusted to accept fewer or more tokens by setting the `max_sequence_length` to a maximum of `512`. Keep in mind that longer sequences require additional resources and will result in longer generation times. This effect is particularly noticeable during batch inference.
-
-```python
-prompt = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. It features the distinctive, bulky body shape of a hippo. However, instead of the usual grey skin, the creature’s body resembles a golden-brown, crispy waffle fresh off the griddle. The skin is textured with the familiar grid pattern of a waffle, each square filled with a glistening sheen of syrup. The environment combines the natural habitat of a hippo with elements of a breakfast table setting, a river of warm, melted butter, with oversized utensils or plates peeking out from the lush, pancake-like foliage in the background, a towering pepper mill standing in for a tree.  As the sun rises in this fantastical world, it casts a warm, buttery glow over the scene. The creature, content in its butter river, lets out a yawn. Nearby, a flock of birds take flight"
-
-image = pipe(
-    prompt=prompt,
-    negative_prompt="",
-    num_inference_steps=28,
-    guidance_scale=4.5,
-    max_sequence_length=512,
-).images[0]
-```
-
-> [!NOTE]  
-> The prompt with the Clip Text Encoders will still get truncated at the 77 token limit.
-
-### Sending a different prompt to the T5 Text Encoder
-
-To prevent the prompt from being truncated in the wrong part for the Clip Text Encoders and to improve generation, it is possible to send a different prompt to the Clip Text Encoders and the T5 Text Encoder.
-
-```python
-prompt = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. A river of warm, melted butter, pancake-like foliage in the background, a towering pepper mill standing in for a tree."
-
-prompt_3 = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. It features the distinctive, bulky body shape of a hippo. However, instead of the usual grey skin, the creature’s body resembles a golden-brown, crispy waffle fresh off the griddle. The skin is textured with the familiar grid pattern of a waffle, each square filled with a glistening sheen of syrup. The environment combines the natural habitat of a hippo with elements of a breakfast table setting, a river of warm, melted butter, with oversized utensils or plates peeking out from the lush, pancake-like foliage in the background, a towering pepper mill standing in for a tree.  As the sun rises in this fantastical world, it casts a warm, buttery glow over the scene. The creature, content in its butter river, lets out a yawn. Nearby, a flock of birds take flight"
-
-image = pipe(
-    prompt=prompt,
-    prompt_3=prompt_3,
-    negative_prompt="",
-    num_inference_steps=28,
-    guidance_scale=4.5,
-    max_sequence_length=512,
-).images[0]
-```
-
 ## Performance Optimizations for SD3
 
 ### Using Torch Compile to Speed Up Inference
@@ -233,6 +195,47 @@ image.save("sd3_hello_world.png")
 ```
 
 Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f454900813da5d42ca97).
+
+## Using Long Prompts with the T5 Text Encoder
+
+By default, the prompt for the T5 Text Encoder uses a maximum sequence length of `256`. This can be adjusted to accept fewer or more tokens by setting the `max_sequence_length` to a maximum of `512`. Keep in mind that longer sequences require additional resources and will result in longer generation times. This effect is particularly noticeable during batch inference.
+
+```python
+prompt = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. It features the distinctive, bulky body shape of a hippo. However, instead of the usual grey skin, the creature’s body resembles a golden-brown, crispy waffle fresh off the griddle. The skin is textured with the familiar grid pattern of a waffle, each square filled with a glistening sheen of syrup. The environment combines the natural habitat of a hippo with elements of a breakfast table setting, a river of warm, melted butter, with oversized utensils or plates peeking out from the lush, pancake-like foliage in the background, a towering pepper mill standing in for a tree.  As the sun rises in this fantastical world, it casts a warm, buttery glow over the scene. The creature, content in its butter river, lets out a yawn. Nearby, a flock of birds take flight"
+
+image = pipe(
+    prompt=prompt,
+    negative_prompt="",
+    num_inference_steps=28,
+    guidance_scale=4.5,
+    max_sequence_length=512,
+).images[0]
+```
+
+<Tip>
+
+The prompt with the Clip Text Encoders will still get truncated at the 77 token limit.
+
+</Tip>
+
+### Sending a different prompt to the T5 Text Encoder
+
+To prevent the prompt from being truncated in the wrong part for the Clip Text Encoders and to improve generation, it is possible to send a different prompt to the Clip Text Encoders and the T5 Text Encoder.
+
+```python
+prompt = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. A river of warm, melted butter, pancake-like foliage in the background, a towering pepper mill standing in for a tree."
+
+prompt_3 = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. It features the distinctive, bulky body shape of a hippo. However, instead of the usual grey skin, the creature’s body resembles a golden-brown, crispy waffle fresh off the griddle. The skin is textured with the familiar grid pattern of a waffle, each square filled with a glistening sheen of syrup. The environment combines the natural habitat of a hippo with elements of a breakfast table setting, a river of warm, melted butter, with oversized utensils or plates peeking out from the lush, pancake-like foliage in the background, a towering pepper mill standing in for a tree.  As the sun rises in this fantastical world, it casts a warm, buttery glow over the scene. The creature, content in its butter river, lets out a yawn. Nearby, a flock of birds take flight"
+
+image = pipe(
+    prompt=prompt,
+    prompt_3=prompt_3,
+    negative_prompt="",
+    num_inference_steps=28,
+    guidance_scale=4.5,
+    max_sequence_length=512,
+).images[0]
+```
 
 ## Tiny AutoEncoder for Stable Diffusion 3
 
