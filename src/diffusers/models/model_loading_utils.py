@@ -191,7 +191,6 @@ def _fetch_index_file(
     cache_dir,
     variant,
     force_download,
-    resume_download,
     proxies,
     local_files_only,
     token,
