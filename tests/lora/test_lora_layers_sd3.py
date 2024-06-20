@@ -287,3 +287,19 @@ class SD3LoRATests(unittest.TestCase):
         self.assertTrue(
             np.allclose(ouput_fused, output_unfused_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
         )
+
+    def test_sd3_lora(self):
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        lora_model_id = "OzzyGT/lora_test"
+        lora_filename = "lora_diffusers_format.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.unload_lora_weights()
+
+        lora_model_id = "OzzyGT/lora_test"
+        lora_filename = "lora_peft_format.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
