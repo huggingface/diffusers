@@ -1736,3 +1736,78 @@ class SD3LoraLoaderMixin:
                     remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
         return (is_model_cpu_offload, is_sequential_cpu_offload)
+
+    def fuse_lora(
+        self,
+        fuse_transformer: bool = True,
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: Optional[List[str]] = None,
+    ):
+        r"""
+        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
+
+        <Tip warning={true}>
+
+        This is an experimental API.
+
+        </Tip>
+
+        Args:
+            fuse_transformer (`bool`, defaults to `True`): Whether to fuse the transformer LoRA parameters.
+            lora_scale (`float`, defaults to 1.0):
+                Controls how much to influence the outputs with the LoRA parameters.
+            safe_fusing (`bool`, defaults to `False`):
+                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
+            adapter_names (`List[str]`, *optional*):
+                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights(
+            "nerijs/pixel-art-medium-128-v0.1",
+            weight_name="pixel-art-medium-128-v0.1.safetensors",
+            adapter_name="pixel",
+        )
+        pipeline.fuse_lora(lora_scale=0.7)
+        ```
+        """
+        if fuse_transformer:
+            self.num_fused_loras += 1
+
+        if fuse_transformer:
+            transformer = (
+                getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+            )
+            transformer.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
+
+    def unfuse_lora(self, unfuse_transformer: bool = True):
+        r"""
+        Reverses the effect of
+        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.fuse_lora).
+
+        <Tip warning={true}>
+
+        This is an experimental API.
+
+        </Tip>
+
+        Args:
+            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the transformer LoRA parameters.
+        """
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+        if unfuse_transformer:
+            for module in transformer.modules():
+                if isinstance(module, BaseTunerLayer):
+                    module.unmerge()
+
+        self.num_fused_loras -= 1
