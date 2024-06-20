@@ -181,8 +181,8 @@ class PAGMixin:
                 + pag_scale * (noise_pred_text - noise_pred_perturb)
             )
         else:
-            noise_pred_uncond, noise_pred_perturb = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + pag_scale * (noise_pred_uncond - noise_pred_perturb)
+            noise_pred_text, noise_pred_perturb = noise_pred.chunk(2)
+            noise_pred = noise_pred_text + pag_scale * (noise_pred_text - noise_pred_perturb)
         return noise_pred
 
     def _prepare_perturbed_attention_guidance(self, cond, uncond, do_classifier_free_guidance):
