@@ -1545,7 +1545,7 @@ class SD3LoraLoaderMixin:
 
         if len(state_dict.keys()) > 0:
             # check with first key if is not in peft format
-            first_key = next(iter(state_dict.keys()), None)
+            first_key = next(iter(state_dict.keys()))
             if "lora_A" not in first_key:
                 state_dict = convert_unet_state_dict_to_peft(state_dict)
 
