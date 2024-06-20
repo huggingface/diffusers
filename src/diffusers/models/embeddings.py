@@ -761,17 +761,17 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
 class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
     def __init__(self, hidden_size=4096, caption_dim=5120, frequency_embedding_size=256):
         super().__init__()
-        self.time_proj = Timesteps(num_channels=frequency_embedding_size, flip_sin_to_cos=False, downscale_freq_shift=0.0)
-        
-        self.timestep_embedder = TimestepEmbedding(
-            in_channels=frequency_embedding_size, 
-            time_embed_dim=hidden_size)
-        
+        self.time_proj = Timesteps(
+            num_channels=frequency_embedding_size, flip_sin_to_cos=False, downscale_freq_shift=0.0
+        )
+
+        self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
+
         nn.init.normal_(self.timestep_embedder.linear_1.weight, std=0.02)
         nn.init.zeros_(self.timestep_embedder.linear_1.bias)
         nn.init.normal_(self.timestep_embedder.linear_2.weight, std=0.02)
         nn.init.zeros_(self.timestep_embedder.linear_2.bias)
-        
+
         self.caption_embedder = nn.Sequential(
             nn.LayerNorm(caption_dim),
             nn.Linear(
@@ -782,20 +782,20 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
         )
         nn.init.zeros_(self.caption_embedder[1].weight)
         nn.init.zeros_(self.caption_embedder[1].bias)
-    
+
     def forward(self, timestep, caption_feat, caption_mask):
         # timestep embedding:
         time_freq = self.time_proj(timestep)
         time_embed = self.timestep_embedder(time_freq.to(dtype=self.timestep_embedder.linear_1.dtype))
-        
+
         # caption condition embedding:
         caption_mask_float = caption_mask.float().unsqueeze(-1)
         caption_feats_pool = (caption_feat * caption_mask_float).sum(dim=1) / caption_mask_float.sum(dim=1)
         caption_feats_pool = caption_feats_pool.to(caption_feat)
         caption_embed = self.caption_embedder(caption_feats_pool)
-        
+
         conditioning = time_embed + caption_embed
-        
+
         return conditioning
 
 

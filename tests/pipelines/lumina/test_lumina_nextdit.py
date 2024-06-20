@@ -19,13 +19,13 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoModel, AutoTokenizer
 
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    LuminaNextDiT2DModel,
     LuminaText2ImgPipeline,
-    Transformer2DModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -53,7 +53,7 @@ class LuminaText2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = Transformer2DModel(
+        transformer = LuminaNextDiT2DModel(
             sample_size=8,
             num_layers=2,
             patch_size=2,
@@ -75,7 +75,6 @@ class LuminaText2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         scheduler = DDIMScheduler()
         text_encoder = AutoModel.from_pretrained("google/gemma-2b")
-
         tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b")
 
         components = {
@@ -84,6 +83,8 @@ class LuminaText2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
         }
         return components
 
@@ -97,8 +98,8 @@ class LuminaText2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "use_resolution_binning": False,
             "output_type": "np",
+            "use_resolution_binning": False,
         }
         return inputs
 

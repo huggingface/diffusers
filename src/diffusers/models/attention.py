@@ -532,7 +532,9 @@ class LuminaFeedForward(nn.Module):
     A feed-forward layer.
 
     Parameters:
-        hidden_size (`int`): The dimensionality of the hidden layers in the model. This parameter determines the width of the model's hidden representations.
+        hidden_size (`int`):
+            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's
+            hidden representations.
         intermediate_size (`int`): The intermediate dimension of the feedforward layer.
         multiple_of (`int`, *optional*): Value to ensure hidden dimension is a multiple
             of this value.

@@ -160,14 +160,14 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps = sigmas * self.config.num_train_timesteps
         timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
         self.timesteps = timesteps.to(device=device)
-        
+
         sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:-1].repeat_interleave(2), sigmas[-1:]])
-        
+
         # empty dt and derivative
         self.prev_derivative = None
         self.dt = None
-        
+
         self._step_index = None
         self._begin_index = None
 
@@ -196,7 +196,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     @property
     def state_in_first_order(self):
         return self.dt is None
-    
+
     def step(
         self,
         model_output: torch.FloatTensor,
@@ -255,7 +255,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
-        
+
         if self.state_in_first_order:
             sigma = self.sigmas[self.step_index]
             sigma_next = self.sigmas[self.step_index + 1]
@@ -263,7 +263,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             # 2nd order / Heun's method
             sigma = self.sigmas[self.step_index - 1]
             sigma_next = self.sigmas[self.step_index]
-            
+
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
 
         noise = randn_tensor(
@@ -280,13 +280,13 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # NOTE: "original_sample" should not be an expected prediction_type but is left in for
         # backwards compatibility
         denoised = sample - model_output * sigma
-        
+
         if self.state_in_first_order:
             # 2. Convert to an ODE derivative for 1st order
             derivative = (sample - denoised) / sigma_hat
             # 3. Delta timestep
             dt = self.sigmas_next - sigma_hat
-            
+
             # store for 2nd order step
             self.prev_derivative = derivative
             self.dt = dt
@@ -295,7 +295,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             # 2. 2nd order / Heun's method
             derivative = (sample - denoised) / sigma_next
             derivative = 0.5 * (self.prev_derivative + derivative)
-            
+
             # 3. take prev timestep & sample
             dt = self.dt
             sample = self.sample
@@ -305,7 +305,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.prev_derivative = None
             self.dt = None
             self.sample = None
-            
+
         prev_sample = sample + derivative * dt
         # Cast sample back to model compatible dtype
         prev_sample = prev_sample.to(model_output.dtype)

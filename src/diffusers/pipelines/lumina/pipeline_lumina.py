@@ -14,20 +14,20 @@
 
 import html
 import inspect
-import re
 import math
+import re
 import urllib.parse as ul
-from typing import Callable, List, Optional, Tuple, Union, Dict
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import AutoModel, AutoTokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
+from ...models.transformers.lumina_nextdit_2d import LuminaNextDiT2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
-    deprecate,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -35,7 +35,6 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from ...models.transformers.lumina_nextdit_2d import LuminaNextDiT2DModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -204,13 +203,9 @@ def retrieve_timesteps(
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
-        raise ValueError(
-            "Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values"
-        )
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
     if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(
-            inspect.signature(scheduler.set_timesteps).parameters.keys()
-        )
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accepts_timesteps:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -220,9 +215,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
     elif sigmas is not None:
-        accept_sigmas = "sigmas" in set(
-            inspect.signature(scheduler.set_timesteps).parameters.keys()
-        )
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accept_sigmas:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -304,7 +297,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 256
         )
-        
+
     def _get_gemma_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -328,16 +321,10 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        untruncated_ids = self.tokenizer(
-            prompt, padding="longest", return_tensors="pt"
-        ).input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-        if untruncated_ids.shape[-1] >= text_input_ids.shape[
-            -1
-        ] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.tokenizer.batch_decode(
-                untruncated_ids[:, self.tokenizer_max_length - 1 : -1]
-            )
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer_max_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because T5 can only handle sequences up to"
                 f" {self.tokenizer_max_length} tokens: {removed_text}"
@@ -364,7 +351,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-        
+
         return prompt_embeds, prompt_attention_mask
 
     # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
@@ -403,8 +390,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. For Lumina-T2I, it's should be the embeddings of the ""
-                string.
+                Pre-generated negative text embeddings. For Lumina-T2I, it's should be the embeddings of the "" string.
             clean_caption (`bool`, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
             max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
@@ -425,14 +411,14 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 device=device,
                 clean_caption=clean_caption,
             )
-            
+
         # get negative embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt if negative_prompt is not None else ""
 
             # normalize str to list
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
-            
+
             if prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
@@ -446,11 +432,9 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 )
 
             negative_prompt_embeds, negative_prompt_attention_mask = self._get_gemma_prompt_embeds(
-                prompt=prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                device=device
+                prompt=prompt, num_images_per_prompt=num_images_per_prompt, device=device
             )
-            
+
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -460,17 +444,13 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -487,9 +467,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         negative_prompt_attention_mask=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -500,12 +478,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (
-            not isinstance(prompt, str) and not isinstance(prompt, list)
-        ):
-            raise ValueError(
-                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
-            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -520,17 +494,10 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             )
 
         if prompt_embeds is not None and prompt_attention_mask is None:
-            raise ValueError(
-                "Must provide `prompt_attention_mask` when specifying `prompt_embeds`."
-            )
+            raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
 
-        if (
-            negative_prompt_embeds is not None
-            and negative_prompt_attention_mask is None
-        ):
-            raise ValueError(
-                "Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`."
-            )
+        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
+            raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
@@ -549,16 +516,12 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
         if clean_caption and not is_bs4_available():
-            logger.warning(
-                BACKENDS_MAPPING["bs4"][-1].format("Setting `clean_caption=True`")
-            )
+            logger.warning(BACKENDS_MAPPING["bs4"][-1].format("Setting `clean_caption=True`"))
             logger.warning("Setting `clean_caption` to False...")
             clean_caption = False
 
         if clean_caption and not is_ftfy_available():
-            logger.warning(
-                BACKENDS_MAPPING["ftfy"][-1].format("Setting `clean_caption=True`")
-            )
+            logger.warning(BACKENDS_MAPPING["ftfy"][-1].format("Setting `clean_caption=True`"))
             logger.warning("Setting `clean_caption` to False...")
             clean_caption = False
 
@@ -646,17 +609,13 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         # "123456.."
         caption = re.sub(r"\b\d{6,}\b", "", caption)
         # filenames:
-        caption = re.sub(
-            r"[\S]+\.(?:png|jpg|jpeg|bmp|webp|eps|pdf|apk|mp4)", "", caption
-        )
+        caption = re.sub(r"[\S]+\.(?:png|jpg|jpeg|bmp|webp|eps|pdf|apk|mp4)", "", caption)
 
         #
         caption = re.sub(r"[\"\']{2,}", r'"', caption)  # """AUSVERKAUFT"""
         caption = re.sub(r"[\.]{2,}", r" ", caption)  # """AUSVERKAUFT"""
 
-        caption = re.sub(
-            self.bad_punct_regex, r" ", caption
-        )  # ***AUSVERKAUFT***, #AUSVERKAUFT
+        caption = re.sub(self.bad_punct_regex, r" ", caption)  # ***AUSVERKAUFT***, #AUSVERKAUFT
         caption = re.sub(r"\s+\.\s+", r" ", caption)  # " . "
 
         # this-is-my-cute-cat / this_is_my_cute_cat
@@ -674,14 +633,10 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         caption = re.sub(r"(worldwide\s+)?(free\s+)?shipping", "", caption)
         caption = re.sub(r"(free\s)?download(\sfree)?", "", caption)
         caption = re.sub(r"\bclick\b\s(?:for|on)\s\w+", "", caption)
-        caption = re.sub(
-            r"\b(?:png|jpg|jpeg|bmp|webp|eps|pdf|apk|mp4)(\simage[s]?)?", "", caption
-        )
+        caption = re.sub(r"\b(?:png|jpg|jpeg|bmp|webp|eps|pdf|apk|mp4)(\simage[s]?)?", "", caption)
         caption = re.sub(r"\bpage\s+\d+\b", "", caption)
 
-        caption = re.sub(
-            r"\b\d*[a-zA-Z]+\d+[a-zA-Z]+\d+[a-zA-Z\d]*\b", r" ", caption
-        )  # j2d1a2a...
+        caption = re.sub(r"\b\d*[a-zA-Z]+\d+[a-zA-Z]+\d+[a-zA-Z\d]*\b", r" ", caption)  # j2d1a2a...
 
         caption = re.sub(r"\b\d+\.?\d*[xх×]\d+\.?\d*\b", "", caption)
 
@@ -723,9 +678,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            latents = randn_tensor(
-                shape, generator=generator, device=device, dtype=dtype
-            )
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
 
@@ -835,7 +788,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
                 prompt.
-            max_sequence_length (`int` defaults to 120): 
+            max_sequence_length (`int` defaults to 120):
                 Maximum sequence length to use with the `prompt`.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
@@ -856,7 +809,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         """
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
-        
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -929,24 +882,22 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                )
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
                 hidden_size = self.transformer.config.hidden_size
                 num_attention_heads = self.transformer.config.num_attention_heads
                 attention_head_dim = hidden_size // num_attention_heads
-                
-                scaling_factor = math.sqrt(width * height / 1024 ** 2)
-                
+
+                scaling_factor = math.sqrt(width * height / 1024**2)
+
                 self.transformer.freqs_cis = self.transformer.precompute_freqs_cis(
                     attention_head_dim,
                     384,
                     scale_factor=scaling_factor,
-                    scaling_watershed=scaling_watershed, 
-                    timestep=timesteps[0]
+                    scaling_watershed=scaling_watershed,
+                    timestep=timesteps[0],
                 )
 
                 noise_pred = self.transformer(
@@ -964,9 +915,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_text - noise_pred_uncond
-                    )
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 current_timestep = t
                 if not torch.is_tensor(current_timestep):
@@ -983,9 +932,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                         device=latent_model_input.device,
                     )
                 elif len(current_timestep.shape) == 0:
-                    current_timestep = current_timestep[None].to(
-                        latent_model_input.device
-                    )
+                    current_timestep = current_timestep[None].to(latent_model_input.device)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 current_timestep = current_timestep.expand(latent_model_input.shape[0])
 
@@ -997,7 +944,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                     caption_mask=prompt_attention_mask,
                     return_dict=False,
                 )[0]
-    
 
                 # learned sigma
                 if self.transformer.config.out_channels // 2 == latent_channels:
@@ -1016,6 +962,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 #         noise_pred, t, latents, **extra_step_kwargs, return_dict=False
                 #     )[0]
 
+        progress_bar.update()
 
         if not output_type == "latent":
             latents = latents / self.vae.config.scaling_factor

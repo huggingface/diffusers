@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple
 import math
+from typing import List, Optional, Tuple
 
-from flash_attn import flash_attn_varlen_func
-from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from flash_attn import flash_attn_varlen_func
+from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
@@ -48,6 +48,7 @@ class Attention(nn.Module):
         num_attention_heads (int): Number of heads.
         num_kv_heads (Optional[int]): Number of kv heads, if using GQA.
     """
+
     def __init__(
         self,
         hidden_size: int,
@@ -124,9 +125,8 @@ class Attention(nn.Module):
         """
         Reshape frequency tensor for broadcasting it with another tensor.
 
-        This function reshapes the frequency tensor to have the same shape as
-        the target tensor 'x' for the purpose of broadcasting the frequency
-        tensor during element-wise operations.
+        This function reshapes the frequency tensor to have the same shape as the target tensor 'x' for the purpose of
+        broadcasting the frequency tensor during element-wise operations.
 
         Args:
             freqs_cis (torch.Tensor): Frequency tensor to be reshaped.
@@ -153,14 +153,12 @@ class Attention(nn.Module):
         freqs_cis: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Apply rotary embeddings to input tensors using the given frequency
-        tensor.
+        Apply rotary embeddings to input tensors using the given frequency tensor.
 
-        This function applies rotary embeddings to the given query 'xq' and
-        key 'xk' tensors using the provided frequency tensor 'freqs_cis'. The
-        input tensors are reshaped as complex numbers, and the frequency tensor
-        is reshaped for broadcasting compatibility. The resulting tensors
-        contain rotary embeddings and are returned as real tensors.
+        This function applies rotary embeddings to the given query 'xq' and key 'xk' tensors using the provided
+        frequency tensor 'freqs_cis'. The input tensors are reshaped as complex numbers, and the frequency tensor is
+        reshaped for broadcasting compatibility. The resulting tensors contain rotary embeddings and are returned as
+        real tensors.
 
         Args:
             x_in (torch.Tensor): Query or Key tensor to apply rotary embeddings.
@@ -319,20 +317,20 @@ class Attention(nn.Module):
         if hasattr(self, "wk_cap"):
             yk = self.k_cap_norm(self.wk_cap(caption_feat)).view(bsz, -1, self.num_kv_heads, self.head_dim)
             yv = self.wv_cap(caption_feat).view(bsz, -1, self.num_kv_heads, self.head_dim)
-            
+
             n_rep = self.num_attention_heads // self.num_kv_heads
-            
+
             if n_rep >= 1:
                 yk = yk.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
                 yv = yv.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
-                
+
             output_caption = F.scaled_dot_product_attention(
                 xq.permute(0, 2, 1, 3),
                 yk.permute(0, 2, 1, 3),
                 yv.permute(0, 2, 1, 3),
                 caption_mask.view(bsz, 1, 1, -1).expand(bsz, self.num_attention_heads, seqlen, -1),
             ).permuste(0, 2, 1, 3)
-            
+
             output_caption = output_caption * self.gate.tanh().view(1, 1, -1, 1)
             output = output + output_caption
 
@@ -346,7 +344,9 @@ class FinalLayer(nn.Module):
     The final layer of LuminaNextDiT.
 
     Parameters:
-        hidden_size (`int`): The dimensionality of the hidden layers in the model. This parameter determines the width of the model's hidden representations.
+        hidden_size (`int`):
+            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's
+            hidden representations.
         patch_size (`int`): The patch size of noise.
         out_channels (`int`): The number of output channels.
     """
@@ -391,7 +391,7 @@ class FinalLayer(nn.Module):
 
         x = modulate(self.norm_final(x), scale)
         x = self.linear(x)
-        
+
         return x
 
 
@@ -404,8 +404,7 @@ class LuminaNextDiTBlock(nn.Module):
         hidden_size (int): Embedding dimension of the input features.
         num_attention_heads (int): Number of attention heads.
         num_kv_heads (Optional[int]): Number of attention heads in key and
-            value features (if using GQA), or set to None for the same as
-            query.
+            value features (if using GQA), or set to None for the same as query.
         multiple_of (int):
         ffn_dim_multiplier (float):
         norm_eps (float):
@@ -420,6 +419,7 @@ class LuminaNextDiTBlock(nn.Module):
         attention_norm (RMSNorm): Layer normalization for attention output.
         ffn_norm (RMSNorm): Layer normalization for feedforward output.
     """
+
     def __init__(
         self,
         layer_id: int,
@@ -524,29 +524,38 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         patch_size (`int`, *optional*, (`int`, *optional*, defaults to 2):
             The size of each patch in the image. This parameter defines the resolution of patches fed into the model.
         in_channels (`int`, *optional*, defaults to 4):
-            The number of input channels for the model. Typically, this matches the number of channels in the input images.
+            The number of input channels for the model. Typically, this matches the number of channels in the input
+            images.
         hidden_size (`int`, *optional*, defaults to 4096):
-            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's hidden representations.
+            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's
+            hidden representations.
         num_layers (`int`, *optional*, default to 32):
             The number of layers in the model. This defines the depth of the neural network.
         num_attention_heads (`int`, *optional*, defaults to 32):
-            The number of attention heads in each attention layer. This parameter specifies how many separate attention mechanisms are used.
+            The number of attention heads in each attention layer. This parameter specifies how many separate attention
+            mechanisms are used.
         num_kv_heads (`int`, *optional*, defaults to 8):
-            The number of key-value heads in the attention mechanism, if different from the number of attention heads. If None, it defaults to num_attention_heads.
+            The number of key-value heads in the attention mechanism, if different from the number of attention heads.
+            If None, it defaults to num_attention_heads.
         multiple_of (`int`, *optional*, defaults to 256):
-            A factor that the hidden size should be a multiple of. This can help optimize certain hardware configurations.
+            A factor that the hidden size should be a multiple of. This can help optimize certain hardware
+            configurations.
         ffn_dim_multiplier (`float`, *optional*):
-            A multiplier for the dimensionality of the feed-forward network. If None, it uses a default value based on the model configuration.
+            A multiplier for the dimensionality of the feed-forward network. If None, it uses a default value based on
+            the model configuration.
         norm_eps float = (`float`, *optional*, defaults to 1e-5):
             A small value added to the denominator for numerical stability in normalization layers.
         learn_sigma bool = (`bool`, *optional*, defaults to True):
-            Whether the model should learn the sigma parameter, which might be related to uncertainty or variance in predictions.
+            Whether the model should learn the sigma parameter, which might be related to uncertainty or variance in
+            predictions.
         qk_norm (`bool`, *optional*, defaults to True):
             Indicates if the queries and keys in the attention mechanism should be normalized.
         caption_dim (`int`, *optional*, defaults to 2048):
-            The dimensionality of the text embeddings. This parameter defines the size of the text representations used in the model.
+            The dimensionality of the text embeddings. This parameter defines the size of the text representations used
+            in the model.
         scale_factor (`float`, *optional*, defaults to 1.0):
-            A scaling factor applied to certain parameters or layers in the model. This can be used for adjusting the overall scale of the model's operations.
+            A scaling factor applied to certain parameters or layers in the model. This can be used for adjusting the
+            overall scale of the model's operations.
     """
 
     @register_to_config
@@ -586,7 +595,9 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         self.pad_token = nn.Parameter(torch.empty(hidden_size))
         nn.init.normal_(self.pad_token, std=0.02)
 
-        self.time_caption_embed = LuminaCombinedTimestepCaptionEmbedding(hidden_size=min(hidden_size, 1024), caption_dim=caption_dim)
+        self.time_caption_embed = LuminaCombinedTimestepCaptionEmbedding(
+            hidden_size=min(hidden_size, 1024), caption_dim=caption_dim
+        )
 
         self.layers = nn.ModuleList(
             [
@@ -620,15 +631,14 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         Args:
             x (torch.Tensor): The patchified tensor of shape (N, T, patch_size**2 * C).
             img_size (List[Tuple[int, int]]): The list of image sizes for each image in the batch.
-            return_tensor (bool, optional): Whether to return the reconstructed images as a tensor. 
-                If False, the reconstructed images will be returned as a list of tensors. 
-                Defaults to False.
+            return_tensor (bool, optional): Whether to return the reconstructed images as a tensor.
+                If False, the reconstructed images will be returned as a list of tensors. Defaults to False.
 
         Returns:
-            List[torch.Tensor] or torch.Tensor: The reconstructed images. 
+            List[torch.Tensor] or torch.Tensor: The reconstructed images.
                 If return_tensor is True, the reconstructed images will be returned as a tensor of shape (N, C, H, W).
-                If return_tensor is False, the reconstructed images will be returned as a list of tensors, 
-                where each tensor has shape (H, W, C).
+                If return_tensor is False, the reconstructed images will be returned as a list of tensors, where each
+                tensor has shape (H, W, C).
         """
         pH = pW = self.patch_size
         if return_tensor:
@@ -662,8 +672,9 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             x (List[torch.Tensor] | torch.Tensor): The input tensor(s) to be patchified and embedded.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor, List[Tuple[int, int]], torch.Tensor]: A tuple containing the patchified and embedded tensor(s),
-            the mask indicating the valid patches, the original image size(s), and the frequency tensor(s).
+            Tuple[torch.Tensor, torch.Tensor, List[Tuple[int, int]], torch.Tensor]: A tuple containing the patchified
+            and embedded tensor(s), the mask indicating the valid patches, the original image size(s), and the
+            frequency tensor(s).
         """
         self.freqs_cis = self.freqs_cis.to(x[0].device)
         if isinstance(x, torch.Tensor):
@@ -726,15 +737,17 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
 
             x_embed = torch.stack(padded_x_embed, dim=0)
             freqs_cis = torch.stack(padded_freqs_cis, dim=0)
-            
+
             return x_embed, mask, img_size, freqs_cis
 
-    def forward(self, 
-                x: torch.Tensor, 
-                timestep: torch.Tensor, 
-                caption_feat: torch.Tensor, 
-                caption_mask: torch.Tensor,
-                return_dict=True) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        timestep: torch.Tensor,
+        caption_feat: torch.Tensor,
+        caption_mask: torch.Tensor,
+        return_dict=True,
+    ) -> torch.Tensor:
         """
         Forward pass of LuminaNextDiT.
 
@@ -785,28 +798,30 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ):
         """
-        Forward pass of LuminaNextDiT, but also batches the unconditional forward pass
-        for classifier-free guidance.
+        Forward pass of LuminaNextDiT, but also batches the unconditional forward pass for classifier-free guidance.
 
         Args:
-            x: 
+            x:
                 The input tensor, typically representing image data.
-            timestep: 
+            timestep:
                 A tensor representing the time steps or sequence positions.
-            caption_feat: 
+            caption_feat:
                 The caption features, which are used for conditioning the model.
-            caption_mask: 
+            caption_mask:
                 A mask for the caption features, indicating which elements are valid.
-            cfg_scale: 
+            cfg_scale:
                 The classifier-free guidance scale, used to adjust the influence of the conditioning information.
-            scale_factor (float, optional, defaults to 1.0): 
+            scale_factor (float, optional, defaults to 1.0):
                 A scaling factor applied to certain operations or parameters within the forward pass.
-            scale_watershed (float, optional, defaults to 1.0): 
-                A specific scaling factor used in conjunction with the main scale factor, potentially for different stages of processing.
-            base_seqlen (Optional[int], optional): 
-                The base sequence length, which can be used to set the length of sequences processed by the model. If None, a default value is used.
-            proportional_attn (bool, optional, defaults to False): 
-                Whether to use proportional attention mechanisms within the model, adjusting attention weights proportionally.
+            scale_watershed (float, optional, defaults to 1.0):
+                A specific scaling factor used in conjunction with the main scale factor, potentially for different
+                stages of processing.
+            base_seqlen (Optional[int], optional):
+                The base sequence length, which can be used to set the length of sequences processed by the model. If
+                None, a default value is used.
+            proportional_attn (bool, optional, defaults to False):
+                Whether to use proportional attention mechanisms within the model, adjusting attention weights
+                proportionally.
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         self.freqs_cis = LuminaNextDiT2DModel.precompute_freqs_cis(
@@ -856,13 +871,11 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         timestep: float = 1.0,
     ):
         """
-        Precompute the frequency tensor for complex exponentials (cis) with
-        given dimensions.
+        Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
 
-        This function calculates a frequency tensor with complex exponentials
-        using the given dimension 'dim' and the end index 'end'. The 'theta'
-        parameter scales the frequencies. The returned tensor contains complex
-        values in complex64 data type.
+        This function calculates a frequency tensor with complex exponentials using the given dimension 'dim' and the
+        end index 'end'. The 'theta' parameter scales the frequencies. The returned tensor contains complex values in
+        complex64 data type.
 
         Args:
             dim (int): Dimension of the frequency tensor.

@@ -2,10 +2,10 @@ import argparse
 import os
 
 import torch
+from safetensors.torch import load_file
 from transformers import AutoModel, AutoTokenizer
 
-from diffusers import LuminaText2ImgPipeline, LuminaNextDiT2DModel, AutoencoderKL, FlowMatchEulerDiscreteScheduler
-from safetensors.torch import load_file
+from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, LuminaNextDiT2DModel, LuminaText2ImgPipeline
 
 
 def main(args):
@@ -13,7 +13,7 @@ def main(args):
     all_sd = load_file(args.origin_ckpt_path, device="cpu")
     converted_state_dict = {}
 
-    # Pad token 
+    # Pad token
     converted_state_dict["pad_token"] = all_sd["pad_token"]
 
     # Patch Embed
@@ -35,45 +35,49 @@ def main(args):
         converted_state_dict[f"layers.{i}.attention.gate"] = all_sd[f"layers.{i}.attention.gate"]
         converted_state_dict[f"layers.{i}.adaLN_modulation.1.weight"] = all_sd[f"layers.{i}.adaLN_modulation.1.weight"]
         converted_state_dict[f"layers.{i}.adaLN_modulation.1.bias"] = all_sd[f"layers.{i}.adaLN_modulation.1.bias"]
-        
+
         # QKV
         converted_state_dict[f"layers.{i}.attention.wq.weight"] = all_sd[f"layers.{i}.attention.wq.weight"]
         converted_state_dict[f"layers.{i}.attention.wk.weight"] = all_sd[f"layers.{i}.attention.wk.weight"]
         converted_state_dict[f"layers.{i}.attention.wv.weight"] = all_sd[f"layers.{i}.attention.wv.weight"]
-        
+
         # Caption KV
         converted_state_dict[f"layers.{i}.attention.wk_cap.weight"] = all_sd[f"layers.{i}.attention.wk_y.weight"]
         converted_state_dict[f"layers.{i}.attention.wv_cap.weight"] = all_sd[f"layers.{i}.attention.wv_y.weight"]
-        
+
         # Output Layer
         converted_state_dict[f"layers.{i}.attention.wo.weight"] = all_sd[f"layers.{i}.attention.wo.weight"]
-        
+
         # Attention
         # QK Norm
         converted_state_dict[f"layers.{i}.attention.q_norm.weight"] = all_sd[f"layers.{i}.attention.q_norm.weight"]
         converted_state_dict[f"layers.{i}.attention.q_norm.bias"] = all_sd[f"layers.{i}.attention.q_norm.bias"]
-        
+
         converted_state_dict[f"layers.{i}.attention.k_norm.weight"] = all_sd[f"layers.{i}.attention.k_norm.weight"]
-        converted_state_dict[f"layers.{i}.attention.k_norm.bias"] = all_sd[f"layers.{i}.attention.k_norm.bias"]   
-        
+        converted_state_dict[f"layers.{i}.attention.k_norm.bias"] = all_sd[f"layers.{i}.attention.k_norm.bias"]
+
         # Caption K Norm
-        converted_state_dict[f"layers.{i}.attention.k_cap_norm.weight"] = all_sd[f"layers.{i}.attention.ky_norm.weight"]
+        converted_state_dict[f"layers.{i}.attention.k_cap_norm.weight"] = all_sd[
+            f"layers.{i}.attention.ky_norm.weight"
+        ]
         converted_state_dict[f"layers.{i}.attention.k_cap_norm.bias"] = all_sd[f"layers.{i}.attention.ky_norm.bias"]
-        
+
         # Attention Norm
         converted_state_dict[f"layers.{i}.attention_norm1.weight"] = all_sd[f"layers.{i}.attention_norm1.weight"]
         converted_state_dict[f"layers.{i}.attention_norm2.weight"] = all_sd[f"layers.{i}.attention_norm2.weight"]
-        converted_state_dict[f"layers.{i}.attention_caption_norm.weight"] = all_sd[f"layers.{i}.attention_y_norm.weight"]
-        
+        converted_state_dict[f"layers.{i}.attention_caption_norm.weight"] = all_sd[
+            f"layers.{i}.attention_y_norm.weight"
+        ]
+
         # Feed Forward layer
         converted_state_dict[f"layers.{i}.feed_forward.w1.weight"] = all_sd[f"layers.{i}.feed_forward.w1.weight"]
         converted_state_dict[f"layers.{i}.feed_forward.w2.weight"] = all_sd[f"layers.{i}.feed_forward.w2.weight"]
         converted_state_dict[f"layers.{i}.feed_forward.w3.weight"] = all_sd[f"layers.{i}.feed_forward.w3.weight"]
-        
+
         # Feed Forward Norm
         converted_state_dict[f"layers.{i}.ffn_norm1.weight"] = all_sd[f"layers.{i}.ffn_norm1.weight"]
         converted_state_dict[f"layers.{i}.ffn_norm2.weight"] = all_sd[f"layers.{i}.ffn_norm2.weight"]
-        
+
     # Final Layer
     converted_state_dict["final_layer.linear.weight"] = all_sd["final_layer.linear.weight"]
     converted_state_dict["final_layer.linear.bias"] = all_sd["final_layer.linear.bias"]
@@ -83,7 +87,7 @@ def main(args):
 
     # Lumina-Next-SFT 2B
     transformer = LuminaNextDiT2DModel(
-        patch_size=2, 
+        patch_size=2,
         in_channels=4,
         hidden_size=2304,
         num_layers=24,
@@ -106,9 +110,9 @@ def main(args):
         transformer.save_pretrained(os.path.join(args.dump_path, "transformer"))
     else:
         scheduler = FlowMatchEulerDiscreteScheduler()
-        
+
         vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", torch_dtype=torch.float32)
-        
+
         tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b")
         text_encoder = AutoModel.from_pretrained("google/gemma-2b")
 
