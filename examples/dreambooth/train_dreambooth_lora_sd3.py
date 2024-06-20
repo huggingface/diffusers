@@ -882,7 +882,8 @@ def _encode_prompt_with_t5(
         )
         text_input_ids = text_inputs.input_ids
     else:
-        assert text_input_ids is not None
+        if not text_input_ids:
+            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
 
     prompt_embeds = text_encoder(text_input_ids.to(device))[0]
 
@@ -920,7 +921,8 @@ def _encode_prompt_with_clip(
 
         text_input_ids = text_inputs.input_ids
     else:
-        assert text_input_ids is not None
+        if not text_input_ids:
+            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
 
     prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
 
@@ -1733,7 +1735,7 @@ def main(args):
 
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-                if not args.training_prompt:
+                if not args.train_text_encoder:
                     # create pipeline
                     text_encoder_one, text_encoder_two, text_encoder_three = load_text_encoders(
                         text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three
