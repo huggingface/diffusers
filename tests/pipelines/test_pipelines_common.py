@@ -1258,6 +1258,7 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
+                print(f"{component.__class__.__name__=}")
                 component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
