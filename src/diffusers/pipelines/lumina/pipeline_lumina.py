@@ -1,4 +1,4 @@
-# Copyright 2024 Lumina-T2X Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Alpha-VLLM and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,15 +15,16 @@
 import html
 import inspect
 import re
+import math
 import urllib.parse as ul
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union, Dict
 
 import torch
 from transformers import AutoModel, AutoTokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
-from ...schedulers import DPMSolverMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     deprecate,
@@ -34,7 +35,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .modeling_next_dit import NextFlagDiffuserTransformer2DModel
+from ...models.transformers.lumina_nextdit_2d import LuminaNextDiT2DModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -52,7 +53,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import LuminaText2ImgPipeline
 
         >>> # You can replace the checkpoint id with "Alpha-VLLM/Lumina-Next-T2I" too.
-        >>> pipe = LuminaText2ImgPipeline.from_pretrained("Alpha-VLLM/Lumina-T2I", torch_dtype=torch.float16)
+        >>> pipe = LuminaText2ImgPipeline.from_pretrained("Alpha-VLLM/Lumina-T2I", torch_dtype=torch.bfloat16)
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
@@ -280,24 +281,91 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        tokenizer: AutoTokenizer,
-        text_encoder: AutoModel,
+        transformer: LuminaNextDiT2DModel,
+        scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKL,
-        transformer: NextFlagDiffuserTransformer2DModel,
-        scheduler: DPMSolverMultistepScheduler,
+        text_encoder: AutoModel,
+        tokenizer: AutoTokenizer,
     ):
         super().__init__()
 
         self.register_modules(
-            tokenizer=tokenizer,
-            text_encoder=text_encoder,
             vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
             transformer=transformer,
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor = 0.18215
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+        )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.tokenizer_max_length = (
+            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 256
+        )
+        
+    def _get_gemma_prompt_embeds(
+        self,
+        prompt: Union[str, List[str]],
+        num_images_per_prompt: int = 1,
+        device: Optional[torch.device] = None,
+        clip_skip: Optional[int] = None,
+        clip_model_index: int = 0,
+        clean_caption: Optional[bool] = False,
+    ):
+        device = device or self._execution_device
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        batch_size = len(prompt)
+
+        prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
+        text_inputs = self.tokenizer(
+            prompt,
+            padding=True,
+            pad_to_multiple_of=8,
+            max_length=self.tokenizer_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        untruncated_ids = self.tokenizer(
+            prompt, padding="longest", return_tensors="pt"
+        ).input_ids
+
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[
+            -1
+        ] and not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(
+                untruncated_ids[:, self.tokenizer_max_length - 1 : -1]
+            )
+            logger.warning(
+                "The following part of your input was truncated because T5 can only handle sequences up to"
+                f" {self.tokenizer_max_length} tokens: {removed_text}"
+            )
+
+            prompt_attention_mask = text_inputs.attention_mask
+            prompt_attention_mask = prompt_attention_mask.to(device)
+
+            prompt_embeds = self.text_encoder(
+                text_input_ids.to(device), attention_mask=prompt_attention_mask, output_hidden_states=True
+            )
+            prompt_embeds = prompt_embeds.hidden_states[-2]
+
+        if self.text_encoder is not None:
+            dtype = self.text_encoder.dtype
+        elif self.transformer is not None:
+            dtype = self.transformer.dtype
+        else:
+            dtype = None
+
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+
+        _, seq_len, _ = prompt_embeds.shape
+        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        
+        return prompt_embeds, prompt_attention_mask
 
     # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
     def encode_prompt(
@@ -341,114 +409,49 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
             max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
         """
-
-        if "mask_feature" in kwargs:
-            deprecation_message = "The use of `mask_feature` is deprecated. It is no longer used in any computation and that doesn't affect the end results. It will be removed in a future version."
-            deprecate("mask_feature", "1.0.0", deprecation_message, standard_warn=False)
-
         if device is None:
             device = self._execution_device
 
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        if prompt is not None:
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
 
-        max_length = max_sequence_length
         if prompt_embeds is None:
-            prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
-            text_inputs = self.tokenizer(
-                prompt,
-                padding=True,
-                pad_to_multiple_of=8,
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
+            prompt_embeds, prompt_attention_mask = self._get_gemma_prompt_embeds(
+                prompt=prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                clean_caption=clean_caption,
             )
+            
+        # get negative embeddings for classifier free guidance
+        if do_classifier_free_guidance and negative_prompt_embeds is None:
+            negative_prompt = negative_prompt if negative_prompt is not None else ""
 
-            text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(
-                prompt, padding="longest", return_tensors="pt"
-            ).input_ids
-
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[
-                -1
-            ] and not torch.equal(text_input_ids, untruncated_ids):
-                removed_text = self.tokenizer.batch_decode(
-                    untruncated_ids[:, max_length - 1 : -1]
+            # normalize str to list
+            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+            
+            if prompt is not None and type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
                 )
-                logger.warning(
-                    "The following part of your input was truncated because T5 can only handle sequences up to"
-                    f" {max_length} tokens: {removed_text}"
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
                 )
 
-            prompt_attention_mask = text_inputs.attention_mask
-            prompt_attention_mask = prompt_attention_mask.to(device)
-
-            prompt_embeds = self.text_encoder(
-                text_input_ids.to(device), attention_mask=prompt_attention_mask
+            negative_prompt_embeds, negative_prompt_attention_mask = self._get_gemma_prompt_embeds(
+                prompt=prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device
             )
-            prompt_embeds = prompt_embeds.hidden_states[-2]
-
-        if self.text_encoder is not None:
-            dtype = self.text_encoder.dtype
-        elif self.transformer is not None:
-            dtype = self.transformer.dtype
-        else:
-            dtype = None
-
-        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-
-        bs_embed, seq_len, _ = prompt_embeds.shape
-        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
-        prompt_attention_mask = prompt_attention_mask.view(bs_embed, -1)
-        prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
-
-        # get unconditional embeddings for classifier free guidance
-        # if do_classifier_free_guidance and negative_prompt_embeds is None:
-        #     uncond_tokens = [negative_prompt] * batch_size
-        #     uncond_tokens = self._text_preprocessing(uncond_tokens, clean_caption=clean_caption)
-        #     max_length = prompt_embeds.shape[1]
-        #     uncond_input = self.tokenizer(
-        #         uncond_tokens,
-        #         padding="max_length",
-        #         max_length=max_length,
-        #         truncation=True,
-        #         return_attention_mask=True,
-        #         add_special_tokens=True,
-        #         return_tensors="pt",
-        #     )
-        #     negative_prompt_attention_mask = uncond_input.attention_mask
-        #     negative_prompt_attention_mask = negative_prompt_attention_mask.to(device)
-
-        #     negative_prompt_embeds = self.text_encoder(
-        #         uncond_input.input_ids.to(device), attention_mask=negative_prompt_attention_mask
-        #     )
-        #     negative_prompt_embeds = negative_prompt_embeds[0]
-
-        # if do_classifier_free_guidance:
-        #     # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-        #     seq_len = negative_prompt_embeds.shape[1]
-
-        #     negative_prompt_embeds = negative_prompt_embeds.to(dtype=dtype, device=device)
-
-        #     negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        #     negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-
-        #     negative_prompt_attention_mask = negative_prompt_attention_mask.view(bs_embed, -1)
-        #     negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
-        # else:
-        #     negative_prompt_embeds = None
-        #     negative_prompt_attention_mask = None
-
-        # return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
-        return prompt_embeds, prompt_attention_mask
+            
+        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -478,7 +481,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         height,
         width,
         negative_prompt,
-        callback_steps,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         prompt_attention_mask=None,
@@ -487,15 +489,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(
                 f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
-
-        if (callback_steps is None) or (
-            callback_steps is not None
-            and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -736,38 +729,49 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         else:
             latents = latents.to(device)
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
         return latents
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # corresponds to doing no classifier free guidance.
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        negative_prompt: str = "",
+        width: Optional[int] = None,
+        height: Optional[int] = None,
         num_inference_steps: int = 20,
         timesteps: List[int] = None,
-        sigmas: List[float] = None,
         guidance_scale: float = 4.5,
+        negative_prompt: str = "",
+        sigmas: List[float] = None,
         num_images_per_prompt: Optional[int] = 1,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: int = 1,
         clean_caption: bool = True,
-        use_resolution_binning: bool = True,
         max_sequence_length: int = 120,
-        **kwargs,
+        scaling_watershed: Optional[float] = 0.3,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -827,21 +831,21 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
-            callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
             clean_caption (`bool`, *optional*, defaults to `True`):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
                 prompt.
-            use_resolution_binning (`bool` defaults to `True`):
-                If set to `True`, the requested height and width are first mapped to the closest resolutions using
-                `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images, they are resized back to
-                the requested resolution. Useful for generating non-square images.
-            max_sequence_length (`int` defaults to 120): Maximum sequence length to use with the `prompt`.
+            max_sequence_length (`int` defaults to 120): 
+                Maximum sequence length to use with the `prompt`.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
@@ -850,39 +854,22 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images
         """
-        if "mask_feature" in kwargs:
-            deprecation_message = "The use of `mask_feature` is deprecated. It is no longer used in any computation and that doesn't affect the end results. It will be removed in a future version."
-            deprecate("mask_feature", "1.0.0", deprecation_message, standard_warn=False)
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
+        
         # 1. Check inputs. Raise error if not correct
-        height = height or self.transformer.config.sample_size * self.vae_scale_factor
-        width = width or self.transformer.config.sample_size * self.vae_scale_factor
-        if use_resolution_binning:
-            if self.transformer.config.sample_size == 128:
-                aspect_ratio_bin = ASPECT_RATIO_1024_BIN
-            elif self.transformer.config.sample_size == 64:
-                aspect_ratio_bin = ASPECT_RATIO_512_BIN
-            elif self.transformer.config.sample_size == 32:
-                aspect_ratio_bin = ASPECT_RATIO_256_BIN
-            else:
-                raise ValueError("Invalid sample size")
-            orig_height, orig_width = height, width
-            height, width = self.image_processor.classify_height_width_bin(
-                height, width, ratios=aspect_ratio_bin
-            )
-
         self.check_inputs(
             prompt,
             height,
             width,
             negative_prompt,
-            callback_steps,
-            prompt_embeds,
-            negative_prompt_embeds,
-            prompt_attention_mask,
-            negative_prompt_attention_mask,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
         )
 
-        # 2. Default height and width to transformer
+        # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -901,8 +888,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         (
             prompt_embeds,
             prompt_attention_mask,
-            # negative_prompt_embeds,
-            # negative_prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_prompt_attention_mask,
         ) = self.encode_prompt(
             prompt,
             do_classifier_free_guidance,
@@ -938,40 +925,48 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             latents,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logigic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-
-        # 6.1 Prepare micro-conditions.
-        added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
-        if self.transformer.config.sample_size == 128:
-            resolution = torch.tensor([height, width]).repeat(
-                batch_size * num_images_per_prompt, 1
-            )
-            aspect_ratio = torch.tensor([float(height / width)]).repeat(
-                batch_size * num_images_per_prompt, 1
-            )
-            resolution = resolution.to(dtype=prompt_embeds.dtype, device=device)
-            aspect_ratio = aspect_ratio.to(dtype=prompt_embeds.dtype, device=device)
-
-            if do_classifier_free_guidance:
-                resolution = torch.cat([resolution, resolution], dim=0)
-                aspect_ratio = torch.cat([aspect_ratio, aspect_ratio], dim=0)
-
-            added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
-
-        # 7. Denoising loop
-        num_warmup_steps = max(
-            len(timesteps) - num_inference_steps * self.scheduler.order, 0
-        )
-
+        # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance
                 latent_model_input = (
                     torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 )
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                timestep = t.expand(latent_model_input.shape[0])
+
+                hidden_size = self.transformer.config.hidden_size
+                num_attention_heads = self.transformer.config.num_attention_heads
+                attention_head_dim = hidden_size // num_attention_heads
+                
+                scaling_factor = math.sqrt(width * height / 1024 ** 2)
+                
+                self.transformer.freqs_cis = self.transformer.precompute_freqs_cis(
+                    attention_head_dim,
+                    384,
+                    scale_factor=scaling_factor,
+                    scaling_watershed=scaling_watershed, 
+                    timestep=timesteps[0]
                 )
+
+                noise_pred = self.transformer(
+                    x=latent_model_input,
+                    timestep=timestep,
+                    encoder_hidden_states=prompt_embeds,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
+                    return_dict=False,
+                )[0]
+
+                # perform guidance
+                # NOTE: For exact reproducibility reasons, we apply classifier-free guidance on only
+                # three channels by default. The standard approach to cfg applies it to all channels.
+                # This can be done by uncommenting the following line and commenting-out the line following that.
+                # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 current_timestep = t
                 if not torch.is_tensor(current_timestep):
@@ -996,20 +991,13 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
 
                 # predict noise model_output
                 noise_pred = self.transformer(
-                    latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask,
+                    x=latent_model_input,
                     timestep=current_timestep,
-                    added_cond_kwargs=added_cond_kwargs,
+                    caption_feat=prompt_embeds,
+                    caption_mask=prompt_attention_mask,
                     return_dict=False,
                 )[0]
-
-                # perform guidance
-                if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_text - noise_pred_uncond
-                    )
+    
 
                 # learned sigma
                 if self.transformer.config.out_channels // 2 == latent_channels:
@@ -1017,35 +1005,23 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 else:
                     noise_pred = noise_pred
 
-                # compute previous image: x_t -> x_t-1
-                if num_inference_steps == 1:
-                    # For DMD one step sampling: https://arxiv.org/abs/2311.18828
-                    latents = self.scheduler.step(
-                        noise_pred, t, latents, **extra_step_kwargs
-                    ).pred_original_sample
-                else:
-                    latents = self.scheduler.step(
-                        noise_pred, t, latents, **extra_step_kwargs, return_dict=False
-                    )[0]
+                # # compute previous image: x_t -> x_t-1
+                # if num_inference_steps == 1:
+                #     # For DMD one step sampling: https://arxiv.org/abs/2311.18828
+                #     latents = self.scheduler.step(
+                #         noise_pred, t, latents, **extra_step_kwargs
+                #     ).pred_original_sample
+                # else:
+                #     latents = self.scheduler.step(
+                #         noise_pred, t, latents, **extra_step_kwargs, return_dict=False
+                #     )[0]
 
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
-                    progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(
-                latents / self.vae.config.scaling_factor, return_dict=False
-            ).sample
+            latents = latents / self.vae.config.scaling_factor
+            image = self.vae.decode(latents, return_dict=False)[0]
             image = (image + 1.0) / 2.0
             image.clamp_(0.0, 1.0)
-            # real_image = to_pil_image(image[0].float())
-            # if use_resolution_binning:
-            #     image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
         else:
             image = latents
 

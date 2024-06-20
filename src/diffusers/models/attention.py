@@ -527,6 +527,60 @@ class BasicTransformerBlock(nn.Module):
         return hidden_states
 
 
+class LuminaFeedForward(nn.Module):
+    r"""
+    A feed-forward layer.
+
+    Parameters:
+        hidden_size (`int`): The dimensionality of the hidden layers in the model. This parameter determines the width of the model's hidden representations.
+        intermediate_size (`int`): The intermediate dimension of the feedforward layer.
+        multiple_of (`int`, *optional*): Value to ensure hidden dimension is a multiple
+            of this value.
+        ffn_dim_multiplier (float, *optional*): Custom multiplier for hidden
+            dimension. Defaults to None.
+    """
+
+    def __init__(
+        self,
+        hidden_size: int,
+        intermediate_size: int,
+        multiple_of: Optional[int] = 256,
+        ffn_dim_multiplier: Optional[float] = None,
+    ):
+        super().__init__()
+        intermediate_size = int(2 * intermediate_size / 3)
+        # custom hidden_size factor multiplier
+        if ffn_dim_multiplier is not None:
+            intermediate_size = int(ffn_dim_multiplier * intermediate_size)
+        intermediate_size = multiple_of * ((intermediate_size + multiple_of - 1) // multiple_of)
+
+        self.w1 = nn.Linear(
+            hidden_size,
+            intermediate_size,
+            bias=False,
+        )
+        self.w2 = nn.Linear(
+            intermediate_size,
+            hidden_size,
+            bias=False,
+        )
+        self.w3 = nn.Linear(
+            hidden_size,
+            intermediate_size,
+            bias=False,
+        )
+        nn.init.xavier_uniform_(self.w1.weight)
+        nn.init.xavier_uniform_(self.w2.weight)
+        nn.init.xavier_uniform_(self.w3.weight)
+
+    # @torch.compile
+    def _forward_silu_gating(self, x1, x3):
+        return F.silu(x1) * x3
+
+    def forward(self, x):
+        return self.w2(self._forward_silu_gating(self.w1(x), self.w3(x)))
+
+
 @maybe_allow_in_graph
 class TemporalBasicTransformerBlock(nn.Module):
     r"""
