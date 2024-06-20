@@ -89,7 +89,6 @@ class FromOriginalControlNetMixin:
         """
         original_config_file = kwargs.pop("original_config_file", None)
         config_file = kwargs.pop("config_file", None)
-        resume_download = kwargs.pop("resume_download", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
@@ -109,7 +108,6 @@ class FromOriginalControlNetMixin:
             pretrained_model_link_or_path=pretrained_model_link_or_path,
             class_name=class_name,
             original_config_file=original_config_file,
-            resume_download=resume_download,
             force_download=force_download,
             proxies=proxies,
             token=token,

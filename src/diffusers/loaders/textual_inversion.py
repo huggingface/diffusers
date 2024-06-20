@@ -38,7 +38,6 @@ TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
 def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs):
     cache_dir = kwargs.pop("cache_dir", None)
     force_download = kwargs.pop("force_download", False)
-    resume_download = kwargs.pop("resume_download", None)
     proxies = kwargs.pop("proxies", None)
     local_files_only = kwargs.pop("local_files_only", None)
     token = kwargs.pop("token", None)
@@ -72,7 +71,6 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                         weights_name=weight_name or TEXT_INVERSION_NAME_SAFE,
                         cache_dir=cache_dir,
                         force_download=force_download,
-                        resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
                         token=token,
@@ -93,7 +91,6 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                     weights_name=weight_name or TEXT_INVERSION_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
-                    resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
                     token=token,

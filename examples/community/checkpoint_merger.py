@@ -86,7 +86,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         """
         # Default kwargs from DiffusionPipeline
         cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -124,7 +123,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             config_dict = DiffusionPipeline.load_config(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
-                resume_download=resume_download,
                 force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
@@ -160,7 +158,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                 else snapshot_download(
                     pretrained_model_name_or_path,
                     cache_dir=cache_dir,
-                    resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
                     token=token,

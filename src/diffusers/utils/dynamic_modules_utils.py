@@ -309,7 +309,6 @@ def get_cached_module_file(
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
-                resume_download=resume_download,
                 local_files_only=local_files_only,
                 token=token,
             )
@@ -366,7 +365,6 @@ def get_cached_module_file(
                     f"{module_needed}.py",
                     cache_dir=cache_dir,
                     force_download=force_download,
-                    resume_download=resume_download,
                     proxies=proxies,
                     token=token,
                     revision=revision,
@@ -458,7 +456,6 @@ def get_class_from_dynamic_module(
         module_file,
         cache_dir=cache_dir,
         force_download=force_download,
-        resume_download=resume_download,
         proxies=proxies,
         token=token,
         revision=revision,

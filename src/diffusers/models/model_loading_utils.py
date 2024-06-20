@@ -216,7 +216,6 @@ def _fetch_index_file(
                 weights_name=index_file_in_repo,
                 cache_dir=cache_dir,
                 force_download=force_download,
-                resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,

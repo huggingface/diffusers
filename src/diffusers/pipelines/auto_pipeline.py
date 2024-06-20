@@ -319,7 +319,6 @@ class AutoPipelineForText2Image(ConfigMixin):
         """
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -328,7 +327,6 @@ class AutoPipelineForText2Image(ConfigMixin):
         load_config_kwargs = {
             "cache_dir": cache_dir,
             "force_download": force_download,
-            "resume_download": resume_download,
             "proxies": proxies,
             "token": token,
             "local_files_only": local_files_only,
@@ -592,7 +590,6 @@ class AutoPipelineForImage2Image(ConfigMixin):
         """
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -601,7 +598,6 @@ class AutoPipelineForImage2Image(ConfigMixin):
         load_config_kwargs = {
             "cache_dir": cache_dir,
             "force_download": force_download,
-            "resume_download": resume_download,
             "proxies": proxies,
             "token": token,
             "local_files_only": local_files_only,
@@ -868,7 +864,6 @@ class AutoPipelineForInpainting(ConfigMixin):
         """
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -877,7 +872,6 @@ class AutoPipelineForInpainting(ConfigMixin):
         load_config_kwargs = {
             "cache_dir": cache_dir,
             "force_download": force_download,
-            "resume_download": resume_download,
             "proxies": proxies,
             "token": token,
             "local_files_only": local_files_only,

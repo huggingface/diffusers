@@ -343,7 +343,6 @@ class ConfigMixin:
         local_dir = kwargs.pop("local_dir", None)
         local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -386,7 +385,6 @@ class ConfigMixin:
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
-                    resume_download=resume_download,
                     local_files_only=local_files_only,
                     token=token,
                     user_agent=user_agent,

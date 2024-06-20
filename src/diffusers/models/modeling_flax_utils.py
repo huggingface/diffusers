@@ -296,7 +296,6 @@ class FlaxModelMixin(PushToHubMixin):
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         from_pt = kwargs.pop("from_pt", False)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
         token = kwargs.pop("token", None)
@@ -316,7 +315,6 @@ class FlaxModelMixin(PushToHubMixin):
                 cache_dir=cache_dir,
                 return_unused_kwargs=True,
                 force_download=force_download,
-                resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,
@@ -362,7 +360,6 @@ class FlaxModelMixin(PushToHubMixin):
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
-                    resume_download=resume_download,
                     local_files_only=local_files_only,
                     token=token,
                     user_agent=user_agent,

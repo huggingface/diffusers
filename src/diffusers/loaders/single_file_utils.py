@@ -324,7 +324,6 @@ def load_single_file_checkpoint(
             weights_name=weights_name,
             force_download=force_download,
             cache_dir=cache_dir,
-            resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
             token=token,

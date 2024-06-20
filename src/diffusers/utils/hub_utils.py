@@ -324,7 +324,6 @@ def _get_model_file(
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
-                    resume_download=resume_download,
                     local_files_only=local_files_only,
                     token=token,
                     user_agent=user_agent,
@@ -349,7 +348,6 @@ def _get_model_file(
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
-                resume_download=resume_download,
                 local_files_only=local_files_only,
                 token=token,
                 user_agent=user_agent,
@@ -472,7 +470,6 @@ def _get_checkpoint_shard_files(
         cached_folder = snapshot_download(
             pretrained_model_name_or_path,
             cache_dir=cache_dir,
-            resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
             token=token,

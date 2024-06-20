@@ -253,7 +253,6 @@ def _download_diffusers_model_config_from_hub(
         revision=revision,
         proxies=proxies,
         force_download=force_download,
-        resume_download=resume_download,
         local_files_only=local_files_only,
         token=token,
         allow_patterns=allow_patterns,
@@ -352,7 +351,6 @@ class FromSingleFileMixin:
             deprecate("original_config_file", "1.0.0", deprecation_message)
             original_config = original_config_file
 
-        resume_download = kwargs.pop("resume_download", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
@@ -382,7 +380,6 @@ class FromSingleFileMixin:
 
         checkpoint = load_single_file_checkpoint(
             pretrained_model_link_or_path,
-            resume_download=resume_download,
             force_download=force_download,
             proxies=proxies,
             token=token,
@@ -412,7 +409,6 @@ class FromSingleFileMixin:
                     revision=revision,
                     proxies=proxies,
                     force_download=force_download,
-                    resume_download=resume_download,
                     local_files_only=local_files_only,
                     token=token,
                 )
@@ -435,7 +431,6 @@ class FromSingleFileMixin:
                         revision=revision,
                         proxies=proxies,
                         force_download=force_download,
-                        resume_download=resume_download,
                         local_files_only=False,
                         token=token,
                     )

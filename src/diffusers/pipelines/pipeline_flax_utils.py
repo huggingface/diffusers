@@ -316,7 +316,6 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```
         """
         cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
         token = kwargs.pop("token", None)
@@ -332,7 +331,6 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
             config_dict = cls.load_config(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
-                resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,
@@ -363,7 +361,6 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
-                resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,
