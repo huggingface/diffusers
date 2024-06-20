@@ -521,6 +521,8 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
     Inherit ModelMixin and ConfigMixin to be compatible with the sampler StableDiffusionPipeline of diffusers.
 
     Parameters:
+        sample_size (`int`): The width of the latent images. This is fixed during training since
+            it is used to learn a number of position embeddings.
         patch_size (`int`, *optional*, (`int`, *optional*, defaults to 2):
             The size of each patch in the image. This parameter defines the resolution of patches fed into the model.
         in_channels (`int`, *optional*, defaults to 4):
@@ -561,6 +563,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
+        sample_size: int = 128,
         patch_size: Optional[int] = 2,
         in_channels: Optional[int] = 4,
         hidden_size: Optional[int] = 4096,

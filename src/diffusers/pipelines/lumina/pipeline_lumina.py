@@ -297,6 +297,11 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 256
         )
+        self.default_sample_size = (
+            self.transformer.config.sample_size
+            if hasattr(self, "transformer") and self.transformer is not None
+            else 128
+        )
 
     def _get_gemma_prompt_embeds(
         self,

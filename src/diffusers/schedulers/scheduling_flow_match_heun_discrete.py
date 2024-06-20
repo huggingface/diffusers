@@ -59,7 +59,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     """
 
     _compatibles = []
-    order = 1
+    order = 2
 
     @register_to_config
     def __init__(
@@ -276,22 +276,21 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if gamma > 0:
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
 
-        # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        # NOTE: "original_sample" should not be an expected prediction_type but is left in for
-        # backwards compatibility
-        denoised = sample - model_output * sigma
-
         if self.state_in_first_order:
-            # 2. Convert to an ODE derivative for 1st order
+            # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
+            denoised = sample - model_output * sigma
+            # 2. convert to an ODE derivative for 1st order
             derivative = (sample - denoised) / sigma_hat
             # 3. Delta timestep
-            dt = self.sigmas_next - sigma_hat
+            dt = sigma_next - sigma_hat
 
             # store for 2nd order step
             self.prev_derivative = derivative
             self.dt = dt
             self.sample = sample
         else:
+            # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
+            denoised = sample - model_output * sigma_next
             # 2. 2nd order / Heun's method
             derivative = (sample - denoised) / sigma_next
             derivative = 0.5 * (self.prev_derivative + derivative)
