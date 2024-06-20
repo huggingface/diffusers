@@ -245,6 +245,8 @@
       title: DiTTransformer2DModel
     - local: api/models/hunyuan_transformer2d
       title: HunyuanDiT2DModel
+    - local: api/models/lumina_nextdit2d
+      title: LuminaNextDiT2DModel
     - local: api/models/transformer_temporal
       title: TransformerTemporalModel
     - local: api/models/sd3_transformer2d
@@ -316,6 +318,8 @@
       title: Latent Diffusion
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/lumina
+      title: Lumina-T2X
     - local: api/pipelines/marigold
       title: Marigold
     - local: api/pipelines/panorama

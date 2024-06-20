@@ -24,7 +24,7 @@ from transformers import AutoModel, AutoTokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
-from ...models.transformers.lumina_nextdit_2d import LuminaNextDiT2DModel
+from ...models.transformers.lumina_nextdit2d import LuminaNextDiT2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -917,7 +917,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                current_timestep = t
+                current_timestep = t / num_inference_steps
                 if not torch.is_tensor(current_timestep):
                     # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
                     # This would be a good case for the `match` statement (Python 3.10+)
