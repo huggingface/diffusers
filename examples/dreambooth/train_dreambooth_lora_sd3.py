@@ -53,7 +53,11 @@ from diffusers import (
     StableDiffusion3Pipeline,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import cast_training_params
+from diffusers.training_utils import (
+    cast_training_params,
+    compute_density_for_timestep_sampling,
+    compute_loss_weighting_for_sd3,
+)
 from diffusers.utils import (
     check_min_version,
     convert_unet_state_dict_to_peft,
@@ -473,11 +477,23 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--weighting_scheme", type=str, default="sigma_sqrt", choices=["sigma_sqrt", "logit_normal", "mode"]
+        "--weighting_scheme",
+        type=str,
+        default="logit_normal",
+        choices=["sigma_sqrt", "logit_normal", "mode", "cosmap"],
     )
-    parser.add_argument("--logit_mean", type=float, default=0.0)
-    parser.add_argument("--logit_std", type=float, default=1.0)
-    parser.add_argument("--mode_scale", type=float, default=1.29)
+    parser.add_argument(
+        "--logit_mean", type=float, default=0.0, help="mean to use when using the `'logit_normal'` weighting scheme."
+    )
+    parser.add_argument(
+        "--logit_std", type=float, default=1.0, help="std to use when using the `'logit_normal'` weighting scheme."
+    )
+    parser.add_argument(
+        "--mode_scale",
+        type=float,
+        default=1.29,
+        help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
+    )
     parser.add_argument(
         "--optimizer",
         type=str,
@@ -1328,7 +1344,6 @@ def main(args):
     if not train_dataset.custom_instance_prompts:
         del tokenizers, text_encoders
         # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
-        del tokenizer_one, tokenizer_two, tokenizer_three
         del text_encoder_one, text_encoder_two, text_encoder_three
         gc.collect()
         if torch.cuda.is_available():
@@ -1477,16 +1492,13 @@ def main(args):
 
                 # Sample a random timestep for each image
                 # for weighting schemes where we sample timesteps non-uniformly
-                if args.weighting_scheme == "logit_normal":
-                    # See 3.1 in the SD3 paper ($rf/lognorm(0.00,1.00)$).
-                    u = torch.normal(mean=args.logit_mean, std=args.logit_std, size=(bsz,), device="cpu")
-                    u = torch.nn.functional.sigmoid(u)
-                elif args.weighting_scheme == "mode":
-                    u = torch.rand(size=(bsz,), device="cpu")
-                    u = 1 - u - args.mode_scale * (torch.cos(math.pi * u / 2) ** 2 - 1 + u)
-                else:
-                    u = torch.rand(size=(bsz,), device="cpu")
-
+                u = compute_density_for_timestep_sampling(
+                    weighting_scheme=args.weighting_scheme,
+                    batch_size=bsz,
+                    logit_mean=args.logit_mean,
+                    logit_std=args.logit_std,
+                    mode_scale=args.mode_scale,
+                )
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
@@ -1507,19 +1519,11 @@ def main(args):
                 # Preconditioning of the model outputs.
                 model_pred = model_pred * (-sigmas) + noisy_model_input
 
-                # TODO (kashif, sayakpaul): weighting sceme needs to be experimented with :)
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
-                if args.weighting_scheme == "sigma_sqrt":
-                    weighting = (sigmas**-2.0).float()
-                elif args.weighting_scheme == "cosmap":
-                    bot = 1 - 2 * sigmas + 2 * sigmas**2
-                    weighting = 2 / (math.pi * bot)
-                else:
-                    weighting = torch.ones_like(sigmas)
+                weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
-                # simplified flow matching aka 0-rectified flow matching loss
-                # target = model_input - noise
+                # flow matching loss
                 target = model_input
 
                 if args.with_prior_preservation:
