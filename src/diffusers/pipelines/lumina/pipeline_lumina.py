@@ -189,7 +189,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             else 128
         )
         self.default_image_size = self.default_sample_size * self.vae_scale_factor
-        self.base_seq_len = (self.default_image_size // 16) ** 2
+        self.base_sequence_length = (self.default_image_size // 16) ** 2
 
     def _get_gemma_prompt_embeds(
         self,
@@ -197,6 +197,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         clean_caption: Optional[bool] = False,
+        max_length: Optional[int] = None,
     ):
         device = device or self._execution_device
         prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -205,14 +206,13 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
         text_inputs = self.tokenizer(
             prompt,
-            padding=True,
             pad_to_multiple_of=8,
             max_length=self.max_sequence_length,
             truncation=True,
             return_tensors="pt",
         )
-        text_input_ids = text_inputs.input_ids
-        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+        text_input_ids = text_inputs.input_ids.to(device)
+        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids.to(device)
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
             removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.max_sequence_length - 1 : -1])
@@ -221,11 +221,11 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 f" {self.max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_attention_mask = text_inputs.attention_mask
-        prompt_attention_mask = prompt_attention_mask.to(device)
+        prompt_attention_mask = text_inputs.attention_mask.to(device)
+        prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         prompt_embeds = self.text_encoder(
-            text_input_ids.to(device), attention_mask=prompt_attention_mask, output_hidden_states=True
+            text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
         )
         prompt_embeds = prompt_embeds.hidden_states[-2]
 
@@ -302,11 +302,11 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 clean_caption=clean_caption,
             )
 
-        # get negative embeddings for classifier free guidance
+        # Get negative embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt if negative_prompt is not None else ""
 
-            # normalize str to list
+            # Normalize str to list
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
             if prompt is not None and type(prompt) is not type(negative_prompt):
@@ -314,16 +314,41 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
                 )
+            elif isinstance(negative_prompt, str):
+                negative_prompt = [negative_prompt]
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
                     f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
                     " the batch size of `prompt`."
                 )
-
-            negative_prompt_embeds, negative_prompt_attention_mask = self._get_gemma_prompt_embeds(
-                prompt=negative_prompt, num_images_per_prompt=num_images_per_prompt, device=device
+            # Padding negative prompt to the same length with prompt
+            prompt_max_length = prompt_embeds.shape[1]
+            negative_text_inputs = self.tokenizer(
+                negative_prompt,
+                padding="max_length",
+                max_length=prompt_max_length,
+                truncation=True,
+                return_tensors="pt",
             )
+            negtive_text_input_ids = negative_text_inputs.input_ids.to(device)
+            negative_prompt_attention_mask = negative_text_inputs.attention_mask.to(device)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            # Get the negative prompt embeddings
+            negative_prompt_embeds = self.text_encoder(
+                negtive_text_input_ids,
+                attention_mask=negative_prompt_attention_mask,
+                output_hidden_states=True,
+            )
+
+            negative_dtype = self.text_encoder.dtype
+            negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
+            _, seq_len, _ = negative_prompt_embeds.shape
+
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=negative_dtype, device=device)
+            # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
@@ -720,9 +745,9 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if proportional_attn:
-            assert self.base_seq_len is not None
+            assert self.base_sequence_length is not None
             for layer in self.transformer.layers:
-                layer.attention.base_seqlen = self.base_seq_len
+                layer.attention.base_seqlen = self.base_sequence_length
                 layer.attention.proportional_attn = proportional_attn
         else:
             for layer in self.transformer.layers:
@@ -755,9 +780,11 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             clean_caption=clean_caption,
             max_sequence_length=max_sequence_length,
         )
+        import ipdb
+        ipdb.set_trace()
         if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=1)
-            prompt_attention_mask = torch.cat([prompt_attention_mask, negative_prompt_attention_mask], dim=1)
+            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
+            prompt_attention_mask = torch.cat([prompt_attention_mask, negative_prompt_attention_mask], dim=0)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
