@@ -24,12 +24,7 @@ from diffusers import DiffusionPipeline, StableDiffusionXLPipeline
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
-from diffusers.models.attention_processor import (
-    AttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
-    XFormersAttnProcessor,
-)
+from diffusers.models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers
@@ -1292,12 +1287,7 @@ class SDXLLongPromptWeightingPipeline(
         self.vae.to(dtype=torch.float32)
         use_torch_2_0_or_xformers = isinstance(
             self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
-            ),
+            (AttnProcessor2_0, XFormersAttnProcessor),
         )
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory

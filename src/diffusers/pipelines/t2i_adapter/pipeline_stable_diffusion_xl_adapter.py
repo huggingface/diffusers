@@ -36,8 +36,6 @@ from ...loaders import (
 from ...models import AutoencoderKL, ImageProjection, MultiAdapter, T2IAdapter, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -764,8 +762,6 @@ class StableDiffusionXLAdapterPipeline(
             (
                 AttnProcessor2_0,
                 XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need

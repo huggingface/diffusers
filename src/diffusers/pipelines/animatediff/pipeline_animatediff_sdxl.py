@@ -35,8 +35,6 @@ from ...models import AutoencoderKL, ImageProjection, MotionAdapter, UNet2DCondi
 from ...models.attention_processor import (
     AttnProcessor2_0,
     FusedAttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -769,8 +767,6 @@ class AnimateDiffSDXLPipeline(
             (
                 AttnProcessor2_0,
                 XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
                 FusedAttnProcessor2_0,
             ),
         )

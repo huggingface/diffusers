@@ -18,14 +18,10 @@ import unittest
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadePriorPipeline
-from diffusers.loaders import AttnProcsLayers
 from diffusers.models import StableCascadeUNet
-from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnProcessor2_0
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -47,19 +43,6 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
-
-
-def create_prior_lora_layers(unet: nn.Module):
-    lora_attn_procs = {}
-    for name in unet.attn_processors.keys():
-        lora_attn_processor_class = (
-            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
-        )
-        lora_attn_procs[name] = lora_attn_processor_class(
-            hidden_size=unet.config.c,
-        )
-    unet_lora_layers = AttnProcsLayers(lora_attn_procs)
-    return lora_attn_procs, unet_lora_layers
 
 
 class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -240,19 +223,12 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
         )
 
-        prior_lora_attn_procs, prior_lora_layers = create_prior_lora_layers(prior)
-
-        lora_components = {
-            "prior_lora_layers": prior_lora_layers,
-            "prior_lora_attn_procs": prior_lora_attn_procs,
-        }
-
-        return prior, prior_lora_config, lora_components
+        return prior, prior_lora_config
 
     @require_peft_backend
     @unittest.skip(reason="no lora support for now")
     def test_inference_with_prior_lora(self):
-        _, prior_lora_config, _ = self.get_lora_components()
+        _, prior_lora_config = self.get_lora_components()
         device = "cpu"
 
         components = self.get_dummy_components()
