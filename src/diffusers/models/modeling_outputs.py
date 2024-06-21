@@ -29,3 +29,8 @@ class Transformer2DModelOutput(BaseOutput):
     """
 
     sample: "torch.Tensor"  # noqa: F821
+
+
+@dataclass
+class Transformer3DModelOutput(BaseOutput):
+    sample: "torch.Tensor"  # noqa: F821

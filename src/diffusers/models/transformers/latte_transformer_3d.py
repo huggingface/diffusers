@@ -14,12 +14,9 @@
 import torch
 from torch import nn
 
-from dataclasses import dataclass
-from dataclasses import dataclass
 from einops import rearrange, repeat
 from typing import Any, Dict, Optional
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput
 from ..attention import BasicTransformerBlock
 from ..embeddings import PatchEmbed
 from ..modeling_utils import ModelMixin
@@ -27,11 +24,7 @@ from ..normalization import AdaLayerNormSingle
 from ...models.embeddings import (
     get_1d_sincos_pos_embed_from_grid, 
     PixArtAlphaTextProjection)
-
-
-@dataclass
-class Transformer3DModelOutput(BaseOutput):
-    sample: torch.FloatTensor
+from ..modeling_outputs import Transformer3DModelOutput
 
 
 class LatteTransformer3DModel(ModelMixin, ConfigMixin):
