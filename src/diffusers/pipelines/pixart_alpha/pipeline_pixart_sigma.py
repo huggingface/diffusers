@@ -605,7 +605,11 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-
+    
+    @property
+    def interrupt(self):
+        return self._interrupt
+    
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -744,7 +748,8 @@ class PixArtSigmaPipeline(DiffusionPipeline):
             prompt_attention_mask,
             negative_prompt_attention_mask,
         )
-
+        self._interrupt = False
+        
         # 2. Default height and width to transformer
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -812,6 +817,8 @@ class PixArtSigmaPipeline(DiffusionPipeline):
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -859,7 +866,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
+                        callback(self, step_idx, t, latents) #Not 100% sure if this will break anything. Callback documentation would need to be updated to to reflect the added input
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
