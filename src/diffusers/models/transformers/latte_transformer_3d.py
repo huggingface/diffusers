@@ -69,7 +69,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         cross_attention_dim: Optional[int] = None,
         attention_bias: bool = False,
-        sample_size: Optional[int] = None,
+        sample_size: int = 64,
         num_vector_embeds: Optional[int] = None,
         patch_size: Optional[int] = None,
         activation_fn: str = "geglu",
@@ -93,8 +93,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         self.video_length = video_length
 
         # 1. Define input layers
-        assert sample_size is not None, "LatteTransformer3DModel over patched input must provide sample_size"
-
         self.height = sample_size
         self.width = sample_size
 
