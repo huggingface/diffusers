@@ -380,7 +380,6 @@ class BasicTransformerBlock(nn.Module):
         elif norm_type == "layer_norm_i2vgen":
             self.norm3 = None
         else:
-            print('norm_eps', norm_eps, 'norm_elementwise_affine', norm_elementwise_affine)
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
 
         self.ff = FeedForward(
