@@ -16,6 +16,7 @@
 
 import inspect
 import itertools
+import json
 import os
 import re
 from collections import OrderedDict
@@ -25,7 +26,7 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 
 import safetensors
 import torch
-from huggingface_hub import create_repo
+from huggingface_hub import create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
@@ -33,9 +34,12 @@ from .. import __version__
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
+    SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_WEIGHTS_NAME,
+    WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
     _add_variant,
+    _get_checkpoint_shard_files,
     _get_model_file,
     deprecate,
     is_accelerate_available,
@@ -49,6 +53,7 @@ from ..utils.hub_utils import (
 )
 from .model_loading_utils import (
     _determine_device_map,
+    _fetch_index_file,
     _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
@@ -56,6 +61,8 @@ from .model_loading_utils import (
 
 
 logger = logging.get_logger(__name__)
+
+_REGEX_SHARD = re.compile(r"(.*?)-\d{5}-of-\d{5}")
 
 
 if is_torch_version(">=", "1.9.0"):
@@ -263,6 +270,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         save_function: Optional[Callable] = None,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
+        max_shard_size: Union[int, str] = "10GB",
         push_to_hub: bool = False,
         **kwargs,
     ):
@@ -285,6 +293,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
+            max_shard_size (`int` or `str`, defaults to `"10GB"`):
+                The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size
+                lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5GB"`).
+                If expressed as an integer, the unit is bytes. Note that this limit will be decreased after a certain
+                period of time (starting from Oct 2024) to allow users to upgrade to the latest version of `diffusers`.
+                This is to establish a common default size for this argument across different libraries in the Hugging
+                Face ecosystem (`transformers`, and `accelerate`, for example).
             push_to_hub (`bool`, *optional*, defaults to `False`):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
@@ -295,6 +310,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
+
+        weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
+        weights_name = _add_variant(weights_name, variant)
+        weight_name_split = weights_name.split(".")
+        if len(weight_name_split) in [2, 3]:
+            weights_name_pattern = weight_name_split[0] + "{suffix}." + ".".join(weight_name_split[1:])
+        else:
+            raise ValueError(f"Invalid {weights_name} provided.")
 
         os.makedirs(save_directory, exist_ok=True)
 
@@ -317,18 +340,58 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # Save the model
         state_dict = model_to_save.state_dict()
 
-        weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
-        weights_name = _add_variant(weights_name, variant)
-
         # Save the model
-        if safe_serialization:
-            safetensors.torch.save_file(
-                state_dict, Path(save_directory, weights_name).as_posix(), metadata={"format": "pt"}
+        state_dict_split = split_torch_state_dict_into_shards(
+            state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name_pattern
+        )
+
+        # Clean the folder from a previous save
+        if is_main_process:
+            for filename in os.listdir(save_directory):
+                if filename in state_dict_split.filename_to_tensors.keys():
+                    continue
+                full_filename = os.path.join(save_directory, filename)
+                if not os.path.isfile(full_filename):
+                    continue
+                weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
+                weights_without_ext = weights_without_ext.replace("{suffix}", "")
+                filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
+                # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
+                if (
+                    filename.startswith(weights_without_ext)
+                    and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
+                ):
+                    os.remove(full_filename)
+
+        for filename, tensors in state_dict_split.filename_to_tensors.items():
+            shard = {tensor: state_dict[tensor] for tensor in tensors}
+            filepath = os.path.join(save_directory, filename)
+            if safe_serialization:
+                # At some point we will need to deal better with save_function (used for TPU and other distributed
+                # joyfulness), but for now this enough.
+                safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
+            else:
+                torch.save(shard, filepath)
+
+        if state_dict_split.is_sharded:
+            index = {
+                "metadata": state_dict_split.metadata,
+                "weight_map": state_dict_split.tensor_to_filename,
+            }
+            save_index_file = SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME
+            save_index_file = os.path.join(save_directory, _add_variant(save_index_file, variant))
+            # Save the index as well
+            with open(save_index_file, "w", encoding="utf-8") as f:
+                content = json.dumps(index, indent=2, sort_keys=True) + "\n"
+                f.write(content)
+            logger.info(
+                f"The model is bigger than the maximum size per checkpoint ({max_shard_size}) and is going to be "
+                f"split in {len(state_dict_split.filename_to_tensors)} checkpoint shards. You can find where each parameters has been saved in the "
+                f"index located at {save_index_file}."
             )
         else:
-            torch.save(state_dict, Path(save_directory, weights_name).as_posix())
-
-        logger.info(f"Model weights saved in {Path(save_directory, weights_name).as_posix()}")
+            path_to_weights = os.path.join(save_directory, weights_name)
+            logger.info(f"Model weights saved in {path_to_weights}")
 
         if push_to_hub:
             # Create a new empty model card and eventually tag it
@@ -399,7 +462,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
-                same device.
+                same device. Defaults to `None`, meaning that the model will be loaded on CPU.
 
                 Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
                 more information about each option see [designing a device
@@ -566,6 +629,32 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             **kwargs,
         )
 
+        # Determine if we're loading from a directory of sharded checkpoints.
+        is_sharded = False
+        index_file = None
+        is_local = os.path.isdir(pretrained_model_name_or_path)
+        index_file = _fetch_index_file(
+            is_local=is_local,
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            subfolder=subfolder or "",
+            use_safetensors=use_safetensors,
+            cache_dir=cache_dir,
+            variant=variant,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            user_agent=user_agent,
+            commit_hash=commit_hash,
+        )
+        if index_file is not None and index_file.is_file():
+            is_sharded = True
+
+        if is_sharded and from_flax:
+            raise ValueError("Loading of sharded checkpoints is not supported when `from_flax=True`.")
+
         # load model
         model_file = None
         if from_flax:
@@ -590,7 +679,21 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
-            if use_safetensors:
+            if is_sharded:
+                sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
+                    pretrained_model_name_or_path,
+                    index_file,
+                    cache_dir=cache_dir,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    local_files_only=local_files_only,
+                    token=token,
+                    user_agent=user_agent,
+                    revision=revision,
+                    subfolder=subfolder or "",
+                )
+
+            elif use_safetensors and not is_sharded:
                 try:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path,
@@ -606,11 +709,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         user_agent=user_agent,
                         commit_hash=commit_hash,
                     )
+
                 except IOError as e:
+                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
                     if not allow_pickle:
-                        raise e
-                    pass
-            if model_file is None:
+                        raise
+                    logger.warning(
+                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
+                    )
+
+            if model_file is None and not is_sharded:
                 model_file = _get_model_file(
                     pretrained_model_name_or_path,
                     weights_name=_add_variant(WEIGHTS_NAME, variant),
@@ -632,7 +740,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     model = cls.from_config(config, **unused_kwargs)
 
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
-                if device_map is None:
+                if device_map is None and not is_sharded:
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)
@@ -666,17 +774,22 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
+                    force_hook = True
                     device_map = _determine_device_map(model, device_map, max_memory, torch_dtype)
+                    if device_map is None and is_sharded:
+                        # we load the parameters on the cpu
+                        device_map = {"": "cpu"}
+                        force_hook = False
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
-                            model_file,
+                            model_file if not is_sharded else sharded_ckpt_cached_folder,
                             device_map,
                             max_memory=max_memory,
                             offload_folder=offload_folder,
                             offload_state_dict=offload_state_dict,
                             dtype=torch_dtype,
-                            force_hooks=True,
+                            force_hooks=force_hook,
                             strict=True,
                         )
                     except AttributeError as e:
@@ -700,12 +813,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             model._temp_convert_self_to_deprecated_attention_blocks()
                             accelerate.load_checkpoint_and_dispatch(
                                 model,
-                                model_file,
+                                model_file if not is_sharded else sharded_ckpt_cached_folder,
                                 device_map,
                                 max_memory=max_memory,
                                 offload_folder=offload_folder,
                                 offload_state_dict=offload_state_dict,
                                 dtype=torch_dtype,
+                                force_hooks=force_hook,
+                                strict=True,
                             )
                             model._undo_temp_convert_self_to_deprecated_attention_blocks()
                         else:
@@ -1057,6 +1172,9 @@ class LegacyModelMixin(ModelMixin):
         # To prevent depedency import problem.
         from .model_loading_utils import _fetch_remapped_cls_from_config
 
+        # Create a copy of the kwargs so that we don't mess with the keyword arguments in the downstream calls.
+        kwargs_copy = kwargs.copy()
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", None)
@@ -1094,4 +1212,4 @@ class LegacyModelMixin(ModelMixin):
         # resolve remapping
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-        return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)
