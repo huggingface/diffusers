@@ -289,19 +289,16 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
         )
-
-        self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor = 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.tokenizer_max_length = (
-            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 256
-        )
+        self.tokenizer_max_length = 256
         self.default_sample_size = (
             self.transformer.config.sample_size
             if hasattr(self, "transformer") and self.transformer is not None
             else 128
         )
+        self.default_image_size = self.default_sample_size * self.vae_scale_factor
+        self.base_seq_len = (self.default_image_size // 16) ** 2
 
     def _get_gemma_prompt_embeds(
         self,
@@ -335,13 +332,13 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 f" {self.tokenizer_max_length} tokens: {removed_text}"
             )
 
-            prompt_attention_mask = text_inputs.attention_mask
-            prompt_attention_mask = prompt_attention_mask.to(device)
+        prompt_attention_mask = text_inputs.attention_mask
+        prompt_attention_mask = prompt_attention_mask.to(device)
 
-            prompt_embeds = self.text_encoder(
-                text_input_ids.to(device), attention_mask=prompt_attention_mask, output_hidden_states=True
-            )
-            prompt_embeds = prompt_embeds.hidden_states[-2]
+        prompt_embeds = self.text_encoder(
+            text_input_ids.to(device), attention_mask=prompt_attention_mask, output_hidden_states=True
+        )
+        prompt_embeds = prompt_embeds.hidden_states[-2]
 
         if self.text_encoder is not None:
             dtype = self.text_encoder.dtype
@@ -728,6 +725,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         clean_caption: bool = True,
         max_sequence_length: int = 120,
         scaling_watershed: Optional[float] = 0.3,
+        proportional_attn: Optional[bool] = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ) -> Union[ImagePipelineOutput, Tuple]:
@@ -861,10 +859,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             clean_caption=clean_caption,
             max_sequence_length=max_sequence_length,
         )
-        # if do_classifier_free_guidance:
-        #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-        #     prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
-
+        
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
@@ -888,41 +883,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latent_model_input.shape[0])
-
-                hidden_size = self.transformer.config.hidden_size
-                num_attention_heads = self.transformer.config.num_attention_heads
-                attention_head_dim = hidden_size // num_attention_heads
-
-                scaling_factor = math.sqrt(width * height / 1024**2)
-
-                self.transformer.freqs_cis = self.transformer.precompute_freqs_cis(
-                    attention_head_dim,
-                    384,
-                    scale_factor=scaling_factor,
-                    scaling_watershed=scaling_watershed,
-                    timestep=timesteps[0],
-                )
-
-                noise_pred = self.transformer(
-                    x=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
-                    return_dict=False,
-                )[0]
-
-                # perform guidance
-                # NOTE: For exact reproducibility reasons, we apply classifier-free guidance on only
-                # three channels by default. The standard approach to cfg applies it to all channels.
-                # This can be done by uncommenting the following line and commenting-out the line following that.
-                # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
-                if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                current_timestep = t / self.scheduler.config.num_train_timesteps
+            
+                current_timestep = t
                 if not torch.is_tensor(current_timestep):
                     # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
                     # This would be a good case for the `match` statement (Python 3.10+)
@@ -941,7 +903,32 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 current_timestep = current_timestep.expand(latent_model_input.shape[0])
 
-                # predict noise model_output
+                # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
+                current_timestep = (1 - current_timestep / self.scheduler.config.num_train_timesteps)
+
+                # dynamic scaling_factor for different resolution.
+                hidden_size = self.transformer.config.hidden_size
+                num_attention_heads = self.transformer.config.num_attention_heads
+                attention_head_dim = hidden_size // num_attention_heads
+                scaling_factor = math.sqrt(width * height / self.default_image_size ** 2)
+                
+                self.transformer.freqs_cis = self.transformer.precompute_freqs_cis(
+                    attention_head_dim,
+                    384,
+                    scaling_factor=scaling_factor,
+                    scaling_watershed=scaling_watershed,
+                    timestep=current_timestep[0].item(),
+                )
+                if proportional_attn:
+                    assert self.base_seq_len is not None
+                    for layer in self.transformer.layers:
+                        layer.attention.base_seqlen = self.base_seq_len
+                        layer.attention.proportional_attn = proportional_attn
+                else:
+                    for layer in self.transformer.layers:
+                        layer.attention.base_seqlen = None
+                        layer.attention.proportional_attn = proportional_attn
+
                 noise_pred = self.transformer(
                     x=latent_model_input,
                     timestep=current_timestep,
@@ -949,36 +936,43 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                     caption_mask=prompt_attention_mask,
                     return_dict=False,
                 )[0]
-
                 # learned sigma
-                if self.transformer.config.out_channels // 2 == latent_channels:
+                if self.transformer.config.learn_sigma:
                     noise_pred = noise_pred.chunk(2, dim=1)[0]
                 else:
                     noise_pred = noise_pred
 
-                # # compute previous image: x_t -> x_t-1
-                # if num_inference_steps == 1:
-                #     # For DMD one step sampling: https://arxiv.org/abs/2311.18828
-                #     latents = self.scheduler.step(
-                #         noise_pred, t, latents, **extra_step_kwargs
-                #     ).pred_original_sample
-                # else:
-                #     latents = self.scheduler.step(
-                #         noise_pred, t, latents, **extra_step_kwargs, return_dict=False
-                #     )[0]
+                # perform guidance scale
+                # NOTE: For exact reproducibility reasons, we apply classifier-free guidance on only
+                # three channels by default. The standard approach to cfg applies it to all channels.
+                # This can be done by uncommenting the following line and commenting-out the line following that.
+                # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
+                if do_classifier_free_guidance:
+                    noise_pred_eps, noise_pred_rest = noise_pred[:, :3], noise_pred[:, 3:]
+                    noise_pred_cond_eps, noise_pred_uncond_eps = torch.split(noise_pred_eps, len(noise_pred_eps) // 2, dim=0)
+                    noise_pred_half = noise_pred_uncond_eps + guidance_scale * (noise_pred_cond_eps - noise_pred_uncond_eps)
+                    noise_pred_eps = torch.cat([noise_pred_half, noise_pred_half], dim=0)
+                    
+                    noise_pred = torch.cat([noise_pred_eps, noise_pred_rest], dim=1)
+                    noise_pred, _ = noise_pred.chunk(2, dim=0)
 
-        progress_bar.update()
+                # compute the previous noisy sample x_t -> x_t-1
+                latents_dtype = latents.dtype
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+
+                if latents.dtype != latents_dtype:
+                    if torch.backends.mps.is_available():
+                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                        latents = latents.to(latents_dtype)
+
+                progress_bar.update()
 
         if not output_type == "latent":
             latents = latents / self.vae.config.scaling_factor
             image = self.vae.decode(latents, return_dict=False)[0]
-            image = (image + 1.0) / 2.0
-            image.clamp_(0.0, 1.0)
+            image = self.image_processor.postprocess(image, output_type=output_type)
         else:
             image = latents
-
-        if not output_type == "latent":
-            image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()

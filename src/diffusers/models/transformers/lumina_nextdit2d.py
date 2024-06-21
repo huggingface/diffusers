@@ -264,7 +264,7 @@ class Attention(nn.Module):
         xk = Attention.apply_rotary_emb(xk, freqs_cis=freqs_cis)
 
         xq, xk = xq.to(dtype), xk.to(dtype)
-
+        
         if self.proportional_attn:
             softmax_scale = math.sqrt(math.log(seqlen, self.base_seqlen) / self.head_dim)
         else:
@@ -315,6 +315,7 @@ class Attention(nn.Module):
             )
 
         if hasattr(self, "wk_cap"):
+            # print(self.wk_cap(caption_feat).shape, caption_feat.shape)
             yk = self.k_cap_norm(self.wk_cap(caption_feat)).view(bsz, -1, self.num_kv_heads, self.head_dim)
             yv = self.wv_cap(caption_feat).view(bsz, -1, self.num_kv_heads, self.head_dim)
 
@@ -329,7 +330,7 @@ class Attention(nn.Module):
                 yk.permute(0, 2, 1, 3),
                 yv.permute(0, 2, 1, 3),
                 caption_mask.view(bsz, 1, 1, -1).expand(bsz, self.num_attention_heads, seqlen, -1),
-            ).permuste(0, 2, 1, 3)
+            ).permute(0, 2, 1, 3)
 
             output_caption = output_caption * self.gate.tanh().view(1, 1, -1, 1)
             output = output + output_caption
@@ -555,7 +556,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         caption_dim (`int`, *optional*, defaults to 2048):
             The dimensionality of the text embeddings. This parameter defines the size of the text representations used
             in the model.
-        scale_factor (`float`, *optional*, defaults to 1.0):
+        scaling_factor (`float`, *optional*, defaults to 1.0):
             A scaling factor applied to certain parameters or layers in the model. This can be used for adjusting the
             overall scale of the model's operations.
     """
@@ -576,7 +577,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         learn_sigma: Optional[bool] = True,
         qk_norm: Optional[bool] = False,
         caption_dim: Optional[int] = 2048,
-        scale_factor: Optional[float] = 1.0,
+        scaling_factor: Optional[float] = 1.0,
     ) -> None:
         super().__init__()
         self.patch_size = patch_size
@@ -584,7 +585,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
         self.hidden_size = hidden_size
         self.num_attention_heads = num_attention_heads
-        self.scale_factor = scale_factor
+        self.scaling_factor = scaling_factor
         self.learn_sigma = learn_sigma
 
         self.patch_embedder = nn.Linear(
@@ -621,10 +622,10 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
 
         assert (hidden_size // num_attention_heads) % 4 == 0, "2d rope needs head dim to be divisible by 4"
-        self.freqs_cis = LuminaNextDiT2DModel.precompute_freqs_cis(
+        self.freqs_cis = self.precompute_freqs_cis(
             hidden_size // num_attention_heads,
             384,
-            scale_factor=scale_factor,
+            scaling_factor=scaling_factor,
         )
 
     def unpatchify(self, x: torch.Tensor, img_size: List[Tuple[int, int]], return_tensor=False) -> List[torch.Tensor]:
@@ -774,13 +775,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             x = layer(x, mask, freqs_cis, caption_feat, caption_mask, adaln_input=adaln_input)
 
         x = self.final_layer(x, adaln_input)
-        x = self.unpatchify(x, img_size, return_tensor=x_is_tensor)
-
-        if self.learn_sigma:
-            if x_is_tensor:
-                output, _ = x.chunk(2, dim=1)
-            else:
-                output = [_.chunk(2, dim=0)[0] for _ in x]
+        output = self.unpatchify(x, img_size, return_tensor=x_is_tensor)
 
         if not return_dict:
             return (output,)
@@ -794,8 +789,8 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         caption_feat,
         caption_mask,
         cfg_scale,
-        scale_factor=1.0,
-        scale_watershed=1.0,
+        scaling_factor=1.0,
+        scaling_watershed=1.0,
         base_seqlen: Optional[int] = None,
         proportional_attn: bool = False,
         return_dict: bool = True,
@@ -814,9 +809,9 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
                 A mask for the caption features, indicating which elements are valid.
             cfg_scale:
                 The classifier-free guidance scale, used to adjust the influence of the conditioning information.
-            scale_factor (float, optional, defaults to 1.0):
+            scaling_factor (float, optional, defaults to 1.0):
                 A scaling factor applied to certain operations or parameters within the forward pass.
-            scale_watershed (float, optional, defaults to 1.0):
+            scaling_watershed (float, optional, defaults to 1.0):
                 A specific scaling factor used in conjunction with the main scale factor, potentially for different
                 stages of processing.
             base_seqlen (Optional[int], optional):
@@ -830,8 +825,8 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         self.freqs_cis = LuminaNextDiT2DModel.precompute_freqs_cis(
             self.hidden_size // self.num_attention_heads,
             384,
-            scale_factor=scale_factor,
-            scale_watershed=scale_watershed,
+            scaling_factor=scaling_factor,
+            scaling_watershed=scaling_watershed,
             timestep=timestep[0].item(),
         )
 
@@ -863,14 +858,13 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
 
         return Transformer2DModelOutput(sample=output)
 
-    @classmethod
     def precompute_freqs_cis(
-        cls,
+        self,
         dim: int,
         end: int,
         theta: float = 10000.0,
-        scale_factor: float = 1.0,
-        scale_watershed: float = 1.0,
+        scaling_factor: float = 1.0,
+        scaling_watershed: float = 1.0,
         timestep: float = 1.0,
     ):
         """
@@ -891,12 +885,12 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
                 exponentials.
         """
 
-        if timestep < scale_watershed:
-            linear_factor = scale_factor
+        if timestep < scaling_watershed:
+            linear_factor = scaling_factor
             ntk_factor = 1.0
         else:
             linear_factor = 1.0
-            ntk_factor = scale_factor
+            ntk_factor = scaling_factor
 
         theta = theta * ntk_factor
         freqs = 1.0 / (theta ** (torch.arange(0, dim, 4)[: (dim // 4)].float().cuda() / dim)) / linear_factor
@@ -924,12 +918,3 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
 
         _recursive_count_params(self)
         return total_params
-
-
-# todo: delete it after creating hf format model
-def LuminaNextDiT2DModel_2B_patch2(**kwargs):
-    return LuminaNextDiT2DModel(patch_size=2, dim=2304, n_layers=24, num_attention_heads=32, **kwargs)
-
-
-def LuminaNextDiT2DModel_2B_GQA_patch2(**kwargs):
-    return LuminaNextDiT2DModel(patch_size=2, dim=2304, n_layers=24, num_attention_heads=32, num_kv_heads=8, **kwargs)
