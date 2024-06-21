@@ -197,6 +197,27 @@ image.save("sd3_hello_world.png")
 
 Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f454900813da5d42ca97).
 
+## Tiny AutoEncoder for Stable Diffusion 3
+
+Tiny AutoEncoder for Stable Diffusion (TAESD3) is a tiny distilled version of Stable Diffusion 3's VAE by [Ollin Boer Bohan](https://github.com/madebyollin/taesd) that can decode [`StableDiffusion3Pipeline`] latents almost instantly.
+
+To use with Stable Diffusion 3:
+
+```python
+import torch
+from diffusers import StableDiffusion3Pipeline, AutoencoderTiny
+
+pipe = StableDiffusion3Pipeline.from_pretrained(
+    "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
+)
+pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd3", torch_dtype=torch.float16)
+pipe = pipe.to("cuda")
+
+prompt = "slice of delicious New York-style berry cheesecake"
+image = pipe(prompt, num_inference_steps=25).images[0]
+image.save("cheesecake.png")
+```
+
 ## Loading the original checkpoints via `from_single_file`
 
 The `SD3Transformer2DModel` and `StableDiffusion3Pipeline` classes support loading the original checkpoints via the `from_single_file` method. This method allows you to load the original checkpoint files that were used to train the models.
@@ -228,7 +249,7 @@ image = pipe("a picture of a cat holding a sign that says hello world").images[0
 image.save('sd3-single-file.png')
 ```
 
-### Loading the single file checkpoint without T5
+### Loading the single file checkpoint with T5
 
 ```python
 import torch
