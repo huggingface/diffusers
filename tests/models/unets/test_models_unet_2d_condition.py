@@ -1039,6 +1039,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_load_sharded_checkpoint_from_hub(self):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         loaded_model = self.model_class.from_pretrained("hf-internal-testing/unet2d-sharded-dummy")
+        loaded_model = loaded_model.to(torch_device)
         new_output = loaded_model(**inputs_dict)
 
         assert loaded_model
@@ -1049,6 +1050,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
         loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True)
+        loaded_model = loaded_model.to(torch_device)
         new_output = loaded_model(**inputs_dict)
 
         assert loaded_model
