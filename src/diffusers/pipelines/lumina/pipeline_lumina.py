@@ -51,11 +51,11 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import LuminaText2ImgPipeline
 
-        >>> pipe = LuminaText2ImgPipeline.from_pretrained("Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = LuminaText2ImgPipeline.from_pretrained("Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16).cuda()
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
-        >>> prompt = "A small cactus with a happy face in the Sahara desert."
+        >>> prompt = "Upper body of a young woman in a Victorian-era outfit with brass goggles and leather straps. Background shows an industrial revolution cityscape with smoky skies and tall, metal structures"
         >>> image = pipe(prompt).images[0]
         ```
 """
@@ -182,7 +182,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.tokenizer_max_length = 256
+        self.max_sequence_length = 256
         self.default_sample_size = (
             self.transformer.config.sample_size
             if hasattr(self, "transformer") and self.transformer is not None
@@ -196,8 +196,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
-        clip_skip: Optional[int] = None,
-        clip_model_index: int = 0,
         clean_caption: Optional[bool] = False,
     ):
         device = device or self._execution_device
@@ -209,7 +207,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             prompt,
             padding=True,
             pad_to_multiple_of=8,
-            max_length=self.tokenizer_max_length,
+            max_length=self.max_sequence_length,
             truncation=True,
             return_tensors="pt",
         )
@@ -217,10 +215,10 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer_max_length - 1 : -1])
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.max_sequence_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because T5 can only handle sequences up to"
-                f" {self.tokenizer_max_length} tokens: {removed_text}"
+                f" {self.max_sequence_length} tokens: {removed_text}"
             )
 
         prompt_attention_mask = text_inputs.attention_mask
@@ -260,7 +258,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         clean_caption: bool = False,
-        max_sequence_length: int = 256,
         **kwargs,
     ):
         r"""
@@ -286,7 +283,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. For Lumina-T2I, it's should be the embeddings of the "" string.
             clean_caption (`bool`, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
-            max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
+            max_sequence_length (`int`, defaults to 256): Maximum sequence length to use for the prompt.
         """
         if device is None:
             device = self._execution_device
@@ -325,7 +322,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 )
 
             negative_prompt_embeds, negative_prompt_attention_mask = self._get_gemma_prompt_embeds(
-                prompt=prompt, num_images_per_prompt=num_images_per_prompt, device=device
+                prompt=negative_prompt, num_images_per_prompt=num_images_per_prompt, device=device
             )
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
@@ -759,8 +756,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
         )
         if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
+            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=1)
+            prompt_attention_mask = torch.cat([prompt_attention_mask, negative_prompt_attention_mask], dim=1)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
