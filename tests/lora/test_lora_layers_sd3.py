@@ -290,6 +290,10 @@ class SD3LoRATests(unittest.TestCase):
 
     @require_torch_gpu
     def test_sd3_lora(self):
+        """
+        Test loading the loras that are saved with the diffusers and peft formats.
+        Related PR: https://github.com/huggingface/diffusers/pull/8584
+        """
         components = self.get_dummy_components()
 
         pipe = self.pipeline_class(**components)
