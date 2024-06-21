@@ -819,7 +819,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                                 offload_folder=offload_folder,
                                 offload_state_dict=offload_state_dict,
                                 dtype=torch_dtype,
-                                force_hook=force_hook,
+                                force_hooks=force_hook,
                                 strict=True,
                             )
                             model._undo_temp_convert_self_to_deprecated_attention_blocks()
