@@ -613,7 +613,7 @@ def main():
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
         )
         ema_unet = EMAModel(
-            ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config, foreach=args.foreach
+            ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config, foreach=args.foreach_ema
         )
 
     if args.enable_xformers_memory_efficient_attention:
@@ -646,7 +646,7 @@ def main():
         def load_model_hook(models, input_dir):
             if args.use_ema:
                 load_model = EMAModel.from_pretrained(
-                    os.path.join(input_dir, "unet_ema"), UNet2DConditionModel, foreach=args.foreach
+                    os.path.join(input_dir, "unet_ema"), UNet2DConditionModel, foreach=args.foreach_ema
                 )
                 ema_unet.load_state_dict(load_model.state_dict())
                 if args.offload_ema:
