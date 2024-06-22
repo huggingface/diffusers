@@ -350,7 +350,7 @@ class EMAModel:
         self.model_config = model_config
 
     @classmethod
-    def from_pretrained(cls, path, model_cls, foreach) -> "EMAModel":
+    def from_pretrained(cls, path, model_cls, foreach = False) -> "EMAModel":
         _, ema_kwargs = model_cls.load_config(path, return_unused_kwargs=True)
         model = model_cls.from_pretrained(path)
 
