@@ -28,6 +28,8 @@ from diffusers import (
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils.testing_utils import CaptureLogger
 
+from pathlib import Path
+import json
 
 class SampleObject(ConfigMixin):
     config_name = "config.json"
@@ -87,6 +89,17 @@ class SampleObject4(ConfigMixin):
         d="for diffusion",
         e=[1, 5],
         f=[5, 4],
+    ):
+        pass
+
+class SampleObjectPaths(ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        test_file_1 = Path('foo/bar'),
+        test_file_2 = Path('foo bar\\bar')
     ):
         pass
 
@@ -286,3 +299,12 @@ class ConfigTester(unittest.TestCase):
 
         # Nevertheless "e" should still be correctly loaded to [1, 3] from SampleObject2 instead of defaulting to [1, 5]
         assert new_config_2.config.e == [1, 3]
+
+    def test_check_path_types(self):
+        # Verify that we get a string returned from a WindowsPath or PosixPath (depending on system)
+        config = SampleObjectPaths()
+        json_string = config.to_json_string()
+        result = json.loads(json_string)
+        assert(result['test_file_1'] == str(config.config.test_file_1.as_posix()))
+        assert(result['test_file_2'] == str(config.config.test_file_2.as_posix()))
+    
