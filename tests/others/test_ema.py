@@ -158,6 +158,7 @@ class EMAModelTests(unittest.TestCase):
 
         assert torch.allclose(output, output_loaded, atol=1e-4)
 
+
 class EMAModelTestsForeach(unittest.TestCase):
     model_id = "hf-internal-testing/tiny-stable-diffusion-pipe"
     batch_size = 1
@@ -170,7 +171,9 @@ class EMAModelTestsForeach(unittest.TestCase):
     def get_models(self, decay=0.9999):
         unet = UNet2DConditionModel.from_pretrained(self.model_id, subfolder="unet")
         unet = unet.to(torch_device)
-        ema_unet = EMAModel(unet.parameters(), decay=decay, model_cls=UNet2DConditionModel, model_config=unet.config, foreach=True)
+        ema_unet = EMAModel(
+            unet.parameters(), decay=decay, model_cls=UNet2DConditionModel, model_config=unet.config, foreach=True
+        )
         return unet, ema_unet
 
     def get_dummy_inputs(self):
