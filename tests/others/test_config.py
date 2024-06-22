@@ -305,6 +305,6 @@ class ConfigTester(unittest.TestCase):
         config = SampleObjectPaths()
         json_string = config.to_json_string()
         result = json.loads(json_string)
-        assert(result['test_file_1'] == str(config.config.test_file_1.as_posix()))
-        assert(result['test_file_2'] == str(config.config.test_file_2.as_posix()))
+        assert(result['test_file_1'] == config.config.test_file_1.as_posix())
+        assert(result['test_file_2'] == config.config.test_file_2.as_posix())
     
