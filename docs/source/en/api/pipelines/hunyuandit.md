@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team and Tencent Hunyuan Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -36,7 +36,7 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 ## Optimization
 
-You can optimize the pipeline's runtime and memory consumption with torch.compile and feed-forward chunking. To learn about other optimization methods, check out the [Speed up inference](../../optimization/fp16) and [Reduce memory usage](../../optimization/memory) guides. 
+You can optimize the pipeline's runtime and memory consumption with torch.compile and feed-forward chunking. To learn about other optimization methods, check out the [Speed up inference](../../optimization/fp16) and [Reduce memory usage](../../optimization/memory) guides.
 
 ### Inference
 
@@ -46,7 +46,7 @@ First, load the pipeline:
 
 ```python
 from diffusers import HunyuanDiTPipeline
-import torch 
+import torch
 
 pipeline = HunyuanDiTPipeline.from_pretrained(
 	"Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
@@ -78,7 +78,7 @@ Without torch.compile(): Average inference time: 20.570 seconds.
 
 ### Memory optimization
 
-By loading the T5 text encoder in 8 bits, you can run the pipeline in just under 6 GBs of GPU VRAM. Refer to [this script](https://gist.github.com/sayakpaul/3154605f6af05b98a41081aaba5ca43e) for details. 
+By loading the T5 text encoder in 8 bits, you can run the pipeline in just under 6 GBs of GPU VRAM. Refer to [this script](https://gist.github.com/sayakpaul/3154605f6af05b98a41081aaba5ca43e) for details.
 
 Furthermore, you can use the [`~HunyuanDiT2DModel.enable_forward_chunking`] method to reduce memory usage. Feed-forward chunking runs the feed-forward layers in a transformer block in a loop instead of all at once. This gives you a trade-off between memory consumption and inference runtime.
 
@@ -92,4 +92,4 @@ Furthermore, you can use the [`~HunyuanDiT2DModel.enable_forward_chunking`] meth
 [[autodoc]] HunyuanDiTPipeline
 	- all
 	- __call__
-	
+

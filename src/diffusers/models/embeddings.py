@@ -980,7 +980,7 @@ class GLIGENTextBoundingboxProjection(nn.Module):
 
             objs = self.linears(torch.cat([positive_embeddings, xyxy_embedding], dim=-1))
 
-        # positionet with text and image infomation
+        # positionet with text and image information
         else:
             phrases_masks = phrases_masks.unsqueeze(-1)
             image_masks = image_masks.unsqueeze(-1)
@@ -1252,7 +1252,7 @@ class MultiIPAdapterImageProjection(nn.Module):
         if not isinstance(image_embeds, list):
             deprecation_message = (
                 "You have passed a tensor as `image_embeds`.This is deprecated and will be removed in a future release."
-                " Please make sure to update your script to pass `image_embeds` as a list of tensors to supress this warning."
+                " Please make sure to update your script to pass `image_embeds` as a list of tensors to suppress this warning."
             )
             deprecate("image_embeds not a list", "1.0.0", deprecation_message, standard_warn=False)
             image_embeds = [image_embeds.unsqueeze(1)]
