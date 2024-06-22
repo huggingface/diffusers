@@ -1,12 +1,14 @@
 import contextlib
 import copy
+import math
 import random
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from .models import UNet2DConditionModel
+from .schedulers import SchedulerMixin
 from .utils import (
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
@@ -117,6 +119,60 @@ def resolve_interpolation_mode(interpolation_type: str):
     return interpolation_mode
 
 
+def compute_dream_and_update_latents(
+    unet: UNet2DConditionModel,
+    noise_scheduler: SchedulerMixin,
+    timesteps: torch.Tensor,
+    noise: torch.Tensor,
+    noisy_latents: torch.Tensor,
+    target: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    dream_detail_preservation: float = 1.0,
+) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+    """
+    Implements "DREAM (Diffusion Rectification and Estimation-Adaptive Models)" from http://arxiv.org/abs/2312.00210.
+    DREAM helps align training with sampling to help training be more efficient and accurate at the cost of an extra
+    forward step without gradients.
+
+    Args:
+        `unet`: The state unet to use to make a prediction.
+        `noise_scheduler`: The noise scheduler used to add noise for the given timestep.
+        `timesteps`: The timesteps for the noise_scheduler to user.
+        `noise`: A tensor of noise in the shape of noisy_latents.
+        `noisy_latents`: Previously noise latents from the training loop.
+        `target`: The ground-truth tensor to predict after eps is removed.
+        `encoder_hidden_states`: Text embeddings from the text model.
+        `dream_detail_preservation`: A float value that indicates detail preservation level.
+          See reference.
+
+    Returns:
+        `tuple[torch.Tensor, torch.Tensor]`: Adjusted noisy_latents and target.
+    """
+    alphas_cumprod = noise_scheduler.alphas_cumprod.to(timesteps.device)[timesteps, None, None, None]
+    sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
+
+    # The paper uses lambda = sqrt(1 - alpha) ** p, with p = 1 in their experiments.
+    dream_lambda = sqrt_one_minus_alphas_cumprod**dream_detail_preservation
+
+    pred = None
+    with torch.no_grad():
+        pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+
+    _noisy_latents, _target = (None, None)
+    if noise_scheduler.config.prediction_type == "epsilon":
+        predicted_noise = pred
+        delta_noise = (noise - predicted_noise).detach()
+        delta_noise.mul_(dream_lambda)
+        _noisy_latents = noisy_latents.add(sqrt_one_minus_alphas_cumprod * delta_noise)
+        _target = target.add(delta_noise)
+    elif noise_scheduler.config.prediction_type == "v_prediction":
+        raise NotImplementedError("DREAM has not been implemented for v-prediction")
+    else:
+        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+    return _noisy_latents, _target
+
+
 def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
     r"""
     Returns:
@@ -163,6 +219,44 @@ def _set_state_dict_into_text_encoder(
     }
     text_encoder_state_dict = convert_state_dict_to_peft(convert_state_dict_to_diffusers(text_encoder_state_dict))
     set_peft_model_state_dict(text_encoder, text_encoder_state_dict, adapter_name="default")
+
+
+def compute_density_for_timestep_sampling(
+    weighting_scheme: str, batch_size: int, logit_mean: float = None, logit_std: float = None, mode_scale: float = None
+):
+    """Compute the density for sampling the timesteps when doing SD3 training.
+
+    Courtesy: This was contributed by Rafie Walker in https://github.com/huggingface/diffusers/pull/8528.
+
+    SD3 paper reference: https://arxiv.org/abs/2403.03206v1.
+    """
+    if weighting_scheme == "logit_normal":
+        # See 3.1 in the SD3 paper ($rf/lognorm(0.00,1.00)$).
+        u = torch.normal(mean=logit_mean, std=logit_std, size=(batch_size,), device="cpu")
+        u = torch.nn.functional.sigmoid(u)
+    elif weighting_scheme == "mode":
+        u = torch.rand(size=(batch_size,), device="cpu")
+        u = 1 - u - mode_scale * (torch.cos(math.pi * u / 2) ** 2 - 1 + u)
+    else:
+        u = torch.rand(size=(batch_size,), device="cpu")
+    return u
+
+
+def compute_loss_weighting_for_sd3(weighting_scheme: str, sigmas=None):
+    """Computes loss weighting scheme for SD3 training.
+
+    Courtesy: This was contributed by Rafie Walker in https://github.com/huggingface/diffusers/pull/8528.
+
+    SD3 paper reference: https://arxiv.org/abs/2403.03206v1.
+    """
+    if weighting_scheme == "sigma_sqrt":
+        weighting = (sigmas**-2.0).float()
+    elif weighting_scheme == "cosmap":
+        bot = 1 - 2 * sigmas + 2 * sigmas**2
+        weighting = 2 / (math.pi * bot)
+    else:
+        weighting = torch.ones_like(sigmas)
+    return weighting
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14

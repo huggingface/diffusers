@@ -234,7 +234,7 @@ In ComfyUI we will load a LoRA and a textual embedding at the same time.
 SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
 
 ### DoRA training 
-The advanced script now supports DoRA training too!
+The advanced script supports DoRA training too!
 > Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353), 
 **DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters. 
 The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference. 
@@ -303,6 +303,147 @@ accelerate launch train_dreambooth_lora_sdxl_advanced.py \
 
 > [!CAUTION]
 > Min-SNR gamma is not supported with the EDM-style training yet. When training with the PlaygroundAI model, it's recommended to not pass any "variant".
+
+### B-LoRA training 
+The advanced script now supports B-LoRA training too!
+> Proposed in [Implicit Style-Content Separation using B-LoRA](https://arxiv.org/abs/2403.14572), 
+B-LoRA is a method that leverages LoRA to implicitly separate the style and content components of a **single** image.
+It was shown that learning the LoRA weights of two specific blocks (referred to as B-LoRAs) 
+achieves style-content separation that cannot be achieved by training each B-LoRA independently. 
+Once trained, the two B-LoRAs can be used as independent components to allow various image stylization tasks
+
+**Usage**
+Enable B-LoRA training by adding this flag
+```bash
+--use_blora
+```
+You can train a B-LoRA with as little as 1 image, and 1000 steps. Try this default configuration as a start:
+```bash
+!accelerate launch train_dreambooth_b-lora_sdxl.py \
+ --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0" \
+ --instance_data_dir="linoyts/B-LoRA_teddy_bear" \
+ --output_dir="B-LoRA_teddy_bear" \
+ --instance_prompt="a [v18]" \
+ --resolution=1024 \
+ --rank=64 \
+ --train_batch_size=1 \
+ --learning_rate=5e-5 \
+ --lr_scheduler="constant" \
+ --lr_warmup_steps=0 \
+ --max_train_steps=1000 \
+ --checkpointing_steps=2000 \
+ --seed="0" \
+ --gradient_checkpointing \
+ --mixed_precision="fp16"
+```
+**Inference** 
+The inference is a bit different:
+1. we need load *specific* unet layers (as opposed to a regular LoRA/DoRA)
+2. the trained layers we load, changes based on our objective (e.g. style/content)
+
+```python
+import torch
+from diffusers import StableDiffusionXLPipeline, AutoencoderKL
+
+# taken & modified from B-LoRA repo - https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
+def is_belong_to_blocks(key, blocks):
+    try:
+        for g in blocks:
+            if g in key:
+                return True
+        return False
+    except Exception as e:
+        raise type(e)(f'failed to is_belong_to_block, due to: {e}')
+    
+def lora_lora_unet_blocks(lora_path, alpha, target_blocks):  
+  state_dict, _ = pipeline.lora_state_dict(lora_path)
+  filtered_state_dict = {k: v * alpha for k, v in state_dict.items() if is_belong_to_blocks(k, target_blocks)}
+  return filtered_state_dict
+
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    vae=vae,
+    torch_dtype=torch.float16,
+).to("cuda")
+
+# pick a blora for content/style (you can also set one to None) 
+content_B_lora_path  = "lora-library/B-LoRA-teddybear"
+style_B_lora_path= "lora-library/B-LoRA-pen_sketch"
+
+
+content_B_LoRA = lora_lora_unet_blocks(content_B_lora_path,alpha=1,target_blocks=["unet.up_blocks.0.attentions.0"])
+style_B_LoRA = lora_lora_unet_blocks(style_B_lora_path,alpha=1.1,target_blocks=["unet.up_blocks.0.attentions.1"])
+combined_lora = {**content_B_LoRA, **style_B_LoRA}
+
+# Load both loras
+pipeline.load_lora_into_unet(combined_lora, None, pipeline.unet)
+
+#generate
+prompt = "a [v18] in [v30] style"
+pipeline(prompt, num_images_per_prompt=4).images
+```
+### LoRA training of Targeted U-net Blocks
+The advanced script now supports custom choice of U-net blocks to train during Dreambooth LoRA tuning. 
+> [!NOTE]
+> This feature is still experimental
+
+> Recently, works like B-LoRA showed the potential advantages of learning the LoRA weights of specific U-net blocks, not only in speed & memory, 
+> but also in reducing the amount of needed data, improving style manipulation and overcoming overfitting issues. 
+> In light of this, we're introducing a new feature to the advanced script to allow for configurable U-net learned blocks. 
+
+**Usage**
+Configure LoRA learned U-net blocks adding a `lora_unet_blocks` flag, with a comma seperated string specifying the targeted blocks. 
+e.g:
+```bash
+--lora_unet_blocks="unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1"
+```
+
+> [!NOTE]
+> if you specify both `--use_blora` and `--lora_unet_blocks`, values given in --lora_unet_blocks will be ignored. 
+> When enabling --use_blora, targeted U-net blocks are automatically set to be "unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1" as discussed in the paper. 
+> If you wish to experiment with different blocks, specify `--lora_unet_blocks` only.
+
+**Inference** 
+Inference is the same as for B-LoRAs, except the input targeted blocks should be modified based on your training configuration. 
+```python
+import torch
+from diffusers import StableDiffusionXLPipeline, AutoencoderKL
+
+# taken & modified from B-LoRA repo - https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
+def is_belong_to_blocks(key, blocks):
+    try:
+        for g in blocks:
+            if g in key:
+                return True
+        return False
+    except Exception as e:
+        raise type(e)(f'failed to is_belong_to_block, due to: {e}')
+    
+def lora_lora_unet_blocks(lora_path, alpha, target_blocks):  
+  state_dict, _ = pipeline.lora_state_dict(lora_path)
+  filtered_state_dict = {k: v * alpha for k, v in state_dict.items() if is_belong_to_blocks(k, target_blocks)}
+  return filtered_state_dict
+
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    vae=vae,
+    torch_dtype=torch.float16,
+).to("cuda")
+
+lora_path  = "lora-library/B-LoRA-pen_sketch"
+
+state_dict = lora_lora_unet_blocks(content_B_lora_path,alpha=1,target_blocks=["unet.up_blocks.0.attentions.0"])
+
+# Load traine dlora layers into the unet
+pipeline.load_lora_into_unet(state_dict, None, pipeline.unet)
+
+#generate
+prompt = "a dog in [v30] style"
+pipeline(prompt, num_images_per_prompt=4).images
+```
+
 
 ### Tips and Tricks
 Check out [these recommended practices](https://huggingface.co/blog/sdxl_lora_advanced_script#additional-good-practices)

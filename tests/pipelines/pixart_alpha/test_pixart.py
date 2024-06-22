@@ -25,7 +25,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     PixArtAlphaPipeline,
-    Transformer2DModel,
+    PixArtTransformer2DModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -53,7 +53,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = Transformer2DModel(
+        transformer = PixArtTransformer2DModel(
             sample_size=8,
             num_layers=2,
             patch_size=2,
@@ -323,10 +323,6 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
-
-    # PixArt transformer model does not work with sequential offload so skip it for now
-    def test_sequential_offload_forward_pass_twice(self):
-        pass
 
 
 @slow

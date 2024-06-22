@@ -117,9 +117,15 @@
     title: Token Merging
   title: 최적화/특수 하드웨어
 - sections:
+  - local: conceptual/philosophy
+    title: 철학
   - local: using-diffusers/controlling_generation
     title: 제어된 생성
-  - local: in_translation
+  - local: conceptual/contribution
+    title: 어떻게 기여하나요?
+  - local: conceptual/ethical_guidelines
+    title: Diffusers의 윤리적 가이드라인
+  - local: conceptual/evaluation
     title: Diffusion Models 평가하기
   title: 개념 가이드
 - sections:

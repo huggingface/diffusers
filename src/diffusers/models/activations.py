@@ -18,7 +18,11 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import deprecate
+from ..utils.import_utils import is_torch_npu_available
 
+
+if is_torch_npu_available():
+    import torch_npu
 
 ACTIVATION_FUNCTIONS = {
     "swish": nn.SiLU(),
@@ -44,6 +48,18 @@ def get_activation(act_fn: str) -> nn.Module:
         return ACTIVATION_FUNCTIONS[act_fn]
     else:
         raise ValueError(f"Unsupported activation function: {act_fn}")
+
+
+class FP32SiLU(nn.Module):
+    r"""
+    SiLU activation function with input upcasted to torch.float32.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        return F.silu(inputs.float(), inplace=False).to(inputs.dtype)
 
 
 class GELU(nn.Module):
@@ -98,9 +114,13 @@ class GEGLU(nn.Module):
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
-
-        hidden_states, gate = self.proj(hidden_states).chunk(2, dim=-1)
-        return hidden_states * self.gelu(gate)
+        hidden_states = self.proj(hidden_states)
+        if is_torch_npu_available():
+            # using torch_npu.npu_geglu can run faster and save memory on NPU.
+            return torch_npu.npu_geglu(hidden_states, dim=-1, approximate=1)[0]
+        else:
+            hidden_states, gate = hidden_states.chunk(2, dim=-1)
+            return hidden_states * self.gelu(gate)
 
 
 class ApproximateGELU(nn.Module):

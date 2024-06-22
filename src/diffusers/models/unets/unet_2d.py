@@ -30,11 +30,11 @@ class UNet2DOutput(BaseOutput):
     The output of [`UNet2DModel`].
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)`):
             The hidden states output from the last layer of the model.
     """
 
-    sample: torch.FloatTensor
+    sample: torch.Tensor
 
 
 class UNet2DModel(ModelMixin, ConfigMixin):
@@ -242,7 +242,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         class_labels: Optional[torch.Tensor] = None,
         return_dict: bool = True,
@@ -251,17 +251,17 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         The [`UNet2DModel`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The noisy input tensor with the following shape `(batch, channel, height, width)`.
-            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
-            class_labels (`torch.FloatTensor`, *optional*, defaults to `None`):
+            timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
+            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
                 Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.unets.unet_2d.UNet2DOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.unet_2d.UNet2DOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_2d.UNet2DOutput`] is returned, otherwise a `tuple` is
+            [`~models.unets.unet_2d.UNet2DOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_2d.UNet2DOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is the sample tensor.
         """
         # 0. center input if necessary
