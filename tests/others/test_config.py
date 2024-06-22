@@ -13,8 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import tempfile
 import unittest
+from pathlib import Path
 
 from diffusers import (
     DDIMScheduler,
@@ -28,8 +30,6 @@ from diffusers import (
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils.testing_utils import CaptureLogger
 
-from pathlib import Path
-import json
 
 class SampleObject(ConfigMixin):
     config_name = "config.json"
@@ -92,15 +92,12 @@ class SampleObject4(ConfigMixin):
     ):
         pass
 
+
 class SampleObjectPaths(ConfigMixin):
     config_name = "config.json"
 
     @register_to_config
-    def __init__(
-        self,
-        test_file_1 = Path('foo/bar'),
-        test_file_2 = Path('foo bar\\bar')
-    ):
+    def __init__(self, test_file_1=Path("foo/bar"), test_file_2=Path("foo bar\\bar")):
         pass
 
 
@@ -305,6 +302,5 @@ class ConfigTester(unittest.TestCase):
         config = SampleObjectPaths()
         json_string = config.to_json_string()
         result = json.loads(json_string)
-        assert(result['test_file_1'] == config.config.test_file_1.as_posix())
-        assert(result['test_file_2'] == config.config.test_file_2.as_posix())
-    
+        assert result["test_file_1"] == config.config.test_file_1.as_posix()
+        assert result["test_file_2"] == config.config.test_file_2.as_posix()
