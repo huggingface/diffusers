@@ -42,7 +42,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from .lora_conversion_utils import _convert_kohya_lora_to_diffusers, _maybe_map_sgm_blocks_to_diffusers
+from .lora_conversion_utils import _convert_non_diffusers_lora_to_diffusers, _maybe_map_sgm_blocks_to_diffusers
 
 
 if is_transformers_available():
@@ -287,7 +287,7 @@ class LoraLoaderMixin:
             if unet_config is not None:
                 # use unet config to remap block numbers
                 state_dict = _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
-            state_dict, network_alphas = _convert_kohya_lora_to_diffusers(state_dict)
+            state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
 
