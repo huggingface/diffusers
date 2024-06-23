@@ -251,11 +251,11 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         # 2. Blocks
         batch_size = hidden_states.shape[0]
         encoder_hidden_states = self.caption_projection(encoder_hidden_states) # 3 120 1152
-        encoder_hidden_states_spatial = encoder_hidden_states.repeat_interleave(frame, dim=0).reshape(-1, encoder_hidden_states.shape[-2], encoder_hidden_states.shape[-1])
+        encoder_hidden_states_spatial = encoder_hidden_states.repeat_interleave(frame, dim=0).view(-1, encoder_hidden_states.shape[-2], encoder_hidden_states.shape[-1])
 
         # prepare timesteps for spatial and temporal block
-        timestep_spatial = timestep.repeat_interleave(frame + use_image_num, dim=0).reshape(-1, timestep.shape[-1])
-        timestep_temp = timestep.repeat_interleave(num_patches, dim=0).reshape(-1, timestep.shape[-1])
+        timestep_spatial = timestep.repeat_interleave(frame + use_image_num, dim=0).view(-1, timestep.shape[-1])
+        timestep_temp = timestep.repeat_interleave(num_patches, dim=0).view(-1, timestep.shape[-1])
 
         for i, (spatial_block, temp_block) in enumerate(zip(self.transformer_blocks, self.temporal_transformer_blocks)):
 
@@ -274,8 +274,9 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
 
                 if enable_temporal_attentions:
                     # '(b f) t d -> (b t) f d'
-                    hidden_states = hidden_states.view(input_batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
-                    hidden_states = hidden_states.view(-1, hidden_states.shape[-2], hidden_states.shape[-1])
+                    hidden_states = hidden_states.reshape(input_batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
+                    hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
+
 
                     if i == 0:
                         hidden_states = hidden_states + self.temp_pos_embed
@@ -309,7 +310,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                 if enable_temporal_attentions:
 
                     # '(b f) t d -> (b t) f d'
-                    hidden_states = hidden_states.view(input_batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
+                    hidden_states = hidden_states.reshape(input_batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
                     hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
                     if i == 0 and frame > 1:
@@ -326,7 +327,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                     )
 
                     # '(b f) t d -> (b t) f d'
-                    hidden_states = hidden_states.view(input_batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
+                    hidden_states = hidden_states.reshape(input_batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
                     hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
         embedded_timestep = embedded_timestep.repeat_interleave(frame + use_image_num, dim=0).view(-1, embedded_timestep.shape[-1])

@@ -361,7 +361,10 @@ class BasicTransformerBlock(nn.Module):
                 out_bias=attention_out_bias,
             )  # is self-attn if encoder_hidden_states is none
         else:
-            self.norm2 = None
+            if norm_type == "ada_norm_single": # For Latte
+                self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+            else: 
+                self.norm2=None
             self.attn2 = None
 
         # 3. Feed-forward
@@ -379,8 +382,6 @@ class BasicTransformerBlock(nn.Module):
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
         elif norm_type == "layer_norm_i2vgen":
             self.norm3 = None
-        else:
-            self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
 
         self.ff = FeedForward(
             dim,
@@ -513,9 +514,7 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
         if self.norm_type == "ada_norm_single":
-            norm_func = self.norm2 if self.norm2 is not None else self.norm3
-            # norm_hidden_states = self.norm2(hidden_states)
-            norm_hidden_states = norm_func(hidden_states)
+            norm_hidden_states = self.norm2(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
 
         if self._chunk_size is not None:
