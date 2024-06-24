@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2024 Latte Team and HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -74,12 +74,11 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         vae = AutoencoderKL()
 
         scheduler = DDIMScheduler()
-        # text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel.from_pretrained("/mnt/hwfile/gcc/maxin/work/pretrained/hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        # text_encoder = T5EncoderModel.from_pretrained("/mnt/hwfile/gcc/maxin/work/pretrained/hf-internal-testing/tiny-random-t5")
 
-        # tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
-        tokenizer = AutoTokenizer.from_pretrained("/mnt/hwfile/gcc/maxin/work/pretrained/hf-internal-testing/tiny-random-t5")
-        print("tokenizer", type(tokenizer))
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+        # tokenizer = AutoTokenizer.from_pretrained("/mnt/hwfile/gcc/maxin/work/pretrained/hf-internal-testing/tiny-random-t5")
 
         components = {
             "transformer": transformer.eval(),
@@ -101,9 +100,9 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "height": 64,
-            "width": 64,
-            "video_length": 16,
+            "height": 8,
+            "width": 8,
+            "video_length": 1,
         }
         return inputs
 
@@ -119,27 +118,84 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).video
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (16, 64, 64, 3))
-        expected_video = torch.randn(16, 64, 64, 3)
+        self.assertEqual(generated_video.shape, (1, 3, 8, 8))
+        expected_video = torch.randn(1, 3, 8, 8)
         max_diff = np.abs(generated_video - expected_video).max()
         # self.assertLessEqual(max_diff, 1e-3)
 
-
-    def test_save_load_float16(self):
-        pass
-
     def test_inference_batch_single_identical(self):
-        pass
+        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
 
-    def test_float16_inference(self):
-        pass
+    def test_attention_slicing_forward_pass(self):
+        self._test_attention_slicing_forward_pass(test_max_difference=True, test_mean_pixel_difference=False, expected_max_diff=1e-3)
 
-    def test_save_load_local(self):
-        pass
+    def test_save_load_optional_components(self):
 
+        if not hasattr(self.pipeline_class, "_optional_components"):
+            return
+        
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
 
-    # def test_save_load_optional_components(self):
-    #     pass
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        prompt = inputs["prompt"]
+        generator = inputs["generator"]
+        num_inference_steps = inputs["num_inference_steps"]
+
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+        ) = pipe.encode_prompt(prompt)
+
+        # inputs with prompt converted to embeddings
+        inputs = {
+            "prompt_embeds": prompt_embeds,
+            "negative_prompt": None,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "generator": generator,
+            "num_inference_steps": num_inference_steps,
+            "num_inference_steps": 2,
+            "guidance_scale": 5.0,
+            "height": 8,
+            "width": 8,
+            "video_length": 1,
+            "mask_feature": False,
+        }
+
+        # set all optional components to None
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            pipe_loaded.to(torch_device)
+
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            self.assertTrue(
+                getattr(pipe_loaded, optional_component) is None,
+                f"`{optional_component}` did not stay set to None after loading.",
+            )
+
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, 1.0)
 
 @slow
 @require_torch_gpu
@@ -170,7 +226,7 @@ class LattePipelineIntegrationTests(unittest.TestCase):
         ).video
 
         videe = videos[0]
-        expected_video = torch.randn(16, 512, 512, 3).numpy()
+        expected_video = torch.randn(1, 512, 512, 3).numpy()
 
         max_diff = numpy_cosine_similarity_distance(videe.flatten(), expected_video)
         assert max_diff < 1e-3, f"Max diff is too high. got {videe.flatten()}"
