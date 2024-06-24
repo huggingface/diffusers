@@ -22,6 +22,9 @@ on:
 
 jobs:
   mirror_community_pipeline:
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_COMMUNITY_MIRROR }}
+    
     runs-on: ubuntu-latest
     steps:
       # Checkout to correct ref

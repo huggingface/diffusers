@@ -20,7 +20,6 @@ import requests
 
 
 # Configuration
-LIBRARY_NAME = "diffusers"
 GITHUB_REPO = "huggingface/diffusers"
 GITHUB_RUN_ID = os.getenv("GITHUB_RUN_ID")
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
