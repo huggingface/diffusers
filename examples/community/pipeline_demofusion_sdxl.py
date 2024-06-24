@@ -795,10 +795,10 @@ class DemoFusionSDXLPipeline(
                 Control the strength of dilated sampling. For specific impacts, please refer to Appendix C
                 in the DemoFusion paper.
             cosine_scale_3 (`float`, defaults to 1):
-                Control the strength of the gaussion filter. For specific impacts, please refer to Appendix C
+                Control the strength of the gaussian filter. For specific impacts, please refer to Appendix C
                 in the DemoFusion paper.
             sigma (`float`, defaults to 1):
-                The standerd value of the gaussian filter.
+                The standard value of the gaussian filter.
             show_image (`bool`, defaults to False):
                 Determine whether to show intermediate results during generation.
 
