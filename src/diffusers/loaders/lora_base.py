@@ -57,6 +57,10 @@ class LoraUtilsMixin:
     def save_lora_weights(cls, **kwargs):
         raise NotImplementedError("`save_lora_weights()` not implemented.")
 
+    @classmethod
+    def lora_state_dict(cls, **kwargs):
+        raise NotImplementedError("`lora_state_dict()` is not implemented.")
+
     def _remove_text_encoder_monkey_patch(self):
         if hasattr(self, "text_encoder"):
             recurse_remove_peft_layers(self.text_encoder)
