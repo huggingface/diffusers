@@ -2,7 +2,7 @@
 # A SDXL pipeline can take unlimited weighted prompt
 #
 # Author: Andrew Zhu
-# Github: https://github.com/xhinker
+# GitHub: https://github.com/xhinker
 # Medium: https://medium.com/@xhinker
 ## -----------------------------------------------------------
 

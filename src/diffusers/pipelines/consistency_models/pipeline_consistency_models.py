@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         >>> image.save("cd_imagenet64_l2_onestep_sample_penguin.png")
 
         >>> # Multistep sampling, class-conditional image generation
-        >>> # Timesteps can be explicitly specified; the particular timesteps below are from the original Github repo:
+        >>> # Timesteps can be explicitly specified; the particular timesteps below are from the original GitHub repo:
         >>> # https://github.com/openai/consistency_models/blob/main/scripts/launch.sh#L77
         >>> image = pipe(num_inference_steps=None, timesteps=[22, 0], class_labels=145).images[0]
         >>> image.save("cd_imagenet64_l2_multistep_sample_penguin.png")
