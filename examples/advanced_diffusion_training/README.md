@@ -436,7 +436,7 @@ lora_path  = "lora-library/B-LoRA-pen_sketch"
 
 state_dict = lora_lora_unet_blocks(content_B_lora_path,alpha=1,target_blocks=["unet.up_blocks.0.attentions.0"])
 
-# Load traine dlora layers into the unet
+# Load trained lora layers into the unet
 pipeline.load_lora_into_unet(state_dict, None, pipeline.unet)
 
 #generate
