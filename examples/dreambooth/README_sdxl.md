@@ -261,7 +261,7 @@ The authors found that by using DoRA, both the learning capacity and training st
 **Usage**
 1. To use DoRA you need to upgrade the installation of `peft`:
 ```bash
-pip install-U peft
+pip install -U peft
 ```
 2. Enable DoRA training by adding this flag
 ```bash

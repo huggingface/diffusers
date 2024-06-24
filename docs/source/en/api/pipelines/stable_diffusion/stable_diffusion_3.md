@@ -251,6 +251,9 @@ image.save('sd3-single-file.png')
 
 ### Loading the single file checkpoint with T5
 
+> [!TIP]
+> The following example loads a checkpoint stored in a 8-bit floating point format which requires PyTorch 2.3 or later.
+
 ```python
 import torch
 from diffusers import StableDiffusion3Pipeline

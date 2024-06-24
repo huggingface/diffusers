@@ -30,7 +30,7 @@ accelerate launch finetune_instruct_pix2pix.py \
 ## Inference
 After training the model and the lora weight of the model is stored in the ```$OUTPUT_DIR```.
 
-```bash
+```py
 # load the base model pipeline
 pipe_lora = StableDiffusionInstructPix2PixPipeline.from_pretrained("timbrooks/instruct-pix2pix")
 
