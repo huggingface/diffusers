@@ -245,7 +245,7 @@ The official training examples are maintained by the Diffusers' core maintainers
 This is because of the same reasons put forward in [6. Contribute a community pipeline](#6-contribute-a-community-pipeline) for official pipelines vs. community pipelines: It is not feasible for the core maintainers to maintain all possible training methods for diffusion models.
 If the Diffusers core maintainers and the community consider a certain training paradigm to be too experimental or not popular enough, the corresponding training code should be put in the `research_projects` folder and maintained by the author.
 
-Both official training and research examples consist of a directory that contains one or more training scripts, a requirements.txt file, and a README.md file. In order for the user to make use of the
+Both official training and research examples consist of a directory that contains one or more training scripts, a `requirements.txt` file, and a `README.md` file. In order for the user to make use of the
 training examples, it is required to clone the repository:
 
 ```bash
@@ -255,7 +255,8 @@ git clone https://github.com/huggingface/diffusers
 as well as to install all additional dependencies required for training:
 
 ```bash
-pip install -r /examples/<your-example-folder>/requirements.txt
+cd diffusers
+pip install -r examples/<your-example-folder>/requirements.txt
 ```
 
 Therefore when adding an example, the `requirements.txt` file shall define all pip dependencies required for your training example so that once all those are installed, the user can run the example's training script. See, for example, the [DreamBooth `requirements.txt` file](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/requirements.txt).
