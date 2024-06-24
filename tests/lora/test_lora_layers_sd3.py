@@ -27,7 +27,7 @@ from diffusers import (
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
 )
-from diffusers.utils.testing_utils import is_peft_available, require_peft_backend, torch_device
+from diffusers.utils.testing_utils import is_peft_available, require_peft_backend, require_torch_gpu, torch_device
 
 
 if is_peft_available():
@@ -287,3 +287,24 @@ class SD3LoRATests(unittest.TestCase):
         self.assertTrue(
             np.allclose(ouput_fused, output_unfused_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
         )
+
+    @require_torch_gpu
+    def test_sd3_lora(self):
+        """
+        Test loading the loras that are saved with the diffusers and peft formats.
+        Related PR: https://github.com/huggingface/diffusers/pull/8584
+        """
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        lora_model_id = "hf-internal-testing/tiny-sd3-loras"
+
+        lora_filename = "lora_diffusers_format.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.unload_lora_weights()
+
+        lora_filename = "lora_peft_format.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
