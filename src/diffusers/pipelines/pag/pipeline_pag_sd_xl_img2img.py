@@ -551,12 +551,14 @@ class StableDiffusionXLPAGImg2ImgPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
         prompt_2,
         strength,
         num_inference_steps,
+        callback_steps,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -573,6 +575,11 @@ class StableDiffusionXLPAGImg2ImgPipeline(
             raise ValueError(
                 f"`num_inference_steps` has to be a positive integer but is {num_inference_steps} of type"
                 f" {type(num_inference_steps)}."
+            )
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
             )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
@@ -635,6 +642,7 @@ class StableDiffusionXLPAGImg2ImgPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device, denoising_start=None):
         # get the original timestep using init_timestep
         if denoising_start is None:
@@ -671,6 +679,7 @@ class StableDiffusionXLPAGImg2ImgPipeline(
 
         return timesteps, num_inference_steps - t_start
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.prepare_latents
     def prepare_latents(
         self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
     ):
@@ -821,6 +830,7 @@ class StableDiffusionXLPAGImg2ImgPipeline(
 
         return ip_adapter_image_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids
     def _get_add_time_ids(
         self,
         original_size,
@@ -1185,6 +1195,7 @@ class StableDiffusionXLPAGImg2ImgPipeline(
             prompt_2,
             strength,
             num_inference_steps,
+            None,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,

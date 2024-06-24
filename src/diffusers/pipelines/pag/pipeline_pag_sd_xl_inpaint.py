@@ -641,6 +641,7 @@ class StableDiffusionXLPAGInpaintPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -650,6 +651,7 @@ class StableDiffusionXLPAGInpaintPipeline(
         height,
         width,
         strength,
+        callback_steps,
         output_type,
         negative_prompt=None,
         negative_prompt_2=None,
@@ -665,6 +667,12 @@ class StableDiffusionXLPAGInpaintPipeline(
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -738,6 +746,7 @@ class StableDiffusionXLPAGInpaintPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -804,6 +813,7 @@ class StableDiffusionXLPAGInpaintPipeline(
 
         return outputs
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         dtype = image.dtype
         if self.vae.config.force_upcast:
@@ -827,6 +837,7 @@ class StableDiffusionXLPAGInpaintPipeline(
 
         return image_latents
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
@@ -1312,6 +1323,7 @@ class StableDiffusionXLPAGInpaintPipeline(
             height,
             width,
             strength,
+            None,
             output_type,
             negative_prompt,
             negative_prompt_2,

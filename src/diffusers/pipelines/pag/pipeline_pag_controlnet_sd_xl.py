@@ -621,11 +621,13 @@ class StableDiffusionXLControlNetPAGPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
         prompt_2,
         image,
+        callback_steps,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -634,13 +636,17 @@ class StableDiffusionXLControlNetPAGPipeline(
         ip_adapter_image=None,
         ip_adapter_image_embeds=None,
         negative_pooled_prompt_embeds=None,
-        controlnet_conditioning_scale=None,
-        control_guidance_start=None,
-        control_guidance_end=None,
+        controlnet_conditioning_scale=1.0,
+        control_guidance_start=0.0,
+        control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
-        guidance_scale=None,
-        pag_scale=None,
     ):
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -1215,6 +1221,7 @@ class StableDiffusionXLControlNetPAGPipeline(
             prompt,
             prompt_2,
             image,
+            None,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,

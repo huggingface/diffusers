@@ -277,6 +277,7 @@ class StableDiffusionXLPAGPipeline(
 
         self.set_pag_applied_layers(pag_applied_layers)
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: str,
@@ -600,12 +601,14 @@ class StableDiffusionXLPAGPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
         prompt_2,
         height,
         width,
+        callback_steps,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -618,6 +621,12 @@ class StableDiffusionXLPAGPipeline(
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -712,6 +721,7 @@ class StableDiffusionXLPAGPipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
     def _get_add_time_ids(
         self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
     ):
@@ -1020,6 +1030,7 @@ class StableDiffusionXLPAGPipeline(
             prompt_2,
             height,
             width,
+            None,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
