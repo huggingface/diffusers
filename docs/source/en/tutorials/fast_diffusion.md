@@ -168,7 +168,7 @@ Using SDPA attention and compiling both the UNet and VAE cuts the latency from 3
 </div>
 
 > [!TIP]
-> Starting with PyTorch 2.3.1, you can control the caching behaviour of `torch.compile()`. This is particularly beneficial for compilation modes like `"max-autotune"` which performs a grid-search over several compilation flags to find the optimal configuration. Learn more about how to enable caching when using `torch.compile()` from [here](https://pytorch.org/tutorials/recipes/torch_compile_caching_tutorial.html). 
+> From PyTorch 2.3.1, you can control the caching behavior of `torch.compile()`. This is particularly beneficial for compilation modes like `"max-autotune"` which performs a grid-search over several compilation flags to find the optimal configuration. Learn more in the [Compile Time Caching in torch.compile](https://pytorch.org/tutorials/recipes/torch_compile_caching_tutorial.html) tutorial. 
 
 ### Prevent graph breaks
 
