@@ -288,6 +288,81 @@ class SD3LoRATests(unittest.TestCase):
             np.allclose(ouput_fused, output_unfused_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
         )
 
+    def test_simple_inference_transformer_lora_unloaded(self):
+        components = self.get_dummy_components()
+        transformer_lora_config = self.get_lora_config_for_transformer()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_no_lora = pipe(**inputs).images
+
+        pipe.transformer.add_adapter(transformer_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+
+        pipe.unload_lora_weights()
+        # unloading should remove the LoRA layers
+        self.assertFalse(check_if_lora_correctly_set(pipe.transformer), "Lora layers should not be present.")
+
+        inputs = self.get_dummy_inputs(torch_device)
+        ouput_unloaded = pipe(**inputs).images
+        self.assertTrue(
+            np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3),
+            "Unloaded lora should not change the output",
+        )
+
+    def test_simple_inference_with_transformer_multi_adapter(self):
+        components = self.get_dummy_components()
+        transformer_lora_config = self.get_lora_config_for_transformer()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_no_lora = pipe(**inputs).images
+
+        pipe.transformer.add_adapter(transformer_lora_config, "adapter-1")
+        pipe.transformer.add_adapter(transformer_lora_config, "adapter-2")
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+
+        pipe.set_adapters("adapter-1")
+        inputs = self.get_dummy_inputs(torch_device)
+        output_adapter_1 = pipe(**inputs).images
+
+        inputs = self.get_dummy_inputs(torch_device)
+        pipe.set_adapters("adapter-2")
+        output_adapter_2 = pipe(**inputs).images
+
+        pipe.set_adapters(["adapter-1", "adapter-2"])
+        inputs = self.get_dummy_inputs(torch_device)
+        output_adapter_mixed = pipe(**inputs).images
+
+        # Fuse and unfuse should lead to the same results
+        self.assertFalse(
+            np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
+            "Adapter 1 and 2 should give different results",
+        )
+
+        self.assertFalse(
+            np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3),
+            "Adapter 1 and mixed adapters should give different results",
+        )
+
+        self.assertFalse(
+            np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3),
+            "Adapter 2 and mixed adapters should give different results",
+        )
+
+        pipe.disable_lora()
+        inputs = self.get_dummy_inputs(torch_device)
+        output_disabled = pipe(**inputs).images
+
+        self.assertTrue(
+            np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
+            "output with no lora and output with lora disabled should give same results",
+        )
+
     @require_torch_gpu
     def test_sd3_lora(self):
         """

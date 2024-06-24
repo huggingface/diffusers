@@ -13,7 +13,6 @@ from ..utils import (
     set_weights_and_activate_adapters,
 )
 from .lora import TEXT_ENCODER_NAME, TRANSFORMER_NAME
-from .unet_loader_utils import _maybe_expand_lora_scales
 
 
 if is_accelerate_available():
@@ -122,7 +121,8 @@ class SD3TransformerLoadersMixin:
         if hasattr(self, "peft_config"):
             del self.peft_config
 
-    # Copied from diffusers.loaders.unet.UNet2DConditionLoadersMixin.set_adapters with UNet->Transformer
+    # This class is almost the same but it doesn't do `_maybe_expand_lora_scales()` yet. We will work on adding
+    # this support in a future PR.
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
@@ -172,9 +172,6 @@ class SD3TransformerLoadersMixin:
         # Set None values to default of 1.0
         # e.g. [{...}, 7] -> [{...}, 7] ; [None, None] -> [1.0, 1.0]
         weights = [w if w is not None else 1.0 for w in weights]
-
-        # e.g. [{...}, 7] -> [{expanded dict...}, 7]
-        weights = _maybe_expand_lora_scales(self, weights)
 
         set_weights_and_activate_adapters(self, adapter_names, weights)
 
