@@ -949,8 +949,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
             init_latents = init_latents.to(dtype)
             if latents_mean is not None and latents_std is not None:
-                latents_mean = latents_mean.to(device=self.device, dtype=dtype)
-                latents_std = latents_std.to(device=self.device, dtype=dtype)
+                latents_mean = latents_mean.to(device=device, dtype=dtype)
+                latents_std = latents_std.to(device=device, dtype=dtype)
                 init_latents = (init_latents - latents_mean) * self.vae.config.scaling_factor / latents_std
             else:
                 init_latents = self.vae.config.scaling_factor * init_latents
