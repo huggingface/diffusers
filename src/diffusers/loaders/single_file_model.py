@@ -24,6 +24,7 @@ from .single_file_utils import (
     convert_controlnet_checkpoint,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
+    convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
@@ -63,6 +64,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "ControlNetModel": {
         "checkpoint_mapping_fn": convert_controlnet_checkpoint,
         "config_mapping_fn": create_controlnet_diffusers_config_from_ldm,
+    },
+    "SD3Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_sd3_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
     },
 }
 
@@ -271,16 +276,18 @@ class FromOriginalModelMixin:
 
         if is_accelerate_available():
             unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-            if model._keys_to_ignore_on_load_unexpected is not None:
-                for pat in model._keys_to_ignore_on_load_unexpected:
-                    unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
-            if len(unexpected_keys) > 0:
-                logger.warning(
-                    f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-                )
         else:
-            model.load_state_dict(diffusers_format_checkpoint)
+            _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
+
+        if model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warning(
+                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
 
         if torch_dtype is not None:
             model.to(torch_dtype)
