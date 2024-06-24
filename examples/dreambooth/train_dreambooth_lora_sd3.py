@@ -1443,12 +1443,12 @@ def main(args):
 
     if not train_dataset.custom_instance_prompts:
         if not args.train_text_encoder:
-          prompt_embeds = instance_prompt_hidden_states
-          pooled_prompt_embeds = instance_pooled_prompt_embeds
-          if args.with_prior_preservation:
-              prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
-              pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, class_pooled_prompt_embeds], dim=0)
-          # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
+            prompt_embeds = instance_prompt_hidden_states
+            pooled_prompt_embeds = instance_pooled_prompt_embeds
+            if args.with_prior_preservation:
+                prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
+                pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, class_pooled_prompt_embeds], dim=0)
+            # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
         # batch prompts on all training steps
         else:
             tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt)
