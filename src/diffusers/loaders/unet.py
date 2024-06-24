@@ -362,7 +362,7 @@ class UNet2DConditionLoadersMixin:
         return is_model_cpu_offload, is_sequential_cpu_offload
 
     @classmethod
-    # Copied from diffusers.loaders.lora.LoraLoaderMixin._optionally_disable_offloading
+    # Copied from diffusers.loaders.lora_base.LoraUtilsMixin._optionally_disable_offloading
     def _optionally_disable_offloading(cls, _pipeline):
         """
         Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
