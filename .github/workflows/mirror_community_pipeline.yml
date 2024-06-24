@@ -87,3 +87,13 @@ jobs:
         env:
             PATH_IN_REPO: ${{ env.PATH_IN_REPO }}
             HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
+
+      - name: Report success status
+        if: ${{ success() }}
+        run: |
+          pip install requests && python utils/notify_community_pipelines_mirror.py --status=success
+      
+      - name: Report failure status
+        if: ${{ failure() }}
+        run: |
+          pip install requests && python utils/notify_community_pipelines_mirror.py --status=failure
