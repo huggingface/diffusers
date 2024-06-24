@@ -129,7 +129,14 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.step_index is None:
             self._init_step_index(timestep)
 
-        sigma = self.sigmas[self.step_index]
+        sigmas = self.sigmas.to(device=sample.device, dtype=sample.dtype)
+        schedule_timesteps = self.timesteps.to(sample.device)
+        step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timestep]
+        sigma = sigmas[step_indices].flatten()
+
+        while len(sigma.shape) < len(noise.shape):
+            sigma = sigma.unsqueeze(-1)
+
         sample = sigma * noise + (1.0 - sigma) * sample
 
         return sample
