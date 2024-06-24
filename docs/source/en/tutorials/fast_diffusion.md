@@ -222,7 +222,7 @@ First, configure all the compiler tags:
 
 ```python
 from diffusers import StableDiffusionXLPipeline
-import torch 
+import torch
 
 # Notice the two new flags at the end.
 torch._inductor.config.conv_1x1_as_mm = True
