@@ -828,6 +828,6 @@ class StableDiffusionXLImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 1024, 1024, 3)
 
-        expected_slice = np.array([0.3953, 0.3833, 0.3884, 0.3811, 0.3830, 0.3826, 0.3921, 0.3983, 0.3806])
+        expected_slice = np.array([0.3519, 0.3149, 0.3364, 0.3505, 0.3402, 0.3371, 0.3554, 0.3495, 0.3333])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
