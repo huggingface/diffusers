@@ -762,7 +762,7 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
     def __init__(self, hidden_size=4096, caption_dim=5120, frequency_embedding_size=256):
         super().__init__()
         self.time_proj = Timesteps(
-            num_channels=frequency_embedding_size, flip_sin_to_cos=False, downscale_freq_shift=0.0
+            num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0.0
         )
 
         self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
