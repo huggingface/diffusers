@@ -132,6 +132,7 @@ Please adhere to the licensing terms as described `[here](https://huggingface.co
         "text-to-image",
         "diffusers-training",
         "diffusers",
+        "lora",
         "sd3",
         "sd3-diffusers",
         "template:sd-lora",
