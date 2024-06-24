@@ -36,7 +36,6 @@ pip3 install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu
 
 > [!TIP]
 > The results reported below are from a 80GB 400W A100 with its clock rate set to the maximum. 
-
 > If you're interested in the full benchmarking code, take a look at [huggingface/diffusion-fast](https://github.com/huggingface/diffusion-fast).
 
 
