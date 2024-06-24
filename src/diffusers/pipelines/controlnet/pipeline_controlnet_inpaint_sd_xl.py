@@ -84,6 +84,7 @@ EXAMPLE_DOC_STRING = """
         >>> # !pip install transformers accelerate
         >>> from diffusers import StableDiffusionXLControlNetInpaintPipeline, ControlNetModel, DDIMScheduler
         >>> from diffusers.utils import load_image
+        >>> from PIL import Image
         >>> import numpy as np
         >>> import torch
 
