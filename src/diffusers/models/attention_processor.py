@@ -2646,10 +2646,7 @@ class PAGIdentitySelfAttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states_ptb = attn.group_norm(hidden_states_ptb.transpose(1, 2)).transpose(1, 2)
 
-        value = attn.to_v(hidden_states_ptb)
-
-        hidden_states_ptb = value
-
+        hidden_states_ptb = attn.to_v(hidden_states_ptb)
         hidden_states_ptb = hidden_states_ptb.to(query.dtype)
 
         # linear proj

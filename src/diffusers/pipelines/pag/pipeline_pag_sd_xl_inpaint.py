@@ -36,8 +36,6 @@ from ...loaders import (
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -75,14 +73,14 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionXLInpaintPipeline
+        >>> from diffusers import AutoPipelineForInpainting
         >>> from diffusers.utils import load_image
 
-        >>> pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+        >>> pipe = AutoPipelineForInpainting.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     torch_dtype=torch.float16,
         ...     variant="fp16",
-        ...     use_safetensors=True,
+        ...     enable_pag=True,
         ... )
         >>> pipe.to("cuda")
 
@@ -94,7 +92,12 @@ EXAMPLE_DOC_STRING = """
 
         >>> prompt = "A majestic tiger sitting on a bench"
         >>> image = pipe(
-        ...     prompt=prompt, image=init_image, mask_image=mask_image, num_inference_steps=50, strength=0.80
+        ...     prompt=prompt,
+        ...     image=init_image,
+        ...     mask_image=mask_image,
+        ...     num_inference_steps=50,
+        ...     strength=0.80,
+        ...     pag_scale=0.3,
         ... ).images[0]
         ```
 """
@@ -975,8 +978,6 @@ class StableDiffusionXLPAGInpaintPipeline(
             (
                 AttnProcessor2_0,
                 XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need

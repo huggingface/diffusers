@@ -41,8 +41,6 @@ from ...loaders import (
 from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -73,7 +71,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL
+        >>> from diffusers import AutoPipelineForText2Image, ControlNetModel, AutoencoderKL
         >>> from diffusers.utils import load_image
         >>> import numpy as np
         >>> import torch
@@ -95,8 +93,12 @@ EXAMPLE_DOC_STRING = """
         ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
         ... )
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, vae=vae, torch_dtype=torch.float16
+        >>> pipe = AutoPipelineForText2Image.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-base-1.0",
+        ...     controlnet=controlnet,
+        ...     vae=vae,
+        ...     torch_dtype=torch.float16,
+        ...     enable_pag=True,
         ... )
         >>> pipe.enable_model_cpu_offload()
 
@@ -109,7 +111,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # generate image
         >>> image = pipe(
-        ...     prompt, controlnet_conditioning_scale=controlnet_conditioning_scale, image=canny_image
+        ...     prompt, controlnet_conditioning_scale=controlnet_conditioning_scale, image=canny_image, pag_scale=0.3
         ... ).images[0]
         ```
 """
@@ -923,8 +925,6 @@ class StableDiffusionXLControlNetPAGPipeline(
             (
                 AttnProcessor2_0,
                 XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need
