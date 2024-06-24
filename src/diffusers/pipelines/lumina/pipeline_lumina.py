@@ -162,7 +162,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         + r"]{1,}"
     )  # noqa
 
-    _optional_components = ["tokenizer", "text_encoder"]
+    _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
 
     def __init__(
@@ -211,6 +211,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             pad_to_multiple_of=8,
             max_length=self.max_sequence_length,
             truncation=True,
+            padding=True,
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids.to(device)
@@ -224,8 +225,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             )
 
         prompt_attention_mask = text_inputs.attention_mask.to(device)
-        prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
-
         prompt_embeds = self.text_encoder(
             text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
         )
@@ -244,6 +243,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
+        prompt_attention_mask = prompt_attention_mask.view(batch_size * num_images_per_prompt, -1)
 
         return prompt_embeds, prompt_attention_mask
 
@@ -252,7 +253,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         do_classifier_free_guidance: bool = True,
-        negative_prompt: str = "",
+        negative_prompt: Union[str, List[str]] = None,
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -333,12 +334,11 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="pt",
             )
-            negtive_text_input_ids = negative_text_inputs.input_ids.to(device)
+            negative_text_input_ids = negative_text_inputs.input_ids.to(device)
             negative_prompt_attention_mask = negative_text_inputs.attention_mask.to(device)
-            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
             # Get the negative prompt embeddings
             negative_prompt_embeds = self.text_encoder(
-                negtive_text_input_ids,
+                negative_text_input_ids,
                 attention_mask=negative_prompt_attention_mask,
                 output_hidden_states=True,
             )
@@ -351,6 +351,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.view(batch_size * num_images_per_prompt, -1)
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
@@ -626,7 +628,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         num_inference_steps: int = 30,
         timesteps: List[int] = None,
         guidance_scale: float = 4.0,
-        negative_prompt: str = "",
+        negative_prompt: Union[str, List[str]] = None,
         sigmas: List[float] = None,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
