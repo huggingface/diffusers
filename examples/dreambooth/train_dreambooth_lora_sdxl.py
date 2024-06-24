@@ -78,7 +78,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.29.0.dev0")
+check_min_version("0.30.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1289,8 +1289,8 @@ def main(args):
             models = [unet_]
             if args.train_text_encoder:
                 models.extend([text_encoder_one_, text_encoder_two_])
-                # only upcast trainable parameters (LoRA) into fp32
-                cast_training_params(models)
+            # only upcast trainable parameters (LoRA) into fp32
+            cast_training_params(models)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
