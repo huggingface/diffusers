@@ -1013,7 +1013,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", torch_dtype=torch.float16, safety_checker=None
+            model_id, variant="fp16", torch_dtype=torch.float16, safety_checker=None
         )
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
