@@ -27,7 +27,7 @@ from diffusers import (
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
 )
-from diffusers.utils.testing_utils import is_peft_available, require_peft_backend, torch_device
+from diffusers.utils.testing_utils import is_peft_available, require_peft_backend, require_torch_gpu, torch_device
 
 
 if is_peft_available():
@@ -205,3 +205,106 @@ class SD3LoRATests(unittest.TestCase):
             np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
             "Lora + 0 scale should lead to same result as no LoRA",
         )
+
+    def test_simple_inference_with_transformer_fused(self):
+        components = self.get_dummy_components()
+        transformer_lora_config = self.get_lora_config_for_transformer()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_no_lora = pipe(**inputs).images
+
+        pipe.transformer.add_adapter(transformer_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+
+        pipe.fuse_lora()
+        # Fusing should still keep the LoRA layers
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+
+        inputs = self.get_dummy_inputs(torch_device)
+        ouput_fused = pipe(**inputs).images
+        self.assertFalse(
+            np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+        )
+
+    def test_simple_inference_with_transformer_fused_with_no_fusion(self):
+        components = self.get_dummy_components()
+        transformer_lora_config = self.get_lora_config_for_transformer()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_no_lora = pipe(**inputs).images
+
+        pipe.transformer.add_adapter(transformer_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+        inputs = self.get_dummy_inputs(torch_device)
+        ouput_lora = pipe(**inputs).images
+
+        pipe.fuse_lora()
+        # Fusing should still keep the LoRA layers
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+
+        inputs = self.get_dummy_inputs(torch_device)
+        ouput_fused = pipe(**inputs).images
+        self.assertFalse(
+            np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+        )
+        self.assertTrue(
+            np.allclose(ouput_fused, ouput_lora, atol=1e-3, rtol=1e-3),
+            "Fused lora output should be changed when LoRA isn't fused but still effective.",
+        )
+
+    def test_simple_inference_with_transformer_fuse_unfuse(self):
+        components = self.get_dummy_components()
+        transformer_lora_config = self.get_lora_config_for_transformer()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_no_lora = pipe(**inputs).images
+
+        pipe.transformer.add_adapter(transformer_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+
+        pipe.fuse_lora()
+        # Fusing should still keep the LoRA layers
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+        inputs = self.get_dummy_inputs(torch_device)
+        ouput_fused = pipe(**inputs).images
+        self.assertFalse(
+            np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+        )
+
+        pipe.unfuse_lora()
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+        inputs = self.get_dummy_inputs(torch_device)
+        output_unfused_lora = pipe(**inputs).images
+        self.assertTrue(
+            np.allclose(ouput_fused, output_unfused_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+        )
+
+    @require_torch_gpu
+    def test_sd3_lora(self):
+        """
+        Test loading the loras that are saved with the diffusers and peft formats.
+        Related PR: https://github.com/huggingface/diffusers/pull/8584
+        """
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        lora_model_id = "hf-internal-testing/tiny-sd3-loras"
+
+        lora_filename = "lora_diffusers_format.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.unload_lora_weights()
+
+        lora_filename = "lora_peft_format.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
