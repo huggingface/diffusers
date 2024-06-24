@@ -759,7 +759,7 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
 
 
 class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
-    def __init__(self, hidden_size=4096, caption_dim=5120, frequency_embedding_size=256):
+    def __init__(self, hidden_size=4096, encoder_hidden_size=2048, frequency_embedding_size=256):
         super().__init__()
         self.time_proj = Timesteps(
             num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0.0
@@ -773,9 +773,9 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
         nn.init.zeros_(self.timestep_embedder.linear_2.bias)
 
         self.caption_embedder = nn.Sequential(
-            nn.LayerNorm(caption_dim),
+            nn.LayerNorm(encoder_hidden_size),
             nn.Linear(
-                caption_dim,
+                encoder_hidden_size,
                 hidden_size,
                 bias=True,
             ),

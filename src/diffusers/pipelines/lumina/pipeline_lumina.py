@@ -17,7 +17,7 @@ import inspect
 import math
 import re
 import urllib.parse as ul
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from transformers import AutoModel, AutoTokenizer
@@ -51,7 +51,9 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import LuminaText2ImgPipeline
 
-        >>> pipe = LuminaText2ImgPipeline.from_pretrained("Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16).cuda()
+        >>> pipe = LuminaText2ImgPipeline.from_pretrained(
+        ...     "Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16
+        ... ).cuda()
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
@@ -807,7 +809,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            
+
                 current_timestep = t
                 if not torch.is_tensor(current_timestep):
                     # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
@@ -828,14 +830,14 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 current_timestep = current_timestep.expand(latent_model_input.shape[0])
 
                 # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
-                current_timestep = (1 - current_timestep / self.scheduler.config.num_train_timesteps)
+                current_timestep = 1 - current_timestep / self.scheduler.config.num_train_timesteps
 
                 # dynamic scaling_factor for different resolution.
                 hidden_size = self.transformer.config.hidden_size
                 num_attention_heads = self.transformer.config.num_attention_heads
                 attention_head_dim = hidden_size // num_attention_heads
-                scaling_factor = math.sqrt(width * height / self.default_image_size ** 2)
-                
+                scaling_factor = math.sqrt(width * height / self.default_image_size**2)
+
                 self.transformer.freqs_cis = self.transformer.precompute_freqs_cis(
                     attention_head_dim,
                     384,
@@ -860,10 +862,14 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
                 if do_classifier_free_guidance:
                     noise_pred_eps, noise_pred_rest = noise_pred[:, :3], noise_pred[:, 3:]
-                    noise_pred_cond_eps, noise_pred_uncond_eps = torch.split(noise_pred_eps, len(noise_pred_eps) // 2, dim=0)
-                    noise_pred_half = noise_pred_uncond_eps + guidance_scale * (noise_pred_cond_eps - noise_pred_uncond_eps)
+                    noise_pred_cond_eps, noise_pred_uncond_eps = torch.split(
+                        noise_pred_eps, len(noise_pred_eps) // 2, dim=0
+                    )
+                    noise_pred_half = noise_pred_uncond_eps + guidance_scale * (
+                        noise_pred_cond_eps - noise_pred_uncond_eps
+                    )
                     noise_pred_eps = torch.cat([noise_pred_half, noise_pred_half], dim=0)
-                    
+
                     noise_pred = torch.cat([noise_pred_eps, noise_pred_rest], dim=1)
                     noise_pred, _ = noise_pred.chunk(2, dim=0)
 

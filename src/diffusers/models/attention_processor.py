@@ -1699,6 +1699,165 @@ class HunyuanAttnProcessor2_0:
         return hidden_states
 
 
+class LuminaAttnProcessor2_0(nn.Module):
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
+    used in the LuminaNextDiT model. It applies a s normalization layer and rotary embedding on query and key vector.
+    """
+
+    def __init__(
+        self,
+        hidden_size: int = 4096,
+        encoder_hidden_size: int = 2048,
+        heads: int = 32,
+        kv_heads: int = 8,
+    ):
+        super().__init__()
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+        self.head_dim = hidden_size // heads
+        
+        self.to_q = nn.Linear(
+            hidden_size,
+            heads * self.head_dim,
+            bias=False,
+        )
+        self.to_k = nn.Linear(
+            hidden_size,
+            kv_heads * self.head_dim,
+            bias=False,
+        )
+        self.to_v = nn.Linear(
+            hidden_size,
+            kv_heads * self.head_dim,
+            bias=False,
+        )
+        
+        self.norm_q = nn.LayerNorm(heads * self.head_dim)
+        self.norm_k = nn.LayerNorm(kv_heads * self.head_dim)
+
+        self.key_cap = nn.Linear(
+            encoder_hidden_size,
+            kv_heads * self.head_dim,
+            bias=False,
+        )
+        self.value_cap = nn.Linear(
+            encoder_hidden_size,
+            kv_heads * self.head_dim,
+            bias=False,
+        )
+        self.norm_k_cap = nn.LayerNorm(kv_heads * self.head_dim)
+
+        self.gate = nn.Parameter(torch.zeros([heads]))
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+        proportional_attn: Optional[bool] = True,
+        base_sequence_length: Optional[int] = 4096,
+    ) -> torch.Tensor:
+        from .embeddings import apply_rotary_emb
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        # Get Query-Key-Value Pair
+        query = self.to_q(hidden_states)
+
+        key = self.to_k(hidden_states)
+        value = self.to_v(hidden_states)
+
+        query_dim = query.shape[-1]
+        inner_dim = key.shape[-1]
+        head_dim = query_dim // attn.heads
+        dtype = query.dtype
+
+        # Get key-value head
+        kv_heads = inner_dim // attn.heads
+
+        # Apply Query-Key Norm if needed
+        if self.norm_q is not None:
+            query = self.norm_q(query)
+        if self.norm_k is not None:
+            key = self.norm_k(key)
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+
+        # Apply RoPE if needed
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
+
+        query, key = query.to(dtype), key.to(dtype)
+
+        # Apply proportional attention if true
+        if proportional_attn:
+            softmax_scale = math.sqrt(math.log(sequence_length, base_sequence_length)) * attn.scale
+        else:
+            softmax_scale = attn.scale
+
+        # perform Grouped-qurey Attention (GQA)
+        n_rep = attn.heads // kv_heads
+        if n_rep >= 1:
+            key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
+            value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
+
+        attention_mask = (
+            attention_mask.bool().view(batch_size, 1, 1, sequence_length).expand(-1, attn.heads, sequence_length, -1)
+        )
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, scale=softmax_scale
+        )
+        hidden_states = hidden_states.permute(0, 2, 1, 3).to(dtype)
+
+        # Cross Attention
+        key_cap = self.key_cap(encoder_hidden_states)
+        # Apply Key Norm to encoder_hidden_state
+        key_cap = self.norm_k_cap(key_cap).view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+        value_cap = self.value_cap(encoder_hidden_states).view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+
+        if n_rep >= 1:
+            key_cap = key_cap.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
+            value_cap = value_cap.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
+
+        encoder_mask = (encoder_mask.view(batch_size, 1, 1, -1).expand(batch_size, attn.heads, sequence_length, -1),)
+        hidden_states_caption = F.scaled_dot_product_attention(query, key_cap, value_cap, encoder_mask)
+        hidden_states_caption = hidden_states_caption.permute(0, 2, 1, 3)
+
+        hidden_states_caption = hidden_states_caption * self.gate.tanh().view(1, 1, -1, 1)
+        hidden_states = hidden_states + hidden_states_caption
+
+        hidden_states = hidden_states.flatten(-2)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+
+        return hidden_states
+
+
 class FusedAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). It uses

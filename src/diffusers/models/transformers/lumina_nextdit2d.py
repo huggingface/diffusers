@@ -12,18 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from flash_attn import flash_attn_varlen_func
-from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ..attention import LuminaFeedForward
+from ..attention_processor import Attention, LuminaAttnProcessor2_0
 from ..embeddings import (
     LuminaCombinedTimestepCaptionEmbedding,
 )
@@ -37,307 +34,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 def modulate(x, scale):
     return x * (1 + scale.unsqueeze(1))
-
-
-class Attention(nn.Module):
-    """
-    Initialize the Multi-head attention module.
-
-    Args:
-        hidden_size (int): Number of input dimensions.
-        num_attention_heads (int): Number of heads.
-        num_kv_heads (Optional[int]): Number of kv heads, if using GQA.
-    """
-
-    def __init__(
-        self,
-        hidden_size: int,
-        num_attention_heads: int,
-        num_kv_heads: Optional[int],
-        qk_norm: bool,
-        caption_dim: int,
-    ):
-        super().__init__()
-        self.num_kv_heads = num_attention_heads if num_kv_heads is None else num_kv_heads
-        self.num_attention_heads = num_attention_heads
-        self.num_kv_heads = self.num_kv_heads
-        self.n_rep = self.num_attention_heads // self.num_kv_heads
-        self.head_dim = hidden_size // num_attention_heads
-
-        self.wq = nn.Linear(
-            hidden_size,
-            num_attention_heads * self.head_dim,
-            bias=False,
-        )
-        nn.init.xavier_uniform_(self.wq.weight)
-        self.wk = nn.Linear(
-            hidden_size,
-            self.num_kv_heads * self.head_dim,
-            bias=False,
-        )
-        nn.init.xavier_uniform_(self.wk.weight)
-        self.wv = nn.Linear(
-            hidden_size,
-            self.num_kv_heads * self.head_dim,
-            bias=False,
-        )
-        nn.init.xavier_uniform_(self.wv.weight)
-        if caption_dim > 0:
-            self.wk_cap = nn.Linear(
-                caption_dim,
-                self.num_kv_heads * self.head_dim,
-                bias=False,
-            )
-            nn.init.xavier_uniform_(self.wk_cap.weight)
-            self.wv_cap = nn.Linear(
-                caption_dim,
-                self.num_kv_heads * self.head_dim,
-                bias=False,
-            )
-            nn.init.xavier_uniform_(self.wv_cap.weight)
-            self.gate = nn.Parameter(torch.zeros([self.num_attention_heads]))
-
-        self.wo = nn.Linear(
-            num_attention_heads * self.head_dim,
-            hidden_size,
-            bias=False,
-        )
-        nn.init.xavier_uniform_(self.wo.weight)
-
-        if qk_norm:
-            self.q_norm = nn.LayerNorm(self.num_attention_heads * self.head_dim)
-            self.k_norm = nn.LayerNorm(self.num_kv_heads * self.head_dim)
-            if caption_dim > 0:
-                self.k_cap_norm = nn.LayerNorm(self.num_kv_heads * self.head_dim)
-            else:
-                self.k_cap_norm = nn.Identity()
-        else:
-            self.q_norm = self.k_norm = nn.Identity()
-            self.k_cap_norm = nn.Identity()
-
-        # for proportional attention computation
-        self.base_seqlen = None
-        self.proportional_attn = False
-        self.use_flash_attn = True
-
-    @staticmethod
-    def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
-        """
-        Reshape frequency tensor for broadcasting it with another tensor.
-
-        This function reshapes the frequency tensor to have the same shape as the target tensor 'x' for the purpose of
-        broadcasting the frequency tensor during element-wise operations.
-
-        Args:
-            freqs_cis (torch.Tensor): Frequency tensor to be reshaped.
-            x (torch.Tensor): Target tensor for broadcasting compatibility.
-
-        Returns:
-            torch.Tensor: Reshaped frequency tensor.
-
-        Raises:
-            AssertionError: If the frequency tensor doesn't match the expected
-                shape.
-            AssertionError: If the target tensor 'x' doesn't have the expected
-                number of dimensions.
-        """
-        ndim = x.ndim
-        assert 0 <= 1 < ndim
-        assert freqs_cis.shape == (x.shape[1], x.shape[-1])
-        shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        return freqs_cis.view(*shape)
-
-    @staticmethod
-    def apply_rotary_emb(
-        x_in: torch.Tensor,
-        freqs_cis: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Apply rotary embeddings to input tensors using the given frequency tensor.
-
-        This function applies rotary embeddings to the given query 'xq' and key 'xk' tensors using the provided
-        frequency tensor 'freqs_cis'. The input tensors are reshaped as complex numbers, and the frequency tensor is
-        reshaped for broadcasting compatibility. The resulting tensors contain rotary embeddings and are returned as
-        real tensors.
-
-        Args:
-            x_in (torch.Tensor): Query or Key tensor to apply rotary embeddings.
-            freqs_cis (torch.Tensor): Precomputed frequency tensor for complex
-                exponentials.
-
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor
-                and key tensor with rotary embeddings.
-        """
-        with torch.cuda.amp.autocast(enabled=False):
-            x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
-            freqs_cis = freqs_cis.unsqueeze(2)
-            x_out = torch.view_as_real(x * freqs_cis).flatten(3)
-            return x_out.type_as(x_in)
-
-    # copied from huggingface modeling_llama.py
-    def _upad_input(self, query_layer, key_layer, value_layer, attention_mask, query_length):
-        def _get_unpad_data(attention_mask):
-            seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
-            indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
-            max_seqlen_in_batch = seqlens_in_batch.max().item()
-            cu_seqlens = F.pad(torch.cumsum(seqlens_in_batch, dim=0, dtype=torch.int32), (1, 0))
-            return (
-                indices,
-                cu_seqlens,
-                max_seqlen_in_batch,
-            )
-
-        indices_k, cu_seqlens_k, max_seqlen_in_batch_k = _get_unpad_data(attention_mask)
-        batch_size, kv_seq_len, num_key_value_heads, head_dim = key_layer.shape
-
-        key_layer = index_first_axis(
-            key_layer.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim),
-            indices_k,
-        )
-        value_layer = index_first_axis(
-            value_layer.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim),
-            indices_k,
-        )
-        if query_length == kv_seq_len:
-            query_layer = index_first_axis(
-                query_layer.reshape(batch_size * kv_seq_len, self.num_attention_heads, head_dim),
-                indices_k,
-            )
-            cu_seqlens_q = cu_seqlens_k
-            max_seqlen_in_batch_q = max_seqlen_in_batch_k
-            indices_q = indices_k
-        elif query_length == 1:
-            max_seqlen_in_batch_q = 1
-            cu_seqlens_q = torch.arange(
-                batch_size + 1, dtype=torch.int32, device=query_layer.device
-            )  # There is a memcpy here, that is very bad.
-            indices_q = cu_seqlens_q[:-1]
-            query_layer = query_layer.squeeze(1)
-        else:
-            # The -q_len: slice assumes left padding.
-            attention_mask = attention_mask[:, -query_length:]
-            query_layer, indices_q, cu_seqlens_q, max_seqlen_in_batch_q = unpad_input(query_layer, attention_mask)
-
-        return (
-            query_layer,
-            key_layer,
-            value_layer,
-            indices_q,
-            (cu_seqlens_q, cu_seqlens_k),
-            (max_seqlen_in_batch_q, max_seqlen_in_batch_k),
-        )
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        x_mask: torch.Tensor,
-        freqs_cis: torch.Tensor,
-        caption_feat: torch.Tensor,
-        caption_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Apply the attention mechanism to the input tensors.
-
-        Args:
-            x (torch.Tensor): Input tensor.
-            x_mask (torch.Tensor): Mask for the input tensor.
-            freqs_cis (torch.Tensor): Frequency tensor for complex exponentials.
-            caption_feat (torch.Tensor): Additional input tensor.
-            caption_mask (torch.Tensor): Mask for the additional input tensor.
-
-        Returns:
-            torch.Tensor: Output tensor after applying the attention mechanism.
-        """
-        bsz, seqlen, _ = x.shape
-        xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
-        dtype = xq.dtype
-
-        xq = self.q_norm(xq)
-        xk = self.k_norm(xk)
-
-        xq = xq.view(bsz, seqlen, self.num_attention_heads, self.head_dim)
-        xk = xk.view(bsz, seqlen, self.num_kv_heads, self.head_dim)
-        xv = xv.view(bsz, seqlen, self.num_kv_heads, self.head_dim)
-
-        xq = Attention.apply_rotary_emb(xq, freqs_cis=freqs_cis)
-        xk = Attention.apply_rotary_emb(xk, freqs_cis=freqs_cis)
-
-        xq, xk = xq.to(dtype), xk.to(dtype)
-        
-        if self.proportional_attn:
-            softmax_scale = math.sqrt(math.log(seqlen, self.base_seqlen) / self.head_dim)
-        else:
-            softmax_scale = math.sqrt(1 / self.head_dim)
-
-        if self.use_flash_attn and dtype in [torch.float16, torch.bfloat16]:
-            (
-                query_states,
-                key_states,
-                value_states,
-                indices_q,
-                cu_seq_lens,
-                max_seq_lens,
-            ) = self._upad_input(xq, xk, xv, x_mask, seqlen)
-
-            cu_seqlens_q, cu_seqlens_k = cu_seq_lens
-            max_seqlen_in_batch_q, max_seqlen_in_batch_k = max_seq_lens
-
-            attn_output_unpad = flash_attn_varlen_func(
-                query_states,
-                key_states,
-                value_states,
-                cu_seqlens_q=cu_seqlens_q,
-                cu_seqlens_k=cu_seqlens_k,
-                max_seqlen_q=max_seqlen_in_batch_q,
-                max_seqlen_k=max_seqlen_in_batch_k,
-                dropout_p=0.0,
-                causal=False,
-                softmax_scale=softmax_scale,
-            )
-            output = pad_input(attn_output_unpad, indices_q, bsz, seqlen)
-
-        else:
-            n_rep = self.num_attention_heads // self.num_kv_heads
-            if n_rep >= 1:
-                xk = xk.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
-                xv = xv.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
-            output = (
-                F.scaled_dot_product_attention(
-                    xq.permute(0, 2, 1, 3),
-                    xk.permute(0, 2, 1, 3),
-                    xv.permute(0, 2, 1, 3),
-                    attn_mask=x_mask.bool().view(bsz, 1, 1, seqlen).expand(-1, self.num_attention_heads, seqlen, -1),
-                    scale=softmax_scale,
-                )
-                .permute(0, 2, 1, 3)
-                .to(dtype)
-            )
-
-        if hasattr(self, "wk_cap"):
-            # print(self.wk_cap(caption_feat).shape, caption_feat.shape)
-            yk = self.k_cap_norm(self.wk_cap(caption_feat)).view(bsz, -1, self.num_kv_heads, self.head_dim)
-            yv = self.wv_cap(caption_feat).view(bsz, -1, self.num_kv_heads, self.head_dim)
-
-            n_rep = self.num_attention_heads // self.num_kv_heads
-
-            if n_rep >= 1:
-                yk = yk.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
-                yv = yv.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
-
-            output_caption = F.scaled_dot_product_attention(
-                xq.permute(0, 2, 1, 3),
-                yk.permute(0, 2, 1, 3),
-                yv.permute(0, 2, 1, 3),
-                caption_mask.view(bsz, 1, 1, -1).expand(bsz, self.num_attention_heads, seqlen, -1),
-            ).permute(0, 2, 1, 3)
-
-            output_caption = output_caption * self.gate.tanh().view(1, 1, -1, 1)
-            output = output + output_caption
-
-        output = output.flatten(-2)
-
-        return self.wo(output)
 
 
 class FinalLayer(nn.Module):
@@ -431,13 +127,29 @@ class LuminaNextDiTBlock(nn.Module):
         ffn_dim_multiplier: float,
         norm_eps: float,
         qk_norm: bool,
-        caption_dim: int,
-        elementwise_affine: bool = True,
+        encoder_hidden_size: int,
+        norm_elementwise_affine: bool = True,
     ) -> None:
         super().__init__()
         self.hidden_size = hidden_size
         self.head_dim = hidden_size // num_attention_heads
-        self.attention = Attention(hidden_size, num_attention_heads, num_kv_heads, qk_norm, caption_dim)
+        self.attention = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=None,
+            dim_head=hidden_size // num_attention_heads,
+            heads=num_attention_heads,
+            qk_norm="layer_norm" if qk_norm else None,
+            eps=1e-5,
+            bias=False,
+            out_bias=False,
+            processor=LuminaAttnProcessor2_0(
+                hidden_size=hidden_size,
+                encoder_hidden_size=encoder_hidden_size,
+                heads=num_attention_heads,
+                kv_heads=num_kv_heads,
+            ),
+        )
+
         self.feed_forward = LuminaFeedForward(
             hidden_size=hidden_size,
             intermediate_size=4 * hidden_size,
@@ -445,11 +157,11 @@ class LuminaNextDiTBlock(nn.Module):
             ffn_dim_multiplier=ffn_dim_multiplier,
         )
         self.layer_id = layer_id
-        self.attention_norm1 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=elementwise_affine)
-        self.ffn_norm1 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=elementwise_affine)
+        self.attention_norm1 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.ffn_norm1 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
-        self.attention_norm2 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=elementwise_affine)
-        self.ffn_norm2 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=elementwise_affine)
+        self.attention_norm2 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.ffn_norm2 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
@@ -462,22 +174,22 @@ class LuminaNextDiTBlock(nn.Module):
         nn.init.zeros_(self.adaLN_modulation[1].weight)
         nn.init.zeros_(self.adaLN_modulation[1].bias)
 
-        self.attention_caption_norm = RMSNorm(caption_dim, eps=norm_eps, elementwise_affine=elementwise_affine)
+        self.attention_caption_norm = RMSNorm(encoder_hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
     def forward(
         self,
-        x: torch.Tensor,
-        x_mask: torch.Tensor,
+        hidden_state: torch.Tensor,
+        attention_mask: torch.Tensor,
         freqs_cis: torch.Tensor,
-        caption_feat: torch.Tensor,
-        caption_mask: torch.Tensor,
+        encoder_hidden_state: torch.Tensor,
+        encoder_mask: torch.Tensor,
         adaln_input: Optional[torch.Tensor] = None,
     ):
         """
         Perform a forward pass through the LuminaNextDiTBlock.
 
         Args:
-            x (torch.Tensor): Input tensor.
+            hidden_state (torch.Tensor): Input tensor.
             freqs_cis (torch.Tensor): Precomputed cosine and sine frequencies.
         Returns:
             torch.Tensor: Output tensor after applying attention and
@@ -486,33 +198,33 @@ class LuminaNextDiTBlock(nn.Module):
         if adaln_input is not None:
             scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).chunk(4, dim=1)
 
-            x = x + gate_msa.unsqueeze(1).tanh() * self.attention_norm2(
+            hidden_state = hidden_state + gate_msa.unsqueeze(1).tanh() * self.attention_norm2(
                 self.attention(
-                    modulate(self.attention_norm1(x), scale_msa),
-                    x_mask,
-                    freqs_cis,
-                    self.attention_caption_norm(caption_feat),
-                    caption_mask,
+                    hidden_states=modulate(self.attention_norm1(hidden_state), scale_msa),
+                    encoder_hidden_state=self.attention_caption_norm(encoder_hidden_state),
+                    attention_mask=attention_mask,
+                    encoder_mask=encoder_mask,
+                    image_rotary_emb=freqs_cis,
                 )
             )
-            x = x + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(
+            hidden_state = hidden_state + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(
                 self.feed_forward(
-                    modulate(self.ffn_norm1(x), scale_mlp),
+                    modulate(self.ffn_norm1(hidden_state), scale_mlp),
                 )
             )
         else:
-            x = x + self.attention_norm2(
+            hidden_state = hidden_state + self.attention_norm2(
                 self.attention(
-                    self.attention_norm1(x),
-                    x_mask,
-                    freqs_cis,
-                    self.attention_caption_norm(caption_feat),
-                    caption_mask,
+                    hidden_states=modulate(self.attention_norm1(hidden_state), scale_msa),
+                    encoder_hidden_state=self.attention_caption_norm(encoder_hidden_state),
+                    attention_mask=attention_mask,
+                    encoder_mask=encoder_mask,
+                    image_rotary_emb=freqs_cis,
                 )
             )
-            x = x + self.ffn_norm2(self.feed_forward(self.ffn_norm1(x)))
+            hidden_state = hidden_state + self.ffn_norm2(self.feed_forward(self.ffn_norm1(hidden_state)))
 
-        return x
+        return hidden_state
 
 
 class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
@@ -553,7 +265,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             predictions.
         qk_norm (`bool`, *optional*, defaults to True):
             Indicates if the queries and keys in the attention mechanism should be normalized.
-        caption_dim (`int`, *optional*, defaults to 2048):
+        encoder_hidden_size (`int`, *optional*, defaults to 2048):
             The dimensionality of the text embeddings. This parameter defines the size of the text representations used
             in the model.
         scaling_factor (`float`, *optional*, defaults to 1.0):
@@ -567,7 +279,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         sample_size: int = 128,
         patch_size: Optional[int] = 2,
         in_channels: Optional[int] = 4,
-        hidden_size: Optional[int] = 4096,
+        hidden_size: Optional[int] = 2304,
         num_layers: Optional[int] = 32,
         num_attention_heads: Optional[int] = 32,
         num_kv_heads: Optional[int] = None,
@@ -576,10 +288,11 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         norm_eps: Optional[float] = 1e-5,
         learn_sigma: Optional[bool] = True,
         qk_norm: Optional[bool] = False,
-        caption_dim: Optional[int] = 2048,
+        encoder_hidden_size: Optional[int] = 2048,
         scaling_factor: Optional[float] = 1.0,
     ) -> None:
         super().__init__()
+        self.sample_size = sample_size
         self.patch_size = patch_size
         self.in_channels = in_channels
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
@@ -600,7 +313,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         nn.init.normal_(self.pad_token, std=0.02)
 
         self.time_caption_embed = LuminaCombinedTimestepCaptionEmbedding(
-            hidden_size=min(hidden_size, 1024), caption_dim=caption_dim
+            hidden_size=min(hidden_size, 1024), encoder_hidden_size=encoder_hidden_size
         )
 
         self.layers = nn.ModuleList(
@@ -614,7 +327,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
                     ffn_dim_multiplier,
                     norm_eps,
                     qk_norm,
-                    caption_dim,
+                    encoder_hidden_size,
                 )
                 for layer_id in range(num_layers)
             ]
@@ -746,36 +459,36 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        x: torch.Tensor,
+        hidden_states: torch.Tensor,
         timestep: torch.Tensor,
-        caption_feat: torch.Tensor,
-        caption_mask: torch.Tensor,
+        encoder_hidden_state: torch.Tensor,
+        encoder_mask: torch.Tensor,
         return_dict=True,
     ) -> torch.Tensor:
         """
         Forward pass of LuminaNextDiT.
 
         Args:
-            x (torch.Tensor): Input tensor of shape (N, C, H, W).
+            hidden_states (torch.Tensor): Input tensor of shape (N, C, H, W).
             timestep (torch.Tensor): Tensor of diffusion timesteps of shape (N,).
-            caption_feat (torch.Tensor): Tensor of caption features of shape (N, D).
-            caption_mask (torch.Tensor): Tensor of caption masks of shape (N, L).
+            encoder_hidden_state (torch.Tensor): Tensor of caption features of shape (N, D).
+            encoder_mask (torch.Tensor): Tensor of caption masks of shape (N, L).
 
         Returns:
             torch.Tensor: Output tensor of shape (N, C, H, W).
         """
-        x_is_tensor = isinstance(x, torch.Tensor)
-        x, mask, img_size, freqs_cis = self.patchify_and_embed(x)
-        freqs_cis = freqs_cis.to(x.device)
+        x_is_tensor = isinstance(hidden_states, torch.Tensor)
+        hidden_states, mask, img_size, freqs_cis = self.patchify_and_embed(hidden_states)
+        freqs_cis = freqs_cis.to(hidden_states.device)
 
-        adaln_input = self.time_caption_embed(timestep, caption_feat, caption_mask)
+        adaln_input = self.time_caption_embed(timestep, encoder_hidden_state, encoder_mask)
 
-        caption_mask = caption_mask.bool()
+        encoder_mask = encoder_mask.bool()
         for layer in self.layers:
-            x = layer(x, mask, freqs_cis, caption_feat, caption_mask, adaln_input=adaln_input)
+            hidden_states = layer(hidden_states, mask, freqs_cis, encoder_hidden_state, encoder_mask, adaln_input=adaln_input)
 
-        x = self.final_layer(x, adaln_input)
-        output = self.unpatchify(x, img_size, return_tensor=x_is_tensor)
+        hidden_states = self.final_layer(hidden_states, adaln_input)
+        output = self.unpatchify(hidden_states, img_size, return_tensor=x_is_tensor)
 
         if not return_dict:
             return (output,)
