@@ -55,7 +55,7 @@ To learn more, take a look at the [Distributed Inference with 🤗 Accelerate](h
 ### Device placement
 
 > [!WARNING]
-> This feature is experimental and its APIs might change in the future. 
+> This feature is experimental and its APIs might change in the future.
 
 With Accelerate, you can use the `device_map` to determine how to distribute the models of a pipeline across multiple devices. This is useful in situations where you have more than one GPU.
 
@@ -90,8 +90,8 @@ import torch
 max_memory = {0:"1GB", 1:"1GB"}
 pipeline = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    torch_dtype=torch.float16, 
-    use_safetensors=True, 
+    torch_dtype=torch.float16,
+    use_safetensors=True,
     device_map="balanced",
 +   max_memory=max_memory
 )
@@ -99,7 +99,7 @@ image = pipeline("a dog").images[0]
 image
 ```
 
-If a device is not present in `max_memory`, then it will be completely ignored and will not participate in the device placement. 
+If a device is not present in `max_memory`, then it will be completely ignored and will not participate in the device placement.
 
 By default, Diffusers uses the maximum memory of all devices. If the models don't fit on the GPUs, they are offloaded to the CPU. If the CPU doesn't have enough memory, then you might see an error. In that case, you could defer to using [`~DiffusionPipeline.enable_sequential_cpu_offload`] and [`~DiffusionPipeline.enable_model_cpu_offload`].
 

@@ -472,7 +472,6 @@ my_local_config_path = snapshot_download(
     local_dir_use_symlinks=False,
 )
 print("My local config: ", my_local_config_path)
-
 ```
 
 Then you can pass the local paths to the `pretrained_model_link_or_path` and `config` parameters.
