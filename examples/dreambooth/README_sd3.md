@@ -11,6 +11,8 @@ The `train_dreambooth_sd3.py` script shows how to implement the training procedu
 huggingface-cli login
 ```
 
+This will also allow us to push the trained model parameters to the Hugging Face Hub platform. 
+
 ## Running locally with PyTorch
 
 ### Installing the dependencies
@@ -52,8 +54,6 @@ write_basic_config()
 ```
 
 When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
-Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
-
 
 ### Dog toy example
 
@@ -71,8 +71,6 @@ snapshot_download(
     ignore_patterns=".gitattributes",
 )
 ```
-
-This will also allow us to push the trained LoRA parameters to the Hugging Face Hub platform. 
 
 Now, we can launch training using:
 
@@ -106,12 +104,17 @@ To better track our training experiments, we're using the following flags in the
 * `report_to="wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
 * `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected. 
 
+> [!NOTE]  
+> If you want to train using long prompts with the T5 text encoder, you can use `--max_sequence_length` to set the token limit. The default is 77, but it can be increased to as high as 512. Note that this will use more resources and may slow down the training in some cases.
+
 > [!TIP]
 > You can pass `--use_8bit_adam` to reduce the memory requirements of training. Make sure to install `bitsandbytes` if you want to do so.
 
 ## LoRA + DreamBooth
 
 [LoRA](https://huggingface.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) is a popular parameter-efficient fine-tuning technique that allows you to achieve full-finetuning like performance but with a fraction of learnable parameters.
+
+Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
 To perform DreamBooth with LoRA, run:
 
@@ -139,3 +142,7 @@ accelerate launch train_dreambooth_lora_sd3.py \
   --seed="0" \
   --push_to_hub
 ```
+
+## Other notes
+
+We default to the "logit_normal" weighting scheme for the loss following the SD3 paper. Thanks to @bghira for helping us discover that for other weighting schemes supported from the training script, training may incur numerical instabilities. 
