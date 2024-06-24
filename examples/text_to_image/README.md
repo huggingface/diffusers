@@ -170,9 +170,17 @@ For our small Narutos dataset, the effects of Min-SNR weighting strategy might n
 
 Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds.
 
+
+#### Training with EMA weights
+
+Through the `EMAModel` class, we support a convenient method of tracking an exponential moving average of model parameters.  This helps to smooth out noise in model parameter updates and generally improves model performance.  If enabled with the `--use_ema` argument, the final model checkpoint that is saved at the end of training will use the EMA weights.
+
+EMA weights require an additional full-precision copy of the model parameters to be stored in memory, but otherwise have very little performance overhead.  `--foreach_ema` can be used to further reduce the overhead.  If you are short on VRAM and still want to use EMA weights, you can store them in CPU RAM by using the `--offload_ema` argument.  This will keep the EMA weights in pinned CPU memory during the training step.  Then, once every model parameter update, it will transfer the EMA weights back to the GPU which can then update the parameters on the GPU, before sending them back to the CPU.  Both of these transfers are set up as non-blocking, so CUDA devices should be able to overlap this transfer with other computations.  With sufficient bandwidth between the host and device and a sufficiently long gap between model parameter updates, storing EMA weights in CPU RAM should have no additional performance overhead, as long as no other calls force synchronization.
+
 #### Training with DREAM
 
 We support training epsilon (noise) prediction models using the [DREAM (Diffusion Rectification and Estimation-Adaptive Models) strategy](https://arxiv.org/abs/2312.00210). DREAM claims to increase model fidelity for the performance cost of an extra grad-less unet `forward` step in the training loop.  You can turn on DREAM training by using the `--dream_training` argument. The `--dream_detail_preservation` argument controls the detail preservation variable p and is the default of 1 from the paper.
+
 
 
 ## Training with LoRA
