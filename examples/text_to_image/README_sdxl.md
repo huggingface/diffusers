@@ -239,7 +239,6 @@ accelerate launch  --config_file $ACCELERATE_CONFIG_FILE train_text_to_image_lor
   --seed=1234 \
   --output_dir="sd-naruto-model-lora-sdxl" \
   --validation_prompt="cute dragon creature"
-
 ```
 
 

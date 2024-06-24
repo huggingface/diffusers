@@ -29,7 +29,6 @@ export MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:aut
 numactl --membind <node N> -C <cpu list> python python inference_bf16.py
 # Launch with DPMSolverMultistepScheduler
 numactl --membind <node N> -C <cpu list> python python inference_bf16.py --dpm
-
 ```
 
 ## Accelerating the inference for Stable Diffusion using INT8

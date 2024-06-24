@@ -141,7 +141,7 @@ print(images.shape)
 # (6, 512, 512, 3)
 ```
 
-그러고 나서 CLIP 점수를 계산합니다. 
+그러고 나서 CLIP 점수를 계산합니다.
 
 ```python
 from torchmetrics.functional.multimodal import clip_score

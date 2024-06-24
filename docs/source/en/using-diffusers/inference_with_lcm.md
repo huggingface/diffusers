@@ -235,7 +235,7 @@ image = pipe(
     mask_image=mask_image,
     generator=generator,
     num_inference_steps=4,
-    guidance_scale=4, 
+    guidance_scale=4,
 ).images[0]
 image
 ```
@@ -497,7 +497,7 @@ pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
     unet=unet,
     adapter=adapter,
     torch_dtype=torch.float16,
-    variant="fp16", 
+    variant="fp16",
 ).to("cuda")
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
@@ -512,7 +512,7 @@ image = pipe(
     image=canny_image,
     num_inference_steps=4,
     guidance_scale=5,
-    adapter_conditioning_scale=0.8, 
+    adapter_conditioning_scale=0.8,
     adapter_conditioning_factor=1,
     generator=generator,
 ).images[0]
@@ -554,10 +554,10 @@ canny_image = Image.fromarray(image).resize((1024, 1024))
 adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, varient="fp16").to("cuda")
 
 pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", 
+    "stabilityai/stable-diffusion-xl-base-1.0",
     adapter=adapter,
     torch_dtype=torch.float16,
-    variant="fp16", 
+    variant="fp16",
 ).to("cuda")
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
@@ -573,8 +573,8 @@ image = pipe(
     negative_prompt=negative_prompt,
     image=canny_image,
     num_inference_steps=4,
-    guidance_scale=1.5, 
-    adapter_conditioning_scale=0.8, 
+    guidance_scale=1.5,
+    adapter_conditioning_scale=0.8,
     adapter_conditioning_factor=1,
     generator=generator,
 ).images[0]

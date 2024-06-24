@@ -33,4 +33,3 @@ jobs:
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           pytest tests/others/test_dependencies.py
-      

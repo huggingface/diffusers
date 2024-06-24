@@ -2,7 +2,7 @@
 
 ***This is based on the original InstructPix2Pix training example.***
 
-[Stable Diffusion XL](https://huggingface.co/papers/2307.01952) (or SDXL) is the latest image generation model that is tailored towards more photorealistic outputs with more detailed imagery and composition compared to previous SD models. It leverages a three times larger UNet backbone. The increase of model parameters is mainly due to more attention blocks and a larger cross-attention context as SDXL uses a second text encoder. 
+[Stable Diffusion XL](https://huggingface.co/papers/2307.01952) (or SDXL) is the latest image generation model that is tailored towards more photorealistic outputs with more detailed imagery and composition compared to previous SD models. It leverages a three times larger UNet backbone. The increase of model parameters is mainly due to more attention blocks and a larger cross-attention context as SDXL uses a second text encoder.
 
 The `train_instruct_pix2pix_sdxl.py` script shows how to implement the training procedure and adapt it for Stable Diffusion XL.
 
@@ -15,11 +15,11 @@ training procedure while being faithful to the [original implementation](https:/
 
 Refer to the original InstructPix2Pix training example for installing the dependencies.
 
-You will also need to get access of SDXL by filling the [form](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0). 
+You will also need to get access of SDXL by filling the [form](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0).
 
 ### Toy example
 
-As mentioned before, we'll use a [small toy dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) for training. The dataset 
+As mentioned before, we'll use a [small toy dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) for training. The dataset
 is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) used in the InstructPix2Pix paper.
 
 Configure environment variables such as the dataset identifier and the Stable Diffusion
@@ -69,7 +69,7 @@ accelerate launch train_instruct_pix2pix_sdxl.py \
     --push_to_hub
  ```
 
- We recommend this type of validation as it can be useful for model debugging. Note that you need `wandb` installed to use this. You can install `wandb` by running `pip install wandb`. 
+ We recommend this type of validation as it can be useful for model debugging. Note that you need `wandb` installed to use this. You can install `wandb` by running `pip install wandb`.
 
  [Here](https://wandb.ai/sayakpaul/instruct-pix2pix-sdxl-new/runs/sw53gxmc), you can find an example training run that includes some validation samples and the training hyperparameters.
 
@@ -80,7 +80,7 @@ accelerate launch train_instruct_pix2pix_sdxl.py \
 `accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
 for running distributed training with `accelerate`. Here is an example command:
 
-```bash 
+```bash
 accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --dataset_name=$DATASET_ID \
@@ -109,7 +109,7 @@ import requests
 import torch
 from diffusers import StableDiffusionXLInstructPix2PixPipeline
 
-model_id = "your_model_id" # <- replace this 
+model_id = "your_model_id" # <- replace this
 pipe = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 
@@ -128,10 +128,10 @@ num_inference_steps = 20
 image_guidance_scale = 1.5
 guidance_scale = 10
 
-edited_image = pipe(prompt, 
-    image=image, 
-    num_inference_steps=num_inference_steps, 
-    image_guidance_scale=image_guidance_scale, 
+edited_image = pipe(prompt,
+    image=image,
+    num_inference_steps=num_inference_steps,
+    image_guidance_scale=image_guidance_scale,
     guidance_scale=guidance_scale,
     generator=generator,
 ).images[0]
@@ -148,7 +148,7 @@ speed and quality during performance:
 Particularly, `image_guidance_scale` and `guidance_scale` can have a profound impact
 on the generated ("edited") image (see [here](https://twitter.com/RisingSayak/status/1628392199196151808?s=20) for an example).
 
-If you're looking for some interesting ways to use the InstructPix2Pix training methodology, we welcome you to check out this blog post: [Instruction-tuning Stable Diffusion with InstructPix2Pix](https://huggingface.co/blog/instruction-tuning-sd). 
+If you're looking for some interesting ways to use the InstructPix2Pix training methodology, we welcome you to check out this blog post: [Instruction-tuning Stable Diffusion with InstructPix2Pix](https://huggingface.co/blog/instruction-tuning-sd).
 
 ## Compare between SD and SDXL
 
@@ -178,7 +178,7 @@ accelerate launch train_instruct_pix2pix.py \
 
 We discovered that compared to training with SD-1.5 as the pretrained model, SDXL-0.9 results in a lower training loss value (SD-1.5 yields 0.0599, SDXL scores 0.0254). Moreover, from a visual perspective, the results obtained using SDXL demonstrated fewer artifacts and a richer detail. Notably, SDXL starts to preserve the structure of the original image earlier on.
 
-The following two GIFs provide intuitive visual results. We observed, for each step, what kind of results could be achieved using the image 
+The following two GIFs provide intuitive visual results. We observed, for each step, what kind of results could be achieved using the image
 <p align="center">
     <img src="https://datasets-server.huggingface.co/assets/fusing/instructpix2pix-1000-samples/--/fusing--instructpix2pix-1000-samples/train/23/input_image/image.jpg" alt="input for make it Japan" width=600/>
 </p>

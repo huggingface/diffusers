@@ -166,7 +166,7 @@ For both [`~loaders.LoraLoaderMixin.load_lora_weights`] and [`~loaders.UNet2DCon
 For more granular control on the amount of LoRA weights used per layer, you can use [`~loaders.LoraLoaderMixin.set_adapters`] and pass a dictionary specifying by how much to scale the weights in each layer by.
 ```python
 pipe = ... # create pipeline
-pipe.load_lora_weights(..., adapter_name="my_adapter") 
+pipe.load_lora_weights(..., adapter_name="my_adapter")
 scales = {
     "text_encoder": 0.5,
     "text_encoder_2": 0.5,  # only usable if pipe has a 2nd text encoder

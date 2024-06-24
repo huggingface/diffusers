@@ -81,14 +81,14 @@ pipeline = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffu
 Use the Space below to gauge a pipeline's memory requirements before you download and load it to see if it runs on your hardware.
 
 <div class="block dark:hidden">
-	<iframe 
+	<iframe
         src="https://diffusers-compute-pipeline-size.hf.space?__theme=light"
         width="850"
         height="1600"
     ></iframe>
 </div>
 <div class="hidden dark:block">
-    <iframe 
+    <iframe
         src="https://diffusers-compute-pipeline-size.hf.space?__theme=dark"
         width="850"
         height="1600"
@@ -138,11 +138,11 @@ Now pass the new scheduler and VAE to the [`StableDiffusionXLPipeline`].
 
 ```py
 pipeline = StableDiffusionXLPipeline.from_pretrained(
-  "stabilityai/stable-diffusion-xl-base-1.0", 
-  scheduler=scheduler, 
-  vae=vae, 
-  torch_dtype=torch.float16, 
-  variant="fp16", 
+  "stabilityai/stable-diffusion-xl-base-1.0",
+  scheduler=scheduler,
+  vae=vae,
+  torch_dtype=torch.float16,
+  variant="fp16",
   use_safetensors=True
 ).to("cuda")
 ```
@@ -178,7 +178,7 @@ pipe_sd.to("cuda")
 generator = torch.Generator(device="cpu").manual_seed(33)
 out_sd = pipe_sd(
     prompt="bear eats pizza",
-    negative_prompt="wrong white balance, dark, sketches,worst quality,low quality", 
+    negative_prompt="wrong white balance, dark, sketches,worst quality,low quality",
     ip_adapter_image=image,
     num_inference_steps=50,
     generator=generator,
@@ -284,7 +284,7 @@ pipe.sag_unload_ip_adapter()
 generator = torch.Generator(device="cpu").manual_seed(33)
 out_sd = pipe_sd(
     prompt="bear eats pizza",
-    negative_prompt="wrong white balance, dark, sketches,worst quality,low quality", 
+    negative_prompt="wrong white balance, dark, sketches,worst quality,low quality",
     ip_adapter_image=image,
     num_inference_steps=50,
     generator=generator,

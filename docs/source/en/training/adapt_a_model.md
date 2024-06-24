@@ -26,7 +26,7 @@ pipeline.unet.config["in_channels"]
 9
 ```
 
-To adapt your text-to-image model for inpainting, you'll need to change the number of `in_channels` from 4 to 9. 
+To adapt your text-to-image model for inpainting, you'll need to change the number of `in_channels` from 4 to 9.
 
 Initialize a [`UNet2DConditionModel`] with the pretrained text-to-image model weights, and change `in_channels` to 9. Changing the number of `in_channels` means you need to set `ignore_mismatched_sizes=True` and `low_cpu_mem_usage=False` to avoid a size mismatch error because the shape is different now.
 
