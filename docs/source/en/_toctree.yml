@@ -107,7 +107,8 @@
     title: Create a dataset for training
   - local: training/adapt_a_model
     title: Adapt a model to a new task
-  - sections:
+  - isExpanded: false
+    sections:
     - local: training/unconditional_training
       title: Unconditional image generation
     - local: training/text2image
@@ -125,8 +126,8 @@
     - local: training/instructpix2pix
       title: InstructPix2Pix
     title: Models
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: training/text_inversion
       title: Textual Inversion
     - local: training/dreambooth
@@ -140,7 +141,6 @@
     - local: training/ddpo
       title: Reinforcement learning training with DDPO
     title: Methods
-    isExpanded: false
   title: Training
 - sections:
   - local: optimization/fp16
@@ -187,7 +187,8 @@
     title: Evaluating Diffusion Models
   title: Conceptual Guides
 - sections:
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/configuration
       title: Configuration
     - local: api/logging
@@ -195,8 +196,8 @@
     - local: api/outputs
       title: Outputs
     title: Main Classes
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/loaders/ip_adapter
       title: IP-Adapter
     - local: api/loaders/lora
@@ -210,8 +211,8 @@
     - local: api/loaders/peft
       title: PEFT
     title: Loaders
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/models/overview
       title: Overview
     - local: api/models/unet
@@ -237,22 +238,26 @@
     - local: api/models/consistency_decoder_vae
       title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
-      title: Transformer2D
+      title: Transformer2DModel
     - local: api/models/pixart_transformer2d
-      title: PixArtTransformer2D
+      title: PixArtTransformer2DModel
     - local: api/models/dit_transformer2d
-      title: DiTTransformer2D
-    - local: api/models/hunyuan_transformer_2d
+      title: DiTTransformer2DModel
+    - local: api/models/hunyuan_transformer2d
       title: HunyuanDiT2DModel
     - local: api/models/transformer_temporal
-      title: Transformer Temporal
+      title: TransformerTemporalModel
+    - local: api/models/sd3_transformer2d
+      title: SD3Transformer2DModel
     - local: api/models/prior_transformer
-      title: Prior Transformer
+      title: PriorTransformer
     - local: api/models/controlnet
-      title: ControlNet
+      title: ControlNetModel
+    - local: api/models/controlnet_sd3
+      title: SD3ControlNetModel
     title: Models
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/pipelines/overview
       title: Overview
     - local: api/pipelines/amused
@@ -273,6 +278,8 @@
       title: Consistency Models
     - local: api/pipelines/controlnet
       title: ControlNet
+    - local: api/pipelines/controlnet_sd3
+      title: ControlNet with Stable Diffusion 3
     - local: api/pipelines/controlnet_sdxl
       title: ControlNet with Stable Diffusion XL
     - local: api/pipelines/controlnetxs
@@ -350,6 +357,8 @@
         title: Safe Stable Diffusion
       - local: api/pipelines/stable_diffusion/stable_diffusion_2
         title: Stable Diffusion 2
+      - local: api/pipelines/stable_diffusion/stable_diffusion_3
+        title: Stable Diffusion 3
       - local: api/pipelines/stable_diffusion/stable_diffusion_xl
         title: Stable Diffusion XL
       - local: api/pipelines/stable_diffusion/sdxl_turbo
@@ -382,8 +391,8 @@
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
     title: Pipelines
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/schedulers/overview
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
@@ -414,6 +423,8 @@
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler
       title: EulerDiscreteScheduler
+    - local: api/schedulers/flow_match_euler_discrete
+      title: FlowMatchEulerDiscreteScheduler
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
@@ -443,8 +454,8 @@
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
     title: Schedulers
-    isExpanded: false
-  - sections:
+  - isExpanded: false
+    sections:
     - local: api/internal_classes_overview
       title: Overview
     - local: api/attnprocessor
@@ -460,5 +471,4 @@
     - local: api/video_processor
       title: Video Processor
     title: Internal classes
-    isExpanded: false
   title: API
