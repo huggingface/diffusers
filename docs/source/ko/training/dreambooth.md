@@ -59,7 +59,7 @@ DreamBooth 파인튜닝은 하이퍼파라미터에 매우 민감하고 과적�
 
 <frameworkcontent>
 <pt>
-[몇 장의 강아지 이미지들](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ)로 DreamBooth를 시도해봅시다. 
+[몇 장의 강아지 이미지들](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ)로 DreamBooth를 시도해봅시다.
 이를 다운로드해 디렉터리에 저장한 다음 `INSTANCE_DIR` 환경 변수를 해당 경로로 설정합니다:
 
 
@@ -415,11 +415,11 @@ accelerate config
 ```
 
 환경 구성 중에 DeepSpeed를 사용할 것을 확인하세요.
-그러면 DeepSpeed stage 2, fp16 혼합 정밀도를 결합하고 모델 매개변수와 옵티마이저 상태를 모두 CPU로 오프로드하면 8GB VRAM 미만에서 학습할 수 있습니다. 
+그러면 DeepSpeed stage 2, fp16 혼합 정밀도를 결합하고 모델 매개변수와 옵티마이저 상태를 모두 CPU로 오프로드하면 8GB VRAM 미만에서 학습할 수 있습니다.
 단점은 더 많은 시스템 RAM(약 25GB)이 필요하다는 것입니다. 추가 구성 옵션은 [DeepSpeed 문서](https://huggingface.co/docs/accelerate/usage_guides/deepspeed)를 참조하세요.
 
 또한 기본 Adam 옵티마이저를 DeepSpeed의 최적화된 Adam 버전으로 변경해야 합니다.
-이는 상당한 속도 향상을 위한 Adam인 [`deepspeed.ops.adam.DeepSpeedCPUAdam`](https://deepspeed.readthedocs.io/en/latest/optimizers.html#adam-cpu)입니다. 
+이는 상당한 속도 향상을 위한 Adam인 [`deepspeed.ops.adam.DeepSpeedCPUAdam`](https://deepspeed.readthedocs.io/en/latest/optimizers.html#adam-cpu)입니다.
 `DeepSpeedCPUAdam`을 활성화하려면 시스템의 CUDA toolchain 버전이 PyTorch와 함께 설치된 것과 동일해야 합니다.
 
 8비트 옵티마이저는 현재 DeepSpeed와 호환되지 않는 것 같습니다.
