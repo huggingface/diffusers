@@ -19,10 +19,8 @@ import urllib.parse as ul
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-import einops
 from transformers import T5EncoderModel, T5Tokenizer
-
-from ...image_processor import VaeImageProcessor
+from ...video_processor import VideoProcessor
 from ...models import AutoencoderKL, LatteTransformer3DModel
 from ...schedulers import DDIMScheduler
 from ...utils import (
@@ -33,7 +31,7 @@ from ...utils import (
     replace_example_docstring,
     BaseOutput,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from dataclasses import dataclass
 
@@ -91,9 +89,7 @@ class LattePipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
     """
-    bad_punct_regex = re.compile(
-        r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + r"]{1,}"
-    )  # noqa
+    bad_punct_regex = re.compile(r"[#®•©™&@·º½¾¿¡§~\)\(\]\[\}\{\|\\/\\*]{1,}")
 
     _optional_components = ["tokenizer", "text_encoder"]
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -113,7 +109,7 @@ class LattePipeline(DiffusionPipeline):
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor)
 
     # Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/utils.py
     def mask_text_embeddings(self, emb, mask):
@@ -177,9 +173,7 @@ class LattePipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        # See Section 3.1. of the paper.
         max_length = 120
-
         if prompt_embeds is None:
             prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
             text_inputs = self.tokenizer(
@@ -524,7 +518,7 @@ class LattePipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: Optional[str] = "pt",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
@@ -728,13 +722,8 @@ class LattePipeline(DiffusionPipeline):
                         callback(step_idx, t, latents)
 
         if not output_type == 'latents':
-            if latents.shape[2] == 1: # image
-                video = self.decode_latents_image(latents)
-            else: # video
-                if enable_vae_temporal_decoder:
-                    video = self.decode_latents_with_temporal_decoder(latents)
-                else:
-                    video = self.decode_latents(latents)
+            video = self.decode_latents(latents, video_length, decode_chunk_size=14)
+            video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents
             return LattePipelineOutput(video=video)
@@ -747,51 +736,32 @@ class LattePipeline(DiffusionPipeline):
 
         return LattePipelineOutput(video=video)
     
-    def decode_latents_image(self, latents):
-        video_length = latents.shape[2]
-        latents = 1 / self.vae.config.scaling_factor * latents
-        latents = einops.rearrange(latents, "b c f h w -> (b f) c h w")
-        video = []
-        for frame_idx in range(latents.shape[0]):
-            video.append(self.vae.decode(
-                latents[frame_idx:frame_idx+1]).sample)
-        video = torch.cat(video)
-        video = einops.rearrange(video, "(b f) c h w -> b f c h w", f=video_length)
-        video = (video / 2.0 + 0.5).clamp(0, 1).cpu()
-        return video
-    
-    def decode_latents(self, latents):
-        video_length = latents.shape[2]
-        latents = 1 / self.vae.config.scaling_factor * latents
-        latents = einops.rearrange(latents, "b c f h w -> (b f) c h w")
-        video = []
-        for frame_idx in range(latents.shape[0]):
-            video.append(self.vae.decode(
-                latents[frame_idx:frame_idx+1]).sample)
-        video = torch.cat(video)
-        video = einops.rearrange(video, "(b f) c h w -> b f h w c", f=video_length)
-        video = ((video / 2.0 + 0.5).clamp(0, 1) * 255).to(dtype=torch.uint8).cpu().contiguous()
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
-        return video
-    
-    def decode_latents_with_temporal_decoder(self, latents):
-        video_length = latents.shape[2]
-        latents = 1 / self.vae.config.scaling_factor * latents
-        latents = einops.rearrange(latents, "b c f h w -> (b f) c h w")
-        video = []
 
-        decode_chunk_size = 14
-        for frame_idx in range(0, latents.shape[0], decode_chunk_size):
-            num_frames_in = latents[frame_idx : frame_idx + decode_chunk_size].shape[0]
+    def decode_latents(self, latents, video_length, decode_chunk_size=14):
+        # [batch, channels, frames, height, width] -> [batch*frames, channels, height, width]
+        latents = latents.permute(0, 2, 1, 3, 4).flatten(0, 1)
 
+        latents = 1 / self.vae.config.scaling_factor * latents
+
+        forward_vae_fn = self.vae._orig_mod.forward if is_compiled_module(self.vae) else self.vae.forward
+        accepts_num_frames = "num_frames" in set(inspect.signature(forward_vae_fn).parameters.keys())
+
+        # decode decode_chunk_size frames at a time to avoid OOM
+        frames = []
+        for i in range(0, latents.shape[0], decode_chunk_size):
+            num_frames_in = latents[i : i + decode_chunk_size].shape[0]
             decode_kwargs = {}
-            decode_kwargs["num_frames"] = num_frames_in
+            if accepts_num_frames:
+                # we only pass num_frames_in if it's expected
+                decode_kwargs["num_frames"] = num_frames_in
 
-            video.append(self.vae.decode(latents[frame_idx:frame_idx+decode_chunk_size], **decode_kwargs).sample)
-            
-        video = torch.cat(video)
-        video = einops.rearrange(video, "(b f) c h w -> b f h w c", f=video_length)
-        video = ((video / 2.0 + 0.5).clamp(0, 1) * 255).to(dtype=torch.uint8).cpu().contiguous()
+            frame = self.vae.decode(latents[i : i + decode_chunk_size], **decode_kwargs).sample
+            frames.append(frame)
+        frames = torch.cat(frames, dim=0)
+
+        # [batch*frames, channels, height, width] -> [batch, channels, frames, height, width]
+        frames = frames.reshape(-1, video_length, *frames.shape[1:]).permute(0, 2, 1, 3, 4)
+ 
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
-        return video
-
+        frames = frames.float()
+        return frames

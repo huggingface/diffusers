@@ -79,11 +79,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         video_length: int = 16,
     ):
         super().__init__()
-        self.use_linear_projection = use_linear_projection
-        self.num_attention_heads = num_attention_heads
-        self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
-        self.video_length = video_length
 
         # 1. Define input layers
         self.height = sample_size
@@ -151,7 +147,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
 
         # define temporal positional embedding
-        temp_pos_embed = self.get_1d_sincos_temp_embed(inner_dim, video_length) # 1152 hidden size
+        temp_pos_embed = get_1d_sincos_pos_embed_from_grid(inner_dim, torch.arange(0, video_length).unsqueeze(1)) # 1152 hidden size
         self.register_buffer("temp_pos_embed", torch.from_numpy(temp_pos_embed).float().unsqueeze(0), persistent=False)
 
         self.gradient_checkpointing = False
@@ -353,7 +349,3 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
             return (output,)
 
         return Transformer3DModelOutput(sample=output)
-    
-    def get_1d_sincos_temp_embed(self, embed_dim, length):
-        pos = torch.arange(0, length).unsqueeze(1)
-        return get_1d_sincos_pos_embed_from_grid(embed_dim, pos)# '(b f) t d -> (b t) f d'

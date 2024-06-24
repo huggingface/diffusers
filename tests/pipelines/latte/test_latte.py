@@ -54,14 +54,14 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = LatteTransformer3DModel(
-            sample_size=16,
+            sample_size=8,
             num_layers=1,
             patch_size=2,
-            attention_head_dim=72,
-            num_attention_heads=16,
-            caption_channels=4096,
+            attention_head_dim=8,
+            num_attention_heads=3,
+            caption_channels=32,
             in_channels=4,
-            cross_attention_dim=1152,
+            cross_attention_dim=24,
             out_channels=8,
             attention_bias=True,
             activation_fn="gelu-approximate",
@@ -75,10 +75,11 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         scheduler = DDIMScheduler()
         # text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel.from_pretrained("/mnt/hwfile/gcc/maxin/work/pretrained/Latte/", subfolder="text_encoder")
+        text_encoder = T5EncoderModel.from_pretrained("/mnt/hwfile/gcc/maxin/work/pretrained/hf-internal-testing/tiny-random-t5")
 
         # tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
-        tokenizer = AutoTokenizer.from_pretrained("/mnt/hwfile/gcc/maxin/work/pretrained/Latte/", subfolder="tokenizer")
+        tokenizer = AutoTokenizer.from_pretrained("/mnt/hwfile/gcc/maxin/work/pretrained/hf-internal-testing/tiny-random-t5")
+        print("tokenizer", type(tokenizer))
 
         components = {
             "transformer": transformer.eval(),
