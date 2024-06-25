@@ -171,15 +171,12 @@ accelerate launch train_dreambooth_lora_sd3.py \
   --gradient_accumulation_steps=1 \
   --optimizer="prodigy"\
   --learning_rate=1.0 \
-  --text_encoder_lr=1.0\
+  --text_encoder_lr=1.0 \
   --report_to="wandb" \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --max_train_steps=1500 \
-  --repeats=1\
-  --rank=32\
-  --weighting_scheme="logit_normal" \
-  --validation_epochs=100 \
+  --rank=32 \
   --seed="0" \
   --push_to_hub
 ```
