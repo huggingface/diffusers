@@ -405,6 +405,12 @@ class ModelTesterMixin:
 
     @require_torch_gpu
     def test_set_attn_processor_for_determinism(self):
+        # This is because `SD3Transformer2DModel` doesn't yet have a non SDPA attention
+        # processor that can be used when set_default_attn_processor() is called.
+        # Also it doesn't use `AttnProcessor2_0` but `JointAttnProcessor2_0` instead.
+        if self.model_class.__name__ == "SD3Transformer2DModel":
+            return
+
         torch.use_deterministic_algorithms(False)
         if self.forward_requires_fresh_args:
             model = self.model_class(**self.init_dict)
