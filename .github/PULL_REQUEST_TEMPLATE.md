@@ -38,9 +38,9 @@ members/contributors who may be interested in your PR.
 
 Core library:
 
-- Schedulers: @yiyixuxu 
+- Schedulers: @yiyixuxu
 - Pipelines:  @sayakpaul @yiyixuxu @DN6
-- Training examples: @sayakpaul 
+- Training examples: @sayakpaul
 - Docs: @stevhliu and @sayakpaul
 - JAX and MPS: @pcuenca
 - Audio: @sanchit-gandhi
