@@ -36,7 +36,7 @@ jobs:
       #     If ref is 'refs/heads/main' => set 'main'
       #     Else it must be a tag => set {tag}
       - name: Set checkout_ref and path_in_repo
-        run: | 
+        run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             if [ -z "${{ github.event.inputs.ref }}" ]; then
               echo "Error: Missing ref input"

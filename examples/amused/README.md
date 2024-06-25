@@ -211,7 +211,7 @@ accelerate launch train_amused.py \
     --gradient_checkpointing
 ```
 
-#### Full finetuning + lora 
+#### Full finetuning + lora
 
 Batch size: 8, Learning rate: 1e-4, Gives decent results in 500-1000 steps
 
@@ -268,7 +268,7 @@ Example results:
 
 Learning rate: 4e-4, Gives decent results in 1500-2000 steps
 
-Memory used: 6.5 GB 
+Memory used: 6.5 GB
 
 ```sh
 accelerate launch train_amused.py \
@@ -300,7 +300,7 @@ Example results:
 
 Learning rate: 1e-3, Lora alpha 1, Gives decent results in 1500-2000 steps
 
-Memory used: 5.6 GB 
+Memory used: 5.6 GB
 
 ```
 accelerate launch train_amused.py \
