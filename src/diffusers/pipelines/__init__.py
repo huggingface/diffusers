@@ -20,6 +20,7 @@ from ..utils import (
 _dummy_objects = {}
 _import_structure = {
     "controlnet": [],
+    "controlnet_hunyuandit": [],
     "controlnet_sd3": [],
     "controlnet_xs": [],
     "deprecated": [],
@@ -141,6 +142,11 @@ else:
         [
             "StableDiffusionControlNetXSPipeline",
             "StableDiffusionXLControlNetXSPipeline",
+        ]
+    )
+    _import_structure["controlnet_hunyuandit"].extend(
+        [
+            "HunyuanDiTControlNetPipeline",
         ]
     )
     _import_structure["controlnet_sd3"].extend(
@@ -399,6 +405,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+        )
+        from .controlnet_hunyuandit import (
+            HunyuanDiTControlNetPipeline,
         )
         from .controlnet_sd3 import (
             StableDiffusion3ControlNetPipeline,

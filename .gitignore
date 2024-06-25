@@ -1,5 +1,9 @@
 # Initially taken from GitHub's Python gitignore file
 
+# test files
+test_hunyuandit_controlnet.py
+convert_local_controlnet_to_hf.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
