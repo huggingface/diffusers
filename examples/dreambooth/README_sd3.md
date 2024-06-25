@@ -152,7 +152,7 @@ Alongside the transformer, LoRA fine-tuning of the CLIP text encoders is now als
 To do so, just specify `--train_text_encoder` while launching training. Please keep the following points in mind:
 
 > [!NOTE]
-SD3 has three text encoders (CLIP L/14, OpenCLIP bigG/14, and T5-v1.1-XXL). 
+> SD3 has three text encoders (CLIP L/14, OpenCLIP bigG/14, and T5-v1.1-XXL). 
 By enabling `--train_text_encoder`, LoRA fine-tuning of both **CLIP encoders** is performed. At the moment, T5 fine-tuning is not supported and weights remain frozen when text encoder training is enabled. 
 
 To perform DreamBooth LoRA with text-encoder training, run:
