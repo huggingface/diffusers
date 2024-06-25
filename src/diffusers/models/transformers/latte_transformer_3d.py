@@ -23,7 +23,7 @@ from ..normalization import AdaLayerNormSingle
 from ...models.embeddings import (
     get_1d_sincos_pos_embed_from_grid, 
     PixArtAlphaTextProjection)
-from ..modeling_outputs import Transformer3DModelOutput
+from ..modeling_outputs import Transformer2DModelOutput
 
 
 class LatteTransformer3DModel(ModelMixin, ConfigMixin):
@@ -348,4 +348,4 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         if not return_dict:
             return (output,)
 
-        return Transformer3DModelOutput(sample=output)
+        return Transformer2DModelOutput(sample=output)

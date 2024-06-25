@@ -525,7 +525,7 @@ class LattePipeline(DiffusionPipeline):
         clean_caption: bool = True,
         mask_feature: bool = True,
         enable_temporal_attentions: bool = True,
-        enable_vae_temporal_decoder: bool = False,
+        decode_chunk_size: Optional[int] = None,
         use_learned_sigma: bool = False,
     ) -> Union[LattePipelineOutput, Tuple]:
         """
@@ -590,8 +590,11 @@ class LattePipeline(DiffusionPipeline):
                 prompt.
             mask_feature (`bool` defaults to `True`): If set to `True`, the text embeddings will be masked.
             enable_temporal_attentions (`bool`, *optional*, defaults to `True`): Whether to enable temporal attentions
-            enable_vae_temporal_decoder (`bool`, *optional*, defaults to `False`): Whether to enable the temporal decoder
-            use_learned_sigma (`bool`, *optional*, defaults to `False`): Whether to use the learned sigma or not.
+            decode_chunk_size (`int`, *optional*):
+                The number of frames to decode at a time. Higher chunk size leads to better temporal consistency at the
+                expense of more memory usage. By default, the decoder decodes all frames at once for maximal quality.
+                For lower memory usage, reduce `decode_chunk_size`.
+            use_learned_sigma (`bool`, *optional*, defaults to `False`): If set to `True`, the model will use the learned for inference
 
         Examples:
 
@@ -600,6 +603,9 @@ class LattePipeline(DiffusionPipeline):
                 If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images
         """
+        # 0. Default
+        decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else video_length
+
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
@@ -705,11 +711,9 @@ class LattePipeline(DiffusionPipeline):
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                # learned sigma
+                # use learned sigma?
                 if not use_learned_sigma:
                     noise_pred = noise_pred.chunk(2, dim=1)[0]
-                else:
-                    noise_pred = noise_pred
 
                 # compute previous video: x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
@@ -737,7 +741,7 @@ class LattePipeline(DiffusionPipeline):
         return LattePipelineOutput(video=video)
     
 
-    def decode_latents(self, latents, video_length, decode_chunk_size=14):
+    def decode_latents(self, latents, video_length, decode_chunk_size=1):
         # [batch, channels, frames, height, width] -> [batch*frames, channels, height, width]
         latents = latents.permute(0, 2, 1, 3, 4).flatten(0, 1)
 
