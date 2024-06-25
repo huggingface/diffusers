@@ -1638,13 +1638,6 @@ def main(args):
             save_directory=args.output_dir, transformer_lora_layers=transformer_lora_layers
         )
 
-        pipeline = StableDiffusion3Pipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            revision=args.revision,
-            variant=args.variant,
-            torch_dtype=weight_dtype,
-        )
-
         # Final inference
         # Load previous pipeline
         pipeline = StableDiffusion3Pipeline.from_pretrained(
