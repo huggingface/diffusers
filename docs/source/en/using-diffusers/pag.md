@@ -170,7 +170,7 @@ pipeline = AutoPipelineForInpaiting.from_pipe(pipeline_t2i, enable_pag=True)
 
 Let's generate an image! 
 
-```
+```py
 img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
 mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
 init_image = load_image(img_url).convert("RGB")
