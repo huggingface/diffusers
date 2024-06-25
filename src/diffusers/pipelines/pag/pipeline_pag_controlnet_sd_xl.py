@@ -1234,8 +1234,6 @@ class StableDiffusionXLControlNetPAGPipeline(
             control_guidance_start,
             control_guidance_end,
             callback_on_step_end_tensor_inputs,
-            guidance_scale,
-            pag_scale,
         )
 
         self._guidance_scale = guidance_scale

@@ -41,22 +41,21 @@ pipeline.enable_model_cpu_offload()
 > [!TIP]
 > `pag_applied_layers` argument allow you to specify which layers PAG is applied to. You can also use `set_pag_applied_layers` to update these layers after the pipeline has been created.
 
-In addition to the regular pipeline arguments such as `prompt` and `guidance_scale`, you will also need to pass a `pag_scale` to generate an image.
+In addition to the regular pipeline arguments such as `prompt` and `guidance_scale`, you will also need to pass a `pag_scale` to generate an image. PAG is disabled when `pag_scale=0`.
 
 ```py
-pag_scales = 3.0
-guidance_scale = 7.0
 prompt = "an insect robot preparing a delicious meal, anime style"
 
-generator = torch.Generator(device="cpu").manual_seed(0)
-images = pipeline(
-    prompt=prompt,
-    num_inference_steps=25,
-    guidance_scale=guidance_scale,
-    generator=generator,
-    pag_scale=pag_scale,
-).images
-images[0]
+for pag_scale in [0.0, 3.0]:
+    generator = torch.Generator(device="cpu").manual_seed(0)
+    images = pipeline(
+        prompt=prompt,
+        num_inference_steps=25,
+        guidance_scale=7.0,
+        generator=generator,
+        pag_scale=pag_scale,
+    ).images
+    images[0]
 ```
 
 <div class="flex flex-row gap-4">
@@ -143,6 +142,63 @@ images = pipeline(
 ).images
 images[0]
 ```
+</hfoption>
+
+## PAG with ControlNet
+
+To use PAG with ControlNet, first create a `controlnet`. Then, pass the `controlne`t and PAG-related arguments to the `from_pretrained` method of the AutoPipeline for the specified task.
+
+```py
+# pag doc example 
+from diffusers import AutoPipelineForText2Image, ControlNetModel
+import torch
+
+controlnet = ControlNetModel.from_pretrained(
+    "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
+)
+
+pipeline = AutoPipelineForText2Image.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    controlnet=controlnet,
+    enable_pag=True,
+    pag_applied_layers = "mid",
+    torch_dtype=torch.float16
+)
+pipeline.enable_model_cpu_offload()
+```
+
+You can use the pipeline similarly to how you normally use the controlnet pipelines. The only difference is that you can specify a `pag_scale` parameter. Note that PAG works well for unconditional generation. In this example, we will generate an image without using a prompt.
+
+```py
+from diffusers.utils import load_image
+canny_image = load_image(
+    "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/pag_control_input.png"
+)
+
+for pag_scale in [0.0, 3.0]:
+    generator = torch.Generator(device="cpu").manual_seed(1)
+    images = pipeline(
+        prompt="",
+        controlnet_conditioning_scale=controlnet_conditioning_scale,
+        image=canny_image,
+        num_inference_steps=50,
+        guidance_scale=0,
+        generator=generator,
+        pag_scale=pag_scale,
+    ).images
+    images[0]
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/pag_0.0_controlnet.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image without PAG</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/pag_3.0_controlnet.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image with PAG</figcaption>
+  </div>
+</div>
 
 ## PAG with IP-adapter 
 
@@ -188,7 +244,9 @@ images = pipeline(
 images[0]
 
 ```
+
 PAG reduces artifacts and improve the overall compposition.
+
 <div class="flex flex-row gap-4">
   <div class="flex-1">
     <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/pag_0.0_ipa_0.8.png"/>
