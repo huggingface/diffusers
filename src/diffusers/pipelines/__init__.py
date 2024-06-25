@@ -26,6 +26,7 @@ _import_structure = {
     "latent_diffusion": [],
     "ledits_pp": [],
     "marigold": [],
+    "pag": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -135,6 +136,14 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+        ]
+    )
+    _import_structure["pag"].extend(
+        [
+            "StableDiffusionXLPAGPipeline",
+            "StableDiffusionXLPAGInpaintPipeline",
+            "StableDiffusionXLControlNetPAGPipeline",
+            "StableDiffusionXLPAGImg2ImgPipeline",
         ]
     )
     _import_structure["controlnet_xs"].extend(
@@ -472,6 +481,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .musicldm import MusicLDMPipeline
+        from .pag import (
+            StableDiffusionXLControlNetPAGPipeline,
+            StableDiffusionXLPAGImg2ImgPipeline,
+            StableDiffusionXLPAGInpaintPipeline,
+            StableDiffusionXLPAGPipeline,
+        )
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
