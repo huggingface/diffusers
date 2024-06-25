@@ -23,12 +23,13 @@ import requests
 GITHUB_REPO = "huggingface/diffusers"
 GITHUB_RUN_ID = os.getenv("GITHUB_RUN_ID")
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+PATH_IN_REPO = os.getenv("PATH_IN_REPO")
 
 
 def main(args):
     action_url = f"https://github.com/{GITHUB_REPO}/actions/runs/{GITHUB_RUN_ID}"
     if args.status == "success":
-        hub_path = "https://huggingface.co/datasets/diffusers/community-pipelines-mirror/tree/main"
+        hub_path = f"https://huggingface.co/datasets/diffusers/community-pipelines-mirror/tree/main/{PATH_IN_REPO}"
         message = (
             "✅ Community pipelines successfully mirrored.\n"
             f"🕸️ GitHub Action URL: {action_url}.\n"
@@ -49,5 +50,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--status", type=str, default="success", choices=["success", "failure"])
+    parser.add_argument("--tag", type="str", help="Reference tag from Diffusers GitHub.")
     args = parser.parse_args()
     main(args)
