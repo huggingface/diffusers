@@ -174,7 +174,9 @@ class LuminaNextDiTBlock(nn.Module):
         nn.init.zeros_(self.adaLN_modulation[1].weight)
         nn.init.zeros_(self.adaLN_modulation[1].bias)
 
-        self.attention_caption_norm = RMSNorm(encoder_hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.attention_caption_norm = RMSNorm(
+            encoder_hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine
+        )
 
     def forward(
         self,
@@ -485,7 +487,9 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
 
         encoder_mask = encoder_mask.bool()
         for layer in self.layers:
-            hidden_states = layer(hidden_states, mask, freqs_cis, encoder_hidden_state, encoder_mask, adaln_input=adaln_input)
+            hidden_states = layer(
+                hidden_states, mask, freqs_cis, encoder_hidden_state, encoder_mask, adaln_input=adaln_input
+            )
 
         hidden_states = self.final_layer(hidden_states, adaln_input)
         output = self.unpatchify(hidden_states, img_size, return_tensor=x_is_tensor)

@@ -3,7 +3,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoModel, AutoTokenizer
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, LuminaNextDiT2DModel, LuminaText2ImgPipeline
 from diffusers.utils.testing_utils import (
@@ -163,6 +163,7 @@ class LuminaText2ImgPipelineSlowTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4
-        
+
+
 if __name__ == "__main__":
     unittest.main()

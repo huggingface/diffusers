@@ -1802,15 +1802,13 @@ class LuminaAttnProcessor2_0(nn.Module):
 
         # scaled_dot_product_attention expects attention_mask shape to be
         # (batch, heads, source_length, target_length)
-        attention_mask = (
-            attention_mask.bool().view(batch_size, 1, 1, sequence_length)
-        )
+        attention_mask = attention_mask.bool().view(batch_size, 1, 1, sequence_length)
         attention_mask = attention_mask.expand(-1, attn.heads, sequence_length, -1)
-        
+
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)
         value = value.transpose(1, 2)
-        
+
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
@@ -1835,7 +1833,7 @@ class LuminaAttnProcessor2_0(nn.Module):
         # (batch, heads, source_length, target_length)
         encoder_mask = encoder_mask.view(batch_size, 1, 1, -1)
         encoder_mask = encoder_mask.expand(batch_size, attn.heads, sequence_length, -1)
-        
+
         hidden_states_caption = F.scaled_dot_product_attention(query, key_cap, value_cap, attn_mask=encoder_mask)
         hidden_states_caption = hidden_states_caption.transpose(1, 2)
 
