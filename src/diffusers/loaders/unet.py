@@ -72,7 +72,11 @@ class UNet2DConditionLoadersMixin:
     unet_name = UNET_NAME
 
     @validate_hf_hub_args
-    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def load_attn_procs(
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        **kwargs,
+    ):
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
         defined in
@@ -263,7 +267,10 @@ class UNet2DConditionLoadersMixin:
         for key, value_dict in custom_diffusion_grouped_dict.items():
             if len(value_dict) == 0:
                 attn_processors[key] = CustomDiffusionAttnProcessor(
-                    train_kv=False, train_q_out=False, hidden_size=None, cross_attention_dim=None
+                    train_kv=False,
+                    train_q_out=False,
+                    hidden_size=None,
+                    cross_attention_dim=None,
                 )
             else:
                 cross_attention_dim = value_dict["to_k_custom_diffusion.weight"].shape[1]
@@ -451,12 +458,24 @@ class UNet2DConditionLoadersMixin:
         is_custom_diffusion = any(
             isinstance(
                 x,
-                (CustomDiffusionAttnProcessor, CustomDiffusionAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor),
+                (
+                    CustomDiffusionAttnProcessor,
+                    CustomDiffusionAttnProcessor2_0,
+                    CustomDiffusionXFormersAttnProcessor,
+                ),
             )
             for (_, x) in self.attn_processors.items()
         )
         if is_custom_diffusion:
             state_dict = self._get_custom_diffusion_state_dict()
+            if save_function is None and safe_serialization:
+                # safetensors does not support saving dicts with non-tensor values
+                empty_state_dict = {k: v for k, v in state_dict.items() if not isinstance(v, torch.Tensor)}
+                logger.warning(
+                    f"Safetensors does not support saving dicts with non-tensor values. "
+                    f"The following keys will be ignored: {empty_state_dict.keys()}"
+                )
+                state_dict = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
         else:
             if not USE_PEFT_BACKEND:
                 raise ValueError("PEFT backend is required for saving LoRAs using the `save_attn_procs()` method.")
@@ -751,7 +770,8 @@ class UNet2DConditionLoadersMixin:
 
             with init_context():
                 image_projection = IPAdapterFullImageProjection(
-                    cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
+                    cross_attention_dim=cross_attention_dim,
+                    image_embed_dim=clip_embeddings_dim,
                 )
 
             for key, value in state_dict.items():
@@ -916,7 +936,12 @@ class UNet2DConditionLoadersMixin:
         if not low_cpu_mem_usage:
             image_projection.load_state_dict(updated_state_dict, strict=True)
         else:
-            load_model_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
+            load_model_dict_into_meta(
+                image_projection,
+                updated_state_dict,
+                device=self.device,
+                dtype=self.dtype,
+            )
 
         return image_projection
 
