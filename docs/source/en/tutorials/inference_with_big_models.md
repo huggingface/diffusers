@@ -24,7 +24,7 @@ As models get bigger and better, it’s possible your model is so big that even 
 
 When a text encoder checkpoint has multiple shards, like [T5-xxl for SD3](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers/tree/main/text_encoder_3), it is automatically handled by the [Transformers](https://huggingface.co/docs/transformers/index) library as it is a required dependency of Diffusers when using the [`StableDiffusion3Pipeline`]. 
 
-The denoiser checkpoint can also have multiple shards and performing inference with such a checkpoint is supported in Diffusers thanks to the Accelerate library. 
+The denoiser checkpoint can also have multiple shards and supports inference thanks to the [Accelerate](https://huggingface.co/docs/accelerate/index) library. 
 
 > [!TIP]
 > Refer to the [Handling big models for inference](https://huggingface.co/docs/accelerate/main/en/concept_guides/big_model_inference) guide for general guidance when working with big models that are hard to fit into memory.
