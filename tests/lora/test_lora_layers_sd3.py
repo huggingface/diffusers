@@ -223,12 +223,8 @@ class SD3LoRATests(unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         images_lora_from_pretrained = pipe(**inputs).images
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text_encoder_one"
-        )
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text_encoder_two"
-        )
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text_encoder_one")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text_encoder_two")
 
         self.assertTrue(
             np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
@@ -283,12 +279,8 @@ class SD3LoRATests(unittest.TestCase):
         pipe.text_encoder.add_adapter(text_encoder_config)
         pipe.text_encoder_2.add_adapter(text_encoder_config)
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text_encoder_one"
-        )
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text_encoder_two"
-        )
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text_encoder_one")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text_encoder_two")
 
         inputs = self.get_dummy_inputs(torch_device)
         output_lora = pipe(**inputs).images
