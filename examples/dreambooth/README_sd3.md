@@ -147,6 +147,40 @@ accelerate launch train_dreambooth_lora_sd3.py \
   --push_to_hub
 ```
 
+### Text Encoder Training
+Alongside the transformer, LoRA fine-tuning of the CLIP text encoders is now also supported. 
+To do so, just specify `--train_text_encoder` while launching training. Please keep the following points in mind:
+
+> [!NOTE]
+> SD3 has three text encoders (CLIP L/14, OpenCLIP bigG/14, and T5-v1.1-XXL). 
+By enabling `--train_text_encoder`, LoRA fine-tuning of both **CLIP encoders** is performed. At the moment, T5 fine-tuning is not supported and weights remain frozen when text encoder training is enabled. 
+
+To perform DreamBooth LoRA with text-encoder training, run:
+```bash
+export MODEL_NAME="stabilityai/stable-diffusion-3-medium-diffusers"
+export OUTPUT_DIR="trained-sd3-lora"
+
+accelerate launch train_dreambooth_lora_sd3.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --output_dir=$OUTPUT_DIR \
+  --dataset_name="Norod78/Yarn-art-style" \
+  --instance_prompt="a photo of TOK yarn art dog" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --train_text_encoder\
+  --gradient_accumulation_steps=1 \
+  --optimizer="prodigy"\
+  --learning_rate=1.0 \
+  --text_encoder_lr=1.0 \
+  --report_to="wandb" \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=1500 \
+  --rank=32 \
+  --seed="0" \
+  --push_to_hub
+```
+
 ## Other notes
 
 We default to the "logit_normal" weighting scheme for the loss following the SD3 paper. Thanks to @bghira for helping us discover that for other weighting schemes supported from the training script, training may incur numerical instabilities.
