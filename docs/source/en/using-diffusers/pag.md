@@ -21,6 +21,9 @@ This guide will show you how to use PAG for various tasks and use cases.
 
 You can apply PAG to the [`StableDiffusionXLPipeline`] for tasks such as text-to-image, image-to-image, and inpainting. To enable PAG for a specific task, load the pipeline using the [AutoPipeline](../api/pipelines/auto_pipeline) API with the `enable_pag=True` flag and the `pag_applied_layers` argument.
 
+> [!TIP]
+> 🤗 Diffusers currently only supports using PAG with selected SDXL pipelines, but feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) if you want to add PAG support to a new pipeline!
+
 <hfoptions id="tasks">
 <hfoption id="Text-to-image">
 
@@ -41,7 +44,7 @@ pipeline.enable_model_cpu_offload()
 > [!TIP]
 > The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. Additionally, you can use `set_pag_applied_layers` method to update these layers after the pipeline has been created.
 
-To generate an image, you will also need to pass a `pag_scale`. PAG is disabled when `pag_scale=0`.
+To generate an image, you will also need to pass a `pag_scale`. When `pag_scale` increases, images gain more semantically coherent structures and exhibit fewer artifacts. However overly large guidance scale can lead to smoother textures and slight saturation in the images, similarly to CFG. `pag_scale=3.0` is used in the official demo and works well in most of the use cases, but feel free to experiment and select the appropriate value according to your needs! PAG is disabled when `pag_scale=0`.
 
 ```py
 prompt = "an insect robot preparing a delicious meal, anime style"
@@ -161,7 +164,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     controlnet=controlnet,
     enable_pag=True,
-    pag_applied_layers = "mid",
+    pag_applied_layers="mid",
     torch_dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
