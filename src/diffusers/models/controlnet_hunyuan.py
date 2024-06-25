@@ -50,7 +50,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         activation_fn: str = "gelu-approximate",
         sample_size=32,
         hidden_size=1152,
-        num_layers: int = 28,
+        transformer_num_layers: int = 40,
         mlp_ratio: float = 4.0,
         cross_attention_dim: int = 1024,
         cross_attention_dim_t5: int = 2048,
@@ -103,9 +103,9 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
                     ff_inner_dim=int(self.inner_dim * mlp_ratio),
                     cross_attention_dim=cross_attention_dim,
                     qk_norm=True,  # See http://arxiv.org/abs/2302.05442 for details.
-                    skip=layer > num_layers // 2,
+                    skip=False # always False as it is the first half of the model
                 )
-                for layer in range(19) ### num_layers // 2
+                for layer in range(transformer_num_layers // 2 - 1) 
             ]
         )
         self.input_block = zero_module(nn.Linear(hidden_size, hidden_size))
@@ -174,7 +174,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         cls, 
         transformer, 
         conditioning_channels=3, 
-        num_layers=None, 
+        transformer_num_layers=None, 
         load_weights_from_transformer=True
     ):
         config = transformer.config
@@ -192,11 +192,11 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         text_len_t5 = config.text_len_t5
 
         conditioning_channels = conditioning_channels
-        num_layers = num_layers or config.num_layers
+        transformer_num_layers = transformer_num_layers or config.transformer_num_layers
 
         controlnet = cls(
             conditioning_channels=conditioning_channels,
-            num_layers=num_layers,
+            transformer_num_layers=transformer_num_layers,
             activation_fn=activation_fn,
             attention_head_dim=attention_head_dim,
             cross_attention_dim=cross_attention_dim,

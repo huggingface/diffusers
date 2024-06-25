@@ -255,6 +255,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
             else 128
         )
 
+    # Copied from diffusers.pipelines.hunyuandit.pipeline_hunyuandit.HunyuanDiTPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: str,
@@ -453,6 +454,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.hunyuandit.pipeline_hunyuandit.HunyuanDiTPipeline.encode_prompt
     def check_inputs(
         self,
         prompt,
@@ -552,6 +554,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.controlnet_sd3.pipeline_stable_diffusion_3_controlnet.StableDiffusion3ControlNetPipeline.prepare_image
     def prepare_image(
         self,
         image,
