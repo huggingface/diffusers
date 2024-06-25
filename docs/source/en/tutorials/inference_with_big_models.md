@@ -12,24 +12,24 @@ specific language governing permissions and limitations under the License.
 
 # Working with big models
 
-A modern diffusion model ([SDXL](../using-diffusers/sdxl.md), for example) is not just a single model but a collection of multiple models. SDXL has four different model-level components:
+A modern diffusion model, like [Stable Diffusion XL (SDXL)](../using-diffusers/sdxl), is not just a single model, but a collection of multiple models. SDXL has four different model-level components:
 
 * A variational autoencoder (VAE)
 * Two text encoders
-* A denoiser (which has a UNet architecture)
+* A UNet for denoising
 
-Usually, the text encoders and the denoiser are bigger and much larger in size compared to the VAE. 
+Usually, the text encoders and the denoiser are much larger compared to the VAE. 
 
-As models keep getting bigger and better, it’s possible your model is so big that even a single copy won’t fit in RAM. That doesn’t mean it can’t be loaded: if you have one or several GPUs, this is more memory available to store your model. In this case, it’s better if your model checkpoint is split into several smaller files that we call checkpoint shards.
+As models get bigger and better, it’s possible your model is so big that even a single copy won’t fit in memory. But that doesn’t mean it can’t be loaded. If you have more than one GPU, there is more memory available to store your model. In this case, it’s better to split your model checkpoint into several smaller *checkpoint shards*.
 
-When a text encoder checkpoint has multiple shards ([T5-xxl for SD3](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers/tree/main/text_encoder_3), for example), it will be automatically handled by the `transformers` library as it is a required dependency of Diffusers when using the [`StableDiffusion3Pipeline`]. 
+When a text encoder checkpoint has multiple shards, like [T5-xxl for SD3](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers/tree/main/text_encoder_3), it is automatically handled by the [Transformers](https://huggingface.co/docs/transformers/index) library as it is a required dependency of Diffusers when using the [`StableDiffusion3Pipeline`]. 
 
 The denoiser checkpoint can also have multiple shards and performing inference with such a checkpoint is supported in Diffusers thanks to the Accelerate library. 
 
 > [!TIP]
-> You can refer to [this Accelerate guide](https://huggingface.co/docs/accelerate/main/en/concept_guides/big_model_inference) for general guidance when working with big models that are hard to fit into memory.
+> Refer to the [Handling big models for inference](https://huggingface.co/docs/accelerate/main/en/concept_guides/big_model_inference) guide for general guidance when working with big models that are hard to fit into memory.
 
-For demonstration purposes, let's first obtain a sharded checkpoint for the [SDXL UNet](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main/unet):
+For example, let's save a sharded checkpoint for the [SDXL UNet](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main/unet):
 
 ```python
 from diffusers import UNet2DConditionModel
@@ -40,7 +40,7 @@ unet = UNet2DConditionModel.from_pretrained(
 unet.save_pretrained("sdxl-unet-sharded", max_shard_size="5GB")
 ```
 
-Size of the FP32 variant of the SDXL UNet checkpoint is ~10.4GB. So, to have it sharded we specify the `max_shard_size` to be 5GB when saving it. After saving it, we can use it as a part of the `StableDiffusionXLPipeline`:
+The size of the fp32 variant of the SDXL UNet checkpoint is ~10.4GB. Set the `max_shard_size` parameter to 5GB to create 3 shards. After saving, you can load them in [`StableDiffusionXLPipeline`]:
 
 ```python
 from diffusers import UNet2DConditionModel, StableDiffusionXLPipeline 
@@ -57,15 +57,14 @@ image = pipeline("a cute dog running on the grass", num_inference_steps=30).imag
 image.save("dog.png")
 ```
 
-If placing all the model-level components on the GPU all at once is not feasible, you can make use of `enable_model_cpu_offload()`: 
+If placing all the model-level components on the GPU at once is not feasible, use [`~DiffusionPipeline.enable_model_cpu_offload`] to help you: 
 
 ```diff
 - pipeline.to("cuda")
 + pipeline.enable_model_cpu_offload()
 ```
 
-## Misc
 
-In general, we recommend sharding when the given checkpoint is more than 5GB (in FP32). 
+In general, we recommend sharding when a checkpoint is more than 5GB (in fp32). 
 
 If you want to distribute the model-level components across multiple GPUs, then using `device_map` when loading a pipeline could be also useful. Refer to [this guide](../training/distributed_inference.md#distributed-inference-with-multiple-gpus) for more details.
