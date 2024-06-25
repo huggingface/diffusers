@@ -32,14 +32,14 @@ import torch
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     enable_pag=True,
-    pag_applied_layers =["mid"],
+    pag_applied_layers=["mid"],
     torch_dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
 ```
 
 > [!TIP]
-> The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. Additionally, you can use `set_pag_applied_layers` method to update these layers after the pipeline has been created.
+> The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. Additionally, you can use `set_pag_applied_layers` method to update these layers after the pipeline has been created. Check out the [pag_applied_layers](#pag_applied_layers) section to learn more about applying PAG to other layers.
 
 To generate an image, you will also need to pass a `pag_scale`. PAG is disabled when `pag_scale=0`.
 
@@ -55,7 +55,6 @@ for pag_scale in [0.0, 3.0]:
         generator=generator,
         pag_scale=pag_scale,
     ).images
-    images[0]
 ```
 
 <div class="flex flex-row gap-4">
@@ -82,7 +81,7 @@ import torch
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     enable_pag=True,
-    pag_applied_layers = ["mid"],
+    pag_applied_layers=["mid"],
     torch_dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
@@ -105,7 +104,7 @@ image = pipeline(
 ```
 
 </hfoption>
-<hfoption id="Inpaiting">
+<hfoption id="Inpainting">
 
 ```py
 from diffusers import AutoPipelineForInpainting
@@ -200,9 +199,9 @@ for pag_scale in [0.0, 3.0]:
   </div>
 </div>
 
-## PAG with IP-adapter 
+## PAG with IP-Adapter 
 
-[IP-Adapter](https://hf.co/papers/2308.06721) is a popular model that can be plugged into diffusion models to enable image prompting without any changes to the underlying model. You can enable PAG on a pipeline with IP-adapter loaded.
+[IP-Adapter](https://hf.co/papers/2308.06721) is a popular model that can be plugged into diffusion models to enable image prompting without any changes to the underlying model. You can enable PAG on a pipeline with IP-Adapter loaded.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -265,7 +264,7 @@ PAG reduces artifacts and improves the overall compposition.
 
 The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. By default, it applies only to the mid blocks. Changing this setting will significantly impact the output. You can use the `set_pag_applied_layers` method to adjust the PAG layers after the pipeline is created, helping you find the optimal layers for your model.
 
-As an example, here is the images generated with `pag_layers = ["down.block_2"])` and `pag_layers = ["down.block_2", "up.block_1.attentions_0"]`
+As an example, here is the images generated with `pag_layers = ["down.block_2"]` and `pag_layers = ["down.block_2", "up.block_1.attentions_0"]`
 
 ```py
 prompt = "an insect robot preparing a delicious meal, anime style"

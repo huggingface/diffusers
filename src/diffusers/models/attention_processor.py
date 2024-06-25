@@ -2622,7 +2622,6 @@ class PAGIdentitySelfAttnProcessor2_0:
         hidden_states_org = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
-
         hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states_org = hidden_states_org.to(query.dtype)
 
