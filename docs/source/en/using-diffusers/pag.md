@@ -72,7 +72,7 @@ for pag_scale in [0.0, 3.0]:
 </hfoption>
 <hfoption id="Image-to-image">
 
-Similary, you can use PAG with image-to-image pipelines
+Similary, you can use PAG with image-to-image pipelines.
 
 ```py
 from diffusers import AutoPipelineForImage2Image
@@ -263,7 +263,7 @@ PAG reduces artifacts and improves the overall compposition.
 
 ### pag_applied_layers
 
-The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. By default, it applies only to the mid blocks. Changing this setting will significantly impact the output. You can use the `set_pag_applied_layer`s method to adjust the PAG layers after the pipeline is created, helping you find the optimal layers for your model.
+The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. By default, it applies only to the mid blocks. Changing this setting will significantly impact the output. You can use the `set_pag_applied_layers` method to adjust the PAG layers after the pipeline is created, helping you find the optimal layers for your model.
 
 As an example, here is the images generated with `pag_layers = ["down.block_2"])` and `pag_layers = ["down.block_2", "up.block_1.attentions_0"]`
 
