@@ -96,17 +96,17 @@ We benchmarked the impact of using `tomesd` on [`StableDiffusionPipeline`] along
 |  | 2 | OOM | 13 | 10.78 |  |  |
 |  | 1 | OOM | 6.66 | 5.54 |  |  |
 
-위의 표에서 볼 수 있듯이, 이미지 해상도가 높을수록 `tomesd`를 사용한 속도 향상이 더욱 두드러집니다. 또한 `tomesd`를 사용하면 1024x1024와 같은 더 높은 해상도에서 파이프라인을 실행할 수 있다는 점도 흥미롭습니다. 
+위의 표에서 볼 수 있듯이, 이미지 해상도가 높을수록 `tomesd`를 사용한 속도 향상이 더욱 두드러집니다. 또한 `tomesd`를 사용하면 1024x1024와 같은 더 높은 해상도에서 파이프라인을 실행할 수 있다는 점도 흥미롭습니다.
 
-[`torch.compile()`](https://huggingface.co/docs/diffusers/optimization/torch2.0)을 사용하면 추론 속도를 더욱 높일 수 있습니다. 
+[`torch.compile()`](https://huggingface.co/docs/diffusers/optimization/torch2.0)을 사용하면 추론 속도를 더욱 높일 수 있습니다.
 
 ## 품질
 
-As reported in [the paper](https://arxiv.org/abs/2303.17604), ToMe can preserve the quality of the generated images to a great extent while speeding up inference. By increasing the `ratio`, it is possible to further speed up inference, but that might come at the cost of a deterioration in the image quality. 
+As reported in [the paper](https://arxiv.org/abs/2303.17604), ToMe can preserve the quality of the generated images to a great extent while speeding up inference. By increasing the `ratio`, it is possible to further speed up inference, but that might come at the cost of a deterioration in the image quality.
 
 To test the quality of the generated samples using our setup, we sampled a few prompts from the “Parti Prompts” (introduced in [Parti](https://parti.research.google/)) and performed inference with the [`StableDiffusionPipeline`] in the following settings:
 
-[논문](https://arxiv.org/abs/2303.17604)에 보고된 바와 같이, ToMe는 생성된 이미지의 품질을 상당 부분 보존하면서 추론 속도를 높일 수 있습니다. `ratio`을 높이면 추론 속도를 더 높일 수 있지만, 이미지 품질이 저하될 수 있습니다. 
+[논문](https://arxiv.org/abs/2303.17604)에 보고된 바와 같이, ToMe는 생성된 이미지의 품질을 상당 부분 보존하면서 추론 속도를 높일 수 있습니다. `ratio`을 높이면 추론 속도를 더 높일 수 있지만, 이미지 품질이 저하될 수 있습니다.
 
 해당 설정을 사용하여 생성된 샘플의 품질을 테스트하기 위해, "Parti 프롬프트"([Parti](https://parti.research.google/)에서 소개)에서 몇 가지 프롬프트를 샘플링하고 다음 설정에서 [`StableDiffusionPipeline`]을 사용하여 추론을 수행했습니다:
 
@@ -114,7 +114,7 @@ To test the quality of the generated samples using our setup, we sampled a few p
 - [`StableDiffusionPipeline`] + ToMe
 - [`StableDiffusionPipeline`] + ToMe + xformers
 
-생성된 샘플의 품질이 크게 저하되는 것을 발견하지 못했습니다. 다음은 샘플입니다: 
+생성된 샘플의 품질이 크게 저하되는 것을 발견하지 못했습니다. 다음은 샘플입니다:
 
 ![tome-samples](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/tome/tome_samples.png)
 
