@@ -113,7 +113,7 @@ pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_t2i, enable_pag=True)
 
 If you have a PAG enabled text-to-image pipeline, you can directly switch to a image-to-image pipeline with PAG still enabled
 
-```
+```py
 pipeline_pag = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", enable_pag=True, torch_dtype=torch.float16)
 pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_t2i)
 ```
