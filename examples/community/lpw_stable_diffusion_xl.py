@@ -2,7 +2,7 @@
 # A SDXL pipeline can take unlimited weighted prompt
 #
 # Author: Andrew Zhu
-# Github: https://github.com/xhinker
+# GitHub: https://github.com/xhinker
 # Medium: https://medium.com/@xhinker
 ## -----------------------------------------------------------
 
@@ -2165,7 +2165,7 @@ class SDXLLongPromptWeightingPipeline(
 
     @classmethod
     def save_lora_weights(
-        self,
+        cls,
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
@@ -2188,7 +2188,7 @@ class SDXLLongPromptWeightingPipeline(
             state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
             state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
-        self.write_lora_layers(
+        cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
             is_main_process=is_main_process,
