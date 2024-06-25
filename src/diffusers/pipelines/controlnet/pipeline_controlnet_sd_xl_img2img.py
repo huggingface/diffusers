@@ -41,8 +41,6 @@ from ...loaders import (
 from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -951,8 +949,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
             init_latents = init_latents.to(dtype)
             if latents_mean is not None and latents_std is not None:
-                latents_mean = latents_mean.to(device=self.device, dtype=dtype)
-                latents_std = latents_std.to(device=self.device, dtype=dtype)
+                latents_mean = latents_mean.to(device=device, dtype=dtype)
+                latents_std = latents_std.to(device=device, dtype=dtype)
                 init_latents = (init_latents - latents_mean) * self.vae.config.scaling_factor / latents_std
             else:
                 init_latents = self.vae.config.scaling_factor * init_latents
@@ -1039,8 +1037,6 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             (
                 AttnProcessor2_0,
                 XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need

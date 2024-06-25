@@ -29,7 +29,7 @@ jobs:
           LATEST_BRANCH=$(python utils/fetch_latest_release_branch.py)
           echo "Latest branch: $LATEST_BRANCH"
           echo "latest_branch=$LATEST_BRANCH" >> $GITHUB_ENV
-          
+
       - name: Set latest branch output
         id: set_latest_branch
         run: echo "::set-output name=latest_branch::${{ env.latest_branch }}"
@@ -43,27 +43,27 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: ${{ needs.find-and-checkout-latest-branch.outputs.latest_branch }}
-          
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.8"
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -U setuptools wheel twine
           pip install -U torch --index-url https://download.pytorch.org/whl/cpu
           pip install -U transformers
-      
+
       - name: Build the dist files
         run: python setup.py bdist_wheel && python setup.py sdist
-      
+
       - name: Publish to the test PyPI
         env:
           TWINE_USERNAME: ${{ secrets.TEST_PYPI_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_PASSWORD }}
-        run: twine upload dist/* -r pypitest --repository-url=https://test.pypi.org/legacy/    
+        run: twine upload dist/* -r pypitest --repository-url=https://test.pypi.org/legacy/
 
       - name: Test installing diffusers and importing
         run: |

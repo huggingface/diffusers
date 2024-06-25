@@ -38,8 +38,6 @@ from ...loaders import (
 from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -86,6 +84,7 @@ EXAMPLE_DOC_STRING = """
         >>> # !pip install transformers accelerate
         >>> from diffusers import StableDiffusionXLControlNetInpaintPipeline, ControlNetModel, DDIMScheduler
         >>> from diffusers.utils import load_image
+        >>> from PIL import Image
         >>> import numpy as np
         >>> import torch
 
@@ -1117,8 +1116,6 @@ class StableDiffusionXLControlNetInpaintPipeline(
             (
                 AttnProcessor2_0,
                 XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need
