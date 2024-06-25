@@ -10,11 +10,6 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Hunyuan-DiT
-![chinese elements understanding](https://github.com/gnobitab/diffusers-hunyuan/assets/1157982/39b99036-c3cb-4f16-bb1a-40ec25eda573)
-
-[Hunyuan-DiT : A Powerful Multi-Resolution Diffusion Transformer with Fine-Grained Chinese Understanding](https://arxiv.org/abs/2405.08748) from Tencent Hunyuan.
-
 # ControlNet with Hunyuan-DiT
 
 HunyuanDiTControlNetPipeline is an implementation of ControlNet for [Hunyuan-DiT](https://arxiv.org/abs/2405.08748).
