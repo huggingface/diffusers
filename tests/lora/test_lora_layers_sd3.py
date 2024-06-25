@@ -197,8 +197,8 @@ class SD3LoRATests(unittest.TestCase):
         pipe.text_encoder_2.add_adapter(text_encoder_config)
 
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
-        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in transformer")
-        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in transformer")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder.")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2.")
 
         inputs = self.get_dummy_inputs(torch_device)
         images_lora = pipe(**inputs).images
