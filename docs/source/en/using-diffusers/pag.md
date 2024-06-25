@@ -143,6 +143,7 @@ images = pipeline(
 images[0]
 ```
 </hfoption>
+</hfoptions>
 
 ## PAG with ControlNet
 
