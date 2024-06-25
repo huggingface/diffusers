@@ -82,7 +82,7 @@
   - local: using-diffusers/ip_adapter
     title: IP-Adapter
   - local: using-diffusers/pag
-    title: PAG    
+    title: PAG
   - local: using-diffusers/controlnet
     title: ControlNet
   - local: using-diffusers/t2i_adapter
@@ -304,8 +304,6 @@
       title: Hunyuan-DiT
     - local: api/pipelines/i2vgenxl
       title: I2VGen-XL
-    - local: api/pipelines/pag
-      title: PAG
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
@@ -326,6 +324,8 @@
       title: MultiDiffusion
     - local: api/pipelines/musicldm
       title: MusicLDM
+    - local: api/pipelines/pag
+      title: PAG
     - local: api/pipelines/paint_by_example
       title: Paint by Example
     - local: api/pipelines/pia
