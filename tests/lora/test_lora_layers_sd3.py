@@ -185,7 +185,7 @@ class SD3LoRATests(unittest.TestCase):
     def test_simple_inference_with_clip_encoders_lora_save_load(self):
         components = self.get_dummy_components()
         transformer_config = self.get_lora_config_for_transformer()
-        text_encoder_config = self.get_lora_config_for_text_encoder()
+        text_encoder_config = self.get_lora_config_for_text_encoders()
 
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -271,7 +271,7 @@ class SD3LoRATests(unittest.TestCase):
     def test_simple_inference_with_clip_encoders_lora_and_scale(self):
         components = self.get_dummy_components()
         transformer_lora_config = self.get_lora_config_for_transformer()
-        text_encoder_config = self.get_lora_config_for_text_encoder()
+        text_encoder_config = self.get_lora_config_for_text_encoders()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
