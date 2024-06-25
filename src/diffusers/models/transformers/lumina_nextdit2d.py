@@ -138,7 +138,7 @@ class LuminaNextDiTBlock(nn.Module):
             cross_attention_dim=None,
             dim_head=hidden_size // num_attention_heads,
             heads=num_attention_heads,
-            qk_norm="layer_norm" if qk_norm else None,
+            kv_heads=num_kv_heads,
             eps=1e-5,
             bias=False,
             out_bias=False,
@@ -201,7 +201,7 @@ class LuminaNextDiTBlock(nn.Module):
             hidden_state = hidden_state + gate_msa.unsqueeze(1).tanh() * self.attention_norm2(
                 self.attention(
                     hidden_states=modulate(self.attention_norm1(hidden_state), scale_msa),
-                    encoder_hidden_state=self.attention_caption_norm(encoder_hidden_state),
+                    encoder_hidden_states=self.attention_caption_norm(encoder_hidden_state),
                     attention_mask=attention_mask,
                     encoder_mask=encoder_mask,
                     image_rotary_emb=freqs_cis,
@@ -542,16 +542,3 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         freqs_cis = torch.cat([freqs_cis_h, freqs_cis_w], dim=-1).flatten(2)
 
         return freqs_cis
-
-    def parameter_count(self) -> int:
-        total_params = 0
-
-        def _recursive_count_params(module):
-            nonlocal total_params
-            for param in module.parameters(recurse=False):
-                total_params += param.numel()
-            for submodule in module.children():
-                _recursive_count_params(submodule)
-
-        _recursive_count_params(self)
-        return total_params

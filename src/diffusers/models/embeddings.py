@@ -310,6 +310,7 @@ def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float 
 def apply_rotary_emb(
     x: torch.Tensor,
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
+    use_real: bool = True,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
@@ -325,16 +326,23 @@ def apply_rotary_emb(
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
     """
-    cos, sin = freqs_cis  # [S, D]
-    cos = cos[None, None]
-    sin = sin[None, None]
-    cos, sin = cos.to(x.device), sin.to(x.device)
+    if use_real:
+        cos, sin = freqs_cis  # [S, D]
+        cos = cos[None, None]
+        sin = sin[None, None]
+        cos, sin = cos.to(x.device), sin.to(x.device)
 
-    x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
-    x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
-    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+        x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+        x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
 
-    return out
+        return out
+    else:
+        x_rotated = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+        freqs_cis = freqs_cis.unsqueeze(2)
+        x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
+        
+        return x_out.type_as(x)
 
 
 class TimestepEmbedding(nn.Module):

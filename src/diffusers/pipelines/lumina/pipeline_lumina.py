@@ -849,10 +849,10 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 )
 
                 noise_pred = self.transformer(
-                    x=latent_model_input,
+                    hidden_states=latent_model_input,
                     timestep=current_timestep,
-                    caption_feat=prompt_embeds,
-                    caption_mask=prompt_attention_mask,
+                    encoder_hidden_state=prompt_embeds,
+                    encoder_mask=prompt_attention_mask,
                     return_dict=False,
                 )[0]
                 noise_pred = noise_pred.chunk(2, dim=1)[0]

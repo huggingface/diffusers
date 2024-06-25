@@ -96,6 +96,7 @@ class Attention(nn.Module):
         query_dim: int,
         cross_attention_dim: Optional[int] = None,
         heads: int = 8,
+        kv_heads: int = 1,
         dim_head: int = 64,
         dropout: float = 0.0,
         bias: bool = False,
@@ -120,6 +121,7 @@ class Attention(nn.Module):
     ):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
+        self.inner_kv_dim = out_dim if out_dim is not None else dim_head * kv_heads
         self.query_dim = query_dim
         self.use_bias = bias
         self.is_cross_attention = cross_attention_dim is not None
@@ -200,15 +202,15 @@ class Attention(nn.Module):
 
         if not self.only_cross_attention:
             # only relevant for the `AddedKVProcessor` classes
-            self.to_k = nn.Linear(self.cross_attention_dim, self.inner_dim, bias=bias)
-            self.to_v = nn.Linear(self.cross_attention_dim, self.inner_dim, bias=bias)
+            self.to_k = nn.Linear(self.cross_attention_dim, self.inner_kv_dim, bias=bias)
+            self.to_v = nn.Linear(self.cross_attention_dim, self.inner_kv_dim, bias=bias)
         else:
             self.to_k = None
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
-            self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
+            self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_kv_dim)
+            self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_kv_dim)
             if self.context_pre_only is not None:
                 self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
 
@@ -1716,23 +1718,6 @@ class LuminaAttnProcessor2_0(nn.Module):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
         self.head_dim = hidden_size // heads
-        
-        self.to_q = nn.Linear(
-            hidden_size,
-            heads * self.head_dim,
-            bias=False,
-        )
-        self.to_k = nn.Linear(
-            hidden_size,
-            kv_heads * self.head_dim,
-            bias=False,
-        )
-        self.to_v = nn.Linear(
-            hidden_size,
-            kv_heads * self.head_dim,
-            bias=False,
-        )
-        
         self.norm_q = nn.LayerNorm(heads * self.head_dim)
         self.norm_k = nn.LayerNorm(kv_heads * self.head_dim)
 
@@ -1769,29 +1754,21 @@ class LuminaAttnProcessor2_0(nn.Module):
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+        batch_size, sequence_length, _ = hidden_states.shape
 
         # Get Query-Key-Value Pair
-        query = self.to_q(hidden_states)
+        query = attn.to_q(hidden_states)
 
-        key = self.to_k(hidden_states)
-        value = self.to_v(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
 
         query_dim = query.shape[-1]
         inner_dim = key.shape[-1]
         head_dim = query_dim // attn.heads
         dtype = query.dtype
 
-        # Get key-value head
-        kv_heads = inner_dim // attn.heads
+        # Get key-value heads
+        kv_heads = inner_dim // self.head_dim
 
         # Apply Query-Key Norm if needed
         if self.norm_q is not None:
@@ -1799,15 +1776,15 @@ class LuminaAttnProcessor2_0(nn.Module):
         if self.norm_k is not None:
             key = self.norm_k(key)
 
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        query = query.view(batch_size, sequence_length, attn.heads, head_dim)
 
-        key = key.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, sequence_length, kv_heads, head_dim)
+        value = value.view(batch_size, sequence_length, kv_heads, head_dim)
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
-            query = apply_rotary_emb(query, image_rotary_emb)
-            key = apply_rotary_emb(key, image_rotary_emb)
+            query = apply_rotary_emb(query, image_rotary_emb, use_real=False)
+            key = apply_rotary_emb(key, image_rotary_emb, use_real=False)
 
         query, key = query.to(dtype), key.to(dtype)
 
@@ -1823,29 +1800,44 @@ class LuminaAttnProcessor2_0(nn.Module):
             key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
             value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
 
+        # scaled_dot_product_attention expects attention_mask shape to be
+        # (batch, heads, source_length, target_length)
         attention_mask = (
-            attention_mask.bool().view(batch_size, 1, 1, sequence_length).expand(-1, attn.heads, sequence_length, -1)
+            attention_mask.bool().view(batch_size, 1, 1, sequence_length)
         )
+        attention_mask = attention_mask.expand(-1, attn.heads, sequence_length, -1)
+        
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
+        
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, scale=softmax_scale
         )
-        hidden_states = hidden_states.permute(0, 2, 1, 3).to(dtype)
+        hidden_states = hidden_states.transpose(1, 2).to(dtype)
 
         # Cross Attention
         key_cap = self.key_cap(encoder_hidden_states)
         # Apply Key Norm to encoder_hidden_state
-        key_cap = self.norm_k_cap(key_cap).view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
-        value_cap = self.value_cap(encoder_hidden_states).view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+        key_cap = self.norm_k_cap(key_cap).view(batch_size, -1, kv_heads, head_dim)
+        value_cap = self.value_cap(encoder_hidden_states).view(batch_size, -1, kv_heads, head_dim)
 
         if n_rep >= 1:
             key_cap = key_cap.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
             value_cap = value_cap.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
 
-        encoder_mask = (encoder_mask.view(batch_size, 1, 1, -1).expand(batch_size, attn.heads, sequence_length, -1),)
-        hidden_states_caption = F.scaled_dot_product_attention(query, key_cap, value_cap, encoder_mask)
-        hidden_states_caption = hidden_states_caption.permute(0, 2, 1, 3)
+        key_cap = key_cap.transpose(1, 2)
+        value_cap = value_cap.transpose(1, 2)
+
+        # scaled_dot_product_attention expects attention_mask shape to be
+        # (batch, heads, source_length, target_length)
+        encoder_mask = encoder_mask.view(batch_size, 1, 1, -1)
+        encoder_mask = encoder_mask.expand(batch_size, attn.heads, sequence_length, -1)
+        
+        hidden_states_caption = F.scaled_dot_product_attention(query, key_cap, value_cap, attn_mask=encoder_mask)
+        hidden_states_caption = hidden_states_caption.transpose(1, 2)
 
         hidden_states_caption = hidden_states_caption * self.gate.tanh().view(1, 1, -1, 1)
         hidden_states = hidden_states + hidden_states_caption
