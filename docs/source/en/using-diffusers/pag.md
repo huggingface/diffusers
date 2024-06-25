@@ -19,7 +19,7 @@ This guide will show you how to use PAG for various tasks and use cases.
 
 ## General tasks
 
-You can apply PAG to the `StableDIffusionXLPpeline` for tasks like text-to-image, image-to-image, and inpainting. To enable PAG on a pipeline for a specfic task, simply load that pipeline using `AutoPipeline` API along with the `enable_pag=True` flag and the `pag_applied_layers` argument.
+You can apply PAG to the [`StableDiffusionXLPipeline`] for tasks such as text-to-image, image-to-image, and inpainting. To enable PAG for a specific task, load the pipeline using the [AutoPipeline](../api/pipelines/auto_pipeline) API with the `enable_pag=True` flag and the `pag_applied_layers` argument.
 
 <hfoptions id="tasks">
 <hfoption id="Text-to-image">
@@ -39,9 +39,9 @@ pipeline.enable_model_cpu_offload()
 ```
 
 > [!TIP]
-> `pag_applied_layers` argument allow you to specify which layers PAG is applied to. You can also use `set_pag_applied_layers` to update these layers after the pipeline has been created.
+> The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. Additionally, you can use `set_pag_applied_layers` method to update these layers after the pipeline has been created.
 
-In addition to the regular pipeline arguments such as `prompt` and `guidance_scale`, you will also need to pass a `pag_scale` to generate an image. PAG is disabled when `pag_scale=0`.
+To generate an image, you will also need to pass a `pag_scale`. PAG is disabled when `pag_scale=0`.
 
 ```py
 prompt = "an insect robot preparing a delicious meal, anime style"
@@ -146,10 +146,9 @@ images[0]
 
 ## PAG with ControlNet
 
-To use PAG with ControlNet, first create a `controlnet`. Then, pass the `controlne`t and PAG-related arguments to the `from_pretrained` method of the AutoPipeline for the specified task.
+To use PAG with ControlNet, first create a `controlnet`. Then, pass the `controlnet` and other PAG arguments to the `from_pretrained` method of the AutoPipeline for the specified task.
 
 ```py
-# pag doc example 
 from diffusers import AutoPipelineForText2Image, ControlNetModel
 import torch
 
@@ -167,7 +166,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 pipeline.enable_model_cpu_offload()
 ```
 
-You can use the pipeline similarly to how you normally use the controlnet pipelines. The only difference is that you can specify a `pag_scale` parameter. Note that PAG works well for unconditional generation. In this example, we will generate an image without using a prompt.
+You can use the pipeline in the same way you normally use ControlNet pipelines, with the added option to specify a `pag_scale` parameter. Note that PAG works well for unconditional generation. In this example, we will generate an image without a prompt.
 
 ```py
 from diffusers.utils import load_image
@@ -202,7 +201,7 @@ for pag_scale in [0.0, 3.0]:
 
 ## PAG with IP-adapter 
 
-[IP-Adapter](https://hf.co/papers/2308.06721) is a popular tool that can be plugged into diffusion models to enable image prompting without any changes to the underlying model. You can enable PAG on a pipeline with IP-adapter loaded.
+[IP-Adapter](https://hf.co/papers/2308.06721) is a popular model that can be plugged into diffusion models to enable image prompting without any changes to the underlying model. You can enable PAG on a pipeline with IP-adapter loaded.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -245,7 +244,7 @@ images[0]
 
 ```
 
-PAG reduces artifacts and improve the overall compposition.
+PAG reduces artifacts and improves the overall compposition.
 
 <div class="flex flex-row gap-4">
   <div class="flex-1">
@@ -263,7 +262,7 @@ PAG reduces artifacts and improve the overall compposition.
 
 ### pag_applied_layers
 
-`pag_applied_layers` argument allow you to specify which layers PAG is applied to. By default it will only applies to the mid blocks. It makes a significant difference on the output. You can use `set_pag_applied_layers` method to set different pag layers after the pipeline is created and find the optimal pag layer for your model.
+The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. By default, it applies only to the mid blocks. Changing this setting will significantly impact the output. You can use the `set_pag_applied_layer`s method to adjust the PAG layers after the pipeline is created, helping you find the optimal layers for your model.
 
 As an example, here is the images generated with `pag_layers = ["down.block_2"])` and `pag_layers = ["down.block_2", "up.block_1.attentions_0"]`
 
