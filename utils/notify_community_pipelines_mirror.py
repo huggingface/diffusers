@@ -50,6 +50,5 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--status", type=str, default="success", choices=["success", "failure"])
-    parser.add_argument("--tag", type="str", help="Reference tag from Diffusers GitHub.")
     args = parser.parse_args()
     main(args)
