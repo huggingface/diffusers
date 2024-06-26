@@ -148,8 +148,6 @@ class LuminaNextDiTBlock(nn.Module):
             heads=num_attention_heads,
             kv_heads=num_kv_heads,
             qk_norm=qk_norm,
-            q_norm_dim=num_attention_heads * self.head_dim,
-            k_norm_dim=num_kv_heads * self.head_dim,
             eps=1e-5,
             bias=False,
             out_bias=False,
