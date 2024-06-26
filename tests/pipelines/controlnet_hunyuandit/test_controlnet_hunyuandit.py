@@ -18,7 +18,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, CLIPTextConfig, BertModel, T5EncoderModel
+from transformers import AutoTokenizer, BertModel, T5EncoderModel
 
 from diffusers import (
     AutoencoderKL,
@@ -37,6 +37,7 @@ from diffusers.utils.testing_utils import (
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..test_pipelines_common import PipelineTesterMixin
+
 
 enable_full_determinism()
 
@@ -157,7 +158,7 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f"Expected: {expected_slice}, got: {image_slice.flatten()}"
-    
+
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(
             expected_max_diff=1e-3,
@@ -174,7 +175,7 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
     def test_save_load_optional_components(self):
         # TODO(YiYi) need to fix later
         pass
-    
+
 
 @slow
 @require_torch_gpu
@@ -192,7 +193,9 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_canny(self):
-        controlnet = HunyuanDiT2DControlNetModel.from_pretrained("Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny", torch_dtype=torch.float16)
+        controlnet = HunyuanDiT2DControlNetModel.from_pretrained(
+            "Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny", torch_dtype=torch.float16
+        )
         pipe = HunyuanDiTControlNetPipeline.from_pretrained(
             "Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, torch_dtype=torch.float16
         )
@@ -202,7 +205,9 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "At night, an ancient Chinese-style lion statue stands in front of the hotel, its eyes gleaming as if guarding the building. The background is the hotel entrance at night, with a close-up, eye-level, and centered composition. This photo presents a realistic photographic style, embodies Chinese sculpture culture, and reveals a mysterious atmosphere."
         n_prompt = ""
-        control_image = load_image("https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny/resolve/main/canny.jpg?download=true")
+        control_image = load_image(
+            "https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny/resolve/main/canny.jpg?download=true"
+        )
 
         output = pipe(
             prompt,
@@ -227,7 +232,9 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
 
     def test_pose(self):
-        controlnet = HunyuanDiT2DControlNetModel.from_pretrained("Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Pose", torch_dtype=torch.float16)
+        controlnet = HunyuanDiT2DControlNetModel.from_pretrained(
+            "Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Pose", torch_dtype=torch.float16
+        )
         pipe = HunyuanDiTControlNetPipeline.from_pretrained(
             "Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, torch_dtype=torch.float16
         )
@@ -237,7 +244,9 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "An Asian woman, dressed in a green top, wearing a purple headscarf and a purple scarf, stands in front of a blackboard. The background is the blackboard. The photo is presented in a close-up, eye-level, and centered composition, adopting a realistic photographic style"
         n_prompt = ""
-        control_image = load_image("https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Pose/resolve/main/pose.jpg?download=true")
+        control_image = load_image(
+            "https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Pose/resolve/main/pose.jpg?download=true"
+        )
 
         output = pipe(
             prompt,
@@ -260,9 +269,11 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         )
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
-    
+
     def test_depth(self):
-        controlnet = HunyuanDiT2DControlNetModel.from_pretrained("Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Depth", torch_dtype=torch.float16)
+        controlnet = HunyuanDiT2DControlNetModel.from_pretrained(
+            "Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Depth", torch_dtype=torch.float16
+        )
         pipe = HunyuanDiTControlNetPipeline.from_pretrained(
             "Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, torch_dtype=torch.float16
         )
@@ -272,7 +283,9 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "In the dense forest, a black and white panda sits quietly in green trees and red flowers, surrounded by mountains, rivers, and the ocean. The background is the forest in a bright environment."
         n_prompt = ""
-        control_image = load_image("https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Depth/resolve/main/depth.jpg?download=true")
+        control_image = load_image(
+            "https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Depth/resolve/main/depth.jpg?download=true"
+        )
 
         output = pipe(
             prompt,
@@ -297,7 +310,9 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
 
     def test_multi_controlnet(self):
-        controlnet = HunyuanDiT2DControlNetModel.from_pretrained("Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny", torch_dtype=torch.float16)
+        controlnet = HunyuanDiT2DControlNetModel.from_pretrained(
+            "Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny", torch_dtype=torch.float16
+        )
         controlnet = HunyuanDiT2DMultiControlNetModel([controlnet, controlnet])
 
         pipe = HunyuanDiTControlNetPipeline.from_pretrained(
@@ -309,7 +324,9 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "At night, an ancient Chinese-style lion statue stands in front of the hotel, its eyes gleaming as if guarding the building. The background is the hotel entrance at night, with a close-up, eye-level, and centered composition. This photo presents a realistic photographic style, embodies Chinese sculpture culture, and reveals a mysterious atmosphere."
         n_prompt = ""
-        control_image = load_image("https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny/resolve/main/canny.jpg?download=true")
+        control_image = load_image(
+            "https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny/resolve/main/canny.jpg?download=true"
+        )
 
         output = pipe(
             prompt,

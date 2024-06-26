@@ -23,7 +23,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...models import AutoencoderKL, HunyuanDiT2DModel, HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
+from ...models import AutoencoderKL, HunyuanDiT2DControlNetModel, HunyuanDiT2DModel, HunyuanDiT2DMultiControlNetModel
 from ...models.embeddings import get_2d_rotary_pos_embed
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import DDPMScheduler
@@ -51,17 +51,25 @@ EXAMPLE_DOC_STRING = """
         ```py
         from diffusers import HunyuanDiT2DControlNetModel, HunyuanDiTControlNetPipeline
         import torch
-        controlnet = HunyuanDiT2DControlNetModel.from_pretrained("Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny", torch_dtype=torch.float16)
 
-        pipe = HunyuanDiTControlNetPipeline.from_pretrained("Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, torch_dtype=torch.float16)
+        controlnet = HunyuanDiT2DControlNetModel.from_pretrained(
+            "Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny", torch_dtype=torch.float16
+        )
+
+        pipe = HunyuanDiTControlNetPipeline.from_pretrained(
+            "Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, torch_dtype=torch.float16
+        )
         pipe.to("cuda")
 
         from diffusers.utils import load_image
-        cond_image = load_image('https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny/resolve/main/canny.jpg?download=true')
+
+        cond_image = load_image(
+            "https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny/resolve/main/canny.jpg?download=true"
+        )
 
         ## You may also use English prompt as HunyuanDiT supports both English and Chinese
-        prompt="在夜晚的酒店门前，一座古老的中国风格的狮子雕像矗立着，它的眼睛闪烁着光芒，仿佛在守护着这座建筑。背景是夜晚的酒店前，构图方式是特写，平视，居中构图。这张照片呈现了真实摄影风格，蕴含了中国雕塑文化，同时展现了神秘氛围"
-        #prompt="At night, an ancient Chinese-style lion statue stands in front of the hotel, its eyes gleaming as if guarding the building. The background is the hotel entrance at night, with a close-up, eye-level, and centered composition. This photo presents a realistic photographic style, embodies Chinese sculpture culture, and reveals a mysterious atmosphere."
+        prompt = "在夜晚的酒店门前，一座古老的中国风格的狮子雕像矗立着，它的眼睛闪烁着光芒，仿佛在守护着这座建筑。背景是夜晚的酒店前，构图方式是特写，平视，居中构图。这张照片呈现了真实摄影风格，蕴含了中国雕塑文化，同时展现了神秘氛围"
+        # prompt="At night, an ancient Chinese-style lion statue stands in front of the hotel, its eyes gleaming as if guarding the building. The background is the hotel entrance at night, with a close-up, eye-level, and centered composition. This photo presents a realistic photographic style, embodies Chinese sculpture culture, and reveals a mysterious atmosphere."
         image = pipe(
             prompt,
             height=1024,
@@ -207,11 +215,14 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         controlnet: Union[
-            HunyuanDiT2DControlNetModel, List[HunyuanDiT2DControlNetModel], Tuple[HunyuanDiT2DControlNetModel], HunyuanDiT2DMultiControlNetModel
+            HunyuanDiT2DControlNetModel,
+            List[HunyuanDiT2DControlNetModel],
+            Tuple[HunyuanDiT2DControlNetModel],
+            HunyuanDiT2DMultiControlNetModel,
         ],
         text_encoder_2=T5EncoderModel,
         tokenizer_2=MT5Tokenizer,
-        requires_safety_checker: bool=True,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
 
@@ -454,7 +465,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.hunyuandit.pipeline_hunyuandit.HunyuanDiTPipeline.encode_prompt
+    # Copied from diffusers.pipelines.hunyuandit.pipeline_hunyuandit.HunyuanDiTPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -956,9 +967,9 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
                     image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                     controlnet_cond=control_image,
-                    conditioning_scale=controlnet_conditioning_scale
+                    conditioning_scale=controlnet_conditioning_scale,
                 )[0]
-                
+
                 # predict the noise residual
                 noise_pred = self.transformer(
                     latent_model_input,
@@ -971,7 +982,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
                     style=style,
                     image_rotary_emb=image_rotary_emb,
                     return_dict=False,
-                     controlnet_block_samples=control_block_samples
+                    controlnet_block_samples=control_block_samples,
                 )[0]
 
                 noise_pred, _ = noise_pred.chunk(2, dim=1)

@@ -510,12 +510,12 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     image_rotary_emb=image_rotary_emb,
                 )  # (N, L, D)
-            
+
             if layer < (self.config.num_layers // 2 - 1):
                 skips.append(hidden_states)
 
         if controlnet_block_samples is not None and len(controlnet_block_samples) != 0:
-            raise ValueError("The number of controls is not equal to the number of skip connections.") 
+            raise ValueError("The number of controls is not equal to the number of skip connections.")
 
         # final layer
         hidden_states = self.norm_out(hidden_states, temb.to(torch.float32))

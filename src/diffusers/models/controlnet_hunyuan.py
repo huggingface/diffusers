@@ -11,15 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Optional, Dict, List, Union
+from dataclasses import dataclass
+from typing import Dict, Optional, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
-from dataclasses import dataclass
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import logging
+from .attention_processor import AttentionProcessor
+from .controlnet import BaseOutput, Tuple, zero_module
 from .embeddings import (
     HunyuanCombinedTimestepTextSizeStyleEmbedding,
     PatchEmbed,
@@ -27,8 +28,7 @@ from .embeddings import (
 )
 from .modeling_utils import ModelMixin
 from .transformers.hunyuan_transformer_2d import HunyuanDiTBlock
-from .controlnet import zero_module, BaseOutput, Tuple
-from .attention_processor import AttentionProcessor
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -57,7 +57,6 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         pooled_projection_dim: int = 1024,
         text_len: int = 77,
         text_len_t5: int = 256,
-
     ):
         super().__init__()
         self.num_heads = num_attention_heads
@@ -103,9 +102,9 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
                     ff_inner_dim=int(self.inner_dim * mlp_ratio),
                     cross_attention_dim=cross_attention_dim,
                     qk_norm=True,  # See http://arxiv.org/abs/2302.05442 for details.
-                    skip=False # always False as it is the first half of the model
+                    skip=False,  # always False as it is the first half of the model
                 )
-                for layer in range(transformer_num_layers // 2 - 1) 
+                for layer in range(transformer_num_layers // 2 - 1)
             ]
         )
         self.input_block = zero_module(nn.Linear(hidden_size, hidden_size))
@@ -141,12 +140,13 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
+
         Parameters:
             processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
                 The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
+                for **all** `Attention` layers. If `processor` is a dict, the key needs to define the path to the
+                corresponding cross attention processor. This is strongly recommended when setting trainable attention
+                processors.
         """
         count = len(self.attn_processors.keys())
 
@@ -171,11 +171,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
 
     @classmethod
     def from_transformer(
-        cls, 
-        transformer, 
-        conditioning_channels=3, 
-        transformer_num_layers=None, 
-        load_weights_from_transformer=True
+        cls, transformer, conditioning_channels=3, transformer_num_layers=None, load_weights_from_transformer=True
     ):
         config = transformer.config
         activation_fn = config.activation_fn
@@ -212,7 +208,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         )
         if load_weights_from_transformer:
             key = controlnet.load_state_dict(transformer.state_dict(), strict=False)
-            print(f"=> controlnet load from Hunyuan-DiT. missing_keys=", key[0])
+            logger.warning(f"controlnet load from Hunyuan-DiT. missing_keys: {key[0]}")
         return controlnet
 
     def forward(
@@ -232,6 +228,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
     ):
         """
         The [`HunyuanDiT2DControlNetModel`] forward method.
+
         Args:
         hidden_states (`torch.Tensor` of shape `(batch size, dim, height, width)`):
             The input tensor.
@@ -268,11 +265,9 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         # 2. pre-process
         hidden_states = hidden_states + self.input_block(self.pos_embed(controlnet_cond))
 
-
         temb = self.time_extra_emb(
             timestep, encoder_hidden_states_t5, image_meta_size, style, hidden_dtype=timestep.dtype
         )  # [B, D]
-
 
         # text projection
         batch_size, sequence_length, _ = encoder_hidden_states_t5.shape
@@ -289,7 +284,6 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
 
         block_res_samples = ()
         for layer, block in enumerate(self.blocks):
-
             hidden_states = block(
                 hidden_states,
                 temb=temb,
@@ -297,7 +291,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
                 image_rotary_emb=image_rotary_emb,
             )  # (N, L, D)
 
-            block_res_samples = block_res_samples + (hidden_states, )
+            block_res_samples = block_res_samples + (hidden_states,)
 
         controlnet_block_res_samples = ()
         for block_res_sample, controlnet_block in zip(block_res_samples, self.controlnet_blocks):
@@ -308,17 +302,17 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         controlnet_block_res_samples = [sample * conditioning_scale for sample in controlnet_block_res_samples]
 
         if not return_dict:
-            return (controlnet_block_res_samples, )
-        
+            return (controlnet_block_res_samples,)
+
         return HunyuanControlNetOutput(controlnet_block_samples=controlnet_block_res_samples)
-    
+
 
 class HunyuanDiT2DMultiControlNetModel(ModelMixin):
     r"""
     `HunyuanDiT2DMultiControlNetModel` wrapper class for Multi-HunyuanDiT2DControlNetModel
 
-    This module is a wrapper for multiple instances of the `HunyuanDiT2DControlNetModel`. The `forward()` API is designed to be
-    compatible with `HunyuanDiT2DControlNetModel`.
+    This module is a wrapper for multiple instances of the `HunyuanDiT2DControlNetModel`. The `forward()` API is
+    designed to be compatible with `HunyuanDiT2DControlNetModel`.
 
     Args:
         controlnets (`List[HunyuanDiT2DControlNetModel]`):
@@ -347,6 +341,7 @@ class HunyuanDiT2DMultiControlNetModel(ModelMixin):
     ):
         """
         The [`HunyuanDiT2DControlNetModel`] forward method.
+
         Args:
         hidden_states (`torch.Tensor` of shape `(batch size, dim, height, width)`):
             The input tensor.

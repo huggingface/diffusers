@@ -122,7 +122,7 @@ class DiTTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class HunyuanDiT2DModel(metaclass=DummyObject):
+class HunyuanDiT2DControlNetModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -137,7 +137,7 @@ class HunyuanDiT2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class HunyuanDiT2DControlNetModel(metaclass=DummyObject):
+class HunyuanDiT2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -166,7 +166,7 @@ class HunyuanDiT2DMultiControlNetModel(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
 
-        
+
 class I2VGenXLUNet(metaclass=DummyObject):
     _backends = ["torch"]
 
