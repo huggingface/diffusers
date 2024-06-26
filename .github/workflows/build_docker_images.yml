@@ -70,6 +70,7 @@ jobs:
           - diffusers-onnxruntime-cpu
           - diffusers-onnxruntime-cuda
           - diffusers-doc-builder
+          - diffusers-pytorch-benchmarking-cuda
 
     steps:
       - name: Checkout repository
