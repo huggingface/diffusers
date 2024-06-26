@@ -282,7 +282,7 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
 def main():
     # Run a demo
     model_id = "stabilityai/stable-diffusion-x4-upscaler"
-    pipe = StableDiffusionTiledUpscalePipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
+    pipe = StableDiffusionTiledUpscalePipeline.from_pretrained(model_id, variant="fp16", torch_dtype=torch.float16)
     pipe = pipe.to("cuda")
     image = Image.open("../../docs/source/imgs/diffusers_library.jpg")
 
