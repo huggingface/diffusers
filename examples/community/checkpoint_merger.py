@@ -71,7 +71,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             **kwargs:
                 Supports all the default DiffusionPipeline.get_config_dict kwargs viz..
 
-                cache_dir, resume_download, force_download, proxies, local_files_only, token, revision, torch_dtype, device_map.
+                cache_dir, force_download, proxies, local_files_only, token, revision, torch_dtype, device_map.
 
                 alpha - The interpolation parameter. Ranges from 0 to 1.  It affects the ratio in which the checkpoints are merged. A 0.8 alpha
                     would mean that the first model checkpoints would affect the final result far less than an alpha of 0.2
