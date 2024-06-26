@@ -13,8 +13,6 @@
 # limitations under the License.
 import inspect
 import math
-
-from importlib import import_module
 from typing import Callable, Dict, List, Optional, Union
 
 import torch
@@ -1644,7 +1642,7 @@ class LuminaAttnProcessor2_0:
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
         batch_size, sequence_length, _ = hidden_states.shape
-        
+
         # Get Query-Key-Value Pair
         if residual is None:
             query = attn.to_q(hidden_states)
