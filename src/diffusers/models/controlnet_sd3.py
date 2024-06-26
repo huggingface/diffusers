@@ -23,11 +23,11 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ..models.attention import JointTransformerBlock
 from ..models.attention_processor import Attention, AttentionProcessor
+from ..models.modeling_outputs import Transformer2DModelOutput
 from ..models.modeling_utils import ModelMixin
 from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from .controlnet import BaseOutput, zero_module
 from .embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
-from .transformers.transformer_2d import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
