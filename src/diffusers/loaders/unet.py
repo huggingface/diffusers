@@ -457,6 +457,15 @@ class UNet2DConditionLoadersMixin:
         )
         if is_custom_diffusion:
             state_dict = self._get_custom_diffusion_state_dict()
+            if save_function is None and safe_serialization:
+                # safetensors does not support saving dicts with non-tensor values
+                empty_state_dict = {k: v for k, v in state_dict.items() if not isinstance(v, torch.Tensor)}
+                if len(empty_state_dict) > 0:
+                    logger.warning(
+                        f"Safetensors does not support saving dicts with non-tensor values. "
+                        f"The following keys will be ignored: {empty_state_dict.keys()}"
+                    )
+                state_dict = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
         else:
             if not USE_PEFT_BACKEND:
                 raise ValueError("PEFT backend is required for saving LoRAs using the `save_attn_procs()` method.")
