@@ -571,9 +571,6 @@ class LuminaFeedForward(nn.Module):
             intermediate_size,
             bias=False,
         )
-        nn.init.xavier_uniform_(self.w1.weight)
-        nn.init.xavier_uniform_(self.w2.weight)
-        nn.init.xavier_uniform_(self.w3.weight)
 
     # @torch.compile
     def _forward_silu_gating(self, x1, x3):
