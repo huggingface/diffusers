@@ -253,8 +253,10 @@
       title: PriorTransformer
     - local: api/models/controlnet
       title: ControlNetModel
-    - local: api/models/controlnet_sd3
+    - local: api/models/controlnet_hunyuandit
       title: SD3ControlNetModel
+    - local: api/models/controlnet_sd3
+      title: HunyuanDiT2DControlNetModel
     title: Models
   - isExpanded: false
     sections:
@@ -278,6 +280,8 @@
       title: Consistency Models
     - local: api/pipelines/controlnet
       title: ControlNet
+    - local: api/pipelines/controlnet_hunyuandit
+      title: ControlNet with Hunyuan-DiT
     - local: api/pipelines/controlnet_sd3
       title: ControlNet with Stable Diffusion 3
     - local: api/pipelines/controlnet_sdxl
