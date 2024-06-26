@@ -71,7 +71,7 @@ import torch
 
 unet = UNet2DConditionModel.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16, 
+    torch_dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
     subfolder="unet",
@@ -138,7 +138,7 @@ from peft import PeftModel
 
 base_unet = UNet2DConditionModel.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16, 
+    torch_dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
     subfolder="unet",

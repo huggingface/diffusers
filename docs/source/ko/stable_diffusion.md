@@ -9,7 +9,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 -->
-                                                               
+
 # 효과적이고 효율적인 Diffusion
 
 [[open-in-colab]]
@@ -68,7 +68,7 @@ image
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_1.png">
 </div>
 
-이 프로세스는 T4 GPU에서 약 30초가 소요되었습니다(할당된 GPU가 T4보다 나은 경우 더 빠를 수 있음). 기본적으로 [`DiffusionPipeline`]은 50개의 추론 단계에 대해 전체 `float32` 정밀도로 추론을 실행합니다. `float16`과 같은 더 낮은 정밀도로 전환하거나 추론 단계를 더 적게 실행하여 속도를 높일 수 있습니다. 
+이 프로세스는 T4 GPU에서 약 30초가 소요되었습니다(할당된 GPU가 T4보다 나은 경우 더 빠를 수 있음). 기본적으로 [`DiffusionPipeline`]은 50개의 추론 단계에 대해 전체 `float32` 정밀도로 추론을 실행합니다. `float16`과 같은 더 낮은 정밀도로 전환하거나 추론 단계를 더 적게 실행하여 속도를 높일 수 있습니다.
 
 `float16`으로 모델을 로드하고 이미지를 생성해 보겠습니다:
 
@@ -167,7 +167,7 @@ def image_grid(imgs, rows=2, cols=2):
         grid.paste(img, box=(i % cols * w, i // cols * h))
     return grid
 ```
- 
+
 `batch_size=4`부터 시작해 얼마나 많은 메모리를 소비했는지 확인합니다:
 
 ```python

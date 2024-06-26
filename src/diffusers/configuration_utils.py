@@ -711,7 +711,7 @@ class LegacyConfigMixin(ConfigMixin):
 
     @classmethod
     def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
-        # To prevent depedency import problem.
+        # To prevent dependency import problem.
         from .models.model_loading_utils import _fetch_remapped_cls_from_config
 
         # resolve remapping
