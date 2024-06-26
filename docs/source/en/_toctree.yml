@@ -21,6 +21,8 @@
     title: Load LoRAs for inference
   - local: tutorials/fast_diffusion
     title: Accelerate inference of text-to-image diffusion models
+  - local: tutorials/inference_with_big_models
+    title: Working with big models
   title: Tutorials
 - sections:
   - local: using-diffusers/loading
