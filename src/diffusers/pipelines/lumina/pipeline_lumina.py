@@ -753,12 +753,12 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         if proportional_attn:
             assert self.base_sequence_length is not None
             for layer in self.transformer.layers:
-                layer.attention.base_seqlen = self.base_sequence_length
-                layer.attention.proportional_attn = proportional_attn
+                layer.attn.base_seqlen = self.base_sequence_length
+                layer.attn.proportional_attn = proportional_attn
         else:
             for layer in self.transformer.layers:
-                layer.attention.base_seqlen = None
-                layer.attention.proportional_attn = proportional_attn
+                layer.attn.base_seqlen = None
+                layer.attn.proportional_attn = proportional_attn
 
         device = self._execution_device
 
@@ -853,7 +853,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=current_timestep,
-                    encoder_hidden_state=prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
                     encoder_mask=prompt_attention_mask,
                     return_dict=False,
                 )[0]

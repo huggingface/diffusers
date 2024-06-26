@@ -1735,6 +1735,8 @@ class LuminaAttnProcessor2_0:
 
         if encoder_hidden_states is not None:
             residual = hidden_states
+        else:
+            residual = encoder_hidden_states
 
         input_ndim = hidden_states.ndim
 
@@ -1781,7 +1783,7 @@ class LuminaAttnProcessor2_0:
         query, key = query.to(dtype), key.to(dtype)
 
         # Apply proportional attention if true
-        if encoder_hidden_states is not None:
+        if residual is not None:
             softmax_scale = None
         else:
             if proportional_attn:
@@ -1810,8 +1812,11 @@ class LuminaAttnProcessor2_0:
             query, key, value, attn_mask=attention_mask, scale=softmax_scale
         )
         hidden_states = hidden_states.transpose(1, 2).to(dtype)
+        
+        import ipdb
+        ipdb.set_trace()
 
-        if encoder_hidden_states is not None:
+        if residual is not None:
             hidden_states = hidden_states * attn.gate.tanh().view(1, 1, -1, 1)
             hidden_states = residual + hidden_states
             hidden_states = hidden_states.flatten(-2)
