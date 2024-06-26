@@ -504,7 +504,7 @@ def parse_args(input_args=None):
         type=int,
         default=None,
         help="Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that "
-             "the output of the pre-final layer will be used for computing the prompt embeddings.",
+        "the output of the pre-final layer will be used for computing the prompt embeddings.",
     )
 
     parser.add_argument(
@@ -2069,7 +2069,7 @@ def main(args):
                         tokenizers=None,
                         prompt=None,
                         text_input_ids_list=[tokens_one, tokens_two],
-                        clip_skip=args.clip_skip
+                        clip_skip=args.clip_skip,
                     )
                     unet_added_conditions.update(
                         {"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat_text_embeds, 1)}
