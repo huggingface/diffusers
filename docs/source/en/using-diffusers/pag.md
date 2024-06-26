@@ -44,6 +44,13 @@ pipeline.enable_model_cpu_offload()
 > [!TIP]
 > The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. Additionally, you can use `set_pag_applied_layers` method to update these layers after the pipeline has been created. Check out the [pag_applied_layers](#pag_applied_layers) section to learn more about applying PAG to other layers.
 
+If you already have a pipeline created and loaded, you can enable PAG on it using the `from_pipe` API with the `enable_pag` flag. Internally, a PAG pipeline is created based on the pipeline and task you specified. In the example below, since we used `AutoPipelineForText2Image` and passed a `StableDiffusionXLPipeline`, a `StableDiffusionXLPAGPipeline` is created accordingly. Note that this does not require additional memory, and you will have both `StableDiffusionXLPipeline` and  `StableDiffusionXLPAGPipeline` loaded and ready to use. You can read more about the `from_pipe` API and how to reuse pipelines in diffuser[here](https://huggingface.co/docs/diffusers/using-diffusers/loading#reuse-a-pipeline)
+
+```py
+pipeline_sdxl = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0, torch_dtype=torch.float16")
+pipeline = AutoPipelineForText2Image.from_pipe(pipeline_sdxl, enable_pag=True)
+```
+
 To generate an image, you will also need to pass a `pag_scale`. When `pag_scale` increases, images gain more semantically coherent structures and exhibit fewer artifacts. However overly large guidance scale can lead to smoother textures and slight saturation in the images, similarly to CFG. `pag_scale=3.0` is used in the official demo and works well in most of the use cases, but feel free to experiment and select the appropriate value according to your needs! PAG is disabled when `pag_scale=0`.
 
 ```py
@@ -74,7 +81,7 @@ for pag_scale in [0.0, 3.0]:
 </hfoption>
 <hfoption id="Image-to-image">
 
-Similary, you can use PAG with image-to-image pipelines.
+You can use PAG with image-to-image pipelines.
 
 ```py
 from diffusers import AutoPipelineForImage2Image
@@ -88,7 +95,32 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     torch_dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
+```
 
+If you already have a image-to-image pipeline and would like enable PAG on it, you can run this
+
+```py
+pipeline_t2i = AutoPipelineForImage2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_t2i, enable_pag=True)
+```
+
+It is also very easy to directly switch from a text-to-image pipeline to PAG enabled image-to-image pipeline
+
+```py
+pipeline_pag = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_t2i, enable_pag=True)
+```
+
+If you have a PAG enabled text-to-image pipeline, you can directly switch to a image-to-image pipeline with PAG still enabled
+
+```py
+pipeline_pag = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", enable_pag=True, torch_dtype=torch.float16)
+pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_t2i)
+```
+
+Now let's generate an image!
+
+```py
 pag_scales =  4.0
 guidance_scales = 7.0
 
@@ -120,7 +152,25 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     torch_dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
+```
 
+You can enable PAG on an exisiting inpainting pipeline like this
+
+```py
+pipeline_inpaint = AutoPipelineForInpaiting.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipeline = AutoPipelineForInpaiting.from_pipe(pipeline_inpaint, enable_pag=True)
+```
+
+This still works when your pipeline has a different task: 
+
+```py
+pipeline_t2i = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipeline = AutoPipelineForInpaiting.from_pipe(pipeline_t2i, enable_pag=True)
+```
+
+Let's generate an image! 
+
+```py
 img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
 mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
 init_image = load_image(img_url).convert("RGB")
@@ -168,6 +218,12 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 )
 pipeline.enable_model_cpu_offload()
 ```
+
+<Tip>
+
+If you already have a controlnet pipeline and want to enable PAG, you can use the `from_pipe` API: `AutoPipelineForText2Image.from_pipe(pipeline_controlnet, enable_pag=True)`
+
+</Tip>
 
 You can use the pipeline in the same way you normally use ControlNet pipelines, with the added option to specify a `pag_scale` parameter. Note that PAG works well for unconditional generation. In this example, we will generate an image without a prompt.
 
