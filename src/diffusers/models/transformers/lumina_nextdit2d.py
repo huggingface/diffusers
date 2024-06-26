@@ -131,24 +131,45 @@ class LuminaNextDiTBlock(nn.Module):
         norm_elementwise_affine: bool = True,
     ) -> None:
         super().__init__()
+        self.layer_id = layer_id
         self.hidden_size = hidden_size
         self.head_dim = hidden_size // num_attention_heads
-        self.attention = Attention(
+
+        learnable_params = {"gate": torch.zeros([num_attention_heads])}
+
+        # Self-attention
+        self.attn = Attention(
             query_dim=hidden_size,
             cross_attention_dim=None,
             dim_head=hidden_size // num_attention_heads,
+            q_norm_dim=hidden_size,
+            k_norm_dim=num_kv_heads * self.head_dim,
+            qk_norm="layer_norm" if qk_norm else None,
             heads=num_attention_heads,
             kv_heads=num_kv_heads,
             eps=1e-5,
             bias=False,
             out_bias=False,
-            processor=LuminaAttnProcessor2_0(
-                hidden_size=hidden_size,
-                encoder_hidden_size=encoder_hidden_size,
-                heads=num_attention_heads,
-                kv_heads=num_kv_heads,
-            ),
+            processor=LuminaAttnProcessor2_0(),
         )
+        self.attn.to_out = nn.Identity()
+
+        # Cross-attention
+        self.cross_attn = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=encoder_hidden_size,
+            dim_head=hidden_size // num_attention_heads,
+            k_norm_dim=num_kv_heads * self.head_dim,
+            qk_norm="layer_norm" if qk_norm else None,
+            heads=num_attention_heads,
+            kv_heads=num_kv_heads,
+            eps=1e-5,
+            bias=False,
+            out_bias=False,
+            added_learnable_params=learnable_params,
+            processor=LuminaAttnProcessor2_0(),
+        )
+        self.cross_attn.norm_q = nn.Identity()  # disable cross attention norm_q
 
         self.feed_forward = LuminaFeedForward(
             hidden_size=hidden_size,
@@ -156,11 +177,11 @@ class LuminaNextDiTBlock(nn.Module):
             multiple_of=multiple_of,
             ffn_dim_multiplier=ffn_dim_multiplier,
         )
-        self.layer_id = layer_id
-        self.attention_norm1 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+
+        self.attn_norm1 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
         self.ffn_norm1 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
-        self.attention_norm2 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.attn_norm2 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
         self.ffn_norm2 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
         self.adaLN_modulation = nn.Sequential(
@@ -174,16 +195,16 @@ class LuminaNextDiTBlock(nn.Module):
         nn.init.zeros_(self.adaLN_modulation[1].weight)
         nn.init.zeros_(self.adaLN_modulation[1].bias)
 
-        self.attention_caption_norm = RMSNorm(
+        self.attn_encoder_hidden_states_norm = RMSNorm(
             encoder_hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine
         )
 
     def forward(
         self,
-        hidden_state: torch.Tensor,
+        hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
         freqs_cis: torch.Tensor,
-        encoder_hidden_state: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
         adaln_input: Optional[torch.Tensor] = None,
     ):
@@ -191,42 +212,65 @@ class LuminaNextDiTBlock(nn.Module):
         Perform a forward pass through the LuminaNextDiTBlock.
 
         Args:
-            hidden_state (torch.Tensor): Input tensor.
+            hidden_states (torch.Tensor): Input tensor.
             freqs_cis (torch.Tensor): Precomputed cosine and sine frequencies.
         Returns:
             torch.Tensor: Output tensor after applying attention and
                 feedforward layers.
         """
+        residual = hidden_states
+
+        encoder_hidden_states = self.attn_encoder_hidden_states_norm(encoder_hidden_states)
+
         if adaln_input is not None:
             scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).chunk(4, dim=1)
 
-            hidden_state = hidden_state + gate_msa.unsqueeze(1).tanh() * self.attention_norm2(
-                self.attention(
-                    hidden_states=modulate(self.attention_norm1(hidden_state), scale_msa),
-                    encoder_hidden_states=self.attention_caption_norm(encoder_hidden_state),
-                    attention_mask=attention_mask,
-                    encoder_mask=encoder_mask,
-                    image_rotary_emb=freqs_cis,
-                )
+            # Self-attention
+            # TODO (2024/06/26 14:00): current implementation is using self-attn hidden_states to get wq again
+            # TODO: may occur some problems. it may need to use previous init hidden_states
+            hidden_states = self.attn(
+                hidden_states=modulate(self.attn_norm1(hidden_states), scale_msa),
+                encoder_hidden_states=None,
+                attention_mask=attention_mask,
+                image_rotary_emb=freqs_cis,
             )
-            hidden_state = hidden_state + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(
-                self.feed_forward(
-                    modulate(self.ffn_norm1(hidden_state), scale_mlp),
-                )
-            )
-        else:
-            hidden_state = hidden_state + self.attention_norm2(
-                self.attention(
-                    hidden_states=modulate(self.attention_norm1(hidden_state), scale_msa),
-                    encoder_hidden_state=self.attention_caption_norm(encoder_hidden_state),
-                    attention_mask=attention_mask,
-                    encoder_mask=encoder_mask,
-                    image_rotary_emb=freqs_cis,
-                )
-            )
-            hidden_state = hidden_state + self.ffn_norm2(self.feed_forward(self.ffn_norm1(hidden_state)))
 
-        return hidden_state
+            # Cross-attention
+            hidden_states = self.cross_attn(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=encoder_mask,
+                image_rotary_emb=None,
+            )
+
+            hidden_states = residual + gate_msa.unsqueeze(1).tanh() * self.attn_norm2(hidden_states)
+
+            hidden_states = self.feed_forward(
+                modulate(self.ffn_norm1(hidden_states), scale_mlp),
+            )
+            hidden_states = hidden_states + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(hidden_states)
+        else:
+            # Self-attention
+            hidden_states = self.attn(
+                hidden_states=self.attn_norm1(hidden_states),
+                encoder_hidden_states=None,
+                attention_mask=attention_mask,
+                image_rotary_emb=freqs_cis,
+            )
+
+            # Cross-attention
+            hidden_states = self.cross_attn(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=encoder_mask,
+                image_rotary_emb=None,
+            )
+            hidden_states = residual + self.attn_norm2(hidden_states)
+
+            hidden_states = self.feed_forward(self.ffn_norm1(hidden_states))
+            hidden_states = hidden_states + self.ffn_norm2(hidden_states)
+
+        return hidden_states
 
 
 class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
@@ -289,7 +333,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         ffn_dim_multiplier: Optional[float] = None,
         norm_eps: Optional[float] = 1e-5,
         learn_sigma: Optional[bool] = True,
-        qk_norm: Optional[bool] = False,
+        qk_norm: Optional[bool] = True,
         encoder_hidden_size: Optional[int] = 2048,
         scaling_factor: Optional[float] = 1.0,
     ) -> None:
@@ -301,7 +345,6 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         self.hidden_size = hidden_size
         self.num_attention_heads = num_attention_heads
         self.scaling_factor = scaling_factor
-        self.learn_sigma = learn_sigma
 
         self.patch_embedder = nn.Linear(
             in_features=patch_size * patch_size * in_channels,
@@ -463,7 +506,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         self,
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
-        encoder_hidden_state: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
         return_dict=True,
     ) -> torch.Tensor:
@@ -473,7 +516,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         Args:
             hidden_states (torch.Tensor): Input tensor of shape (N, C, H, W).
             timestep (torch.Tensor): Tensor of diffusion timesteps of shape (N,).
-            encoder_hidden_state (torch.Tensor): Tensor of caption features of shape (N, D).
+            encoder_hidden_states (torch.Tensor): Tensor of caption features of shape (N, D).
             encoder_mask (torch.Tensor): Tensor of caption masks of shape (N, L).
 
         Returns:
@@ -483,12 +526,12 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         hidden_states, mask, img_size, freqs_cis = self.patchify_and_embed(hidden_states)
         freqs_cis = freqs_cis.to(hidden_states.device)
 
-        adaln_input = self.time_caption_embed(timestep, encoder_hidden_state, encoder_mask)
+        adaln_input = self.time_caption_embed(timestep, encoder_hidden_states, encoder_mask)
 
         encoder_mask = encoder_mask.bool()
         for layer in self.layers:
             hidden_states = layer(
-                hidden_states, mask, freqs_cis, encoder_hidden_state, encoder_mask, adaln_input=adaln_input
+                hidden_states, mask, freqs_cis, encoder_hidden_states, encoder_mask, adaln_input=adaln_input
             )
 
         hidden_states = self.final_layer(hidden_states, adaln_input)
