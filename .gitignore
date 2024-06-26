@@ -5,6 +5,7 @@ convert_local_controlnet_to_hf.py
 convert_local_to_hf.py
 test_hunyuandit_controlnet.py
 *.png
+.gitignore
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
