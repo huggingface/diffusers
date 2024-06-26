@@ -1,11 +1,5 @@
 # Initially taken from GitHub's Python gitignore file
 
-# test files
-convert_local_controlnet_to_hf.py
-convert_local_to_hf.py
-test_hunyuandit_controlnet.py
-*.png
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
