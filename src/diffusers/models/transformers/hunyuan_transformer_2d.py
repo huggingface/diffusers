@@ -1,4 +1,4 @@
-# Copyright 2024 HunyuanDiT Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 HunyuanDiT Authors, Qixun Wang and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -437,6 +437,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         image_meta_size=None,
         style=None,
         image_rotary_emb=None,
+        controlnet_block_samples=None,
         return_dict=True,
     ):
         """
@@ -491,7 +492,10 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         skips = []
         for layer, block in enumerate(self.blocks):
             if layer > self.config.num_layers // 2:
-                skip = skips.pop()
+                if controlnet_block_samples is not None:
+                    skip = skips.pop() + controlnet_block_samples.pop()
+                else:
+                    skip = skips.pop()
                 hidden_states = block(
                     hidden_states,
                     temb=temb,
@@ -509,6 +513,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
             if layer < (self.config.num_layers // 2 - 1):
                 skips.append(hidden_states)
+
+        if controlnet_block_samples is not None and len(controlnet_block_samples) != 0:
+            raise ValueError("The number of controls is not equal to the number of skip connections.")
 
         # final layer
         hidden_states = self.norm_out(hidden_states, temb.to(torch.float32))
