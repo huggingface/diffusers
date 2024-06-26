@@ -108,4 +108,4 @@ torchrun run_distributed.py --nproc_per_node=2
 ```
 
 > [!TIP]
-> You can use `device_map` within a [`DiffusionPipeline`] to distribute its model-level components on multiple devices. Refer to [this section](../tutorials/inference_with_big_models.md#device-placement) to know more.
+> You can use `device_map` within a [`DiffusionPipeline`] to distribute its model-level components on multiple devices. Refer to the [Device placement](../tutorials/inference_with_big_models#device-placement) guide to learn more.
