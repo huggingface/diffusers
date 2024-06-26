@@ -401,14 +401,6 @@ def get_python_version():
     return major, minor
 
 
-def require_python39_or_higher(test_case):
-    def python39_available():
-        major, minor = get_python_version()
-        return major == 3 and minor >= 9
-
-    return unittest.skipUnless(python39_available(), "test requires Python 3.9 or higher")(test_case)
-
-
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
         if local_path is not None:
