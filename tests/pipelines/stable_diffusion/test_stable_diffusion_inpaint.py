@@ -39,10 +39,10 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    is_torch_compile,
     load_image,
     load_numpy,
     nightly,
-    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -715,7 +715,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     def test_inpaint_compile(self):
         seed = 0
@@ -920,7 +920,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
         # make sure that less than 2.45 GB is allocated
         assert mem_bytes < 2.45 * 10**9
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     def test_inpaint_compile(self):
         pass
