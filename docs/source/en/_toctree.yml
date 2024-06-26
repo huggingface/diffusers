@@ -21,6 +21,8 @@
     title: Load LoRAs for inference
   - local: tutorials/fast_diffusion
     title: Accelerate inference of text-to-image diffusion models
+  - local: tutorials/inference_with_big_models
+    title: Working with big models
   title: Tutorials
 - sections:
   - local: using-diffusers/loading
@@ -81,6 +83,8 @@
     title: Kandinsky
   - local: using-diffusers/ip_adapter
     title: IP-Adapter
+  - local: using-diffusers/pag
+    title: PAG
   - local: using-diffusers/controlnet
     title: ControlNet
   - local: using-diffusers/t2i_adapter
@@ -322,6 +326,8 @@
       title: MultiDiffusion
     - local: api/pipelines/musicldm
       title: MusicLDM
+    - local: api/pipelines/pag
+      title: PAG
     - local: api/pipelines/paint_by_example
       title: Paint by Example
     - local: api/pipelines/pia
