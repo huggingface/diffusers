@@ -228,8 +228,6 @@ class LuminaNextDiTBlock(nn.Module):
             # Self-attention
             # TODO (2024/06/26 14:00): current implementation is using self-attn hidden_states to get wq again
             # TODO: may occur some problems. it may need to use previous init hidden_states
-            import ipdb
-            ipdb.set_trace()
             hidden_states = self.attn(
                 hidden_states=modulate(self.attn_norm1(hidden_states), scale_msa),
                 encoder_hidden_states=None,

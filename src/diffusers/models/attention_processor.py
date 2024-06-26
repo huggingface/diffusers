@@ -1631,8 +1631,10 @@ class LuminaAttnProcessor2_0:
         from .embeddings import apply_rotary_emb
 
         if encoder_hidden_states is not None:
+            # self
             residual = hidden_states
         else:
+            # cross
             residual = encoder_hidden_states
 
         input_ndim = hidden_states.ndim
@@ -1642,11 +1644,15 @@ class LuminaAttnProcessor2_0:
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
         batch_size, sequence_length, _ = hidden_states.shape
-
+        
         # Get Query-Key-Value Pair
-        query = attn.to_q(hidden_states)
+        if residual is None:
+            query = attn.to_q(hidden_states)
+        else:
+            query = hidden_states.transpose(1, 2)
+            batch_size, _, sequence_length = hidden_states.shape
 
-        # For caption Key-Value
+        # For encoder Key-Value
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
 
@@ -1667,10 +1673,10 @@ class LuminaAttnProcessor2_0:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
-        query = query.view(batch_size, sequence_length, attn.heads, head_dim)
+        query = query.view(batch_size, -1, attn.heads, head_dim)
 
-        key = key.view(batch_size, sequence_length, kv_heads, head_dim)
-        value = value.view(batch_size, sequence_length, kv_heads, head_dim)
+        key = key.view(batch_size, -1, kv_heads, head_dim)
+        value = value.view(batch_size, -1, kv_heads, head_dim)
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
@@ -1696,7 +1702,7 @@ class LuminaAttnProcessor2_0:
 
         # scaled_dot_product_attention expects attention_mask shape to be
         # (batch, heads, source_length, target_length)
-        attention_mask = attention_mask.bool().view(batch_size, 1, 1, sequence_length)
+        attention_mask = attention_mask.bool().view(batch_size, 1, 1, -1)
         attention_mask = attention_mask.expand(-1, attn.heads, sequence_length, -1)
 
         query = query.transpose(1, 2)
@@ -1709,9 +1715,6 @@ class LuminaAttnProcessor2_0:
             query, key, value, attn_mask=attention_mask, scale=softmax_scale
         )
         hidden_states = hidden_states.transpose(1, 2).to(dtype)
-        
-        import ipdb
-        ipdb.set_trace()
 
         if residual is not None:
             hidden_states = hidden_states * attn.gate.tanh().view(1, 1, -1, 1)
