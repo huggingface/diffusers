@@ -43,7 +43,7 @@ from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, is_torch_npu_available, is_
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     get_python_version,
-    require_python39_or_higher,
+    is_torch_compile,
     require_torch_2,
     require_torch_accelerator_with_training,
     require_torch_gpu,
@@ -512,7 +512,7 @@ class ModelTesterMixin:
         max_diff = (image - new_image).abs().max().item()
         self.assertLessEqual(max_diff, expected_max_diff, "Models give different forward passes")
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     @unittest.skipIf(
         get_python_version == (3, 12),

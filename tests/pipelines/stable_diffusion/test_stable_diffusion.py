@@ -45,12 +45,12 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
+    is_torch_compile,
     load_image,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
-    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     require_torch_multi_gpu,
@@ -1282,7 +1282,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 8e-1
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     def test_stable_diffusion_compile(self):
         seed = 0
