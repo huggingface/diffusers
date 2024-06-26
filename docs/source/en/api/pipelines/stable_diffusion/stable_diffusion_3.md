@@ -35,7 +35,6 @@ The SD3 pipeline uses three text encoders to generate an image. Model offloading
 
 </Tip>
 
-
 ```python
 import torch
 from diffusers import StableDiffusion3Pipeline
@@ -196,6 +195,47 @@ image.save("sd3_hello_world.png")
 ```
 
 Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f454900813da5d42ca97).
+
+## Using Long Prompts with the T5 Text Encoder
+
+By default, the T5 Text Encoder prompt uses a maximum sequence length of `256`. This can be adjusted by setting the `max_sequence_length` to accept fewer or more tokens. Keep in mind that longer sequences require additional resources and result in longer generation times, such as during batch inference.
+
+```python
+prompt = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. It features the distinctive, bulky body shape of a hippo. However, instead of the usual grey skin, the creature’s body resembles a golden-brown, crispy waffle fresh off the griddle. The skin is textured with the familiar grid pattern of a waffle, each square filled with a glistening sheen of syrup. The environment combines the natural habitat of a hippo with elements of a breakfast table setting, a river of warm, melted butter, with oversized utensils or plates peeking out from the lush, pancake-like foliage in the background, a towering pepper mill standing in for a tree.  As the sun rises in this fantastical world, it casts a warm, buttery glow over the scene. The creature, content in its butter river, lets out a yawn. Nearby, a flock of birds take flight"
+
+image = pipe(
+    prompt=prompt,
+    negative_prompt="",
+    num_inference_steps=28,
+    guidance_scale=4.5,
+    max_sequence_length=512,
+).images[0]
+```
+
+### Sending a different prompt to the T5 Text Encoder
+
+You can send a different prompt to the CLIP Text Encoders and the T5 Text Encoder to prevent the prompt from being truncated by the CLIP Text Encoders and to improve generation.
+
+<Tip>
+
+The prompt with the CLIP Text Encoders is still truncated to the 77 token limit.
+
+</Tip>
+
+```python
+prompt = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. A river of warm, melted butter, pancake-like foliage in the background, a towering pepper mill standing in for a tree."
+
+prompt_3 = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. It features the distinctive, bulky body shape of a hippo. However, instead of the usual grey skin, the creature’s body resembles a golden-brown, crispy waffle fresh off the griddle. The skin is textured with the familiar grid pattern of a waffle, each square filled with a glistening sheen of syrup. The environment combines the natural habitat of a hippo with elements of a breakfast table setting, a river of warm, melted butter, with oversized utensils or plates peeking out from the lush, pancake-like foliage in the background, a towering pepper mill standing in for a tree.  As the sun rises in this fantastical world, it casts a warm, buttery glow over the scene. The creature, content in its butter river, lets out a yawn. Nearby, a flock of birds take flight"
+
+image = pipe(
+    prompt=prompt,
+    prompt_3=prompt_3,
+    negative_prompt="",
+    num_inference_steps=28,
+    guidance_scale=4.5,
+    max_sequence_length=512,
+).images[0]
+```
 
 ## Tiny AutoEncoder for Stable Diffusion 3
 
