@@ -382,6 +382,10 @@ class ModelTesterMixin:
             # If not has `set_attn_processor`, skip test
             return
 
+        if not hasattr(model, "set_default_attn_processor"):
+            # If not has `set_attn_processor`, skip test
+            return
+
         model.set_default_attn_processor()
         assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
