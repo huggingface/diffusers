@@ -20,12 +20,14 @@ from ..utils import (
 _dummy_objects = {}
 _import_structure = {
     "controlnet": [],
+    "controlnet_hunyuandit": [],
     "controlnet_sd3": [],
     "controlnet_xs": [],
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
     "marigold": [],
+    "pag": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -137,10 +139,23 @@ else:
             "StableDiffusionXLControlNetPipeline",
         ]
     )
+    _import_structure["pag"].extend(
+        [
+            "StableDiffusionXLPAGPipeline",
+            "StableDiffusionXLPAGInpaintPipeline",
+            "StableDiffusionXLControlNetPAGPipeline",
+            "StableDiffusionXLPAGImg2ImgPipeline",
+        ]
+    )
     _import_structure["controlnet_xs"].extend(
         [
             "StableDiffusionControlNetXSPipeline",
             "StableDiffusionXLControlNetXSPipeline",
+        ]
+    )
+    _import_structure["controlnet_hunyuandit"].extend(
+        [
+            "HunyuanDiTControlNetPipeline",
         ]
     )
     _import_structure["controlnet_sd3"].extend(
@@ -401,6 +416,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
         )
+        from .controlnet_hunyuandit import (
+            HunyuanDiTControlNetPipeline,
+        )
         from .controlnet_sd3 import (
             StableDiffusion3ControlNetPipeline,
         )
@@ -474,6 +492,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .musicldm import MusicLDMPipeline
+        from .pag import (
+            StableDiffusionXLControlNetPAGPipeline,
+            StableDiffusionXLPAGImg2ImgPipeline,
+            StableDiffusionXLPAGInpaintPipeline,
+            StableDiffusionXLPAGPipeline,
+        )
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
