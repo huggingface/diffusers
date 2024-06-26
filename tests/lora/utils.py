@@ -1477,9 +1477,12 @@ class PeftLoraLoaderMixinTests:
 
             # corrupt one LoRA weight with `inf` values
             with torch.no_grad():
-                pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_A["adapter-1"].weight += float(
-                    "inf"
-                )
+                if self.unet_kwargs:
+                    pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_A[
+                        "adapter-1"
+                    ].weight += float("inf")
+                else:
+                    pipe.transformer.transformer_blocks[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
 
             # with `safe_fusing=True` we should see an Error
             with self.assertRaises(ValueError):
