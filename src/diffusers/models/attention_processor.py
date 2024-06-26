@@ -105,6 +105,8 @@ class Attention(nn.Module):
         cross_attention_norm: Optional[str] = None,
         cross_attention_norm_num_groups: int = 32,
         qk_norm: Optional[str] = None,
+        q_norm_dim: Optional[int] = None,
+        k_norm_dim: Optional[int] = None,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
         spatial_norm_dim: Optional[int] = None,
@@ -170,8 +172,10 @@ class Attention(nn.Module):
             self.norm_q = None
             self.norm_k = None
         elif qk_norm == "layer_norm":
-            self.norm_q = nn.LayerNorm(dim_head, eps=eps)
-            self.norm_k = nn.LayerNorm(dim_head, eps=eps)
+            q_norm_dim = q_norm_dim if q_norm_dim is not None else dim_head
+            k_norm_dim = k_norm_dim if k_norm_dim is not None else dim_head
+            self.norm_q = nn.LayerNorm(q_norm_dim, eps=eps)
+            self.norm_k = nn.LayerNorm(k_norm_dim, eps=eps)
         else:
             raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None or 'layer_norm'")
 
