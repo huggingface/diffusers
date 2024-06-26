@@ -451,11 +451,7 @@ class UNet2DConditionLoadersMixin:
         is_custom_diffusion = any(
             isinstance(
                 x,
-                (
-                    CustomDiffusionAttnProcessor,
-                    CustomDiffusionAttnProcessor2_0,
-                    CustomDiffusionXFormersAttnProcessor,
-                ),
+                (CustomDiffusionAttnProcessor, CustomDiffusionAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor),
             )
             for (_, x) in self.attn_processors.items()
         )
@@ -764,8 +760,7 @@ class UNet2DConditionLoadersMixin:
 
             with init_context():
                 image_projection = IPAdapterFullImageProjection(
-                    cross_attention_dim=cross_attention_dim,
-                    image_embed_dim=clip_embeddings_dim,
+                    cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
                 )
 
             for key, value in state_dict.items():
@@ -930,12 +925,7 @@ class UNet2DConditionLoadersMixin:
         if not low_cpu_mem_usage:
             image_projection.load_state_dict(updated_state_dict, strict=True)
         else:
-            load_model_dict_into_meta(
-                image_projection,
-                updated_state_dict,
-                device=self.device,
-                dtype=self.dtype,
-            )
+            load_model_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
 
         return image_projection
 
