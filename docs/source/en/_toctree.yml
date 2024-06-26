@@ -254,9 +254,9 @@
     - local: api/models/controlnet
       title: ControlNetModel
     - local: api/models/controlnet_hunyuandit
-      title: SD3ControlNetModel
-    - local: api/models/controlnet_sd3
       title: HunyuanDiT2DControlNetModel
+    - local: api/models/controlnet_sd3
+      title: SD3ControlNetModel
     title: Models
   - isExpanded: false
     sections:
