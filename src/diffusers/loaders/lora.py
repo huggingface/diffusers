@@ -224,6 +224,8 @@ class LoraLoaderMixin(LoraBaseMixin):
 
         return state_dict, network_alphas
 
+    # This method acts as an interface to distinguish between `fuse_unet` and `fuse_transformer` arguments
+    # properly and lets us reuse the `fuse_lora` method of the superclass.
     def fuse_lora(
         self,
         fuse_unet: bool = True,
@@ -274,6 +276,8 @@ class LoraLoaderMixin(LoraBaseMixin):
             adapter_names=adapter_names,
         )
 
+    # This method acts as an interface to distinguish between `unfuse_unet` and `unfuse_transformer` arguments
+    # properly and lets us reuse the `unfuse_lora` method of the superclass.
     def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
         r"""
         Reverses the effect of
@@ -550,6 +554,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
     text_encoder_name = TEXT_ENCODER_NAME
     is_transformer_denoiser = True
 
+    # This method acts as an interface to distinguish between `fuse_unet` and `fuse_transformer` arguments
+    # properly and lets us reuse the `fuse_lora` method of the superclass.
     def fuse_lora(
         self,
         fuse_transformer: bool = True,
@@ -604,6 +610,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_names=adapter_names,
         )
 
+    # This method acts as an interface to distinguish between `unfuse_unet` and `unfuse_transformer` arguments
+    # properly and lets us reuse the `unfuse_lora` method of the superclass.
     def unfuse_lora(self, unfuse_transformer: bool = True, unfuse_text_encoder: bool = True):
         r"""
         Reverses the effect of
