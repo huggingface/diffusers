@@ -362,7 +362,7 @@ class UNet2DConditionLoadersMixin:
         return is_model_cpu_offload, is_sequential_cpu_offload
 
     @classmethod
-    # Copied from diffusers.loaders.lora_base.LoraUtilsMixin._optionally_disable_offloading
+    # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
     def _optionally_disable_offloading(cls, _pipeline):
         """
         Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
@@ -922,8 +922,6 @@ class UNet2DConditionLoadersMixin:
 
     def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
         from ..models.attention_processor import (
-            AttnProcessor,
-            AttnProcessor2_0,
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
         )
@@ -963,9 +961,7 @@ class UNet2DConditionLoadersMixin:
                 hidden_size = self.config.block_out_channels[block_id]
 
             if cross_attention_dim is None or "motion_modules" in name:
-                attn_processor_class = (
-                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                )
+                attn_processor_class = self.attn_processors[name].__class__
                 attn_procs[name] = attn_processor_class()
 
             else:
