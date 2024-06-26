@@ -332,24 +332,62 @@ class HunyuanDiT2DMultiControlNetModel(ModelMixin):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        controlnet_cond: List[torch.tensor],
-        conditioning_scale: List[float],
-        pooled_projections: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        timestep: torch.LongTensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        return_dict: bool = True,
-    ) -> Union[HunyuanControlNetOutput, Tuple]:
+        hidden_states,
+        timestep,
+        controlnet_cond: torch.Tensor,
+        conditioning_scale: float = 1.0,
+        encoder_hidden_states=None,
+        text_embedding_mask=None,
+        encoder_hidden_states_t5=None,
+        text_embedding_mask_t5=None,
+        image_meta_size=None,
+        style=None,
+        image_rotary_emb=None,
+        return_dict=True,
+    ):
+        """
+        The [`HunyuanDiT2DControlNetModel`] forward method.
+        Args:
+        hidden_states (`torch.Tensor` of shape `(batch size, dim, height, width)`):
+            The input tensor.
+        timestep ( `torch.LongTensor`, *optional*):
+            Used to indicate denoising step.
+        controlnet_cond ( `torch.Tensor` ):
+            The conditioning input to ControlNet.
+        conditioning_scale ( `float` ):
+            Indicate the conditioning scale.
+        encoder_hidden_states ( `torch.Tensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
+            Conditional embeddings for cross attention layer. This is the output of `BertModel`.
+        text_embedding_mask: torch.Tensor
+            An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. This is the output
+            of `BertModel`.
+        encoder_hidden_states_t5 ( `torch.Tensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
+            Conditional embeddings for cross attention layer. This is the output of T5 Text Encoder.
+        text_embedding_mask_t5: torch.Tensor
+            An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. This is the output
+            of T5 Text Encoder.
+        image_meta_size (torch.Tensor):
+            Conditional embedding indicate the image sizes
+        style: torch.Tensor:
+            Conditional embedding indicate the style
+        image_rotary_emb (`torch.Tensor`):
+            The image rotary embeddings to apply on query and key tensors during attention calculation.
+        return_dict: bool
+            Whether to return a dictionary.
+        """
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             block_samples = controlnet(
                 hidden_states=hidden_states,
                 timestep=timestep,
-                encoder_hidden_states=encoder_hidden_states,
-                pooled_projections=pooled_projections,
                 controlnet_cond=image,
                 conditioning_scale=scale,
-                joint_attention_kwargs=joint_attention_kwargs,
+                encoder_hidden_states=encoder_hidden_states,
+                text_embedding_mask=text_embedding_mask,
+                encoder_hidden_states_t5=encoder_hidden_states_t5,
+                text_embedding_mask_t5=text_embedding_mask_t5,
+                image_meta_size=image_meta_size,
+                style=style,
+                image_rotary_emb=image_rotary_emb,
                 return_dict=return_dict,
             )
 
@@ -361,6 +399,6 @@ class HunyuanDiT2DMultiControlNetModel(ModelMixin):
                     control_block_sample + block_sample
                     for control_block_sample, block_sample in zip(control_block_samples[0], block_samples[0])
                 ]
-                control_block_samples = (tuple(control_block_samples),)
+                control_block_samples = (control_block_samples,)
 
         return control_block_samples
