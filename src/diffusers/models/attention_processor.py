@@ -299,6 +299,7 @@ class Attention(nn.Module):
             elif not torch.cuda.is_available():
                 raise ValueError(
                     "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is"
+                    " only available for GPU "
                 )
             else:
                 try:

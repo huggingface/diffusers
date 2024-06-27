@@ -833,10 +833,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 current_timestep = 1 - current_timestep / self.scheduler.config.num_train_timesteps
 
                 # dynamic scaling_factor for different resolution.
-                hidden_size = self.transformer.config.hidden_size
-                num_attention_heads = self.transformer.config.num_attention_heads
-                attention_head_dim = hidden_size // num_attention_heads
-                scaling_factor = math.sqrt(width * height / self.default_image_size ** 2)
+                scaling_factor = math.sqrt(width * height / self.default_image_size**2)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
