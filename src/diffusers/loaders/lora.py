@@ -24,7 +24,6 @@ from ..utils import (
     get_peft_kwargs,
     is_peft_version,
     logging,
-    recurse_remove_peft_layers,
 )
 from .lora_base import LoraBaseMixin
 from .lora_conversion_utils import _convert_non_diffusers_lora_to_diffusers, _maybe_map_sgm_blocks_to_diffusers
@@ -326,7 +325,7 @@ class LoraLoaderMixin(LoraBaseMixin):
         keys = list(state_dict.keys())
         only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
 
-        if any(key.startswith(cls.unet_name) for key in keys) and not only_text_encoder:
+        if not only_text_encoder:
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
             unet.load_attn_procs(
@@ -531,18 +530,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             save_function=save_function,
             safe_serialization=safe_serialization,
         )
-
-    def _remove_text_encoder_monkey_patch(self):
-        recurse_remove_peft_layers(self.text_encoder)
-        # TODO: @younesbelkada handle this in transformers side
-        if getattr(self.text_encoder, "peft_config", None) is not None:
-            del self.text_encoder.peft_config
-            self.text_encoder._hf_peft_config_loaded = None
-
-        recurse_remove_peft_layers(self.text_encoder_2)
-        if getattr(self.text_encoder_2, "peft_config", None) is not None:
-            del self.text_encoder_2.peft_config
-            self.text_encoder_2._hf_peft_config_loaded = None
 
 
 class SD3LoraLoaderMixin(LoraBaseMixin):
