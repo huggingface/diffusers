@@ -54,7 +54,7 @@ class ControlNetOutput(BaseOutput):
             be of shape `(batch_size, channel * resolution, height //resolution, width // resolution)`. Output can be
             used to condition the original UNet's downsampling activations.
         mid_down_block_re_sample (`torch.Tensor`):
-            The activation of the midde block (the lowest sample resolution). Each tensor should be of shape
+            The activation of the middle block (the lowest sample resolution). Each tensor should be of shape
             `(batch_size, channel * lowest_resolution, height // lowest_resolution, width // lowest_resolution)`.
             Output can be used to condition the original UNet's middle block activation.
     """
@@ -530,7 +530,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
