@@ -213,7 +213,11 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             vae_scale_factor=self.vae_scale_factor, vae_latent_channels=self.vae.config.latent_channels
         )
         self.mask_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, vae_latent_channels=self.vae.config.latent_channels, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+            vae_scale_factor=self.vae_scale_factor,
+            vae_latent_channels=self.vae.config.latent_channels,
+            do_normalize=False,
+            do_binarize=True,
+            do_convert_grayscale=True,
         )
         self.tokenizer_max_length = self.tokenizer.model_max_length
         self.default_sample_size = self.transformer.config.sample_size
@@ -942,7 +946,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             width,
             prompt_embeds.dtype,
             device,
-            generator
+            generator,
         )
 
         # 6. Denoising loop

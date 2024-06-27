@@ -191,4 +191,3 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
 
     def test_multi_vae(self):
         pass
-
