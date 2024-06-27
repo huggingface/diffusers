@@ -27,6 +27,7 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
     logging,
+    deprecate,
     replace_example_docstring,
     scale_lora_layers,
     unscale_lora_layers,
@@ -34,8 +35,8 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
-
+from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from .pag_utils import PAGMixin
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -772,9 +773,7 @@ class StableDiffusionPAGPipeline(
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         clip_skip: Optional[int] = None,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         pag_scale: float = 3.0,
         pag_adaptive_scale: float = 0.0,
@@ -894,7 +893,7 @@ class StableDiffusionPAGPipeline(
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
         self._interrupt = False
-        self._pag_Scale = pag_scale
+        self._pag_scale = pag_scale
         self._pag_adaptive_scale = pag_adaptive_scale
 
         # 2. Define call parameters
@@ -928,7 +927,7 @@ class StableDiffusionPAGPipeline(
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
         if self.do_perturbed_attention_guidance:
-            prompt_embeds = self._prepare_perturnbed_attention_guidance(prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance)
+            prompt_embeds = self._prepare_perturbed_attention_guidance(prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance)
         elif self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
@@ -941,11 +940,11 @@ class StableDiffusionPAGPipeline(
                 self.do_classifier_free_guidance,
             )
 
-            for i, image_embeds in enumerate(ip_adaper_image_embeds):
+            for i, image_embeds in enumerate(ip_adapter_image_embeds):
                 negative_image_embeds = None
                 if self.do_classifier_free_guidance:
                     negative_image_embeds, image_embeds = image_embeds.chunk(2)
-                if self.do_perturnbed_attention_guidance:
+                if self.do_perturbed_attention_guidance:
                     image_embeds = self._prepare_perturbed_attention_guidance(
                         image_embeds, negative_image_embeds, self.do_classifier_free_guidance
                     )
@@ -1006,7 +1005,7 @@ class StableDiffusionPAGPipeline(
                     continue
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents]*(prmopt_embeds.shape[0] // latents.shape[0]))
+                latent_model_input = torch.cat([latents]*(prompt_embeds.shape[0] // latents.shape[0]))
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
@@ -1023,7 +1022,7 @@ class StableDiffusionPAGPipeline(
                 # perform guidance
                 if self.do_perturbed_attention_guidance:
                     noise_pred = self._apply_perturbed_attention_guidance(
-                        nouse_pred, self.do_classifier_free_guidance, self.guidance_scale, t
+                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
                     )
 
                 elif self.do_classifier_free_guidance:
