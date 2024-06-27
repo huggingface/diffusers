@@ -207,6 +207,7 @@ class LuminaNextDiTBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
         adaln_input: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Dict[str, Any] = None,
     ):
         """
         Perform a forward pass through the LuminaNextDiTBlock.
@@ -233,6 +234,7 @@ class LuminaNextDiTBlock(nn.Module):
                 encoder_hidden_states=None,
                 attention_mask=attention_mask,
                 image_rotary_emb=freqs_cis,
+                **cross_attention_kwargs,
             )
 
             # Cross-attention
@@ -425,7 +427,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         return imgs
 
     def patchify_and_embed(
-        self, x: List[torch.Tensor] | torch.Tensor
+        self, x: Union[List[torch.Tensor], torch.Tensor]
     ) -> Tuple[torch.Tensor, torch.Tensor, List[Tuple[int, int]], torch.Tensor]:
         """
         Patchifies and embeds the input tensor(s).
@@ -508,6 +510,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
+        cross_attention_kwargs: Dict[str, Any] = None,
         return_dict=True,
     ) -> torch.Tensor:
         """
@@ -531,7 +534,8 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         encoder_mask = encoder_mask.bool()
         for layer in self.layers:
             hidden_states = layer(
-                hidden_states, mask, freqs_cis, encoder_hidden_states, encoder_mask, adaln_input=adaln_input
+                hidden_states, mask, freqs_cis, encoder_hidden_states, encoder_mask, adaln_input=adaln_input,\
+               cross_attention_kwargs=cross_attention_kwargs,
             )
 
         hidden_states = self.final_layer(hidden_states, adaln_input)
