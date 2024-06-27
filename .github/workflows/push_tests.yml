@@ -330,6 +330,7 @@ jobs:
     - name: Run example tests on GPU
       env:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        RUN_COMPILE: yes
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
