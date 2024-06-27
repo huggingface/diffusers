@@ -51,6 +51,7 @@ from .pag import (
     StableDiffusionXLPAGImg2ImgPipeline,
     StableDiffusionXLPAGInpaintPipeline,
     StableDiffusionXLPAGPipeline,
+    StableDiffusionPAGPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
@@ -88,6 +89,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("lcm", LatentConsistencyModelPipeline),
         ("pixart-alpha", PixArtAlphaPipeline),
         ("pixart-sigma", PixArtSigmaPipeline),
+        ("stable-diffusion-pag", StableDiffusionPAGPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGPipeline),
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGPipeline),
     ]

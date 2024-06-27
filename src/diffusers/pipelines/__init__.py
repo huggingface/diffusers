@@ -141,6 +141,7 @@ else:
     )
     _import_structure["pag"].extend(
         [
+            "StableDiffusionPAGPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGPipeline",
@@ -495,6 +496,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGImg2ImgPipeline,
             StableDiffusionXLPAGInpaintPipeline,
             StableDiffusionXLPAGPipeline,
+            StableDiffusionPAGPipeline,
         )
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
