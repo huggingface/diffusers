@@ -425,7 +425,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         return imgs
 
     def patchify_and_embed(
-        self, x: List[torch.Tensor] | torch.Tensor
+        self, x: Union[List[torch.Tensor], torch.Tensor]
     ) -> Tuple[torch.Tensor, torch.Tensor, List[Tuple[int, int]], torch.Tensor]:
         """
         Patchifies and embeds the input tensor(s).
