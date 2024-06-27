@@ -272,7 +272,6 @@ else:
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
             "LuminaText2ImgPipeline",
-            "LuminaText2ImgPipeline",
             "MarigoldDepthPipeline",
             "MarigoldNormalsPipeline",
             "MusicLDMPipeline",

@@ -775,11 +775,6 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
 
         self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
 
-        nn.init.normal_(self.timestep_embedder.linear_1.weight, std=0.02)
-        nn.init.zeros_(self.timestep_embedder.linear_1.bias)
-        nn.init.normal_(self.timestep_embedder.linear_2.weight, std=0.02)
-        nn.init.zeros_(self.timestep_embedder.linear_2.bias)
-
         self.caption_embedder = nn.Sequential(
             nn.LayerNorm(encoder_hidden_size),
             nn.Linear(
@@ -788,8 +783,6 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
                 bias=True,
             ),
         )
-        nn.init.zeros_(self.caption_embedder[1].weight)
-        nn.init.zeros_(self.caption_embedder[1].bias)
 
     def forward(self, timestep, caption_feat, caption_mask):
         # timestep embedding:

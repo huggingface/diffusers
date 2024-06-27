@@ -36,7 +36,7 @@ def modulate(x, scale):
     return x * (1 + scale.unsqueeze(1))
 
 
-class FinalLayer(nn.Module):
+class LuminaFinalLayer(nn.Module):
     """
     The final layer of LuminaNextDiT.
 
@@ -60,8 +60,6 @@ class FinalLayer(nn.Module):
             patch_size * patch_size * out_channels,
             bias=True,
         )
-        nn.init.zeros_(self.linear.weight)
-        nn.init.zeros_(self.linear.bias)
 
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
@@ -71,12 +69,10 @@ class FinalLayer(nn.Module):
                 bias=True,
             ),
         )
-        nn.init.zeros_(self.adaLN_modulation[1].weight)
-        nn.init.zeros_(self.adaLN_modulation[1].bias)
 
     def forward(self, x, c):
         """
-        Forward pass of the FinalLayer.
+        Forward pass of the LuminaFinalLayer.
 
         Args:
             x (torch.Tensor): The input tensor.
@@ -192,8 +188,6 @@ class LuminaNextDiTBlock(nn.Module):
                 bias=True,
             ),
         )
-        nn.init.zeros_(self.adaLN_modulation[1].weight)
-        nn.init.zeros_(self.adaLN_modulation[1].bias)
 
         self.attn_encoder_hidden_states_norm = RMSNorm(
             encoder_hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine
@@ -357,11 +351,8 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             out_features=hidden_size,
             bias=True,
         )
-        nn.init.xavier_uniform_(self.patch_embedder.weight)
-        nn.init.constant_(self.patch_embedder.bias, 0.0)
 
         self.pad_token = nn.Parameter(torch.empty(hidden_size))
-        nn.init.normal_(self.pad_token, std=0.02)
 
         self.time_caption_embed = LuminaCombinedTimestepCaptionEmbedding(
             hidden_size=min(hidden_size, 1024), encoder_hidden_size=encoder_hidden_size
@@ -383,7 +374,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
                 for layer_id in range(num_layers)
             ]
         )
-        self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
+        self.final_layer = LuminaFinalLayer(hidden_size, patch_size, self.out_channels)
 
         assert (hidden_size // num_attention_heads) % 4 == 0, "2d rope needs head dim to be divisible by 4"
         self.freqs_cis = self.precompute_freqs_cis(
