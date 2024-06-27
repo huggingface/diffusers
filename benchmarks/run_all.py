@@ -54,7 +54,7 @@ def main():
     for file in python_files:
         if "ip_adapters" in file:
             continue
-        
+
         if file == "benchmark_text_to_image.py":
             for ckpt in ALL_T2I_CKPTS:
                 command = f"python {file} --ckpt {ckpt}"
