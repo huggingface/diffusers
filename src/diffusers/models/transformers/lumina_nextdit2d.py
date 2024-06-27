@@ -508,6 +508,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
+        cross_attention_kwargs: Dict[str, Any] = None,
         return_dict=True,
     ) -> torch.Tensor:
         """
