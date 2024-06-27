@@ -1,4 +1,3 @@
-import gc
 import random
 import unittest
 
@@ -12,13 +11,8 @@ from diffusers import (
     SD3Transformer2DModel,
     StableDiffusion3InpaintPipeline,
 )
-from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     floats_tensor,
-    load_numpy,
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
     torch_device,
 )
 

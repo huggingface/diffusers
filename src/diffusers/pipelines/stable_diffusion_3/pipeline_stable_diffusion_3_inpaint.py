@@ -651,7 +651,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         latents = init_latents.to(device=device, dtype=dtype)
 
         return latents, init_latents_orig, noise
-    
+
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, num_images_per_prompt, height, width, dtype, device, generator
     ):
@@ -662,7 +662,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             mask, size=(height // self.vae_scale_factor, width // self.vae_scale_factor)
         )
         mask = mask.to(device=device, dtype=dtype)
-        
+
         batch_size = batch_size * num_images_per_prompt
 
         masked_image = masked_image.to(device=device, dtype=dtype)
@@ -698,7 +698,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
         return mask, masked_image_latents
-    
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -907,7 +907,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
 
         # 3. Preprocess image
         image = self.image_processor.preprocess(image, height, width)
-                        
+
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
@@ -924,15 +924,15 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 device,
                 generator,
             )
-        
+
         # 5.1. Prepare masked latent variables
         mask_condition = self.mask_processor.preprocess(mask_image, height, width)
-                        
+
         if masked_image_latents is None:
             masked_image = image * (mask_condition < 0.5)
         else:
             masked_image = masked_image_latents
-        
+
         mask, masked_image_latents = self.prepare_mask_latents(
             mask_condition,
             masked_image,
@@ -957,7 +957,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
-                
+
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
@@ -992,7 +992,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                     negative_pooled_prompt_embeds = callback_outputs.pop(
                         "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
                     )
-                
+
                 if add_predicted_noise:
                     init_latents_proper = self.scheduler.scale_noise(
                         init_latents_orig, torch.tensor([t]), noise_pred_uncond
@@ -1010,7 +1010,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                     xm.mark_step()
 
         latents = (init_latents_orig * mask) + (latents * (1 - mask))
-        
+
         if output_type == "latent":
             image = latents
 
