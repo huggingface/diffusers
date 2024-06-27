@@ -532,7 +532,8 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         encoder_mask = encoder_mask.bool()
         for layer in self.layers:
             hidden_states = layer(
-                hidden_states, mask, freqs_cis, encoder_hidden_states, encoder_mask, adaln_input=adaln_input
+                hidden_states, mask, freqs_cis, encoder_hidden_states, encoder_mask, adaln_input=adaln_input,\
+               cross_attention_kwargs=cross_attention_kwargs,
             )
 
         hidden_states = self.final_layer(hidden_states, adaln_input)
