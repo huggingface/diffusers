@@ -83,6 +83,8 @@ body:
         - VAE @sayakpaul @DN6 @yiyixuxu
         - Transformers/Attention @DN6 @yiyixuxu @sayakpaul
 
+        Questions on single file checkpoints: @DN6
+
         Questions on Schedulers: @yiyixuxu
 
         Questions on LoRA: @sayakpaul
