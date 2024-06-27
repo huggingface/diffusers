@@ -207,6 +207,7 @@ class LuminaNextDiTBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
         adaln_input: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Dict[str, Any] = None,
     ):
         """
         Perform a forward pass through the LuminaNextDiTBlock.
