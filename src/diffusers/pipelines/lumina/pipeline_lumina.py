@@ -751,7 +751,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if proportional_attn:
-            cross_attention_kwargs["proportational_attn"] = True
+            cross_attention_kwargs["proportional_attn"] = True
             cross_attention_kwargs["base_sequence_length"] = (self.default_image_size // 16) ** 2
         else:
             cross_attention_kwargs["proportational_attn"] = False
@@ -836,23 +836,17 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 hidden_size = self.transformer.config.hidden_size
                 num_attention_heads = self.transformer.config.num_attention_heads
                 attention_head_dim = hidden_size // num_attention_heads
-                scaling_factor = math.sqrt(width * height / self.default_image_size**2)
-
-                self.transformer.freqs_cis = self.transformer.precompute_freqs_cis(
-                    attention_head_dim,
-                    384,
-                    scaling_factor=scaling_factor,
-                    scaling_watershed=scaling_watershed,
-                    timestep=current_timestep[0].item(),
-                )
+                scaling_factor = math.sqrt(width * height / self.default_image_size ** 2)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=current_timestep,
                     encoder_hidden_states=prompt_embeds,
                     encoder_mask=prompt_attention_mask,
-                    return_dict=False,
+                    scaling_factor=scaling_factor,
+                    scaling_watershed=scaling_watershed,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    return_dict=False,
                 )[0]
                 noise_pred = noise_pred.chunk(2, dim=1)[0]
 

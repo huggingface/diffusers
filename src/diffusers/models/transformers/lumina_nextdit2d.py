@@ -349,6 +349,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
         self.hidden_size = hidden_size
         self.num_attention_heads = num_attention_heads
+        self.head_dim = hidden_size // num_attention_heads
         self.scaling_factor = scaling_factor
 
         self.patch_embedder = nn.Linear(
@@ -513,6 +514,8 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
+        scaling_factor: Optional[int] = 1,
+        scaling_watershed: Optional[float] = 0.3,
         cross_attention_kwargs: Dict[str, Any] = None,
         return_dict=True,
     ) -> torch.Tensor:
@@ -528,6 +531,14 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         Returns:
             torch.Tensor: Output tensor of shape (N, C, H, W).
         """
+        # For inference
+        self.freqs_cis = self.precompute_freqs_cis(
+            self.head_dim,
+            384,
+            scaling_factor=scaling_factor,
+            scaling_watershed=scaling_watershed,
+            timestep=timestep[0].item(),
+        )
         x_is_tensor = isinstance(hidden_states, torch.Tensor)
         hidden_states, mask, img_size, freqs_cis = self.patchify_and_embed(hidden_states)
         freqs_cis = freqs_cis.to(hidden_states.device)
@@ -591,9 +602,9 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         theta = theta * ntk_factor
         freqs = 1.0 / (theta ** (torch.arange(0, dim, 4)[: (dim // 4)].float().cuda() / dim)) / linear_factor
 
-        timestep = torch.arange(end, device=freqs.device, dtype=torch.float)  # type: ignore
+        timestep = torch.arange(end, device=freqs.device, dtype=torch.float)
 
-        freqs = torch.outer(timestep, freqs).float()  # type: ignore
+        freqs = torch.outer(timestep, freqs).float()
         freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
 
         freqs_cis_h = freqs_cis.view(end, 1, dim // 4, 1).repeat(1, end, 1, 1)
