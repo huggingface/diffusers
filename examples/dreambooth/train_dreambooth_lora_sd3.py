@@ -113,7 +113,7 @@ You should use `{instance_prompt}` to trigger the image generation.
 
 ## Download model
 
-[Download the *.safensors LoRA]({repo_id}/tree/main) in the Files & versions tab.
+[Download the *.safetensors LoRA]({repo_id}/tree/main) in the Files & versions tab.
 
 ## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
 
