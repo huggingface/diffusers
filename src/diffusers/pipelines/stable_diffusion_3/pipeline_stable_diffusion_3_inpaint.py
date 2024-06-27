@@ -505,6 +505,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -594,6 +595,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(num_inference_steps * strength, num_inference_steps)
@@ -605,7 +607,9 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+    def prepare_latents(
+        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, is_strength_max=False
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -651,7 +655,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
-        init_latents = self.scheduler.scale_noise(init_latents, timestep, noise)
+        init_latents = noise if is_strength_max else self.scheduler.scale_noise(init_latents, timestep, noise)
         latents = init_latents.to(device=device, dtype=dtype)
 
         return latents, init_latents_orig, noise
@@ -746,7 +750,6 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         negative_prompt_3: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        add_predicted_noise: Optional[bool] = False,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -802,9 +805,6 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 `text_encoder_3`. If not defined, `negative_prompt` is used instead
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            add_predicted_noise (`bool`, *optional*, defaults to True):
-                Use predicted noise instead of random noise when constructing noisy versions of the original image in
-                the reverse diffusion process
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
@@ -850,6 +850,9 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             [`~pipelines.stable_diffusion_3.StableDiffusion3PipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
+
+        height = height or self.transformer.config.sample_size * self.vae_scale_factor
+        width = width or self.transformer.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -909,15 +912,22 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
-        # 3. Preprocess image
+        # 3. Preprocess image and mask
         image = self.image_processor.preprocess(image, height, width)
+        mask_condition = self.mask_processor.preprocess(mask_image, height, width)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_inference_steps)
 
-        # 5. Prepare latent variables
+        # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
+        is_strength_max = strength == 1.0
+
+        # 5. Prepare latent and masked latent variables
+        num_channels_latents = self.vae.config.latent_channels
+        num_channels_transformer = self.transformer.config.in_channels
+
         if latents is None:
             latents, init_latents_orig, noise = self.prepare_latents(
                 image,
@@ -927,10 +937,8 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 prompt_embeds.dtype,
                 device,
                 generator,
+                is_strength_max=is_strength_max,
             )
-
-        # 5.1. Prepare masked latent variables
-        mask_condition = self.mask_processor.preprocess(mask_image, height, width)
 
         if masked_image_latents is None:
             masked_image = image * (mask_condition < 0.5)
@@ -949,6 +957,27 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             generator,
         )
 
+        # match the inpainting pipeline and will be updated with input + mask inpainting model later
+        if num_channels_transformer == 33:
+            # default case for runwayml/stable-diffusion-inpainting
+            num_channels_mask = mask.shape[1]
+            num_channels_masked_image = masked_image_latents.shape[1]
+            if (
+                num_channels_latents + num_channels_mask + num_channels_masked_image
+                != self.transformer.config.in_channels
+            ):
+                raise ValueError(
+                    f"Incorrect configuration settings! The config of `pipeline.transformer`: {self.transformer.config} expects"
+                    f" {self.transformer.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
+                    f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
+                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    " `pipeline.transformer` or your `mask_image` or `image` input."
+                )
+        elif num_channels_transformer != 16:
+            raise ValueError(
+                f"The transformer {self.transformer.__class__} should have 16 input channels, not {self.transformer.config.in_channels}."
+            )
+
         # 6. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
@@ -961,6 +990,9 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
+
+                if num_channels_transformer == 33:
+                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
@@ -997,14 +1029,9 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                         "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
                     )
 
-                if add_predicted_noise:
-                    init_latents_proper = self.scheduler.scale_noise(
-                        init_latents_orig, torch.tensor([t]), noise_pred_uncond
-                    )
-                else:
-                    init_latents_proper = self.scheduler.scale_noise(init_latents_orig, torch.tensor([t]), noise)
+                init_latents_proper = self.scheduler.scale_noise(init_latents_orig, torch.tensor([t]), noise)
 
-                latents = (init_latents_proper * mask) + (latents * (1 - mask))
+                latents = init_latents_proper * (1 - mask) + latents * mask
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -1013,7 +1040,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        latents = (init_latents_orig * mask) + (latents * (1 - mask))
+        latents = init_latents_orig * (1 - mask) + latents * mask
 
         if output_type == "latent":
             image = latents
