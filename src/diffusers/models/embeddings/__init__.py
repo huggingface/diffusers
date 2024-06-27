@@ -31,4 +31,4 @@ from .position import (
     get_2d_rotary_pos_embed,
     get_2d_rotary_pos_embed_from_grid,
 )
-from .timestep import TimestepEmbedding, Timesteps, get_timestep_embedding
+from .timestep import GaussianFourierProjection, TimestepEmbedding, Timesteps, get_timestep_embedding
