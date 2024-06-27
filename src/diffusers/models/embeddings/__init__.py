@@ -24,6 +24,13 @@ from .image_text import (
     get_2d_sincos_pos_embed,
     get_2d_sincos_pos_embed_from_grid,
 )
+from .others import (
+    AttentionPooling,
+    GLIGENTextBoundingboxProjection,
+    HunyuanDiTAttentionPool,
+    LabelEmbedding,
+    get_fourier_embeds_from_boundingbox,
+)
 from .position import (
     SinusoidalPositionalEmbedding,
     apply_rotary_emb,
