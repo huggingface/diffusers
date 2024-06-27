@@ -30,12 +30,13 @@ def main(args):
     if args.status == "success":
         hub_path = "https://huggingface.co/datasets/diffusers/benchmarks/blob/main/collated_results.csv"
         message = (
-            "✅ Community pipelines successfully mirrored.\n"
+            "✅ New benchmark workflow successfully run.\n"
             f"🕸️ GitHub Action URL: {action_url}.\n"
-            f"🤗 Hub location: {hub_path}."
+            f"🤗 Check out the benchmarks here: {hub_path}."
         )
     else:
-        message = f"❌ Something wrong happened. Check out the GitHub Action to know more: {action_url}."
+        message = "❌ Something wrong happened in the benchmarking workflow.\n"
+        f"Check out the GitHub Action to know more: {action_url}."
 
     payload = {"text": message}
     response = requests.post(SLACK_WEBHOOK_URL, json=payload)
