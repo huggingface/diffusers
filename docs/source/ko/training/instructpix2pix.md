@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# InstructPix2Pix 
+# InstructPix2Pix
 
 [InstructPix2Pix](https://arxiv.org/abs/2211.09800)는 text-conditioned diffusion 모델이 한 이미지에 편집을 따를 수 있도록 파인튜닝하는 방법입니다. 이 방법을 사용하여 파인튜닝된 모델은 다음을 입력으로 사용합니다:
 
@@ -139,7 +139,7 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
 `accelerate`는 원활한 다수의 GPU로 학습을 가능하게 합니다. `accelerate`로 분산 학습을 실행하는 [여기](https://huggingface.co/docs/accelerate/basic_tutorials/launch) 설명을 따라 해 주시기 바랍니다. 예시의 명령어 입니다:
 
 
-```bash 
+```bash
 accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py \
  --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
  --dataset_name=sayakpaul/instructpix2pix-1000-samples \

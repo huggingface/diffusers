@@ -190,6 +190,10 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f"Expected: {expected_slice}, got: {image_slice.flatten()}"
 
+    @unittest.skip("xFormersAttnProcessor does not work with SD3 Joint Attention")
+    def test_xformers_attention_forwardGenerator_pass(self):
+        pass
+
 
 @slow
 @require_torch_gpu

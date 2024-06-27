@@ -155,7 +155,7 @@ def get_inputs(batch_size=1):
 `batch_size=4`で開始し、どれだけメモリを消費したかを確認します：
 
 ```python
-from diffusers.utils import make_image_grid 
+from diffusers.utils import make_image_grid
 
 images = pipeline(**get_inputs(batch_size=4)).images
 make_image_grid(images, 2, 2)
