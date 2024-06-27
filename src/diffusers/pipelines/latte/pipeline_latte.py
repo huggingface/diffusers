@@ -712,7 +712,10 @@ class LattePipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # use learned sigma?
-                if not use_learned_sigma:
+                if not (
+                hasattr(self.scheduler.config, "variance_type")
+                and self.scheduler.config.variance_type in ["learned", "learned_range"]
+                ):
                     noise_pred = noise_pred.chunk(2, dim=1)[0]
 
                 # compute previous video: x_t -> x_t-1
