@@ -324,7 +324,6 @@ class LoraLoaderMixin(LoraBaseMixin):
         # their prefixes.
         keys = list(state_dict.keys())
         only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
-
         if not only_text_encoder:
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
