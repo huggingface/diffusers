@@ -19,13 +19,12 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
     AutoPipelineForText2Image,
     DDIMScheduler,
-    EulerDiscreteScheduler,
     StableDiffusionPAGPipeline,
     StableDiffusionPipeline,
     UNet2DConditionModel,
@@ -181,7 +180,6 @@ class StableDiffusionPAGPipelineFastTests(
         assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
         assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
 
-
     def test_pag_applied_layers(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -194,7 +192,11 @@ class StableDiffusionPAGPipelineFastTests(
         # pag_applied_layers = ["mid","up","down"] should apply to all self-attention layers
         all_self_attn_layers = [k for k in pipe.unet.attn_processors.keys() if "attn1" in k]
         original_attn_procs = pipe.unet.attn_processors
-        pag_layers = ["down","mid", "up",]
+        pag_layers = [
+            "down",
+            "mid",
+            "up",
+        ]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_layers)
 
@@ -203,7 +205,7 @@ class StableDiffusionPAGPipelineFastTests(
         # mid_block.attentions.0.transformer_blocks.1.attn1.processor
         all_self_attn_mid_layers = [
             "mid_block.attentions.0.transformer_blocks.0.attn1.processor",
-            #"mid_block.attentions.0.transformer_blocks.1.attn1.processor",
+            # "mid_block.attentions.0.transformer_blocks.1.attn1.processor",
         ]
         pipe.unet.set_attn_processor(original_attn_procs.copy())
         pag_layers = ["mid"]
@@ -230,7 +232,7 @@ class StableDiffusionPAGPipelineFastTests(
         # down_blocks.1.attentions.0.transformer_blocks.0.attn1.processor
         # down_blocks.1.attentions.0.transformer_blocks.1.attn1.processor
         # down_blocks.1.attentions.0.transformer_blocks.0.attn1.processor
-        
+
         pipe.unet.set_attn_processor(original_attn_procs.copy())
         pag_layers = ["down"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
@@ -269,12 +271,13 @@ class StableDiffusionPAGPipelineFastTests(
             64,
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
-        
+
         expected_slice = np.array(
             [0.22802538, 0.44626093, 0.48905736, 0.29633686, 0.36400637, 0.4724258, 0.4678891, 0.32260418, 0.41611585]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
+
 
 @slow
 @require_torch_gpu

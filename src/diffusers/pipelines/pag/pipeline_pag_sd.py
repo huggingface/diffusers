@@ -26,8 +26,8 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
-    logging,
     deprecate,
+    logging,
     replace_example_docstring,
     scale_lora_layers,
     unscale_lora_layers,
@@ -38,6 +38,7 @@ from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .pag_utils import PAGMixin
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
@@ -46,11 +47,13 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import AutoPipelineForText2Image
 
-        >>> pipe = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, enable_pag=True)
+        >>> pipe = AutoPipelineForText2Image.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, enable_pag=True
+        ... )
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt, pag_scale=.3).images[0]
+        >>> image = pipe(prompt, pag_scale=0.3).images[0]
         ```
 """
 
@@ -927,7 +930,9 @@ class StableDiffusionPAGPipeline(
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
         if self.do_perturbed_attention_guidance:
-            prompt_embeds = self._prepare_perturbed_attention_guidance(prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance)
+            prompt_embeds = self._prepare_perturbed_attention_guidance(
+                prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
+            )
         elif self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
@@ -977,7 +982,7 @@ class StableDiffusionPAGPipeline(
 
         # 6.1 Add image embeds for IP-Adapter
         added_cond_kwargs = (
-            {"image_embeds":ip_adapter_image_embeds}
+            {"image_embeds": ip_adapter_image_embeds}
             if (ip_adapter_image is not None or ip_adapter_image_embeds is not None)
             else None
         )
@@ -1005,7 +1010,7 @@ class StableDiffusionPAGPipeline(
                     continue
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents]*(prompt_embeds.shape[0] // latents.shape[0]))
+                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
