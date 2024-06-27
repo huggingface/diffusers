@@ -126,9 +126,6 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 A scaled input sample.
         """
-        if self.step_index is None:
-            self._init_step_index(timestep)
-
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=sample.device, dtype=sample.dtype)
 
