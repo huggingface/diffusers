@@ -137,6 +137,15 @@ class SD3LoRATests(unittest.TestCase):
         )
         return lora_config
 
+    def get_lora_config_for_text_encoders(self):
+        text_lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            init_lora_weights="gaussian",
+            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+        )
+        return text_lora_config
+
     def test_simple_inference_with_transformer_lora_save_load(self):
         components = self.get_dummy_components()
         transformer_config = self.get_lora_config_for_transformer()
@@ -172,6 +181,55 @@ class SD3LoRATests(unittest.TestCase):
             "Loading from saved checkpoints should give same results.",
         )
 
+    def test_simple_inference_with_clip_encoders_lora_save_load(self):
+        components = self.get_dummy_components()
+        transformer_config = self.get_lora_config_for_transformer()
+        text_encoder_config = self.get_lora_config_for_text_encoders()
+
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        pipe.transformer.add_adapter(transformer_config)
+        pipe.text_encoder.add_adapter(text_encoder_config)
+        pipe.text_encoder_2.add_adapter(text_encoder_config)
+
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder.")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2.")
+
+        inputs = self.get_dummy_inputs(torch_device)
+        images_lora = pipe(**inputs).images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            transformer_state_dict = get_peft_model_state_dict(pipe.transformer)
+            text_encoder_one_state_dict = get_peft_model_state_dict(pipe.text_encoder)
+            text_encoder_two_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+
+            self.pipeline_class.save_lora_weights(
+                save_directory=tmpdirname,
+                transformer_lora_layers=transformer_state_dict,
+                text_encoder_lora_layers=text_encoder_one_state_dict,
+                text_encoder_2_lora_layers=text_encoder_two_state_dict,
+            )
+
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            pipe.unload_lora_weights()
+
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        inputs = self.get_dummy_inputs(torch_device)
+        images_lora_from_pretrained = pipe(**inputs).images
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text_encoder_one")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text_encoder_two")
+
+        self.assertTrue(
+            np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
+            "Loading from saved checkpoints should give same results.",
+        )
+
     def test_simple_inference_with_transformer_lora_and_scale(self):
         components = self.get_dummy_components()
         transformer_lora_config = self.get_lora_config_for_transformer()
@@ -184,6 +242,44 @@ class SD3LoRATests(unittest.TestCase):
 
         pipe.transformer.add_adapter(transformer_lora_config)
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_lora = pipe(**inputs).images
+        self.assertTrue(
+            not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+        )
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_lora_scale = pipe(**inputs, joint_attention_kwargs={"scale": 0.5}).images
+        self.assertTrue(
+            not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
+            "Lora + scale should change the output",
+        )
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_lora_0_scale = pipe(**inputs, joint_attention_kwargs={"scale": 0.0}).images
+        self.assertTrue(
+            np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
+            "Lora + 0 scale should lead to same result as no LoRA",
+        )
+
+    def test_simple_inference_with_clip_encoders_lora_and_scale(self):
+        components = self.get_dummy_components()
+        transformer_lora_config = self.get_lora_config_for_transformer()
+        text_encoder_config = self.get_lora_config_for_text_encoders()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_no_lora = pipe(**inputs).images
+
+        pipe.transformer.add_adapter(transformer_lora_config)
+        pipe.text_encoder.add_adapter(text_encoder_config)
+        pipe.text_encoder_2.add_adapter(text_encoder_config)
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text_encoder_one")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text_encoder_two")
 
         inputs = self.get_dummy_inputs(torch_device)
         output_lora = pipe(**inputs).images
