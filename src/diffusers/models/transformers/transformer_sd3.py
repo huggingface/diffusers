@@ -28,7 +28,7 @@ from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
-from .transformer_2d import Transformer2DModelOutput
+from ..modeling_outputs import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
