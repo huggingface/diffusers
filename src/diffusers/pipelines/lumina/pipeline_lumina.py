@@ -847,6 +847,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     encoder_mask=prompt_attention_mask,
                     return_dict=False,
+                    cross_attention_kwargs=self.cross_attention_kwargs,
                 )[0]
                 noise_pred = noise_pred.chunk(2, dim=1)[0]
 
