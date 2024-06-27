@@ -191,7 +191,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             else 128
         )
         self.default_image_size = self.default_sample_size * self.vae_scale_factor
-        self.base_sequence_length = (self.default_image_size // 16) ** 2
 
     def _get_gemma_prompt_embeds(
         self,
@@ -741,6 +740,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
         )
+        cross_attention_kwargs = {}
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -750,6 +750,11 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
+        if proportional_attn:
+            cross_attention_kwargs["proportational_attn"] = True
+            cross_attention_kwargs["base_sequence_length"] = (self.default_image_size // 16) ** 2
+        else:
+            cross_attention_kwargs["proportational_attn"] = False
 
         device = self._execution_device
 
@@ -847,7 +852,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     encoder_mask=prompt_attention_mask,
                     return_dict=False,
-                    cross_attention_kwargs=self.cross_attention_kwargs,
+                    cross_attention_kwargs=cross_attention_kwargs,
                 )[0]
                 noise_pred = noise_pred.chunk(2, dim=1)[0]
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -243,6 +243,7 @@ class LuminaNextDiTBlock(nn.Module):
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=encoder_mask,
                 image_rotary_emb=None,
+                **cross_attention_kwargs,
             )
 
             hidden_states = residual + gate_msa.unsqueeze(1).tanh() * self.attn_norm2(hidden_states)
@@ -258,6 +259,7 @@ class LuminaNextDiTBlock(nn.Module):
                 encoder_hidden_states=None,
                 attention_mask=attention_mask,
                 image_rotary_emb=freqs_cis,
+                **cross_attention_kwargs,
             )
 
             # Cross-attention
@@ -266,6 +268,7 @@ class LuminaNextDiTBlock(nn.Module):
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=encoder_mask,
                 image_rotary_emb=None,
+                **cross_attention_kwargs,
             )
             hidden_states = residual + self.attn_norm2(hidden_states)
 
@@ -534,8 +537,13 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         encoder_mask = encoder_mask.bool()
         for layer in self.layers:
             hidden_states = layer(
-                hidden_states, mask, freqs_cis, encoder_hidden_states, encoder_mask, adaln_input=adaln_input,\
-               cross_attention_kwargs=cross_attention_kwargs,
+                hidden_states,
+                mask,
+                freqs_cis,
+                encoder_hidden_states,
+                encoder_mask,
+                adaln_input=adaln_input,
+                cross_attention_kwargs=cross_attention_kwargs,
             )
 
         hidden_states = self.final_layer(hidden_states, adaln_input)
