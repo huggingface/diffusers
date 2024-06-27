@@ -234,6 +234,7 @@ class LuminaNextDiTBlock(nn.Module):
                 encoder_hidden_states=None,
                 attention_mask=attention_mask,
                 image_rotary_emb=freqs_cis,
+                **cross_attention_kwargs,
             )
 
             # Cross-attention
