@@ -35,8 +35,10 @@ def main(args):
             f"🤗 Check out the benchmarks here: {hub_path}."
         )
     else:
-        message = "❌ Something wrong happened in the benchmarking workflow.\n"
-        f"Check out the GitHub Action to know more: {action_url}."
+        message = (
+            "❌ Something wrong happened in the benchmarking workflow.\n"
+            f"Check out the GitHub Action to know more: {action_url}."
+        )
 
     payload = {"text": message}
     response = requests.post(SLACK_WEBHOOK_URL, json=payload)
