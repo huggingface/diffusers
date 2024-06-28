@@ -1,4 +1,4 @@
-# Copyright 2024 Stability AI and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Stability AI, The HuggingFace Team and The InstantX Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,9 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional, Union
+import inspect
+from functools import partial
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -26,7 +28,7 @@ from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
-from .transformer_2d import Transformer2DModelOutput
+from ..modeling_outputs import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -150,7 +152,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -239,12 +241,54 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `fuse_lora()`.")
+
+        self.lora_scale = lora_scale
+        self._safe_fusing = safe_fusing
+        self.apply(partial(self._fuse_lora_apply, adapter_names=adapter_names))
+
+    def _fuse_lora_apply(self, module, adapter_names=None):
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        merge_kwargs = {"safe_merge": self._safe_fusing}
+
+        if isinstance(module, BaseTunerLayer):
+            if self.lora_scale != 1.0:
+                module.scale_layer(self.lora_scale)
+
+            # For BC with prevous PEFT versions, we need to check the signature
+            # of the `merge` method to see if it supports the `adapter_names` argument.
+            supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+            if "adapter_names" in supported_merge_kwargs:
+                merge_kwargs["adapter_names"] = adapter_names
+            elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                raise ValueError(
+                    "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
+                    " to the latest version of PEFT. `pip install -U peft`"
+                )
+
+            module.merge(**merge_kwargs)
+
+    def unfuse_lora(self):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `unfuse_lora()`.")
+        self.apply(self._unfuse_lora_apply)
+
+    def _unfuse_lora_apply(self, module):
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        if isinstance(module, BaseTunerLayer):
+            module.unmerge()
+
     def forward(
         self,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         pooled_projections: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
+        block_controlnet_hidden_states: List = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
@@ -260,6 +304,8 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 from the embeddings of input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
+            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
+                A list of tensors that if specified are added to the residuals of transformer blocks.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -293,7 +339,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         temb = self.time_text_embed(timestep, pooled_projections)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        for block in self.transformer_blocks:
+        for index_block, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
@@ -306,7 +352,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     return custom_forward
 
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
+                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(block),
                     hidden_states,
                     encoder_hidden_states,
@@ -318,6 +364,11 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 )
+
+            # controlnet residual
+            if block_controlnet_hidden_states is not None and block.context_pre_only is False:
+                interval_control = len(self.transformer_blocks) // len(block_controlnet_hidden_states)
+                hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
 
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)

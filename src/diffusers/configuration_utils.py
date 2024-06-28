@@ -23,7 +23,7 @@ import json
 import os
 import re
 from collections import OrderedDict
-from pathlib import PosixPath
+from pathlib import Path
 from typing import Any, Dict, Tuple, Union
 
 import numpy as np
@@ -587,8 +587,8 @@ class ConfigMixin:
         def to_json_saveable(value):
             if isinstance(value, np.ndarray):
                 value = value.tolist()
-            elif isinstance(value, PosixPath):
-                value = str(value)
+            elif isinstance(value, Path):
+                value = value.as_posix()
             return value
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
@@ -716,7 +716,7 @@ class LegacyConfigMixin(ConfigMixin):
 
     @classmethod
     def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
-        # To prevent depedency import problem.
+        # To prevent dependency import problem.
         from .models.model_loading_utils import _fetch_remapped_cls_from_config
 
         # resolve remapping
