@@ -857,10 +857,12 @@ class StableDiffusionPAGPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            pag_scale (`float`, *optional*, defaults to 3.0)
-                The scale factor for the perturbed attention guidance will not be used.
-            pag_adaptive_scale (`float`, *optional*, default)
-                TBD
+            pag_scale (`float`, *optional*, defaults to 3.0):
+                The scale factor for the perturbed attention guidance. If it is set to 0.0, the perturbed attention
+                guidance will not be used.
+            pag_adaptive_scale (`float`, *optional*, defaults to 0.0):
+                The adaptive scale factor for the perturbed attention guidance. If it is set to 0.0, `pag_scale` is
+                used.
 
         Examples:
 
