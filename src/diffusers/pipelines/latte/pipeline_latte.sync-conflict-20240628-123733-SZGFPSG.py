@@ -526,6 +526,7 @@ class LattePipeline(DiffusionPipeline):
         mask_feature: bool = True,
         enable_temporal_attentions: bool = True,
         decode_chunk_size: Optional[int] = None,
+        use_learned_sigma: bool = False,
     ) -> Union[LattePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -593,6 +594,7 @@ class LattePipeline(DiffusionPipeline):
                 The number of frames to decode at a time. Higher chunk size leads to better temporal consistency at the
                 expense of more memory usage. By default, the decoder decodes all frames at once for maximal quality.
                 For lower memory usage, reduce `decode_chunk_size`.
+            use_learned_sigma (`bool`, *optional*, defaults to `False`): If set to `True`, the model will use the learned for inference
 
         Examples:
 
@@ -710,10 +712,7 @@ class LattePipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # use learned sigma?
-                if not (
-                hasattr(self.scheduler.config, "variance_type")
-                and self.scheduler.config.variance_type in ["learned", "learned_range"]
-                ):
+                if not use_learned_sigma:
                     noise_pred = noise_pred.chunk(2, dim=1)[0]
 
                 # compute previous video: x_t -> x_t-1
