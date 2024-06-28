@@ -155,6 +155,7 @@ class LuminaNextDiTBlock(nn.Module):
             query_dim=hidden_size,
             cross_attention_dim=encoder_hidden_size,
             dim_head=hidden_size // num_attention_heads,
+            q_norm_dim=hidden_size,
             k_norm_dim=num_kv_heads * self.head_dim,
             qk_norm="layer_norm" if qk_norm else None,
             heads=num_attention_heads,
@@ -215,41 +216,45 @@ class LuminaNextDiTBlock(nn.Module):
         """
         residual = hidden_states
 
-        encoder_hidden_states = self.attn_encoder_hidden_states_norm(encoder_hidden_states)
-
         if adaln_input is not None:
             scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).chunk(4, dim=1)
-
+            
             # Self-attention
             # TODO (2024/06/26 14:00): current implementation is using self-attn hidden_states to get wq again
             # TODO: may occur some problems. it may need to use previous init hidden_states
-            hidden_states = self.attn(
-                hidden_states=modulate(self.attn_norm1(hidden_states), scale_msa),
-                encoder_hidden_states=None,
+            hidden_states=modulate(self.attn_norm1(hidden_states), scale_msa)
+            self_hidden_states = self.attn(
+                hidden_states=hidden_states,
+                encoder_hidden_states=hidden_states,
                 attention_mask=attention_mask,
-                image_rotary_emb=freqs_cis,
+                query_rotary_emb=freqs_cis,
+                key_rotary_emb=freqs_cis,
                 **cross_attention_kwargs,
             )
-
+            
             # Cross-attention
+            self.cross_attn.norm_q = self.attn.norm_q
             hidden_states = self.cross_attn(
                 hidden_states=hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
+                encoder_hidden_states=self.attn_encoder_hidden_states_norm(encoder_hidden_states),
                 attention_mask=encoder_mask,
-                image_rotary_emb=None,
+                residual=self_hidden_states,
+                query_rotary_emb=freqs_cis,
+                key_rotary_emb=None,
                 **cross_attention_kwargs,
             )
 
             hidden_states = residual + gate_msa.unsqueeze(1).tanh() * self.attn_norm2(hidden_states)
-
+            
             hidden_states = self.feed_forward(
                 modulate(self.ffn_norm1(hidden_states), scale_mlp),
             )
             hidden_states = hidden_states + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(hidden_states)
         else:
+            hidden_states = self.attn_norm1(hidden_states)
             # Self-attention
-            hidden_states = self.attn(
-                hidden_states=self.attn_norm1(hidden_states),
+            self_hidden_states = self.attn(
+                hidden_states=hidden_states,
                 encoder_hidden_states=None,
                 attention_mask=attention_mask,
                 image_rotary_emb=freqs_cis,
@@ -259,9 +264,10 @@ class LuminaNextDiTBlock(nn.Module):
             # Cross-attention
             hidden_states = self.cross_attn(
                 hidden_states=hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
+                encoder_hidden_states=self.attn_encoder_hidden_states_norm(encoder_hidden_states),
                 attention_mask=encoder_mask,
                 image_rotary_emb=None,
+                residual=self_hidden_states,
                 **cross_attention_kwargs,
             )
             hidden_states = residual + self.attn_norm2(hidden_states)
@@ -535,7 +541,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         freqs_cis = freqs_cis.to(hidden_states.device)
 
         adaln_input = self.time_caption_embed(timestep, encoder_hidden_states, encoder_mask)
-
+        
         encoder_mask = encoder_mask.bool()
         for layer in self.layers:
             hidden_states = layer(

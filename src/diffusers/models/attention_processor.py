@@ -1620,20 +1620,15 @@ class LuminaAttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        query_rotary_emb: Optional[torch.Tensor] = None,
+        key_rotary_emb: Optional[torch.Tensor] = None,
         proportional_attn: Optional[bool] = True,
         base_sequence_length: Optional[int] = 4096,
+        residual: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         from .embeddings import apply_rotary_emb
-
-        if encoder_hidden_states is not None:
-            # self
-            residual = hidden_states
-        else:
-            # cross
-            residual = encoder_hidden_states
 
         input_ndim = hidden_states.ndim
 
@@ -1644,16 +1639,7 @@ class LuminaAttnProcessor2_0:
         batch_size, sequence_length, _ = hidden_states.shape
 
         # Get Query-Key-Value Pair
-        if residual is None:
-            query = attn.to_q(hidden_states)
-        else:
-            query = hidden_states.transpose(1, 2)
-            batch_size, _, sequence_length = hidden_states.shape
-
-        # For encoder Key-Value
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-
+        query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -1677,9 +1663,10 @@ class LuminaAttnProcessor2_0:
         value = value.view(batch_size, -1, kv_heads, head_dim)
 
         # Apply RoPE if needed
-        if image_rotary_emb is not None:
-            query = apply_rotary_emb(query, image_rotary_emb, use_real=False)
-            key = apply_rotary_emb(key, image_rotary_emb, use_real=False)
+        if query_rotary_emb is not None:
+            query = apply_rotary_emb(query, query_rotary_emb, use_real=False)
+        if key_rotary_emb is not None:
+            key = apply_rotary_emb(key, key_rotary_emb, use_real=False)
 
         query, key = query.to(dtype), key.to(dtype)
 
@@ -1718,7 +1705,7 @@ class LuminaAttnProcessor2_0:
             hidden_states = hidden_states * attn.gate.tanh().view(1, 1, -1, 1)
             hidden_states = residual + hidden_states
             hidden_states = hidden_states.flatten(-2)
-
+            
             # linear proj
             hidden_states = attn.to_out[0](hidden_states)
 
