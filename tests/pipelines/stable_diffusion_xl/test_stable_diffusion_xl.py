@@ -1072,8 +1072,9 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a red car standing on the side of the street"
 
-        image = sd_pipe(prompt, num_inference_steps=4, guidance_scale=8.0).images[0]
-
+        image = sd_pipe(
+            prompt, num_inference_steps=4, guidance_scale=8.0, generator=torch.Generator("cpu").manual_seed(0)
+        ).images[0]
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_full/stable_diffusion_ssd_1b_lcm.png"
         )

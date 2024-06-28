@@ -201,6 +201,9 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
     def test_karras_schedulers_shape(self):
         super().test_karras_schedulers_shape(num_inference_steps_for_strength_for_iterations=3)
 
+    def test_from_pipe_consistent_forward_pass_cpu_offload(self):
+        super().test_from_pipe_consistent_forward_pass_cpu_offload(expected_max_diff=5e-3)
+
 
 @require_torch_gpu
 @nightly

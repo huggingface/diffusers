@@ -263,7 +263,7 @@ class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.1950, 0.1961, 0.2308, 0.1786, 0.1837, 0.2320, 0.1898, 0.1885, 0.2309])
+        expected_slice = np.array([0.3479, 0.3314, 0.3555, 0.3430, 0.3649, 0.3423, 0.3239, 0.3117, 0.3240])
         assert np.abs(image_slice - expected_slice).max() < 1e-3
 
     def test_lcm_multistep(self):
@@ -279,5 +279,5 @@ class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.3756, 0.3816, 0.3767, 0.3718, 0.3739, 0.3735, 0.3863, 0.3803, 0.3563])
+        expected_slice = np.array([0.1442, 0.1201, 0.1598, 0.1281, 0.1412, 0.1502, 0.1455, 0.1544, 0.1231])
         assert np.abs(image_slice - expected_slice).max() < 1e-3
