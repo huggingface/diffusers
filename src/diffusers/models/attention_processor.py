@@ -1705,7 +1705,7 @@ class LuminaAttnProcessor2_0:
             hidden_states = hidden_states * attn.gate.tanh().view(1, 1, -1, 1)
             hidden_states = residual + hidden_states
             hidden_states = hidden_states.flatten(-2)
-            
+
             # linear proj
             hidden_states = attn.to_out[0](hidden_states)
 
