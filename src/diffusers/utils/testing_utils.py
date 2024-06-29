@@ -602,10 +602,10 @@ def watermark_video_frames(frames: List[PIL.Image], watermark_path: str, opacity
         for c in range(3):
             roi[:, :, c] = watermark[:, :, c] * (alpha * opacity) + roi[:, :, c] * (1 - alpha * opacity)
         roi[:, :, 3] = np.maximum(roi[:, :, 3], alpha * 255)
-        return Image.fromarray(frame_array.astype(np.uint8))
+        return PIL.Image.fromarray(frame_array.astype(np.uint8))
 
     sample_frame = frames[0]
-    with Image.open(watermark_path) as watermark:
+    with PIL.Image.open(watermark_path) as watermark:
         watermark = watermark.convert("RGBA")
         watermark = prepare_watermark(watermark, sample_frame.width // scale_down)
 
@@ -633,7 +633,7 @@ def watermark_image(
     scale = min(img_w / (water_w * scale_down), img_h / (water_h * scale_down))
     new_size = (int(water_w * scale), int(water_h * scale))
     _watermark_array = np.array(
-        Image.fromarray(watermark_array).resize(new_size, Image.LANCZOS)
+        PIL.Image.fromarray(watermark_array).resize(new_size, PIL.Image.LANCZOS)
     )
 
     x, y = (img_w - new_size[0] - padding_right), (img_h - new_size[1] - padding_down)
@@ -661,7 +661,7 @@ def watermark_image(
         + alpha_image[y : y + new_size[1], x : x + new_size[0]] * (1 - alpha_watermark)
     ) * 255
 
-    return Image.fromarray(img_array)
+    return PIL.Image.fromarray(img_array)
 
 
 def load_hf_numpy(path) -> np.ndarray:
