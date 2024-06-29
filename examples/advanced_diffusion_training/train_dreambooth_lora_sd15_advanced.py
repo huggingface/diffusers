@@ -71,7 +71,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.30.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -326,7 +326,7 @@ def parse_args(input_args=None):
         type=str,
         default="TOK",
         help="identifier specifying the instance(or instances) as used in instance_prompt, validation prompt, "
-        "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma seperated string - e.g. "
+        "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma separated string - e.g. "
         "'TOK,TOK2,TOK3' etc.",
     )
 
@@ -559,7 +559,7 @@ def parse_args(input_args=None):
         "--prodigy_beta3",
         type=float,
         default=None,
-        help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
+        help="coefficients for computing the Prodigy stepsize using running averages. If set to None, "
         "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
@@ -736,7 +736,7 @@ class TokenEmbeddingsHandler:
             # random initialization of new tokens
             std_token_embedding = text_encoder.text_model.embeddings.token_embedding.weight.data.std()
 
-            print(f"{idx} text encodedr's std_token_embedding: {std_token_embedding}")
+            print(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
 
             text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
                 torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
@@ -758,7 +758,7 @@ class TokenEmbeddingsHandler:
 
             idx += 1
 
-    # copied from train_dreambooth_lora_sdxl_advanced.py
+    # Copied from train_dreambooth_lora_sdxl_advanced.py
     def save_embeddings(self, file_path: str):
         assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
         tensors = {}
@@ -948,7 +948,7 @@ class DreamBoothDataset(Dataset):
             else:
                 example["instance_prompt"] = self.instance_prompt
 
-        else:  # costum prompts were provided, but length does not match size of image dataset
+        else:  # custom prompts were provided, but length does not match size of image dataset
             example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
@@ -981,7 +981,7 @@ def collate_fn(examples, with_prior_preservation=False):
 
 
 class PromptDataset(Dataset):
-    "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
+    """A simple dataset to prepare the prompts to generate class images on multiple GPUs."""
 
     def __init__(self, prompt, num_samples):
         self.prompt = prompt
@@ -1967,7 +1967,7 @@ def main(args):
                         }
                     )
 
-        # Conver to WebUI format
+        # Convert to WebUI format
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
         peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
         kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)

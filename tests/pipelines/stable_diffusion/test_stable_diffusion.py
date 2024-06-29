@@ -45,12 +45,12 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
+    is_torch_compile,
     load_image,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
-    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     require_torch_multi_gpu,
@@ -366,6 +366,45 @@ class StableDiffusionPipelineFastTests(
             embeds.append(sd_pipe.text_encoder(text_inputs)[0])
 
         inputs["prompt_embeds"], inputs["negative_prompt_embeds"] = embeds
+
+        # forward
+        output = sd_pipe(**inputs)
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+    def test_stable_diffusion_prompt_embeds_no_text_encoder_or_tokenizer(self):
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["negative_prompt"] = "this is a negative prompt"
+
+        # forward
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        prompt = inputs.pop("prompt")
+        negative_prompt = "this is a negative prompt"
+
+        prompt_embeds, negative_prompt_embeds = sd_pipe.encode_prompt(
+            prompt,
+            torch_device,
+            1,
+            True,
+            negative_prompt=negative_prompt,
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
+        )
+
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["negative_prompt_embeds"] = negative_prompt_embeds
+
+        sd_pipe.text_encoder = None
+        sd_pipe.tokenizer = None
 
         # forward
         output = sd_pipe(**inputs)
@@ -974,7 +1013,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", torch_dtype=torch.float16, safety_checker=None
+            model_id, variant="fp16", torch_dtype=torch.float16, safety_checker=None
         )
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -1096,7 +1135,6 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
 
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
@@ -1244,7 +1282,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 8e-1
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     def test_stable_diffusion_compile(self):
         seed = 0

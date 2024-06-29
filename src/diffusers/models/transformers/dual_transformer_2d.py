@@ -15,7 +15,8 @@ from typing import Optional
 
 from torch import nn
 
-from .transformer_2d import Transformer2DModel, Transformer2DModelOutput
+from ..modeling_outputs import Transformer2DModelOutput
+from .transformer_2d import Transformer2DModel
 
 
 class DualTransformer2DModel(nn.Module):
@@ -123,9 +124,9 @@ class DualTransformer2DModel(nn.Module):
                 tuple.
 
         Returns:
-            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
-            [`~models.transformer_2d.Transformer2DModelOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`~models.transformers.transformer_2d.Transformer2DModelOutput`] or `tuple`:
+            [`~models.transformers.transformer_2d.Transformer2DModelOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
         """
         input_states = hidden_states
 

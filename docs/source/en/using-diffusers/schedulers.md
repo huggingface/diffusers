@@ -186,7 +186,7 @@ scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     scheduler=scheduler,
-    revision="bf16",
+    variant="bf16",
     dtype=jax.numpy.bfloat16,
 )
 params["scheduler"] = scheduler_state
@@ -211,62 +211,6 @@ prompt_ids = shard(prompt_ids)
 images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 ```
-
-## Custom Timestep Schedules
-
-With all our schedulers, you can choose one of the popular timestep schedules using configurations such as `timestep_spacing`, `interpolation_type`, and `use_karras_sigmas`. Some schedulers also provide the flexibility to use a custom timestep schedule. You can use any list of arbitrary timesteps, we will use the AYS timestep schedule here as example. It is a set of 10-step optimized timestep schedules released by researchers from Nvidia that can achieve significantly better quality compared to the preset timestep schedules. You can read more about their research [here](https://research.nvidia.com/labs/toronto-ai/AlignYourSteps/). 
-
-```python
-from diffusers.schedulers import AysSchedules
-sampling_schedule = AysSchedules["StableDiffusionXLTimesteps"]
-print(sampling_schedule)
-```
-```
-[999, 845, 730, 587, 443, 310, 193, 116, 53, 13]
-```
-
-You can then create a pipeline and pass this custom timestep schedule to it as `timesteps`.
-
-```python
-pipe = StableDiffusionXLPipeline.from_pretrained(
-    "SG161222/RealVisXL_V4.0",
-    torch_dtype=torch.float16,
-    variant="fp16",
-).to("cuda")
-
-pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, algorithm_type="sde-dpmsolver++")
-
-prompt = "A cinematic shot of a cute little rabbit wearing a jacket and doing a thumbs up"
-
-generator = torch.Generator(device="cpu").manual_seed(2487854446)
-
-image = pipe(
-    prompt=prompt,
-    negative_prompt="",
-    generator=generator,
-    timesteps=sampling_schedule,
-).images[0]
-```
-The generated image has better quality than the default linear timestep schedule for the same number of steps, and it is similar to the default timestep scheduler when running for 25 steps.
-
-<div class="flex gap-4">
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ays.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">AYS timestep schedule 10 steps</figcaption>
-  </div>
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/10.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">Linearly-spaced timestep schedule 10 steps</figcaption>
-  </div>
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/25.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">Linearly-spaced timestep schedule 25 steps</figcaption>
-  </div>
-</div>
-
-> [!TIP]
-> 🤗 Diffusers currently only supports `timesteps` and `sigmas` for a selected list of schedulers and pipelines, but feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) if you want to extend feature to a scheduler and pipeline that does not currently support it!
-
 
 ## Models
 

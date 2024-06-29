@@ -22,7 +22,7 @@ import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
-from ...utils import BaseOutput, deprecate, logging
+from ...utils import BaseOutput, logging
 from ..activations import get_activation
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -301,7 +301,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -546,18 +546,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unload_lora
-    def unload_lora(self):
-        """Unloads LoRA weights."""
-        deprecate(
-            "unload_lora",
-            "0.28.0",
-            "Calling `unload_lora()` is deprecated and will be removed in a future version. Please install `peft` and then call `disable_adapters().",
-        )
-        for module in self.modules():
-            if hasattr(module, "set_lora_layer"):
-                module.set_lora_layer(None)
-
     def forward(
         self,
         sample: torch.Tensor,
@@ -598,15 +586,15 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             mid_block_additional_residual: (`torch.Tensor`, *optional*):
                 A tensor that if specified is added to the residual of the middle unet block.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_3d_condition.UNet3DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] instead of a plain
                 tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
 
         Returns:
-            [`~models.unet_3d_condition.UNet3DConditionOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_3d_condition.UNet3DConditionOutput`] is returned, otherwise
-                a `tuple` is returned where the first element is the sample tensor.
+            [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
