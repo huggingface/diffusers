@@ -15,10 +15,7 @@
 import inspect
 from typing import Callable, Dict, List, Optional, Union
 
-import numpy as np
-import PIL.Image
 import torch
-import torchvision
 from transformers import (
     CLIPTextModelWithProjection,
     CLIPTokenizer,
