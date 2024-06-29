@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 <Tip>
 
-💡 모든 사람이 속도 저하 없이 쉽게 작업을 공유할 수 있도록 커뮤니티 파이프라인을 추가하는 이유에 대한 자세한 내용은 GitHub 이슈 [#841](https://github.com/huggingface/diffusers/issues/841)를 참조하세요. 
+💡 모든 사람이 속도 저하 없이 쉽게 작업을 공유할 수 있도록 커뮤니티 파이프라인을 추가하는 이유에 대한 자세한 내용은 GitHub 이슈 [#841](https://github.com/huggingface/diffusers/issues/841)를 참조하세요.
 
 </Tip>
 
@@ -50,7 +50,7 @@ class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
 +         self.register_modules(unet=unet, scheduler=scheduler)
 ```
 
-이제 '초기화' 단계가 완료되었으니 forward pass로 이동할 수 있습니다! 🔥 
+이제 '초기화' 단계가 완료되었으니 forward pass로 이동할 수 있습니다! 🔥
 
 ## Forward pass 정의
 

@@ -795,10 +795,10 @@ class DemoFusionSDXLPipeline(
                 Control the strength of dilated sampling. For specific impacts, please refer to Appendix C
                 in the DemoFusion paper.
             cosine_scale_3 (`float`, defaults to 1):
-                Control the strength of the gaussion filter. For specific impacts, please refer to Appendix C
+                Control the strength of the gaussian filter. For specific impacts, please refer to Appendix C
                 in the DemoFusion paper.
             sigma (`float`, defaults to 1):
-                The standerd value of the gaussian filter.
+                The standard value of the gaussian filter.
             show_image (`bool`, defaults to False):
                 Determine whether to show intermediate results during generation.
 
@@ -1339,7 +1339,7 @@ class DemoFusionSDXLPipeline(
 
     @classmethod
     def save_lora_weights(
-        self,
+        cls,
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
@@ -1368,7 +1368,7 @@ class DemoFusionSDXLPipeline(
             state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
             state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
-        self.write_lora_layers(
+        cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
             is_main_process=is_main_process,
