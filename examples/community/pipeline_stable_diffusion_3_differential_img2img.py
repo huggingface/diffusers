@@ -214,6 +214,10 @@ class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, vae_latent_channels=self.vae.config.latent_channels
         )
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_convert_grayscale=True
+        )
+
         self.tokenizer_max_length = self.tokenizer.model_max_length
         self.default_sample_size = self.transformer.config.sample_size
 
@@ -598,35 +602,32 @@ class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
-        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
-            raise ValueError(
-                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
-            )
+    def prepare_latents(
+        self, batch_size, num_channels_latents, height, width, image, timestep, dtype, device, generator=None
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
 
         image = image.to(device=device, dtype=dtype)
 
-        batch_size = batch_size * num_images_per_prompt
-        if image.shape[1] == self.vae.config.latent_channels:
-            init_latents = image
-
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+        elif isinstance(generator, list):
+            init_latents = [
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i]) for i in range(batch_size)
+            ]
+            init_latents = torch.cat(init_latents, dim=0)
         else:
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
+            init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
-            elif isinstance(generator, list):
-                init_latents = [
-                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
-                    for i in range(batch_size)
-                ]
-                init_latents = torch.cat(init_latents, dim=0)
-            else:
-                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
-
-            init_latents = (init_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+        init_latents = (init_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
         if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
             # expand init_latents for batch_size
@@ -677,6 +678,8 @@ class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         prompt_3: Optional[Union[str, List[str]]] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         image: PipelineImageInput = None,
         strength: float = 0.6,
         num_inference_steps: int = 50,
@@ -698,15 +701,7 @@ class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
-        map: torch.Tensor = None,
-        original_image: Union[
-            torch.Tensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.Tensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
+        map: PipelineImageInput = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -796,6 +791,10 @@ class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
+        # 0. Default height and width
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -855,11 +854,11 @@ class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 3. Preprocess image
-        map = torchvision.transforms.Resize(
-            tuple(s // self.vae_scale_factor for s in original_image.shape[2:]), antialias=None
-        )(map)
+        init_image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
 
-        # image = self.image_processor.preprocess(image)
+        map = self.mask_processor.preprocess(
+            map, height=height // self.vae_scale_factor, width=width // self.vae_scale_factor
+        ).to(device)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
@@ -872,12 +871,15 @@ class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 5. Prepare latent variables
+        num_channels_latents = self.transformer.config.in_channels
         if latents is None:
             latents = self.prepare_latents(
-                image,
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                init_image,
                 latent_timestep,
-                batch_size,
-                num_images_per_prompt,
                 prompt_embeds.dtype,
                 device,
                 generator,
@@ -889,11 +891,19 @@ class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
 
         # preparations for diff diff
         original_with_noise = self.prepare_latents(
-            original_image, timesteps, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            init_image,
+            timesteps,
+            prompt_embeds.dtype,
+            device,
+            generator,
         )
         thresholds = torch.arange(total_time_steps, dtype=map.dtype) / total_time_steps
         thresholds = thresholds.unsqueeze(1).unsqueeze(1).to(device)
-        masks = map > thresholds
+        masks = map.squeeze() > thresholds
         # end diff diff preparations
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -905,9 +915,7 @@ class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
                 if i == 0:
                     latents = original_with_noise[:1]
                 else:
-                    mask = masks[i].unsqueeze(0)
-                    # cast mask to the same type as latents etc
-                    mask = mask.to(latents.dtype)
+                    mask = masks[i].unsqueeze(0).to(latents.dtype)
                     mask = mask.unsqueeze(1)  # fit shape
                     latents = original_with_noise[i] * mask + latents * (1 - mask)
                 # end diff diff
@@ -952,7 +960,6 @@ class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
                         "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
                     )
 
-                # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
