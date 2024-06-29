@@ -78,7 +78,6 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
-
 ```
 
 Here are some sample outputs:
@@ -303,7 +302,6 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
-
 ```
 
 <table>
@@ -378,7 +376,6 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
-
 ```
 
 <table>
