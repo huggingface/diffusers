@@ -37,6 +37,12 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
+<Tip>
+
+Once you have generated an image using [`PixArtSigmaPipeline`], you can pass that image to SDXL refiner to further improve the final generation quality. Check out this [guide](https://huggingface.co/docs/diffusers/using-diffusers/sdxl#base-to-refiner-model) on how to use SDXL refiner model.
+
+</Tip>
+
 ## Inference with under 8GB GPU VRAM
 
 Run the [`PixArtSigmaPipeline`] with under 8GB GPU VRAM by loading the text encoder in 8-bit precision. Let's walk through a full-fledged example.

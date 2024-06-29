@@ -34,6 +34,12 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 </Tip>
 
+<Tip>
+
+Once you have generated an image using [`HunyuanDiTPipeline`], you can pass that image to SDXL refiner to further improve the final generation quality. Check out this [guide](https://huggingface.co/docs/diffusers/using-diffusers/sdxl#base-to-refiner-model) on how to use SDXL refiner model.
+
+</Tip>
+
 ## Optimization
 
 You can optimize the pipeline's runtime and memory consumption with torch.compile and feed-forward chunking. To learn about other optimization methods, check out the [Speed up inference](../../optimization/fp16) and [Reduce memory usage](../../optimization/memory) guides.
