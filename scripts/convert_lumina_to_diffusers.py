@@ -12,7 +12,7 @@ def main(args):
     # checkpoint from https://huggingface.co/Alpha-VLLM/Lumina-Next-SFT or https://huggingface.co/Alpha-VLLM/Lumina-Next-T2I
     all_sd = load_file(args.origin_ckpt_path, device="cpu")
     converted_state_dict = {}
-    # pad token
+    # pad token 
     converted_state_dict["pad_token"] = all_sd["pad_token"]
 
     # patch embed
@@ -56,15 +56,16 @@ def main(args):
         converted_state_dict[f"layers.{i}.attn.norm_k.weight"] = all_sd[f"layers.{i}.attention.k_norm.weight"]
         converted_state_dict[f"layers.{i}.attn.norm_k.bias"] = all_sd[f"layers.{i}.attention.k_norm.bias"]
 
+        converted_state_dict[f"layers.{i}.cross_attn.norm_q.weight"] = all_sd[f"layers.{i}.attention.q_norm.weight"]
+        converted_state_dict[f"layers.{i}.cross_attn.norm_q.bias"] = all_sd[f"layers.{i}.attention.q_norm.bias"]
+
         converted_state_dict[f"layers.{i}.cross_attn.norm_k.weight"] = all_sd[f"layers.{i}.attention.ky_norm.weight"]
         converted_state_dict[f"layers.{i}.cross_attn.norm_k.bias"] = all_sd[f"layers.{i}.attention.ky_norm.bias"]
 
         # attention norm
         converted_state_dict[f"layers.{i}.attn_norm1.weight"] = all_sd[f"layers.{i}.attention_norm1.weight"]
         converted_state_dict[f"layers.{i}.attn_norm2.weight"] = all_sd[f"layers.{i}.attention_norm2.weight"]
-        converted_state_dict[f"layers.{i}.attn_encoder_hidden_states_norm.weight"] = all_sd[
-            f"layers.{i}.attention_y_norm.weight"
-        ]
+        converted_state_dict[f"layers.{i}.attn_encoder_hidden_states_norm.weight"] = all_sd[f"layers.{i}.attention_y_norm.weight"]
 
         # feed forward
         converted_state_dict[f"layers.{i}.feed_forward.w1.weight"] = all_sd[f"layers.{i}.feed_forward.w1.weight"]
