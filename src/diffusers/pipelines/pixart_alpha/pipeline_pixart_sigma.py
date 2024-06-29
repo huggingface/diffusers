@@ -16,7 +16,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -404,6 +404,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         height,
         width,
         negative_prompt=None,
+        callback_steps=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
@@ -413,6 +414,14 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+        
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -684,12 +693,14 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         return_dict: bool = True,
         clean_caption: bool = True,
         guidance_rescale: float = 0.0,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None, # maybe add in logic so that if legacy and new are used at the same time, new takes priority? for now, it will error asking to use one or the other
+        callback_steps: int = 1,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         use_resolution_binning: bool = True,
         max_sequence_length: int = 300,
         **kwargs,
-    ):
+    ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -718,6 +729,9 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            guidance_rescale (`float`, *optional*, defaults to 0.0):
+                Rescale the noise_cfg according to `guidance_rescale`. Based on findings of [Common Diffusion Noise
+                Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             height (`int`, *optional*, defaults to self.unet.config.sample_size):
@@ -750,17 +764,24 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
+                called with the following arguments: `callback(self, step: int, timestep: int, latents: torch.Tensor)`.
+                This feature will be deprecated soon, use callback_on_step_end instead.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
+                called at every step. This feature will be deprecated soon, use callback_on_step_end instead.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
             clean_caption (`bool`, *optional*, defaults to `True`):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
                 prompt.
-            guidance_rescale (`float`, *optional*, defaults to 0.0):
-                Rescale the noise_cfg according to `guidance_rescale`. Based on findings of [Common Diffusion Noise
-                Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
             use_resolution_binning (`bool` defaults to `True`):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
                 `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images, they are resized back to
@@ -770,10 +791,18 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`]:
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images
         """
+        if callback is not None:
+            deprecation_message = "The use of `callback` will soon be deprecated and will be removed in a future version. It is recommended to use `callback_on_step_end` instead."
+            deprecate("callback", "1.0.0", deprecation_message, standard_warn=False)        
+        
+        if (callback is not None) and (callback_on_step_end is not None):
+            raise ValueError(
+                f"Cannot use both `callback`(will soon be deprecated) and `callback_on_step_end` at the same time. Use one or the other."
+            )         
         
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs      
@@ -805,6 +834,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
+            callback_steps=callback_steps, # will be deprecated soon
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
         
@@ -938,9 +968,12 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-                # call the callback, if provided
+                # call the callback, if provided. WILL BE DEPRECATED SOON, USE callback_on_step_end instead
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(self, step_idx, t, latents)
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
