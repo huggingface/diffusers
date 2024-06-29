@@ -246,7 +246,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: str = "",
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
@@ -403,7 +403,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         prompt,
         height,
         width,
-        negative_prompt=None,
+        negative_prompt,
         callback_steps=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -472,7 +472,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                     f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
                     f" {negative_prompt_attention_mask.shape}."
                 )
-                
+
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
         if clean_caption and not is_bs4_available():
@@ -636,7 +636,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-        
+
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
@@ -674,7 +674,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,        
+        negative_prompt: str = "",        
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 30,
@@ -837,7 +837,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
             callback_steps=callback_steps, # will be deprecated soon
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
-        
+
         # 2. Default height and width to transformer
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
