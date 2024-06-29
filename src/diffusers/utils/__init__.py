@@ -38,7 +38,7 @@ from .constants import (
 from .deprecation_utils import deprecate
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
-from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video
+from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video, watermark_image, watermark_video_frames
 from .hub_utils import (
     PushToHubMixin,
     _add_variant,
