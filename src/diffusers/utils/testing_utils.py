@@ -583,6 +583,87 @@ def export_to_video(video_frames: List[np.ndarray], output_video_path: str = Non
     return output_video_path
 
 
+def watermark_video_frames(frames: List[PIL.Image], watermark_path: str, opacity: float = .75, scale_down: int = 5, padding_right: int = 10, padding_down: int = 10) -> List[PIL.Image]:
+    if not frames:
+        return []
+
+    def prepare_watermark(watermark, target_width):
+        aspect_ratio = watermark.width / watermark.height
+        new_height = int(target_width / aspect_ratio)
+        watermark = watermark.resize((target_width, new_height), Image.LANCZOS)
+        return np.array(watermark)
+
+    def apply_watermark(frame, watermark, position):
+        frame_array = np.array(frame.convert("RGBA"))
+        h, w = watermark.shape[:2]
+        x, y = position
+        roi = frame_array[y:y+h, x:x+w]
+        alpha = watermark[:, :, 3] / 255.
+        for c in range(3):
+            roi[:, :, c] = watermark[:, :, c] * (alpha * opacity) + roi[:, :, c] * (1 - alpha * opacity)
+        roi[:, :, 3] = np.maximum(roi[:, :, 3], alpha * 255)
+        return Image.fromarray(frame_array.astype(np.uint8))
+
+    sample_frame = frames[0]
+    with Image.open(watermark_path) as watermark:
+        watermark = watermark.convert("RGBA")
+        watermark = prepare_watermark(watermark, sample_frame.width // scale_down)
+
+    position = (sample_frame.width - watermark.shape[1] - padding_right,
+                sample_frame.height - watermark.shape[0] - padding_down)
+
+    watermark_func = partial(apply_watermark, watermark=watermark, position=position)
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        return list(executor.map(watermark_func, frames))
+
+def watermark_image(
+    image: PIL.Image,
+    watermark_path: str,
+    opacity: float = 0.713,
+    scale_down: int = 6,
+    padding_right: int = 10,
+    padding_down: int = 10,
+) -> PIL.Image:
+
+    watermark_array = np.array(PIL.Image.open(logo))
+    img_array = np.array(image)
+    img_h, img_w = img_array.shape[:2]
+    water_h, water_w = watermark_array.shape[:2]
+    scale = min(img_w / (water_w * scale_down), img_h / (water_h * scale_down))
+    new_size = (int(water_w * scale), int(water_h * scale))
+    _watermark_array = np.array(
+        Image.fromarray(watermark_array).resize(new_size, Image.LANCZOS)
+    )
+
+    x, y = (img_w - new_size[0] - padding_right), (img_h - new_size[1] - padding_down)
+
+    if img_array.shape[2] == 3:
+        img_array = np.dstack(
+            [img_array, np.full(img_array.shape[:2], 255, dtype=np.uint8)]
+        )
+    if _watermark_array.shape[2] == 3:
+        _watermark_array = np.dstack(
+            [_watermark_array, np.full(_watermark_array.shape[:2], 255, dtype=np.uint8)]
+        )
+
+    alpha_watermark = _watermark_array[:, :, 3] / 255.0
+    alpha_image = img_array[:, :, 3] / 255.0
+
+    roi = img_array[y : y + new_size[1], x : x + new_size[0]]
+    for c in range(3):
+        roi[:, :, c] = _watermark_array[:, :, c] * (alpha_watermark * opacity) + roi[
+            :, :, c
+        ] * (1 - alpha_watermark * opacity)
+
+    roi[:, :, 3] = (
+        alpha_watermark
+        + alpha_image[y : y + new_size[1], x : x + new_size[0]] * (1 - alpha_watermark)
+    ) * 255
+
+    return Image.fromarray(img_array)
+
+
 def load_hf_numpy(path) -> np.ndarray:
     base_url = "https://huggingface.co/datasets/fusing/diffusers-testing/resolve/main"
 
