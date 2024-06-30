@@ -255,6 +255,12 @@ def parse_args():
         help="Number of steps to run the inference for validation.",
     )
     parser.add_argument(
+        "--guidance_scale",
+        type=float,
+        default=7.5,
+        help="Guidance scale to use for validation sampling.",
+    )
+    parser.add_argument(
         "--max_train_samples",
         type=int,
         default=None,
@@ -1019,6 +1025,7 @@ def main():
                                 height=args.validation_heights[validation_index],
                                 width=args.validation_widths[validation_index],
                                 num_inference_steps=args.validation_inference_steps,
+                                guidance_scale=args.guidance_scale,
                                 generator=generator,
                             ).images[0]
                             images.append(img)
