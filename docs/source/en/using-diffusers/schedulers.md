@@ -10,57 +10,27 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Schedulers
+# Load schedulers and models
 
 [[open-in-colab]]
 
-Diffusion pipelines are inherently a collection of diffusion models and schedulers that are partly independent from each other. This means that one is able to switch out parts of the pipeline to better customize
-a pipeline to one's use case. The best example of this is the [Schedulers](../api/schedulers/overview).
+Diffusion pipelines are a collection of interchangeable schedulers and models that can be mixed and matched to tailor a pipeline to a specific use case. The scheduler encapsulates the entire denoising process such as the number of denoising steps and the algorithm for finding the denoised sample. A scheduler is not parameterized or trained so they don't take very much memory. The model is usually only concerned with the forward pass of going from a noisy input to a less noisy sample.
 
-Whereas diffusion models usually simply define the forward pass from noise to a less noisy sample,
-schedulers define the whole denoising process, *i.e.*:
-- How many denoising steps?
-- Stochastic or deterministic?
-- What algorithm to use to find the denoised sample?
+This guide will show you how to load schedulers and models to customize a pipeline. You'll use the [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5) checkpoint throughout this guide, so let's load it first.
 
-They can be quite complex and often define a trade-off between **denoising speed** and **denoising quality**.
-It is extremely difficult to measure quantitatively which scheduler works best for a given diffusion pipeline, so it is often recommended to simply try out which works best.
-
-The following paragraphs show how to do so with the 🧨 Diffusers library.
-
-## Load pipeline
-
-Let's start by loading the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) model in the [`DiffusionPipeline`]:
-
-```python
-from huggingface_hub import login
-from diffusers import DiffusionPipeline
+```py
 import torch
-
-login()
+from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
-)
+).to("cuda")
 ```
 
-Next, we move it to GPU:
+You can see what scheduler this pipeline uses with the `pipeline.scheduler` attribute.
 
-```python
-pipeline.to("cuda")
-```
-
-## Access the scheduler
-
-The scheduler is always one of the components of the pipeline and is usually called `"scheduler"`.
-So it can be accessed via the `"scheduler"` property.
-
-```python
+```py
 pipeline.scheduler
-```
-
-**Output**:
-```
 PNDMScheduler {
   "_class_name": "PNDMScheduler",
   "_diffusers_version": "0.21.4",
@@ -77,235 +47,156 @@ PNDMScheduler {
 }
 ```
 
-We can see that the scheduler is of type [`PNDMScheduler`].
-Cool, now let's compare the scheduler in its performance to other schedulers.
-First we define a prompt on which we will test all the different schedulers:
+## Load a scheduler
 
-```python
-prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
-```
+Schedulers are defined by a configuration file that can be used by a variety of schedulers. Load a scheduler with the [`SchedulerMixin.from_pretrained`] method, and specify the `subfolder` parameter to load the configuration file into the correct subfolder of the pipeline repository.
 
-Next, we create a generator from a random seed that will ensure that we can generate similar images as well as run the pipeline:
+For example, to load the [`DDIMScheduler`]:
 
-```python
-generator = torch.Generator(device="cuda").manual_seed(8)
-image = pipeline(prompt, generator=generator).images[0]
-image
-```
-
-<p align="center">
-    <br>
-    <img src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_pndm.png" width="400"/>
-    <br>
-</p>
-
-
-## Changing the scheduler
-
-Now we show how easy it is to change the scheduler of a pipeline. Every scheduler has a property [`~SchedulerMixin.compatibles`]
-which defines all compatible schedulers. You can take a look at all available, compatible schedulers for the Stable Diffusion pipeline as follows.
-
-```python
-pipeline.scheduler.compatibles
-```
-
-**Output**:
-```
-[diffusers.utils.dummy_torch_and_torchsde_objects.DPMSolverSDEScheduler,
- diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler,
- diffusers.schedulers.scheduling_lms_discrete.LMSDiscreteScheduler,
- diffusers.schedulers.scheduling_ddim.DDIMScheduler,
- diffusers.schedulers.scheduling_ddpm.DDPMScheduler,
- diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler,
- diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler,
- diffusers.schedulers.scheduling_deis_multistep.DEISMultistepScheduler,
- diffusers.schedulers.scheduling_pndm.PNDMScheduler,
- diffusers.schedulers.scheduling_euler_ancestral_discrete.EulerAncestralDiscreteScheduler,
- diffusers.schedulers.scheduling_unipc_multistep.UniPCMultistepScheduler,
- diffusers.schedulers.scheduling_k_dpm_2_discrete.KDPM2DiscreteScheduler,
- diffusers.schedulers.scheduling_dpmsolver_singlestep.DPMSolverSinglestepScheduler,
- diffusers.schedulers.scheduling_k_dpm_2_ancestral_discrete.KDPM2AncestralDiscreteScheduler]
-```
-
-Cool, lots of schedulers to look at. Feel free to have a look at their respective class definitions:
-
-- [`EulerDiscreteScheduler`],
-- [`LMSDiscreteScheduler`],
-- [`DDIMScheduler`],
-- [`DDPMScheduler`],
-- [`HeunDiscreteScheduler`],
-- [`DPMSolverMultistepScheduler`],
-- [`DEISMultistepScheduler`],
-- [`PNDMScheduler`],
-- [`EulerAncestralDiscreteScheduler`],
-- [`UniPCMultistepScheduler`],
-- [`KDPM2DiscreteScheduler`],
-- [`DPMSolverSinglestepScheduler`],
-- [`KDPM2AncestralDiscreteScheduler`].
-
-We will now compare the input prompt with all other schedulers. To change the scheduler of the pipeline you can make use of the
-convenient [`~ConfigMixin.config`] property in combination with the [`~ConfigMixin.from_config`] function.
-
-```python
-pipeline.scheduler.config
-```
-
-returns a dictionary of the configuration of the scheduler:
-
-**Output**:
 ```py
-FrozenDict([('num_train_timesteps', 1000),
-            ('beta_start', 0.00085),
-            ('beta_end', 0.012),
-            ('beta_schedule', 'scaled_linear'),
-            ('trained_betas', None),
-            ('skip_prk_steps', True),
-            ('set_alpha_to_one', False),
-            ('prediction_type', 'epsilon'),
-            ('timestep_spacing', 'leading'),
-            ('steps_offset', 1),
-            ('_use_default_values', ['timestep_spacing', 'prediction_type']),
-            ('_class_name', 'PNDMScheduler'),
-            ('_diffusers_version', '0.21.4'),
-            ('clip_sample', False)])
+from diffusers import DDIMScheduler, DiffusionPipeline
+
+ddim = DDIMScheduler.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
 ```
 
-This configuration can then be used to instantiate a scheduler
-of a different class that is compatible with the pipeline. Here,
-we change the scheduler to the [`DDIMScheduler`].
+Then you can pass the newly loaded scheduler to the pipeline.
 
 ```python
-from diffusers import DDIMScheduler
-
-pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", scheduler=ddim, torch_dtype=torch.float16, use_safetensors=True
+).to("cuda")
 ```
-
-Cool, now we can run the pipeline again to compare the generation quality.
-
-```python
-generator = torch.Generator(device="cuda").manual_seed(8)
-image = pipeline(prompt, generator=generator).images[0]
-image
-```
-
-<p align="center">
-    <br>
-    <img src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_ddim.png" width="400"/>
-    <br>
-</p>
-
-If you are a JAX/Flax user, please check [this section](#changing-the-scheduler-in-flax) instead.
 
 ## Compare schedulers
 
-So far we have tried running the stable diffusion pipeline with two schedulers: [`PNDMScheduler`] and [`DDIMScheduler`].
-A number of better schedulers have been released that can be run with much fewer steps; let's compare them here:
+Schedulers have their own unique strengths and weaknesses, making it difficult to quantitatively compare which scheduler works best for a pipeline. You typically have to make a trade-off between denoising speed and denoising quality. We recommend trying out different schedulers to find one that works best for your use case. Call the `pipeline.scheduler.compatibles` attribute to see what schedulers are compatible with a pipeline.
 
-[`LMSDiscreteScheduler`] usually leads to better results:
+Let's compare the [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`], and the [`DPMSolverMultistepScheduler`] on the following prompt and seed.
 
-```python
+```py
+import torch
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+).to("cuda")
+
+prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
+generator = torch.Generator(device="cuda").manual_seed(8)
+```
+
+To change the pipelines scheduler, use the [`~ConfigMixin.from_config`] method to load a different scheduler's `pipeline.scheduler.config` into the pipeline.
+
+<hfoptions id="schedulers">
+<hfoption id="LMSDiscreteScheduler">
+
+[`LMSDiscreteScheduler`] typically generates higher quality images than the default scheduler.
+
+```py
 from diffusers import LMSDiscreteScheduler
 
 pipeline.scheduler = LMSDiscreteScheduler.from_config(pipeline.scheduler.config)
-
-generator = torch.Generator(device="cuda").manual_seed(8)
 image = pipeline(prompt, generator=generator).images[0]
 image
 ```
 
-<p align="center">
-    <br>
-    <img src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_lms.png" width="400"/>
-    <br>
-</p>
+</hfoption>
+<hfoption id="EulerDiscreteScheduler">
 
+[`EulerDiscreteScheduler`] can generate higher quality images in just 30 steps.
 
-[`EulerDiscreteScheduler`] and [`EulerAncestralDiscreteScheduler`] can generate high quality results with as little as 30 steps.
-
-```python
+```py
 from diffusers import EulerDiscreteScheduler
 
 pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
-
-generator = torch.Generator(device="cuda").manual_seed(8)
-image = pipeline(prompt, generator=generator, num_inference_steps=30).images[0]
+image = pipeline(prompt, generator=generator).images[0]
 image
 ```
 
-<p align="center">
-    <br>
-    <img src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_euler_discrete.png" width="400"/>
-    <br>
-</p>
+</hfoption>
+<hfoption id="EulerAncestralDiscreteScheduler">
 
+[`EulerAncestralDiscreteScheduler`] can generate higher quality images in just 30 steps.
 
-and:
-
-```python
+```py
 from diffusers import EulerAncestralDiscreteScheduler
 
 pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config)
-
-generator = torch.Generator(device="cuda").manual_seed(8)
-image = pipeline(prompt, generator=generator, num_inference_steps=30).images[0]
+image = pipeline(prompt, generator=generator).images[0]
 image
 ```
 
-<p align="center">
-    <br>
-    <img src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_euler_ancestral.png" width="400"/>
-    <br>
-</p>
+</hfoption>
+<hfoption id="DPMSolverMultistepScheduler">
 
+[`DPMSolverMultistepScheduler`] provides a balance between speed and quality and can generate higher quality images in just 20 steps.
 
-[`DPMSolverMultistepScheduler`] gives a reasonable speed/quality trade-off and can be run with as little as 20 steps.
-
-```python
+```py
 from diffusers import DPMSolverMultistepScheduler
 
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
-
-generator = torch.Generator(device="cuda").manual_seed(8)
-image = pipeline(prompt, generator=generator, num_inference_steps=20).images[0]
+image = pipeline(prompt, generator=generator).images[0]
 image
 ```
 
-<p align="center">
-    <br>
-    <img src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_dpm.png" width="400"/>
-    <br>
-</p>
+</hfoption>
+</hfoptions>
 
-As you can see, most images look very similar and are arguably of very similar quality. It often really depends on the specific use case which scheduler to choose. A good approach is always to run multiple different
-schedulers to compare results.
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_lms.png" />
+    <figcaption class="mt-2 text-center text-sm text-gray-500">LMSDiscreteScheduler</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_euler_discrete.png" />
+    <figcaption class="mt-2 text-center text-sm text-gray-500">EulerDiscreteScheduler</figcaption>
+  </div>
+</div>
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_euler_ancestral.png" />
+    <figcaption class="mt-2 text-center text-sm text-gray-500">EulerAncestralDiscreteScheduler</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_dpm.png" />
+    <figcaption class="mt-2 text-center text-sm text-gray-500">DPMSolverMultistepScheduler</figcaption>
+  </div>
+</div>
 
-## Changing the Scheduler in Flax
+Most images look very similar and are comparable in quality. Again, it often comes down to your specific use case so a good approach is to run multiple different schedulers and compare the results.
 
-If you are a JAX/Flax user, you can also change the default pipeline scheduler. This is a complete example of how to run inference using the Flax Stable Diffusion pipeline and the super-fast [DPM-Solver++ scheduler](../api/schedulers/multistep_dpm_solver):
+### Flax schedulers
 
-```Python
+To compare Flax schedulers, you need to additionally load the scheduler state into the model parameters. For example, let's change the default scheduler in [`FlaxStableDiffusionPipeline`] to use the super fast [`FlaxDPMSolverMultistepScheduler`].
+
+> [!WARNING]
+> The [`FlaxLMSDiscreteScheduler`] and [`FlaxDDPMScheduler`] are not compatible with the [`FlaxStableDiffusionPipeline`] yet.
+
+```py
 import jax
 import numpy as np
 from flax.jax_utils import replicate
 from flax.training.common_utils import shard
-
 from diffusers import FlaxStableDiffusionPipeline, FlaxDPMSolverMultistepScheduler
 
-model_id = "runwayml/stable-diffusion-v1-5"
 scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
-    model_id,
+    "runwayml/stable-diffusion-v1-5",
     subfolder="scheduler"
 )
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-    model_id,
+    "runwayml/stable-diffusion-v1-5",
     scheduler=scheduler,
-    revision="bf16",
+    variant="bf16",
     dtype=jax.numpy.bfloat16,
 )
 params["scheduler"] = scheduler_state
+```
 
+Then you can take advantage of Flax's compatibility with TPUs to generate a number of images in parallel. You'll need to make a copy of the model parameters for each available device and then split the inputs across them to generate your desired number of images.
+
+```py
 # Generate 1 image per parallel device (8 on TPUv2-8 or TPUv3-8)
-prompt = "a photo of an astronaut riding a horse on mars"
+prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
 num_samples = jax.device_count()
 prompt_ids = pipeline.prepare_inputs([prompt] * num_samples)
 
@@ -321,11 +212,33 @@ images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 ```
 
-<Tip warning={true}>
+## Models
 
-The following Flax schedulers are _not yet compatible_ with the Flax Stable Diffusion Pipeline:
+Models are loaded from the [`ModelMixin.from_pretrained`] method, which downloads and caches the latest version of the model weights and configurations. If the latest files are available in the local cache, [`~ModelMixin.from_pretrained`] reuses files in the cache instead of re-downloading them.
 
-- `FlaxLMSDiscreteScheduler`
-- `FlaxDDPMScheduler`
+Models can be loaded from a subfolder with the `subfolder` argument. For example, the model weights for [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5) are stored in the [unet](https://hf.co/runwayml/stable-diffusion-v1-5/tree/main/unet) subfolder.
 
-</Tip>
+```python
+from diffusers import UNet2DConditionModel
+
+unet = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet", use_safetensors=True)
+```
+
+They can also be directly loaded from a [repository](https://huggingface.co/google/ddpm-cifar10-32/tree/main).
+
+```python
+from diffusers import UNet2DModel
+
+unet = UNet2DModel.from_pretrained("google/ddpm-cifar10-32", use_safetensors=True)
+```
+
+To load and save model variants, specify the `variant` argument in [`ModelMixin.from_pretrained`] and [`ModelMixin.save_pretrained`].
+
+```python
+from diffusers import UNet2DConditionModel
+
+unet = UNet2DConditionModel.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", subfolder="unet", variant="non_ema", use_safetensors=True
+)
+unet.save_pretrained("./local-unet", variant="non_ema")
+```

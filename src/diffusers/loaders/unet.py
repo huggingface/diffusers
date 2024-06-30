@@ -27,42 +27,37 @@ from torch import nn
 
 from ..models.embeddings import (
     ImageProjection,
+    IPAdapterFaceIDImageProjection,
+    IPAdapterFaceIDPlusImageProjection,
     IPAdapterFullImageProjection,
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta, load_state_dict
+from ..models.modeling_utils import load_model_dict_into_meta, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
+    convert_unet_state_dict_to_peft,
     delete_adapter_layers,
+    get_adapter_name,
+    get_peft_kwargs,
     is_accelerate_available,
+    is_peft_version,
     is_torch_version,
     logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from .single_file_utils import (
-    convert_stable_cascade_unet_single_file_to_diffusers,
-    infer_stable_cascade_single_file_config,
-    load_single_file_model_checkpoint,
-)
+from .lora import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
 from .unet_loader_utils import _maybe_expand_lora_scales
 from .utils import AttnProcsLayers
 
 
 if is_accelerate_available():
-    from accelerate import init_empty_weights
     from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
 
 logger = logging.get_logger(__name__)
 
-
-TEXT_ENCODER_NAME = "text_encoder"
-UNET_NAME = "unet"
-
-LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
-LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
@@ -82,7 +77,8 @@ class UNet2DConditionLoadersMixin:
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
         defined in
         [`attention_processor.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py)
-        and be a `torch.nn.Module` class.
+        and be a `torch.nn.Module` class. Currently supported: LoRA, Custom Diffusion. For LoRA, one must install
+        `peft`: `pip install -U peft`.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -101,9 +97,9 @@ class UNet2DConditionLoadersMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -113,20 +109,20 @@ class UNet2DConditionLoadersMixin:
             token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
-                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
-                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
-                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
-                argument to `True` will raise an error.
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            mirror (`str`, *optional*):
-                Mirror source to resolve accessibility issues if you’re downloading a model in China. We do not
-                guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
-                information.
+            network_alphas (`Dict[str, float]`):
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
+            adapter_name (`str`, *optional*, defaults to None):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
+            weight_name (`str`, *optional*, defaults to None):
+                Name of the serialized state dict file.
 
         Example:
 
@@ -142,12 +138,9 @@ class UNet2DConditionLoadersMixin:
         )
         ```
         """
-        from ..models.attention_processor import CustomDiffusionAttnProcessor
-        from ..models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
-
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", False)
+        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
@@ -155,15 +148,9 @@ class UNet2DConditionLoadersMixin:
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
-        # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
-        # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
-        network_alphas = kwargs.pop("network_alphas", None)
-
+        adapter_name = kwargs.pop("adapter_name", None)
         _pipeline = kwargs.pop("_pipeline", None)
-
-        is_network_alphas_none = network_alphas is None
-
+        network_alphas = kwargs.pop("network_alphas", None)
         allow_pickle = False
 
         if use_safetensors is None:
@@ -219,194 +206,196 @@ class UNet2DConditionLoadersMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
-        # fill attn processors
-        lora_layers_list = []
-
-        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys()) and not USE_PEFT_BACKEND
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
+        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
 
-        if is_lora:
-            # correct keys
-            state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(state_dict, network_alphas)
-
-            if network_alphas is not None:
-                network_alphas_keys = list(network_alphas.keys())
-                used_network_alphas_keys = set()
-
-            lora_grouped_dict = defaultdict(dict)
-            mapped_network_alphas = {}
-
-            all_keys = list(state_dict.keys())
-            for key in all_keys:
-                value = state_dict.pop(key)
-                attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
-                lora_grouped_dict[attn_processor_key][sub_key] = value
-
-                # Create another `mapped_network_alphas` dictionary so that we can properly map them.
-                if network_alphas is not None:
-                    for k in network_alphas_keys:
-                        if k.replace(".alpha", "") in key:
-                            mapped_network_alphas.update({attn_processor_key: network_alphas.get(k)})
-                            used_network_alphas_keys.add(k)
-
-            if not is_network_alphas_none:
-                if len(set(network_alphas_keys) - used_network_alphas_keys) > 0:
-                    raise ValueError(
-                        f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
-                    )
-
-            if len(state_dict) > 0:
-                raise ValueError(
-                    f"The `state_dict` has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
-                )
-
-            for key, value_dict in lora_grouped_dict.items():
-                attn_processor = self
-                for sub_key in key.split("."):
-                    attn_processor = getattr(attn_processor, sub_key)
-
-                # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
-                # or add_{k,v,q,out_proj}_proj_lora layers.
-                rank = value_dict["lora.down.weight"].shape[0]
-
-                if isinstance(attn_processor, LoRACompatibleConv):
-                    in_features = attn_processor.in_channels
-                    out_features = attn_processor.out_channels
-                    kernel_size = attn_processor.kernel_size
-
-                    ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
-                    with ctx():
-                        lora = LoRAConv2dLayer(
-                            in_features=in_features,
-                            out_features=out_features,
-                            rank=rank,
-                            kernel_size=kernel_size,
-                            stride=attn_processor.stride,
-                            padding=attn_processor.padding,
-                            network_alpha=mapped_network_alphas.get(key),
-                        )
-                elif isinstance(attn_processor, LoRACompatibleLinear):
-                    ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
-                    with ctx():
-                        lora = LoRALinearLayer(
-                            attn_processor.in_features,
-                            attn_processor.out_features,
-                            rank,
-                            mapped_network_alphas.get(key),
-                        )
-                else:
-                    raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
-
-                value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
-                lora_layers_list.append((attn_processor, lora))
-
-                if low_cpu_mem_usage:
-                    device = next(iter(value_dict.values())).device
-                    dtype = next(iter(value_dict.values())).dtype
-                    load_model_dict_into_meta(lora, value_dict, device=device, dtype=dtype)
-                else:
-                    lora.load_state_dict(value_dict)
-
-        elif is_custom_diffusion:
-            attn_processors = {}
-            custom_diffusion_grouped_dict = defaultdict(dict)
-            for key, value in state_dict.items():
-                if len(value) == 0:
-                    custom_diffusion_grouped_dict[key] = {}
-                else:
-                    if "to_out" in key:
-                        attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
-                    else:
-                        attn_processor_key, sub_key = ".".join(key.split(".")[:-2]), ".".join(key.split(".")[-2:])
-                    custom_diffusion_grouped_dict[attn_processor_key][sub_key] = value
-
-            for key, value_dict in custom_diffusion_grouped_dict.items():
-                if len(value_dict) == 0:
-                    attn_processors[key] = CustomDiffusionAttnProcessor(
-                        train_kv=False, train_q_out=False, hidden_size=None, cross_attention_dim=None
-                    )
-                else:
-                    cross_attention_dim = value_dict["to_k_custom_diffusion.weight"].shape[1]
-                    hidden_size = value_dict["to_k_custom_diffusion.weight"].shape[0]
-                    train_q_out = True if "to_q_custom_diffusion.weight" in value_dict else False
-                    attn_processors[key] = CustomDiffusionAttnProcessor(
-                        train_kv=True,
-                        train_q_out=train_q_out,
-                        hidden_size=hidden_size,
-                        cross_attention_dim=cross_attention_dim,
-                    )
-                    attn_processors[key].load_state_dict(value_dict)
-        elif USE_PEFT_BACKEND:
-            # In that case we have nothing to do as loading the adapter weights is already handled above by `set_peft_model_state_dict`
-            # on the Unet
-            pass
+        if is_custom_diffusion:
+            attn_processors = self._process_custom_diffusion(state_dict=state_dict)
+        elif is_lora:
+            is_model_cpu_offload, is_sequential_cpu_offload = self._process_lora(
+                state_dict=state_dict,
+                unet_identifier_key=self.unet_name,
+                network_alphas=network_alphas,
+                adapter_name=adapter_name,
+                _pipeline=_pipeline,
+            )
         else:
             raise ValueError(
-                f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training."
+                f"{model_file} does not seem to be in the correct format expected by Custom Diffusion training."
             )
 
         # <Unsafe code
         # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
-        # Now we remove any existing hooks to
+        # Now we remove any existing hooks to `_pipeline`.
+
+        # For LoRA, the UNet is already offloaded at this stage as it is handled inside `_process_lora`.
+        if is_custom_diffusion and _pipeline is not None:
+            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline=_pipeline)
+
+            # only custom diffusion needs to set attn processors
+            self.set_attn_processor(attn_processors)
+            self.to(dtype=self.dtype, device=self.device)
+
+        # Offload back.
+        if is_model_cpu_offload:
+            _pipeline.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            _pipeline.enable_sequential_cpu_offload()
+        # Unsafe code />
+
+    def _process_custom_diffusion(self, state_dict):
+        from ..models.attention_processor import CustomDiffusionAttnProcessor
+
+        attn_processors = {}
+        custom_diffusion_grouped_dict = defaultdict(dict)
+        for key, value in state_dict.items():
+            if len(value) == 0:
+                custom_diffusion_grouped_dict[key] = {}
+            else:
+                if "to_out" in key:
+                    attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
+                else:
+                    attn_processor_key, sub_key = ".".join(key.split(".")[:-2]), ".".join(key.split(".")[-2:])
+                custom_diffusion_grouped_dict[attn_processor_key][sub_key] = value
+
+        for key, value_dict in custom_diffusion_grouped_dict.items():
+            if len(value_dict) == 0:
+                attn_processors[key] = CustomDiffusionAttnProcessor(
+                    train_kv=False, train_q_out=False, hidden_size=None, cross_attention_dim=None
+                )
+            else:
+                cross_attention_dim = value_dict["to_k_custom_diffusion.weight"].shape[1]
+                hidden_size = value_dict["to_k_custom_diffusion.weight"].shape[0]
+                train_q_out = True if "to_q_custom_diffusion.weight" in value_dict else False
+                attn_processors[key] = CustomDiffusionAttnProcessor(
+                    train_kv=True,
+                    train_q_out=train_q_out,
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                )
+                attn_processors[key].load_state_dict(value_dict)
+
+        return attn_processors
+
+    def _process_lora(self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline):
+        # This method does the following things:
+        # 1. Filters the `state_dict` with keys matching  `unet_identifier_key` when using the non-legacy
+        #    format. For legacy format no filtering is applied.
+        # 2. Converts the `state_dict` to the `peft` compatible format.
+        # 3. Creates a `LoraConfig` and then injects the converted `state_dict` into the UNet per the
+        #    `LoraConfig` specs.
+        # 4. It also reports if the underlying `_pipeline` has any kind of offloading inside of it.
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+
+        keys = list(state_dict.keys())
+
+        unet_keys = [k for k in keys if k.startswith(unet_identifier_key)]
+        unet_state_dict = {
+            k.replace(f"{unet_identifier_key}.", ""): v for k, v in state_dict.items() if k in unet_keys
+        }
+
+        if network_alphas is not None:
+            alpha_keys = [k for k in network_alphas.keys() if k.startswith(unet_identifier_key)]
+            network_alphas = {
+                k.replace(f"{unet_identifier_key}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
+            }
+
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+        state_dict_to_be_used = unet_state_dict if len(unet_state_dict) > 0 else state_dict
+
+        if len(state_dict_to_be_used) > 0:
+            if adapter_name in getattr(self, "peft_config", {}):
+                raise ValueError(
+                    f"Adapter name {adapter_name} already in use in the Unet - please select a new adapter name."
+                )
+
+            state_dict = convert_unet_state_dict_to_peft(state_dict_to_be_used)
+
+            if network_alphas is not None:
+                # The alphas state dict have the same structure as Unet, thus we convert it to peft format using
+                # `convert_unet_state_dict_to_peft` method.
+                network_alphas = convert_unet_state_dict_to_peft(network_alphas)
+
+            rank = {}
+            for key, val in state_dict.items():
+                if "lora_B" in key:
+                    rank[key] = val.shape[1]
+
+            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
+            if "use_dora" in lora_config_kwargs:
+                if lora_config_kwargs["use_dora"]:
+                    if is_peft_version("<", "0.9.0"):
+                        raise ValueError(
+                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                        )
+                else:
+                    if is_peft_version("<", "0.9.0"):
+                        lora_config_kwargs.pop("use_dora")
+            lora_config = LoraConfig(**lora_config_kwargs)
+
+            # adapter_name
+            if adapter_name is None:
+                adapter_name = get_adapter_name(self)
+
+            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
+            # otherwise loading LoRA weights will lead to an error
+            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+
+            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name)
+            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name)
+
+            if incompatible_keys is not None:
+                # check only for unexpected keys
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                        f" {unexpected_keys}. "
+                    )
+
+        return is_model_cpu_offload, is_sequential_cpu_offload
+
+    @classmethod
+    # Copied from diffusers.loaders.lora.LoraLoaderMixin._optionally_disable_offloading
+    def _optionally_disable_offloading(cls, _pipeline):
+        """
+        Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
+
+        Args:
+            _pipeline (`DiffusionPipeline`):
+                The pipeline to disable offloading for.
+
+        Returns:
+            tuple:
+                A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
+        """
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
-        # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `load_lora_weights_into_unet`
-        if not USE_PEFT_BACKEND:
-            if _pipeline is not None:
-                for _, component in _pipeline.components.items():
-                    if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
-                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-
-                        logger.info(
-                            "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+        if _pipeline is not None and _pipeline.hf_device_map is None:
+            for _, component in _pipeline.components.items():
+                if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
+                    if not is_model_cpu_offload:
+                        is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
+                    if not is_sequential_cpu_offload:
+                        is_sequential_cpu_offload = (
+                            isinstance(component._hf_hook, AlignDevicesHook)
+                            or hasattr(component._hf_hook, "hooks")
+                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
                         )
-                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
-            # only custom diffusion needs to set attn processors
-            if is_custom_diffusion:
-                self.set_attn_processor(attn_processors)
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                    )
+                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
-            # set lora layers
-            for target_module, lora_layer in lora_layers_list:
-                target_module.set_lora_layer(lora_layer)
-
-            self.to(dtype=self.dtype, device=self.device)
-
-            # Offload back.
-            if is_model_cpu_offload:
-                _pipeline.enable_model_cpu_offload()
-            elif is_sequential_cpu_offload:
-                _pipeline.enable_sequential_cpu_offload()
-            # Unsafe code />
-
-    def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
-        is_new_lora_format = all(
-            key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
-        )
-        if is_new_lora_format:
-            # Strip the `"unet"` prefix.
-            is_text_encoder_present = any(key.startswith(self.text_encoder_name) for key in state_dict.keys())
-            if is_text_encoder_present:
-                warn_message = "The state_dict contains LoRA params corresponding to the text encoder which are not being used here. To use both UNet and text encoder related LoRA params, use [`pipe.load_lora_weights()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights)."
-                logger.warning(warn_message)
-            unet_keys = [k for k in state_dict.keys() if k.startswith(self.unet_name)]
-            state_dict = {k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
-
-        # change processor format to 'pure' LoRACompatibleLinear format
-        if any("processor" in k.split(".") for k in state_dict.keys()):
-
-            def format_to_lora_compatible(key):
-                if "processor" not in key.split("."):
-                    return key
-                return key.replace(".processor", "").replace("to_out_lora", "to_out.0.lora").replace("_lora", ".lora")
-
-            state_dict = {format_to_lora_compatible(k): v for k, v in state_dict.items()}
-
-            if network_alphas is not None:
-                network_alphas = {format_to_lora_compatible(k): v for k, v in network_alphas.items()}
-        return state_dict, network_alphas
+        return (is_model_cpu_offload, is_sequential_cpu_offload)
 
     def save_attn_procs(
         self,
@@ -459,6 +448,32 @@ class UNet2DConditionLoadersMixin:
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
+        is_custom_diffusion = any(
+            isinstance(
+                x,
+                (CustomDiffusionAttnProcessor, CustomDiffusionAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor),
+            )
+            for (_, x) in self.attn_processors.items()
+        )
+        if is_custom_diffusion:
+            state_dict = self._get_custom_diffusion_state_dict()
+            if save_function is None and safe_serialization:
+                # safetensors does not support saving dicts with non-tensor values
+                empty_state_dict = {k: v for k, v in state_dict.items() if not isinstance(v, torch.Tensor)}
+                if len(empty_state_dict) > 0:
+                    logger.warning(
+                        f"Safetensors does not support saving dicts with non-tensor values. "
+                        f"The following keys will be ignored: {empty_state_dict.keys()}"
+                    )
+                state_dict = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
+        else:
+            if not USE_PEFT_BACKEND:
+                raise ValueError("PEFT backend is required for saving LoRAs using the `save_attn_procs()` method.")
+
+            from peft.utils import get_peft_model_state_dict
+
+            state_dict = get_peft_model_state_dict(self)
+
         if save_function is None:
             if safe_serialization:
 
@@ -469,36 +484,6 @@ class UNet2DConditionLoadersMixin:
                 save_function = torch.save
 
         os.makedirs(save_directory, exist_ok=True)
-
-        is_custom_diffusion = any(
-            isinstance(
-                x,
-                (CustomDiffusionAttnProcessor, CustomDiffusionAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor),
-            )
-            for (_, x) in self.attn_processors.items()
-        )
-        if is_custom_diffusion:
-            model_to_save = AttnProcsLayers(
-                {
-                    y: x
-                    for (y, x) in self.attn_processors.items()
-                    if isinstance(
-                        x,
-                        (
-                            CustomDiffusionAttnProcessor,
-                            CustomDiffusionAttnProcessor2_0,
-                            CustomDiffusionXFormersAttnProcessor,
-                        ),
-                    )
-                }
-            )
-            state_dict = model_to_save.state_dict()
-            for name, attn in self.attn_processors.items():
-                if len(attn.state_dict()) == 0:
-                    state_dict[name] = {}
-        else:
-            model_to_save = AttnProcsLayers(self.attn_processors)
-            state_dict = model_to_save.state_dict()
 
         if weight_name is None:
             if safe_serialization:
@@ -511,56 +496,84 @@ class UNet2DConditionLoadersMixin:
         save_function(state_dict, save_path)
         logger.info(f"Model weights saved in {save_path}")
 
+    def _get_custom_diffusion_state_dict(self):
+        from ..models.attention_processor import (
+            CustomDiffusionAttnProcessor,
+            CustomDiffusionAttnProcessor2_0,
+            CustomDiffusionXFormersAttnProcessor,
+        )
+
+        model_to_save = AttnProcsLayers(
+            {
+                y: x
+                for (y, x) in self.attn_processors.items()
+                if isinstance(
+                    x,
+                    (
+                        CustomDiffusionAttnProcessor,
+                        CustomDiffusionAttnProcessor2_0,
+                        CustomDiffusionXFormersAttnProcessor,
+                    ),
+                )
+            }
+        )
+        state_dict = model_to_save.state_dict()
+        for name, attn in self.attn_processors.items():
+            if len(attn.state_dict()) == 0:
+                state_dict[name] = {}
+
+        return state_dict
+
     def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `fuse_lora()`.")
+
         self.lora_scale = lora_scale
         self._safe_fusing = safe_fusing
         self.apply(partial(self._fuse_lora_apply, adapter_names=adapter_names))
 
     def _fuse_lora_apply(self, module, adapter_names=None):
-        if not USE_PEFT_BACKEND:
-            if hasattr(module, "_fuse_lora"):
-                module._fuse_lora(self.lora_scale, self._safe_fusing)
+        from peft.tuners.tuners_utils import BaseTunerLayer
 
-            if adapter_names is not None:
+        merge_kwargs = {"safe_merge": self._safe_fusing}
+
+        if isinstance(module, BaseTunerLayer):
+            if self.lora_scale != 1.0:
+                module.scale_layer(self.lora_scale)
+
+            # For BC with prevous PEFT versions, we need to check the signature
+            # of the `merge` method to see if it supports the `adapter_names` argument.
+            supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+            if "adapter_names" in supported_merge_kwargs:
+                merge_kwargs["adapter_names"] = adapter_names
+            elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
                 raise ValueError(
-                    "The `adapter_names` argument is not supported in your environment. Please switch"
-                    " to PEFT backend to use this argument by installing latest PEFT and transformers."
-                    " `pip install -U peft transformers`"
+                    "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
+                    " to the latest version of PEFT. `pip install -U peft`"
                 )
-        else:
-            from peft.tuners.tuners_utils import BaseTunerLayer
 
-            merge_kwargs = {"safe_merge": self._safe_fusing}
-
-            if isinstance(module, BaseTunerLayer):
-                if self.lora_scale != 1.0:
-                    module.scale_layer(self.lora_scale)
-
-                # For BC with prevous PEFT versions, we need to check the signature
-                # of the `merge` method to see if it supports the `adapter_names` argument.
-                supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
-                if "adapter_names" in supported_merge_kwargs:
-                    merge_kwargs["adapter_names"] = adapter_names
-                elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
-                    raise ValueError(
-                        "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
-                        " to the latest version of PEFT. `pip install -U peft`"
-                    )
-
-                module.merge(**merge_kwargs)
+            module.merge(**merge_kwargs)
 
     def unfuse_lora(self):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `unfuse_lora()`.")
         self.apply(self._unfuse_lora_apply)
 
     def _unfuse_lora_apply(self, module):
-        if not USE_PEFT_BACKEND:
-            if hasattr(module, "_unfuse_lora"):
-                module._unfuse_lora()
-        else:
-            from peft.tuners.tuners_utils import BaseTunerLayer
+        from peft.tuners.tuners_utils import BaseTunerLayer
 
-            if isinstance(module, BaseTunerLayer):
-                module.unmerge()
+        if isinstance(module, BaseTunerLayer):
+            module.unmerge()
+
+    def unload_lora(self):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `unload_lora()`.")
+
+        from ..utils import recurse_remove_peft_layers
+
+        recurse_remove_peft_layers(self)
+        if hasattr(self, "peft_config"):
+            del self.peft_config
 
     def set_adapters(
         self,
@@ -756,13 +769,102 @@ class UNet2DConditionLoadersMixin:
                 diffusers_name = diffusers_name.replace("proj.3", "norm")
                 updated_state_dict[diffusers_name] = value
 
+        elif "perceiver_resampler.proj_in.weight" in state_dict:
+            # IP-Adapter Face ID Plus
+            id_embeddings_dim = state_dict["proj.0.weight"].shape[1]
+            embed_dims = state_dict["perceiver_resampler.proj_in.weight"].shape[0]
+            hidden_dims = state_dict["perceiver_resampler.proj_in.weight"].shape[1]
+            output_dims = state_dict["perceiver_resampler.proj_out.weight"].shape[0]
+            heads = state_dict["perceiver_resampler.layers.0.0.to_q.weight"].shape[0] // 64
+
+            with init_context():
+                image_projection = IPAdapterFaceIDPlusImageProjection(
+                    embed_dims=embed_dims,
+                    output_dims=output_dims,
+                    hidden_dims=hidden_dims,
+                    heads=heads,
+                    id_embeddings_dim=id_embeddings_dim,
+                )
+
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("perceiver_resampler.", "")
+                diffusers_name = diffusers_name.replace("0.to", "attn.to")
+                diffusers_name = diffusers_name.replace("0.1.0.", "0.ff.0.")
+                diffusers_name = diffusers_name.replace("0.1.1.weight", "0.ff.1.net.0.proj.weight")
+                diffusers_name = diffusers_name.replace("0.1.3.weight", "0.ff.1.net.2.weight")
+                diffusers_name = diffusers_name.replace("1.1.0.", "1.ff.0.")
+                diffusers_name = diffusers_name.replace("1.1.1.weight", "1.ff.1.net.0.proj.weight")
+                diffusers_name = diffusers_name.replace("1.1.3.weight", "1.ff.1.net.2.weight")
+                diffusers_name = diffusers_name.replace("2.1.0.", "2.ff.0.")
+                diffusers_name = diffusers_name.replace("2.1.1.weight", "2.ff.1.net.0.proj.weight")
+                diffusers_name = diffusers_name.replace("2.1.3.weight", "2.ff.1.net.2.weight")
+                diffusers_name = diffusers_name.replace("3.1.0.", "3.ff.0.")
+                diffusers_name = diffusers_name.replace("3.1.1.weight", "3.ff.1.net.0.proj.weight")
+                diffusers_name = diffusers_name.replace("3.1.3.weight", "3.ff.1.net.2.weight")
+                diffusers_name = diffusers_name.replace("layers.0.0", "layers.0.ln0")
+                diffusers_name = diffusers_name.replace("layers.0.1", "layers.0.ln1")
+                diffusers_name = diffusers_name.replace("layers.1.0", "layers.1.ln0")
+                diffusers_name = diffusers_name.replace("layers.1.1", "layers.1.ln1")
+                diffusers_name = diffusers_name.replace("layers.2.0", "layers.2.ln0")
+                diffusers_name = diffusers_name.replace("layers.2.1", "layers.2.ln1")
+                diffusers_name = diffusers_name.replace("layers.3.0", "layers.3.ln0")
+                diffusers_name = diffusers_name.replace("layers.3.1", "layers.3.ln1")
+
+                if "norm1" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("0.norm1", "0")] = value
+                elif "norm2" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("0.norm2", "1")] = value
+                elif "to_kv" in diffusers_name:
+                    v_chunk = value.chunk(2, dim=0)
+                    updated_state_dict[diffusers_name.replace("to_kv", "to_k")] = v_chunk[0]
+                    updated_state_dict[diffusers_name.replace("to_kv", "to_v")] = v_chunk[1]
+                elif "to_out" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("to_out", "to_out.0")] = value
+                elif "proj.0.weight" == diffusers_name:
+                    updated_state_dict["proj.net.0.proj.weight"] = value
+                elif "proj.0.bias" == diffusers_name:
+                    updated_state_dict["proj.net.0.proj.bias"] = value
+                elif "proj.2.weight" == diffusers_name:
+                    updated_state_dict["proj.net.2.weight"] = value
+                elif "proj.2.bias" == diffusers_name:
+                    updated_state_dict["proj.net.2.bias"] = value
+                else:
+                    updated_state_dict[diffusers_name] = value
+
+        elif "norm.weight" in state_dict:
+            # IP-Adapter Face ID
+            id_embeddings_dim_in = state_dict["proj.0.weight"].shape[1]
+            id_embeddings_dim_out = state_dict["proj.0.weight"].shape[0]
+            multiplier = id_embeddings_dim_out // id_embeddings_dim_in
+            norm_layer = "norm.weight"
+            cross_attention_dim = state_dict[norm_layer].shape[0]
+            num_tokens = state_dict["proj.2.weight"].shape[0] // cross_attention_dim
+
+            with init_context():
+                image_projection = IPAdapterFaceIDImageProjection(
+                    cross_attention_dim=cross_attention_dim,
+                    image_embed_dim=id_embeddings_dim_in,
+                    mult=multiplier,
+                    num_tokens=num_tokens,
+                )
+
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("proj.0", "ff.net.0.proj")
+                diffusers_name = diffusers_name.replace("proj.2", "ff.net.2")
+                updated_state_dict[diffusers_name] = value
+
         else:
             # IP-Adapter Plus
             num_image_text_embeds = state_dict["latents"].shape[1]
             embed_dims = state_dict["proj_in.weight"].shape[1]
             output_dims = state_dict["proj_out.weight"].shape[0]
             hidden_dims = state_dict["latents"].shape[2]
-            heads = state_dict["layers.0.0.to_q.weight"].shape[0] // 64
+            attn_key_present = any("attn" in k for k in state_dict)
+            heads = (
+                state_dict["layers.0.attn.to_q.weight"].shape[0] // 64
+                if attn_key_present
+                else state_dict["layers.0.0.to_q.weight"].shape[0] // 64
+            )
 
             with init_context():
                 image_projection = IPAdapterPlusImageProjection(
@@ -775,26 +877,53 @@ class UNet2DConditionLoadersMixin:
 
             for key, value in state_dict.items():
                 diffusers_name = key.replace("0.to", "2.to")
-                diffusers_name = diffusers_name.replace("1.0.weight", "3.0.weight")
-                diffusers_name = diffusers_name.replace("1.0.bias", "3.0.bias")
-                diffusers_name = diffusers_name.replace("1.1.weight", "3.1.net.0.proj.weight")
-                diffusers_name = diffusers_name.replace("1.3.weight", "3.1.net.2.weight")
 
-                if "norm1" in diffusers_name:
-                    updated_state_dict[diffusers_name.replace("0.norm1", "0")] = value
-                elif "norm2" in diffusers_name:
-                    updated_state_dict[diffusers_name.replace("0.norm2", "1")] = value
-                elif "to_kv" in diffusers_name:
+                diffusers_name = diffusers_name.replace("0.0.norm1", "0.ln0")
+                diffusers_name = diffusers_name.replace("0.0.norm2", "0.ln1")
+                diffusers_name = diffusers_name.replace("1.0.norm1", "1.ln0")
+                diffusers_name = diffusers_name.replace("1.0.norm2", "1.ln1")
+                diffusers_name = diffusers_name.replace("2.0.norm1", "2.ln0")
+                diffusers_name = diffusers_name.replace("2.0.norm2", "2.ln1")
+                diffusers_name = diffusers_name.replace("3.0.norm1", "3.ln0")
+                diffusers_name = diffusers_name.replace("3.0.norm2", "3.ln1")
+
+                if "to_kv" in diffusers_name:
+                    parts = diffusers_name.split(".")
+                    parts[2] = "attn"
+                    diffusers_name = ".".join(parts)
                     v_chunk = value.chunk(2, dim=0)
                     updated_state_dict[diffusers_name.replace("to_kv", "to_k")] = v_chunk[0]
                     updated_state_dict[diffusers_name.replace("to_kv", "to_v")] = v_chunk[1]
+                elif "to_q" in diffusers_name:
+                    parts = diffusers_name.split(".")
+                    parts[2] = "attn"
+                    diffusers_name = ".".join(parts)
+                    updated_state_dict[diffusers_name] = value
                 elif "to_out" in diffusers_name:
+                    parts = diffusers_name.split(".")
+                    parts[2] = "attn"
+                    diffusers_name = ".".join(parts)
                     updated_state_dict[diffusers_name.replace("to_out", "to_out.0")] = value
                 else:
+                    diffusers_name = diffusers_name.replace("0.1.0", "0.ff.0")
+                    diffusers_name = diffusers_name.replace("0.1.1", "0.ff.1.net.0.proj")
+                    diffusers_name = diffusers_name.replace("0.1.3", "0.ff.1.net.2")
+
+                    diffusers_name = diffusers_name.replace("1.1.0", "1.ff.0")
+                    diffusers_name = diffusers_name.replace("1.1.1", "1.ff.1.net.0.proj")
+                    diffusers_name = diffusers_name.replace("1.1.3", "1.ff.1.net.2")
+
+                    diffusers_name = diffusers_name.replace("2.1.0", "2.ff.0")
+                    diffusers_name = diffusers_name.replace("2.1.1", "2.ff.1.net.0.proj")
+                    diffusers_name = diffusers_name.replace("2.1.3", "2.ff.1.net.2")
+
+                    diffusers_name = diffusers_name.replace("3.1.0", "3.ff.0")
+                    diffusers_name = diffusers_name.replace("3.1.1", "3.ff.1.net.0.proj")
+                    diffusers_name = diffusers_name.replace("3.1.3", "3.ff.1.net.2")
                     updated_state_dict[diffusers_name] = value
 
         if not low_cpu_mem_usage:
-            image_projection.load_state_dict(updated_state_dict)
+            image_projection.load_state_dict(updated_state_dict, strict=True)
         else:
             load_model_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
 
@@ -802,8 +931,6 @@ class UNet2DConditionLoadersMixin:
 
     def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
         from ..models.attention_processor import (
-            AttnProcessor,
-            AttnProcessor2_0,
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
         )
@@ -843,10 +970,9 @@ class UNet2DConditionLoadersMixin:
                 hidden_size = self.config.block_out_channels[block_id]
 
             if cross_attention_dim is None or "motion_modules" in name:
-                attn_processor_class = (
-                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                )
+                attn_processor_class = self.attn_processors[name].__class__
                 attn_procs[name] = attn_processor_class()
+
             else:
                 attn_processor_class = (
                     IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
@@ -859,6 +985,12 @@ class UNet2DConditionLoadersMixin:
                     elif "proj.3.weight" in state_dict["image_proj"]:
                         # IP-Adapter Full Face
                         num_image_text_embeds += [257]  # 256 CLIP tokens + 1 CLS token
+                    elif "perceiver_resampler.proj_in.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Face ID Plus
+                        num_image_text_embeds += [4]
+                    elif "norm.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Face ID
+                        num_image_text_embeds += [4]
                     else:
                         # IP-Adapter Plus
                         num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
@@ -910,102 +1042,55 @@ class UNet2DConditionLoadersMixin:
 
         self.to(dtype=self.dtype, device=self.device)
 
-
-class FromOriginalUNetMixin:
-    """
-    Load pretrained UNet model weights saved in the `.ckpt` or `.safetensors` format into a [`StableCascadeUNet`].
-    """
-
-    @classmethod
-    @validate_hf_hub_args
-    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
-        r"""
-        Instantiate a [`StableCascadeUNet`] from pretrained StableCascadeUNet weights saved in the original `.ckpt` or
-        `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
-
-        Parameters:
-            pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
-                Can be either:
-                    - A link to the `.ckpt` file (for example
-                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
-                    - A path to a *file* containing all pipeline weights.
-            config: (`dict`, *optional*):
-                Dictionary containing the configuration of the model:
-            torch_dtype (`str` or `torch.dtype`, *optional*):
-                Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
-                dtype is automatically derived from the model's weights.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to True, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            kwargs (remaining dictionary of keyword arguments, *optional*):
-                Can be used to overwrite load and saveable variables of the model.
-
-        """
-        class_name = cls.__name__
-        if class_name != "StableCascadeUNet":
-            raise ValueError("FromOriginalUNetMixin is currently only compatible with StableCascadeUNet")
-
-        config = kwargs.pop("config", None)
-        resume_download = kwargs.pop("resume_download", False)
-        force_download = kwargs.pop("force_download", False)
-        proxies = kwargs.pop("proxies", None)
-        token = kwargs.pop("token", None)
-        cache_dir = kwargs.pop("cache_dir", None)
-        local_files_only = kwargs.pop("local_files_only", None)
-        revision = kwargs.pop("revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", None)
-
-        checkpoint = load_single_file_model_checkpoint(
-            pretrained_model_link_or_path,
-            resume_download=resume_download,
-            force_download=force_download,
-            proxies=proxies,
-            token=token,
-            cache_dir=cache_dir,
-            local_files_only=local_files_only,
-            revision=revision,
-        )
-
-        if config is None:
-            config = infer_stable_cascade_single_file_config(checkpoint)
-            model_config = cls.load_config(**config, **kwargs)
-        else:
-            model_config = config
-
-        ctx = init_empty_weights if is_accelerate_available() else nullcontext
-        with ctx():
-            model = cls.from_config(model_config, **kwargs)
-
-        diffusers_format_checkpoint = convert_stable_cascade_unet_single_file_to_diffusers(checkpoint)
-        if is_accelerate_available():
-            unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-            if len(unexpected_keys) > 0:
-                logger.warn(
-                    f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-                )
-
-        else:
-            model.load_state_dict(diffusers_format_checkpoint)
-
-        if torch_dtype is not None:
-            model.to(torch_dtype)
-
-        return model
+    def _load_ip_adapter_loras(self, state_dicts):
+        lora_dicts = {}
+        for key_id, name in enumerate(self.attn_processors.keys()):
+            for i, state_dict in enumerate(state_dicts):
+                if f"{key_id}.to_k_lora.down.weight" in state_dict["ip_adapter"]:
+                    if i not in lora_dicts:
+                        lora_dicts[i] = {}
+                    lora_dicts[i].update(
+                        {
+                            f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][
+                                f"{key_id}.to_k_lora.down.weight"
+                            ]
+                        }
+                    )
+                    lora_dicts[i].update(
+                        {
+                            f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][
+                                f"{key_id}.to_q_lora.down.weight"
+                            ]
+                        }
+                    )
+                    lora_dicts[i].update(
+                        {
+                            f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][
+                                f"{key_id}.to_v_lora.down.weight"
+                            ]
+                        }
+                    )
+                    lora_dicts[i].update(
+                        {
+                            f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][
+                                f"{key_id}.to_out_lora.down.weight"
+                            ]
+                        }
+                    )
+                    lora_dicts[i].update(
+                        {f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]}
+                    )
+                    lora_dicts[i].update(
+                        {f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]}
+                    )
+                    lora_dicts[i].update(
+                        {f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]}
+                    )
+                    lora_dicts[i].update(
+                        {
+                            f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][
+                                f"{key_id}.to_out_lora.up.weight"
+                            ]
+                        }
+                    )
+        return lora_dicts

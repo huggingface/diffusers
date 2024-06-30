@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders.unet import FromOriginalUNetMixin
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
 from ..attention_processor import Attention
 from ..modeling_utils import ModelMixin
@@ -131,10 +131,10 @@ class UpDownBlock2d(nn.Module):
 
 @dataclass
 class StableCascadeUNetOutput(BaseOutput):
-    sample: torch.FloatTensor = None
+    sample: torch.Tensor = None
 
 
-class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalUNetMixin):
+class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -186,7 +186,8 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalUNetMixin):
             block_out_channels (Tuple[int], defaults to (2048, 2048)):
                 Tuple of output channels for each block.
             num_attention_heads (Tuple[int], defaults to (32, 32)):
-                Number of attention heads in each attention block. Set to -1 to if block types in a layer do not have attention.
+                Number of attention heads in each attention block. Set to -1 to if block types in a layer do not have
+                attention.
             down_num_layers_per_block (Tuple[int], defaults to [8, 24]):
                 Number of layers in each down block.
             up_num_layers_per_block (Tuple[int], defaults to [24, 8]):
@@ -197,10 +198,9 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalUNetMixin):
                 Number of 1x1 Convolutional layers to repeat in each up block.
             block_types_per_layer (Tuple[Tuple[str]], optional,
                 defaults to (
-                    ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
-                    ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock")
-                ):
-                Block types used in each layer of the up/down blocks.
+                    ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"), ("SDCascadeResBlock",
+                    "SDCascadeTimestepBlock", "SDCascadeAttnBlock")
+                ): Block types used in each layer of the up/down blocks.
             clip_text_in_channels (`int`, *optional*, defaults to `None`):
                 Number of input channels for CLIP based text conditioning.
             clip_text_pooled_in_channels (`int`, *optional*, defaults to 1280):

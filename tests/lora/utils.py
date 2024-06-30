@@ -156,7 +156,7 @@ class PeftLoraLoaderMixinTests:
 
         return noise, input_ids, pipeline_inputs
 
-    # copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
+    # Copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
     def get_dummy_tokens(self):
         max_seq_length = 77
 
@@ -393,6 +393,69 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(
                 np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
                 "Loading from saved checkpoints should give same results.",
+            )
+
+    def test_simple_inference_with_partial_text_lora(self):
+        """
+        Tests a simple inference with lora attached on the text encoder
+        with different ranks and some adapters removed
+        and makes sure it works as expected
+        """
+        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
+            components, _, _ = self.get_dummy_components(scheduler_cls)
+            # Verify `LoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
+            text_lora_config = LoraConfig(
+                r=4,
+                rank_pattern={"q_proj": 1, "k_proj": 2, "v_proj": 3},
+                lora_alpha=4,
+                target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+                init_lora_weights=False,
+                use_dora=False,
+            )
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device)
+            pipe.set_progress_bar_config(disable=None)
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+
+            pipe.text_encoder.add_adapter(text_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            # Gather the state dict for the PEFT model, excluding `layers.4`, to ensure `load_lora_into_text_encoder`
+            # supports missing layers (PR#8324).
+            state_dict = {
+                f"text_encoder.{module_name}": param
+                for module_name, param in get_peft_model_state_dict(pipe.text_encoder).items()
+                if "text_model.encoder.layers.4" not in module_name
+            }
+
+            if self.has_two_text_encoders:
+                pipe.text_encoder_2.add_adapter(text_lora_config)
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                )
+                state_dict.update(
+                    {
+                        f"text_encoder_2.{module_name}": param
+                        for module_name, param in get_peft_model_state_dict(pipe.text_encoder_2).items()
+                        if "text_model.encoder.layers.4" not in module_name
+                    }
+                )
+
+            output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(
+                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+            )
+
+            # Unload lora and load it back using the pipe.load_lora_weights machinery
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(state_dict)
+
+            output_partial_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(
+                not np.allclose(output_partial_lora, output_lora, atol=1e-3, rtol=1e-3),
+                "Removing adapters should change the output",
             )
 
     def test_simple_inference_save_pretrained(self):

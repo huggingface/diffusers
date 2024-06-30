@@ -49,7 +49,7 @@ prompt = "portrait photo of a old warrior chief"
 pipeline = pipeline.to("cuda")
 ```
 
-同じイメージを使って改良できるようにするには、[`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html)を使い、[reproducibility](./using-diffusers/reproducibility)の種を設定します：
+同じイメージを使って改良できるようにするには、[`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html)を使い、[reproducibility](./using-diffusers/reusing_seeds)の種を設定します：
 
 ```python
 import torch
@@ -155,7 +155,7 @@ def get_inputs(batch_size=1):
 `batch_size=4`で開始し、どれだけメモリを消費したかを確認します：
 
 ```python
-from diffusers.utils import make_image_grid 
+from diffusers.utils import make_image_grid
 
 images = pipeline(**get_inputs(batch_size=4)).images
 make_image_grid(images, 2, 2)
