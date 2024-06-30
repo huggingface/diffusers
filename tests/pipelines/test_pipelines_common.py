@@ -786,7 +786,12 @@ class PipelineFromPipeTesterMixin:
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
         pipe_original.set_progress_bar_config(disable=None)
+
         pipe_from_original = self.pipeline_class.from_pipe(pipe_original, **current_pipe_additional_components)
+        for component in pipe_from_original.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe_from_original.enable_model_cpu_offload()
         pipe_from_original.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs_pipe(torch_device)
@@ -1375,7 +1380,7 @@ class PipelineTesterMixin:
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload()
-        assert pipe._execution_device.type == pipe._offload_device.type
+        assert pipe._execution_device.type == "cuda"
 
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
@@ -1440,7 +1445,7 @@ class PipelineTesterMixin:
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_model_cpu_offload()
-        assert pipe._execution_device.type == pipe._offload_device.type
+        assert pipe._execution_device.type == "cuda"
 
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]

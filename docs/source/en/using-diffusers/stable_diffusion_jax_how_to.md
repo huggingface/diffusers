@@ -63,7 +63,7 @@ Flax is a functional framework, so models are stateless and parameters are store
 dtype = jnp.bfloat16
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    revision="bf16",
+    variant="bf16",
     dtype=dtype,
 )
 ```

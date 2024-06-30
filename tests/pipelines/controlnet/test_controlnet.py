@@ -36,10 +36,9 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     get_python_version,
+    is_torch_compile,
     load_image,
     load_numpy,
-    numpy_cosine_similarity_distance,
-    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -1023,7 +1022,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.1655, 0.1721, 0.1623, 0.1685, 0.1711, 0.1646, 0.1651, 0.1631, 0.1494])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     @unittest.skipIf(
         get_python_version == (3, 12),
@@ -1062,97 +1061,6 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         image_slice = image[-3:, -3:, -1]
         expected_slice = np.array([0.1338, 0.1597, 0.1202, 0.1687, 0.1377, 0.1017, 0.2070, 0.1574, 0.1348])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_load_local(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
-
-        controlnet = ControlNetModel.from_single_file(
-            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
-        )
-        pipe_sf = StableDiffusionControlNetPipeline.from_single_file(
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
-            safety_checker=None,
-            controlnet=controlnet,
-            scheduler_type="pndm",
-        )
-        pipe_sf.unet.set_default_attn_processor()
-        pipe_sf.enable_model_cpu_offload()
-
-        control_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-        ).resize((512, 512))
-        prompt = "bird"
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipe(
-            prompt,
-            image=control_image,
-            generator=generator,
-            output_type="np",
-            num_inference_steps=3,
-        ).images[0]
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        output_sf = pipe_sf(
-            prompt,
-            image=control_image,
-            generator=generator,
-            output_type="np",
-            num_inference_steps=3,
-        ).images[0]
-
-        max_diff = numpy_cosine_similarity_distance(output_sf.flatten(), output.flatten())
-        assert max_diff < 1e-3
-
-    def test_single_file_component_configs(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny", variant="fp16")
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", variant="fp16", safety_checker=None, controlnet=controlnet
-        )
-
-        controlnet_single_file = ControlNetModel.from_single_file(
-            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
-        )
-        single_file_pipe = StableDiffusionControlNetPipeline.from_single_file(
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
-            safety_checker=None,
-            controlnet=controlnet_single_file,
-            scheduler_type="pndm",
-        )
-
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
-        for param_name, param_value in single_file_pipe.controlnet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-
-            # This parameter doesn't appear to be loaded from the config.
-            # So when it is registered to config, it remains a tuple as this is the default in the class definition
-            # from_pretrained, does load from config and converts to a list when registering to config
-            if param_name == "conditioning_embedding_out_channels" and isinstance(param_value, tuple):
-                param_value = list(param_value)
-
-            assert (
-                pipe.controlnet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.unet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.unet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.vae.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.vae.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
 
 
 @slow
