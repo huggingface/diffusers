@@ -26,6 +26,7 @@ python3 train_sd_resadapter.py \
   --cache_dir . \
   --seed 42 \
   --nearest_resolution_multiple 64 \
+  --max_resolution 1920 \
   --random_flip \
   --train_batch_size 4 \
   --num_train_epochs 5 \

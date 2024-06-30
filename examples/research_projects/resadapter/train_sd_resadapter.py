@@ -75,7 +75,7 @@ class SizeBatchSampler(BatchSampler):
 
         self.size_to_indices = {}
         for idx, item in enumerate(self.dataset):
-            size = item["pixel_values"].shape
+            size = item["pixel_values"].shape[-2:]
             if size not in self.size_to_indices:
                 self.size_to_indices[size] = []
             self.size_to_indices[size].append(idx)
@@ -291,6 +291,7 @@ def parse_args():
             " training with multiple resolutions without limiting the resolution to a fixed value."
         ),
     )
+    parser.add_argument("--max_resolution", type=int, default=None, help="The maximum resolution to train on.")
     parser.add_argument(
         "--min_groupnorm_unfreeze_resolution",
         type=int,
@@ -748,8 +749,15 @@ def main():
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+
         # Set the training transforms
         train_dataset = dataset["train"].with_transform(preprocess_train)
+
+        if args.max_resolution is not None:
+            train_dataset = train_dataset.filter(
+                lambda x: x["pixel_values"].shape[-1] <= args.max_resolution
+                and x["pixel_values"].shape[-2] <= args.max_resolution
+            )
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -764,6 +772,12 @@ def main():
         collate_fn=collate_fn,
         num_workers=args.dataloader_num_workers,
     )
+
+    if len(train_dataloader) == 0:
+        raise ValueError(
+            "No training data was provided. Please check your dataset. If you are setting the `max_resolution` parameter, "
+            "please make sure that atleast some of the images in your dataset have dimensions lower than the specified resolution."
+        )
 
     # Scheduler and math around the number of training steps.
     # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
