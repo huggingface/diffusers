@@ -131,7 +131,7 @@ class LuminaNextDiTBlock(nn.Module):
         self.hidden_size = hidden_size
         self.head_dim = hidden_size // num_attention_heads
 
-        learnable_params = {"gate": torch.zeros([num_attention_heads])}
+        self.gate = nn.Parameter(torch.zeros([num_attention_heads]))
 
         # Self-attention
         self.attn = Attention(
@@ -159,7 +159,6 @@ class LuminaNextDiTBlock(nn.Module):
             eps=1e-5,
             bias=False,
             out_bias=False,
-            added_learnable_params=learnable_params,
             processor=LuminaAttnProcessor2_0(),
         )
 
@@ -226,17 +225,23 @@ class LuminaNextDiTBlock(nn.Module):
             )
 
             # Cross-attention
+            norm_encoder_hidden_states = self.attn_encoder_hidden_states_norm(encoder_hidden_states)
             cross_attn_output = self.cross_attn(
                 hidden_states=hidden_states,
-                encoder_hidden_states=self.attn_encoder_hidden_states_norm(encoder_hidden_states),
+                encoder_hidden_states=norm_encoder_hidden_states,
                 attention_mask=encoder_mask,
                 residual=self_attn_output,
                 query_rotary_emb=freqs_cis,
                 key_rotary_emb=None,
                 **cross_attention_kwargs,
             )
+            cross_attn_output = cross_attn_output * self.gate.tanh().view(1, 1, -1, 1)
+            mixed_attn_output = self_attn_output + cross_attn_output
+            mixed_attn_output = mixed_attn_output.flatten(-2)
+            # linear proj
+            hidden_states = self.cross_attn.to_out[0](mixed_attn_output)
 
-            hidden_states = residual + gate_msa.unsqueeze(1).tanh() * self.attn_norm2(cross_attn_output)
+            hidden_states = residual + gate_msa.unsqueeze(1).tanh() * self.attn_norm2(hidden_states)
 
             mlp_output = self.feed_forward(
                 modulate(self.ffn_norm1(hidden_states), scale_mlp),

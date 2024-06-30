@@ -31,7 +31,7 @@ def main(args):
 
     for i in range(24):
         # adaln
-        converted_state_dict[f"layers.{i}.cross_attn.gate"] = all_sd[f"layers.{i}.attention.gate"]
+        converted_state_dict[f"layers.{i}.gate"] = all_sd[f"layers.{i}.attention.gate"]
         converted_state_dict[f"layers.{i}.adaLN_modulation.1.weight"] = all_sd[f"layers.{i}.adaLN_modulation.1.weight"]
         converted_state_dict[f"layers.{i}.adaLN_modulation.1.bias"] = all_sd[f"layers.{i}.adaLN_modulation.1.bias"]
 

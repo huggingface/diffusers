@@ -13,7 +13,7 @@
 # limitations under the License.
 import inspect
 import math
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -225,7 +225,6 @@ class Attention(nn.Module):
 
         if self.context_pre_only is not None and not self.context_pre_only:
             self.to_add_out = nn.Linear(self.inner_dim, self.out_dim, bias=out_bias)
-
 
         # set attention processor
         # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
@@ -1624,7 +1623,6 @@ class LuminaAttnProcessor2_0:
         key_rotary_emb: Optional[torch.Tensor] = None,
         proportional_attn: Optional[bool] = True,
         base_sequence_length: Optional[int] = 4096,
-        residual: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         from .embeddings import apply_rotary_emb
 
@@ -1669,7 +1667,7 @@ class LuminaAttnProcessor2_0:
         query, key = query.to(dtype), key.to(dtype)
 
         # Apply proportional attention if true
-        if residual is not None:
+        if key_rotary_emb is None:
             softmax_scale = None
         else:
             if proportional_attn:
@@ -1698,14 +1696,6 @@ class LuminaAttnProcessor2_0:
             query, key, value, attn_mask=attention_mask, scale=softmax_scale
         )
         hidden_states = hidden_states.transpose(1, 2).to(dtype)
-
-        if residual is not None:
-            hidden_states = hidden_states * attn.gate.tanh().view(1, 1, -1, 1)
-            hidden_states = residual + hidden_states
-            hidden_states = hidden_states.flatten(-2)
-
-            # linear proj
-            hidden_states = attn.to_out[0](hidden_states)
 
         return hidden_states
 
