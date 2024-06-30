@@ -39,11 +39,8 @@ def main():
     for file in python_files:
         print(f"****** Running file: {file} ******")
 
-        if "ip_adapters" in file:
-            continue
-
         # Run with canonical settings.
-        if file != "benchmark_text_to_image.py":
+        if file != "benchmark_text_to_image.py" and file != "benchmark_ip_adapters.py":
             command = f"python {file}"
             run_command(command.split())
 
@@ -52,7 +49,7 @@ def main():
 
     # Run variants.
     for file in python_files:
-        if "ip_adapters" in file:
+        if file == "benchmark_ip_adapters.py":
             continue
 
         if file == "benchmark_text_to_image.py":
