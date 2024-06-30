@@ -94,7 +94,7 @@ class Attention(nn.Module):
         query_dim: int,
         cross_attention_dim: Optional[int] = None,
         heads: int = 8,
-        kv_heads: int = 1,
+        kv_heads: Optional[int] = None,
         dim_head: int = 64,
         dropout: float = 0.0,
         bias: bool = False,
