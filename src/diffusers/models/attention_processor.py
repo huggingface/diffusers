@@ -118,7 +118,6 @@ class Attention(nn.Module):
         processor: Optional["AttnProcessor"] = None,
         out_dim: int = None,
         context_pre_only=None,
-        added_learnable_params: Dict[str, torch.Tensor] = None,
     ):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
