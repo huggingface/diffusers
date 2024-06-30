@@ -122,7 +122,7 @@ class Attention(nn.Module):
     ):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
-        self.inner_kv_dim = out_dim if out_dim is not None else dim_head * kv_heads
+        self.inner_kv_dim = self.inner_dim if kv_heads is None else dim_head * kv_heads
         self.query_dim = query_dim
         self.q_norm_dim = q_norm_dim if q_norm_dim is not None else dim_head
         self.k_norm_dim = k_norm_dim if k_norm_dim is not None else dim_head
