@@ -224,10 +224,6 @@ class Attention(nn.Module):
         if self.context_pre_only is not None and not self.context_pre_only:
             self.to_add_out = nn.Linear(self.inner_dim, self.out_dim, bias=out_bias)
 
-        # Added learnable parameters into Attention
-        if added_learnable_params is not None:
-            for key, value in added_learnable_params.items():
-                setattr(self, key, nn.Parameter(value))
 
         # set attention processor
         # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
