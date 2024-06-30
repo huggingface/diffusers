@@ -103,8 +103,6 @@ class Attention(nn.Module):
         cross_attention_norm: Optional[str] = None,
         cross_attention_norm_num_groups: int = 32,
         qk_norm: Optional[str] = None,
-        q_norm_dim: Optional[int] = None,
-        k_norm_dim: Optional[int] = None,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
         spatial_norm_dim: Optional[int] = None,
