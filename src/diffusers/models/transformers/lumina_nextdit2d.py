@@ -138,8 +138,6 @@ class LuminaNextDiTBlock(nn.Module):
             query_dim=hidden_size,
             cross_attention_dim=None,
             dim_head=hidden_size // num_attention_heads,
-            q_norm_dim=hidden_size,
-            k_norm_dim=num_kv_heads * self.head_dim,
             qk_norm="layer_norm" if qk_norm else None,
             heads=num_attention_heads,
             kv_heads=num_kv_heads,
