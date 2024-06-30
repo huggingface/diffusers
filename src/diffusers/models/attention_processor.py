@@ -172,8 +172,15 @@ class Attention(nn.Module):
             self.norm_q = None
             self.norm_k = None
         elif qk_norm == "layer_norm":
-            self.norm_q = nn.LayerNorm(self.q_norm_dim, eps=eps)
-            self.norm_k = nn.LayerNorm(self.k_norm_dim, eps=eps)
+            if kv_heads is None:
+                q_norm_dim = dim_head
+                k_norm_dim = dim_head
+            else:
+                # Lumina applys qk norm across all heads
+                q_norm_dim = dim_head * heads
+                k_norm_dim = dim_head * kv_heads
+            self.norm_q = nn.LayerNorm(q_norm_dim, eps=eps)
+            self.norm_k = nn.LayerNorm(k_norm_dim, eps=eps)
         else:
             raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None or 'layer_norm'")
 
