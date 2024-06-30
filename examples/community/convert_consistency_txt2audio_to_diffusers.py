@@ -2,7 +2,8 @@ import argparse
 from typing import Optional
 
 import torch
-from pipeline_consistency_txt2audio import UNet2DConditionGuidedModel
+from pipeline_consistency_txt2audio import ConsistencyTTAPipeline, UNet2DConditionGuidedModel
+from transformers import AutoTokenizer, SpeechT5HifiGan, T5EncoderModel
 
 from diffusers.models import AutoencoderKL
 from diffusers.schedulers import (
@@ -392,7 +393,7 @@ def load_pipeline_from_consistencytta_checkpoint(
     scheduler_type: str = "ddim",
     prediction_type: Optional[str] = None,
     image_size: int = 512,
-):  # This should return the ConsistencyTTA pipeline
+) -> ConsistencyTTAPipeline:
     original_config = default_audioldm_config("audioldm-s-full")
 
     # 1. UNet
@@ -413,8 +414,8 @@ def load_pipeline_from_consistencytta_checkpoint(
     vae.load_state_dict(converted_vae_state_dict)
 
     # 3. Text encoder and Tokenizer
-    # tokenizer = T5Tokenizer.from_pretrained(text_encoder_name)
-    # text_encoder = T5EncoderModel.from_pretrained(text_encoder_name)
+    tokenizer = AutoTokenizer.from_pretrained(text_encoder_name)
+    text_encoder = T5EncoderModel.from_pretrained(text_encoder_name)
 
     # 4. Scheduler
     if (
@@ -463,6 +464,19 @@ def load_pipeline_from_consistencytta_checkpoint(
     else:
         raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
 
+    # 5. SpeechT5HifiGan
+    vocoder = SpeechT5HifiGan.from_pretrained("cvssp/audioldm", subfolder="vocoder")
+
+    pipe = ConsistencyTTAPipeline(
+        vae=vae,
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        unet=unet,
+        scheduler=scheduler,
+        vocoder=vocoder,
+    )
+    return pipe
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -471,23 +485,28 @@ if __name__ == "__main__":
     parser.add_argument("--vae-checkpoint-path", type=str, required=True)
     parser.add_argument("--text-encoder-name", type=str, default="google/flan-t5-large")
     parser.add_argument(
-        "--scheduler_type",
-        default="ddim",
+        "--scheduler-type",
+        default="heun",
         type=str,
-        help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim', 'euler', 'euler-ancestral', 'dpm']",
+        help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'heun, 'ddim', 'euler', 'euler-ancestral', 'dpm']",
     )
     parser.add_argument(
-        "--prediction_type",
+        "--prediction-type",
         default=None,
         type=str,
         help=("The prediction type that the model was trained on."),
     )
-    parser.add_argument("--image_size", type=int, default=512, help="The image size that the model was trained on.")
-    # add fp16
-    # add push_to_hub
+    parser.add_argument("--image-size", type=int, default=512, help="The image size that the model was trained on.")
+    parser.add_argument(
+        "--output-path", type=str, default="./consistencytta-model", help="The output path for the converted model."
+    )
+    parser.add_argument("--save-fp16", default=False, action="store_true", help="Whether to save the model in fp16.")
+    parser.add_argument(
+        "--push-to-hub", default=False, action="store_true", help="Whether to push the model to the hub."
+    )
     args = parser.parse_args()
 
-    load_pipeline_from_consistencytta_checkpoint(
+    pipe = load_pipeline_from_consistencytta_checkpoint(
         unet_config_path=args.unet_config_path,
         unet_checkpoint_path=args.unet_checkpoint_path,
         vae_checkpoint_path=args.vae_checkpoint_path,
@@ -496,3 +515,11 @@ if __name__ == "__main__":
         prediction_type=args.prediction_type,
         image_size=args.image_size,
     )
+
+    if not args.save_fp16:
+        pipe.save_pretrained(args.output_path, push_to_hub=args.push_to_hub)
+    else:
+        pipe = pipe.to(dtype=torch.float16)
+        pipe.save_pretrained(args.output_path, push_to_hub=args.push_to_hub)
+
+# python3 examples/community/convert_consistency_txt2audio_to_diffusers.py --unet-config-path tango_diffusion_light.json --unet-checkpoint-path ./consistencyttamodels/state_dicts/unet_state_dict.pt --vae-checkpoint-path ./consistencyttamodels/state_dicts/vae_state_dict.pt --text-encoder-name google/flan-t5-large --scheduler-type heun --image-size 512 --output-path converted-consistency-tta
