@@ -795,14 +795,20 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                 If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images
         """
-        if callback is not None:
-            deprecation_message = "The use of `callback` will soon be deprecated and will be removed in a future version. It is recommended to use `callback_on_step_end` instead."
-            deprecate("callback", "1.0.0", deprecation_message, standard_warn=False)        
         
-        if (callback is not None) and (callback_on_step_end is not None):
-            raise ValueError(
-                f"Cannot use both `callback`(will soon be deprecated) and `callback_on_step_end` at the same time. Use one or the other."
-            )         
+        # from diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl.py
+        if callback is not None:
+            deprecate(
+                "callback",
+                "1.0.0",
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+        if callback_steps is not None:
+            deprecate(
+                "callback_steps",
+                "1.0.0",
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )      
         
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs      
