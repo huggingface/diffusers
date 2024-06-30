@@ -49,6 +49,7 @@ def main():
 
     # Run variants.
     for file in python_files:
+        # See: https://github.com/pytorch/pytorch/issues/129637
         if file == "benchmark_ip_adapters.py":
             continue
 
