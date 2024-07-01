@@ -115,7 +115,6 @@ class LuminaNextDiTBlock(nn.Module):
 
     def __init__(
         self,
-        layer_id: int,
         hidden_size: int,
         num_attention_heads: int,
         num_kv_heads: int,
