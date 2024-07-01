@@ -37,14 +37,14 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
         transformer = SD3Transformer2DModel(
             sample_size=32,
             patch_size=1,
-            in_channels=4,
+            in_channels=16,
             num_layers=1,
             attention_head_dim=8,
             num_attention_heads=4,
             joint_attention_dim=32,
             caption_projection_dim=32,
             pooled_projection_dim=64,
-            out_channels=4,
+            out_channels=16,
         )
         clip_text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
@@ -79,7 +79,7 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
             out_channels=3,
             block_out_channels=(4,),
             layers_per_block=1,
-            latent_channels=4,
+            latent_channels=16,
             norm_num_groups=1,
             use_quant_conv=False,
             use_post_quant_conv=False,
@@ -103,7 +103,7 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
 
     def get_dummy_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        mask_image = mask_image = torch.zeros((1, 1, 32, 32)).to(device)
+        mask_image = torch.ones((1, 1, 32, 32)).to(device)
         image = image / 2 + 0.5
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
