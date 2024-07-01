@@ -4197,7 +4197,7 @@ pipe = DiffusionPipeline.from_pretrained(
     trust_remote_code=True,
 ).to("cuda")
 
-prompt = "Multiple gun shots followed by a woman screaming"
+prompt = "Ducks quacking"
 
 generator = torch.Generator().manual_seed(42)
 audio = pipe(
