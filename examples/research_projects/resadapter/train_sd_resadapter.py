@@ -31,6 +31,7 @@ from pathlib import Path
 
 import datasets
 import numpy as np
+import safetensors.torch
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -597,9 +598,11 @@ def main():
         for name, module in model.named_modules():
             if isinstance(module, ResnetBlock2D):
                 if isinstance(module.norm1, GroupNorm):
-                    state_dict[name + ".norm1"] = module.norm1.state_dict()
+                    for key, value in module.norm1.state_dict().items():
+                        state_dict[name + ".norm1." + key] = value
                 if isinstance(module.norm2, GroupNorm):
-                    state_dict[name + ".norm2"] = module.norm2.state_dict()
+                    for key, value in module.norm2.state_dict().items():
+                        state_dict[name + ".norm2." + key] = value
         return state_dict
 
     def modify_groupnorms(model, freeze: bool = False):
@@ -997,7 +1000,9 @@ def main():
                             unet_lora_layers=unet_lora_state_dict,
                             safe_serialization=True,
                         )
-                        torch.save(unet_groupnorm_state_dict, os.path.join(save_path, "groupnorm_state_dict.pt"))
+                        safetensors.torch.save_file(
+                            unet_groupnorm_state_dict, os.path.join(save_path, "diffusion_pytorch_model.safetensors")
+                        )
 
                         logger.info(f"Saved state to {save_path}")
 
@@ -1069,10 +1074,14 @@ def main():
 
         unwrapped_unet = unwrap_model(unet)
         unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_unet))
+        unet_groupnorm_state_dict = get_groupnorm_state_dict(unwrapped_unet)
         StableDiffusionPipeline.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_state_dict,
             safe_serialization=True,
+        )
+        safetensors.torch.save_file(
+            unet_groupnorm_state_dict, os.path.join(args.output_dir, "diffusion_pytorch_model.safetensors")
         )
 
         if args.push_to_hub:
@@ -1104,8 +1113,10 @@ def main():
 
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
-            unet_groupnorm_state_dict = torch.load(os.path.join(args.output_dir, "groupnorm_state_dict.pt"))
-            pipeline.unet.load_state_dict(unet_groupnorm_state_dict)
+            unet_groupnorm_state_dict = safetensors.torch.load_file(
+                os.path.join(args.output_dir, "diffusion_pytorch_model.safetensors")
+            )
+            pipeline.unet.load_state_dict(unet_groupnorm_state_dict, strict=False)
 
             # run inference
             generator = torch.Generator(device=accelerator.device)

@@ -10,18 +10,18 @@
 
 ```bash
 python3 train_sd_resadapter.py \
-  --pretrained_model_name_or_path <MODEL> \
-  --dataset_name <DATASET> \
-  --dataset_config_name <DATASET_SPLIT> \
+  --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5 \
+  --dataset_name MohamedRashad/midjourney-detailed-prompts \
   --image_column image \
-  --caption_column prompt \
-  --validation_prompt "beautiful face, youthful appearance, ultra focus, face iluminated, face detailed, ultra focus, dreamlike images, pixel perfect precision, ultra realistic;Award-winning photo of a mystical fox girl fox in a serene forest clearing, sunlight" \
+  --caption_column short_prompt \
+  --validation_prompt "Award-winning photo of a mystical fox in a serene forest clearing, sunlight" \
   --validation_prompt_sep ";" \
   --num_validation_images 5 \
   --validation_epochs 1 \
   --validation_heights 256 384 768 768 1024 \
   --validation_widths 256 832 768 1280 1024 \
   --validation_inference_steps 20 \
+  --guidance_scale 8 \
   --output_dir sd-resadapter \
   --cache_dir . \
   --seed 42 \
@@ -44,11 +44,14 @@ python3 train_sd_resadapter.py \
 The following code assumes the checkpoints were generated using the training script. When the training script completes, you should see LoRA weights and state dict for UNet GroupNorm layers in your model/output directory.
 
 ```python
+import safetensors.torch
 import torch
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from huggingface_hub import hf_hub_download
 
-model_id = "<MODEL_ID>"
-resadapter_dir = "<LORA_WEIGHTS_DIRECTORY>"
+model_id = "runwayml/stable-diffusion-v1-5"
+resadapter_id = "a-r-r-o-w/dummy-resadapter"
+
 pipe = DiffusionPipeline.from_pretrained(
     model_id,
     variant="fp16",
@@ -56,10 +59,11 @@ pipe = DiffusionPipeline.from_pretrained(
 ).to("cuda")
 
 # load resadapter
-unet_groupnorm_state_dict = torch.load(f"{resadapter_dir}/groupnorm_state_dict.pt")
-pipe.load_lora_weights(resadapter_dir, adapter_name="resadapter")
+unet_groupnorm_state_dict_path = hf_hub_download(repo_id=resadapter_id, filename="diffusion_pytorch_model.safetensors", revision="main")
+unet_groupnorm_state_dict = safetensors.torch.load_file(unet_groupnorm_state_dict_path)
+pipe.load_lora_weights(resadapter_id, weight_name="pytorch_lora_weights.safetensors", adapter_name="resadapter")
 pipe.set_adapters(["resadapter"], adapter_weights=[0.9])
-pipe.unet.load_state_dict(unet_groupnorm_state_dict)
+pipe.unet.load_state_dict(unet_groupnorm_state_dict, strict=False)
 
 # inference
 prompt = "an astronaut floating in space"
@@ -77,10 +81,51 @@ image = pipe(
 ).images[0]
 ```
 
-To use the checkpoints provided by the authors, please refer to the original repository linked above.
+To use the checkpoints provided by the authors, please refer to the original repository linked above. Since there are multiple models in different subfolders, we need to make small adjustments to the above code:
+
+```diff
+import safetensors.torch
+import torch
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from huggingface_hub import hf_hub_download
+
+model_id = "runwayml/stable-diffusion-v1-5"
+resadapter_id = "jiaxiangc/res-adapter"
++ resadapter_model_name = "resadapter_v1_sd1.5"
+
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    variant="fp16",
+    torch_dtype=torch.float16,
+).to("cuda")
+
+# load resadapter
+- unet_groupnorm_state_dict_path = hf_hub_download(repo_id=resadapter_id, filename="diffusion_pytorch_model.safetensors", revision="main")
++ unet_groupnorm_state_dict_path = hf_hub_download(repo_id=resadapter_id, subfolder=resadapter_model_name, filename="diffusion_pytorch_model.safetensors", revision="main")
+unet_groupnorm_state_dict = safetensors.torch.load_file(unet_groupnorm_state_dict_path)
+- pipe.load_lora_weights(resadapter_id, weight_name="pytorch_lora_weights.safetensors", adapter_name="resadapter")
++ pipe.load_lora_weights(resadapter_id, subfolder=resadapter_model_name, weight_name="pytorch_lora_weights.safetensors", adapter_name="resadapter")
+pipe.set_adapters(["resadapter"], adapter_weights=[0.9])
+pipe.unet.load_state_dict(unet_groupnorm_state_dict, strict=False)
+
+# inference
+prompt = "an astronaut floating in space"
+negative_prompt = "low quality, worst quality"
+
+image = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_inference_steps=30,
+    num_images_per_prompt=1,
+    guidance_scale=8.0,
+    generator=torch.Generator().manual_seed(42),
+    height=768,
+    width=768,
+).images[0]
+```
 
 ### Issues
 
 If any problems occur while training/inference, please contact the authors. Two good points of contact would be:
-- [Jiaxiang Cheng](https://github.com/jiaxiangc): First author of the paper.
 - [Aryan V S](https://github.com/a-r-r-o-w): Contributor of the training script.
+- [Jiaxiang Cheng](https://github.com/jiaxiangc): First author of the paper.
