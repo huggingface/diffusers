@@ -976,7 +976,7 @@ def encode_prompt(
         max_sequence_length,
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
-        text_input_ids=text_input_ids_list[:-1] if text_input_ids_list else None,
+        text_input_ids=text_input_ids_list[-1] if text_input_ids_list else None,
         device=device if device is not None else text_encoders[-1].device,
     )
 
@@ -1688,10 +1688,12 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = itertools.chain(
-                        transformer_lora_parameters,
-                        text_lora_parameters_one if args.train_text_encoder else transformer_lora_parameters,
-                        text_lora_parameters_two if args.train_text_encoder else transformer_lora_parameters,
+                    params_to_clip = (
+                        itertools.chain(
+                            transformer_lora_parameters, text_lora_parameters_one, text_lora_parameters_two
+                        )
+                        if args.train_text_encoder
+                        else transformer_lora_parameters
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
