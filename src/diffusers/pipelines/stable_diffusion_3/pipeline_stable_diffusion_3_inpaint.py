@@ -15,7 +15,6 @@
 import inspect
 from typing import Callable, Dict, List, Optional, Union
 
-import PIL.Image
 import torch
 from transformers import (
     CLIPTextModelWithProjection,
@@ -606,7 +605,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
-    
+
     def prepare_latents(
         self,
         batch_size,
@@ -667,7 +666,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             outputs += (image_latents,)
 
         return outputs
-    
+
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
@@ -683,7 +682,17 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         return image_latents
 
     def prepare_mask_latents(
-        self, mask, masked_image, batch_size, num_images_per_prompt, height, width, dtype, device, generator, do_classifier_free_guidance
+        self,
+        mask,
+        masked_image,
+        batch_size,
+        num_images_per_prompt,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        do_classifier_free_guidance,
     ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
@@ -884,7 +893,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
 
         callback = kwargs.pop("callback", None)
         callback_steps = kwargs.pop("callback_steps", None)
-        
+
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
 
@@ -1121,7 +1130,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                     )
                     mask = callback_outputs.pop("mask", mask)
                     masked_image_latents = callback_outputs.pop("masked_image_latents", masked_image_latents)
-                
+
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
