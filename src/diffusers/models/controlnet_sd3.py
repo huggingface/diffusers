@@ -247,7 +247,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         if load_weights_from_transformer:
             controlnet.pos_embed.load_state_dict(transformer.pos_embed.state_dict(), strict=False)
             controlnet.time_text_embed.load_state_dict(transformer.time_text_embed.state_dict())
-            controlnet.context_embedder.load_state_dict(transformer.context_embedder.state_dict(), strict=False)
+            controlnet.context_embedder.load_state_dict(transformer.context_embedder.state_dict())
             controlnet.transformer_blocks.load_state_dict(transformer.transformer_blocks.state_dict(), strict=False)
 
             controlnet.pos_embed_input = zero_module(controlnet.pos_embed_input)
