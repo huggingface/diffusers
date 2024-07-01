@@ -358,42 +358,42 @@ def _get_model_file(
             )
             return model_file
 
-        except RepositoryNotFoundError:
+        except RepositoryNotFoundError as e:
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
                 "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
                 "token having permission to this repo with `token` or log in with `huggingface-cli "
                 "login`."
-            )
-        except RevisionNotFoundError:
+            ) from e
+        except RevisionNotFoundError as e:
             raise EnvironmentError(
                 f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
                 "this model name. Check the model page at "
                 f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
-            )
-        except EntryNotFoundError:
+            ) from e
+        except EntryNotFoundError as e:
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
-            )
-        except HTTPError as err:
+            ) from e
+        except HTTPError as e:
             raise EnvironmentError(
-                f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
-            )
-        except ValueError:
+                f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{e}"
+            ) from e
+        except ValueError as e:
             raise EnvironmentError(
                 f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
                 f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
                 f" directory containing a file named {weights_name} or"
                 " \nCheckout your internet connection or see how to run the library in"
                 " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
-            )
-        except EnvironmentError:
+            ) from e
+        except EnvironmentError as e:
             raise EnvironmentError(
                 f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
                 "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
                 f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
                 f"containing a file named {weights_name}"
-            )
+            ) from e
 
 
 # Adapted from
