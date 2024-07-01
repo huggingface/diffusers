@@ -115,14 +115,14 @@ class LuminaNextDiTBlock(nn.Module):
 
     def __init__(
         self,
-        hidden_size: int,
+        dim: int,
         num_attention_heads: int,
         num_kv_heads: int,
         multiple_of: int,
         ffn_dim_multiplier: float,
         norm_eps: float,
         qk_norm: bool,
-        encoder_hidden_size: int,
+        cross_attention_dim: int,
         norm_elementwise_affine: bool = True,
     ) -> None:
         super().__init__()
@@ -229,7 +229,6 @@ class LuminaNextDiTBlock(nn.Module):
                 hidden_states=hidden_states,
                 encoder_hidden_states=norm_encoder_hidden_states,
                 attention_mask=encoder_mask,
-                residual=self_attn_output,
                 query_rotary_emb=freqs_cis,
                 key_rotary_emb=None,
                 **cross_attention_kwargs,
@@ -263,7 +262,6 @@ class LuminaNextDiTBlock(nn.Module):
                 encoder_hidden_states=self.attn_encoder_hidden_states_norm(encoder_hidden_states),
                 attention_mask=encoder_mask,
                 image_rotary_emb=None,
-                residual=self_attn_output,
                 **cross_attention_kwargs,
             )
             hidden_states = residual + self.attn_norm2(cross_attn_output)
