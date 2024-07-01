@@ -126,17 +126,15 @@ class LuminaNextDiTBlock(nn.Module):
         norm_elementwise_affine: bool = True,
     ) -> None:
         super().__init__()
-        self.layer_id = layer_id
-        self.hidden_size = hidden_size
-        self.head_dim = hidden_size // num_attention_heads
+        self.head_dim = dim // num_attention_heads
 
         self.gate = nn.Parameter(torch.zeros([num_attention_heads]))
 
         # Self-attention
         self.attn = Attention(
-            query_dim=hidden_size,
+            query_dim=dim,
             cross_attention_dim=None,
-            dim_head=hidden_size // num_attention_heads,
+            dim_head=dim // num_attention_heads,
             qk_norm="layer_norm" if qk_norm else None,
             heads=num_attention_heads,
             kv_heads=num_kv_heads,
@@ -149,9 +147,9 @@ class LuminaNextDiTBlock(nn.Module):
 
         # Cross-attention
         self.cross_attn = Attention(
-            query_dim=hidden_size,
-            cross_attention_dim=encoder_hidden_size,
-            dim_head=hidden_size // num_attention_heads,
+            query_dim=dim,
+            cross_attention_dim=cross_attention_dim,
+            dim_head=dim // num_attention_heads,
             qk_norm="layer_norm" if qk_norm else None,
             heads=num_attention_heads,
             kv_heads=num_kv_heads,
@@ -162,29 +160,29 @@ class LuminaNextDiTBlock(nn.Module):
         )
 
         self.feed_forward = LuminaFeedForward(
-            hidden_size=hidden_size,
-            intermediate_size=4 * hidden_size,
+            hidden_size=dim,
+            intermediate_size=4 * dim,
             multiple_of=multiple_of,
             ffn_dim_multiplier=ffn_dim_multiplier,
         )
 
-        self.attn_norm1 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
-        self.ffn_norm1 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.attn_norm1 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.ffn_norm1 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
-        self.attn_norm2 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
-        self.ffn_norm2 = RMSNorm(hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.attn_norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.ffn_norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
             nn.Linear(
-                min(hidden_size, 1024),
-                4 * hidden_size,
+                min(dim, 1024),
+                4 * dim,
                 bias=True,
             ),
         )
 
         self.attn_encoder_hidden_states_norm = RMSNorm(
-            encoder_hidden_size, eps=norm_eps, elementwise_affine=norm_elementwise_affine
+            cross_attention_dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine
         )
 
     def forward(
@@ -361,7 +359,6 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         self.layers = nn.ModuleList(
             [
                 LuminaNextDiTBlock(
-                    layer_id,
                     hidden_size,
                     num_attention_heads,
                     num_kv_heads,
