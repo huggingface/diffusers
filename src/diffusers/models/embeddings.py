@@ -230,6 +230,52 @@ class PatchEmbed(nn.Module):
         return (latent + pos_embed).to(latent.dtype)
 
 
+class LuminaPatchEmbed(nn.Module):
+    """2D Image to Patch Embedding with support for Lumina-T2X"""
+
+    def __init__(self, patch_size=2, in_channels=4, embed_dim=768, bias=True):
+        super().__init__()
+        self.patch_size = patch_size
+        self.proj = nn.Linear(
+            in_features=patch_size * patch_size * in_channels,
+            out_features=embed_dim,
+            bias=bias,
+        )
+
+    def forward(self, x, freqs_cis):
+        """
+        Patchifies and embeds the input tensor(s).
+
+        Args:
+            x (List[torch.Tensor] | torch.Tensor): The input tensor(s) to be patchified and embedded.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, List[Tuple[int, int]], torch.Tensor]: A tuple containing the patchified
+            and embedded tensor(s), the mask indicating the valid patches, the original image size(s), and the
+            frequency tensor(s).
+        """
+        freqs_cis = freqs_cis.to(x[0].device)
+        patch_height = patch_width = self.patch_size
+        batch_size, channel, height, width = x.size()
+        height_tokens, width_tokens = height // patch_height, width // patch_width
+
+        x = x.view(batch_size, channel, height_tokens, patch_height, width_tokens, patch_width).permute(
+            0, 2, 4, 1, 3, 5
+        )
+        x = x.flatten(3)
+        x = self.proj(x)
+        x = x.flatten(1, 2)
+
+        mask = torch.ones(x.shape[0], x.shape[1], dtype=torch.int32, device=x.device)
+
+        return (
+            x,
+            mask,
+            [(height, width)] * batch_size,
+            freqs_cis[:height_tokens, :width_tokens].flatten(0, 1).unsqueeze(0),
+        )
+
+
 def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
     """
     RoPE for image tokens with 2d structure.
@@ -767,7 +813,7 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
 
 
 class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
-    def __init__(self, hidden_size=4096, encoder_hidden_size=2048, frequency_embedding_size=256):
+    def __init__(self, hidden_size=4096, cross_attention_dim=2048, frequency_embedding_size=256):
         super().__init__()
         self.time_proj = Timesteps(
             num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0.0
@@ -776,9 +822,9 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
         self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
 
         self.caption_embedder = nn.Sequential(
-            nn.LayerNorm(encoder_hidden_size),
+            nn.LayerNorm(cross_attention_dim),
             nn.Linear(
-                encoder_hidden_size,
+                cross_attention_dim,
                 hidden_size,
                 bias=True,
             ),

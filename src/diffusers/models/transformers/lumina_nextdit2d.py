@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -23,6 +23,7 @@ from ..attention import LuminaFeedForward
 from ..attention_processor import Attention, LuminaAttnProcessor2_0
 from ..embeddings import (
     LuminaCombinedTimestepCaptionEmbedding,
+    LuminaPatchEmbed,
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -160,8 +161,8 @@ class LuminaNextDiTBlock(nn.Module):
         )
 
         self.feed_forward = LuminaFeedForward(
-            hidden_size=dim,
-            intermediate_size=4 * dim,
+            dim=dim,
+            inner_dim=4 * dim,
             multiple_of=multiple_of,
             ffn_dim_multiplier=ffn_dim_multiplier,
         )
@@ -189,7 +190,7 @@ class LuminaNextDiTBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
-        freqs_cis: torch.Tensor,
+        image_rotary_emb: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
         adaln_input: Optional[torch.Tensor] = None,
@@ -200,7 +201,7 @@ class LuminaNextDiTBlock(nn.Module):
 
         Args:
             hidden_states (torch.Tensor): Input tensor.
-            freqs_cis (torch.Tensor): Precomputed cosine and sine frequencies.
+            image_rotary_emb (torch.Tensor): Precomputed cosine and sine frequencies.
         Returns:
             torch.Tensor: Output tensor after applying attention and
                 feedforward layers.
@@ -216,8 +217,8 @@ class LuminaNextDiTBlock(nn.Module):
                 hidden_states=hidden_states,
                 encoder_hidden_states=hidden_states,
                 attention_mask=attention_mask,
-                query_rotary_emb=freqs_cis,
-                key_rotary_emb=freqs_cis,
+                query_rotary_emb=image_rotary_emb,
+                key_rotary_emb=image_rotary_emb,
                 **cross_attention_kwargs,
             )
 
@@ -227,7 +228,7 @@ class LuminaNextDiTBlock(nn.Module):
                 hidden_states=hidden_states,
                 encoder_hidden_states=norm_encoder_hidden_states,
                 attention_mask=encoder_mask,
-                query_rotary_emb=freqs_cis,
+                query_rotary_emb=image_rotary_emb,
                 key_rotary_emb=None,
                 **cross_attention_kwargs,
             )
@@ -250,7 +251,7 @@ class LuminaNextDiTBlock(nn.Module):
                 hidden_states=hidden_states,
                 encoder_hidden_states=None,
                 attention_mask=attention_mask,
-                image_rotary_emb=freqs_cis,
+                image_rotary_emb=image_rotary_emb,
                 **cross_attention_kwargs,
             )
 
@@ -308,7 +309,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             predictions.
         qk_norm (`bool`, *optional*, defaults to True):
             Indicates if the queries and keys in the attention mechanism should be normalized.
-        encoder_hidden_size (`int`, *optional*, defaults to 2048):
+        cross_attention_dim (`int`, *optional*, defaults to 2048):
             The dimensionality of the text embeddings. This parameter defines the size of the text representations used
             in the model.
         scaling_factor (`float`, *optional*, defaults to 1.0):
@@ -344,16 +345,14 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         self.head_dim = hidden_size // num_attention_heads
         self.scaling_factor = scaling_factor
 
-        self.patch_embedder = nn.Linear(
-            in_features=patch_size * patch_size * in_channels,
-            out_features=hidden_size,
-            bias=True,
+        self.patch_embedder = LuminaPatchEmbed(
+            patch_size=patch_size, in_channels=in_channels, embed_dim=hidden_size, bias=True
         )
 
         self.pad_token = nn.Parameter(torch.empty(hidden_size))
 
         self.time_caption_embed = LuminaCombinedTimestepCaptionEmbedding(
-            hidden_size=min(hidden_size, 1024), encoder_hidden_size=encoder_hidden_size
+            hidden_size=min(hidden_size, 1024), cross_attention_dim=cross_attention_dim
         )
 
         self.layers = nn.ModuleList(
@@ -366,19 +365,14 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
                     ffn_dim_multiplier,
                     norm_eps,
                     qk_norm,
-                    encoder_hidden_size,
+                    cross_attention_dim,
                 )
-                for layer_id in range(num_layers)
+                for _ in range(num_layers)
             ]
         )
         self.final_layer = LuminaFinalLayer(hidden_size, patch_size, self.out_channels)
 
         assert (hidden_size // num_attention_heads) % 4 == 0, "2d rope needs head dim to be divisible by 4"
-        self.freqs_cis = self.precompute_freqs_cis(
-            hidden_size // num_attention_heads,
-            384,
-            scaling_factor=scaling_factor,
-        )
 
     def unpatchify(self, x: torch.Tensor, img_size: List[Tuple[int, int]], return_tensor=False) -> List[torch.Tensor]:
         """
@@ -418,92 +412,13 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
                 )
         return imgs
 
-    def patchify_and_embed(
-        self, x: Union[List[torch.Tensor], torch.Tensor]
-    ) -> Tuple[torch.Tensor, torch.Tensor, List[Tuple[int, int]], torch.Tensor]:
-        """
-        Patchifies and embeds the input tensor(s).
-
-        Args:
-            x (List[torch.Tensor] | torch.Tensor): The input tensor(s) to be patchified and embedded.
-
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor, List[Tuple[int, int]], torch.Tensor]: A tuple containing the patchified
-            and embedded tensor(s), the mask indicating the valid patches, the original image size(s), and the
-            frequency tensor(s).
-        """
-        self.freqs_cis = self.freqs_cis.to(x[0].device)
-        if isinstance(x, torch.Tensor):
-            pH = pW = self.patch_size
-            B, C, H, W = x.size()
-            x = x.view(B, C, H // pH, pH, W // pW, pW).permute(0, 2, 4, 1, 3, 5).flatten(3)
-            x = self.patch_embedder(x)
-            x = x.flatten(1, 2)
-
-            mask = torch.ones(x.shape[0], x.shape[1], dtype=torch.int32, device=x.device)
-
-            return (
-                x,
-                mask,
-                [(H, W)] * B,
-                self.freqs_cis[: H // pH, : W // pW].flatten(0, 1).unsqueeze(0),
-            )
-        else:
-            pH = pW = self.patch_size
-            x_embed = []
-            freqs_cis = []
-            img_size = []
-            l_effective_seq_len = []
-
-            for img in x:
-                C, H, W = img.size()
-                item_freqs_cis = self.freqs_cis[: H // pH, : W // pW]
-                freqs_cis.append(item_freqs_cis.flatten(0, 1))
-                img_size.append((H, W))
-                img = img.view(C, H // pH, pH, W // pW, pW).permute(1, 3, 0, 2, 4).flatten(2)
-                img = self.x_embedder(img)
-                img = img.flatten(0, 1)
-                l_effective_seq_len.append(len(img))
-                x_embed.append(img)
-
-            max_seq_len = max(l_effective_seq_len)
-            mask = torch.zeros(len(x), max_seq_len, dtype=torch.int32, device=x[0].device)
-            padded_x_embed = []
-            padded_freqs_cis = []
-            for i, (item_embed, item_freqs_cis, item_seq_len) in enumerate(
-                zip(x_embed, freqs_cis, l_effective_seq_len)
-            ):
-                item_embed = torch.cat(
-                    [
-                        item_embed,
-                        self.pad_token.view(1, -1).expand(max_seq_len - item_seq_len, -1),
-                    ],
-                    dim=0,
-                )
-                item_freqs_cis = torch.cat(
-                    [
-                        item_freqs_cis,
-                        item_freqs_cis[-1:].expand(max_seq_len - item_seq_len, -1),
-                    ],
-                    dim=0,
-                )
-                padded_x_embed.append(item_embed)
-                padded_freqs_cis.append(item_freqs_cis)
-                mask[i][:item_seq_len] = 1
-
-            x_embed = torch.stack(padded_x_embed, dim=0)
-            freqs_cis = torch.stack(padded_freqs_cis, dim=0)
-
-            return x_embed, mask, img_size, freqs_cis
-
     def forward(
         self,
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
-        scaling_factor: Optional[int] = 1,
-        scaling_watershed: Optional[float] = 0.3,
+        image_rotary_emb: torch.Tensor,
         cross_attention_kwargs: Dict[str, Any] = None,
         return_dict=True,
     ) -> torch.Tensor:
@@ -519,16 +434,8 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         Returns:
             torch.Tensor: Output tensor of shape (N, C, H, W).
         """
-        # For inference
-        self.freqs_cis = self.precompute_freqs_cis(
-            self.head_dim,
-            384,
-            scaling_factor=scaling_factor,
-            scaling_watershed=scaling_watershed,
-            timestep=timestep[0].item(),
-        )
-        hidden_states, mask, img_size, freqs_cis = self.patchify_and_embed(hidden_states)
-        freqs_cis = freqs_cis.to(hidden_states.device)
+        hidden_states, mask, img_size, image_rotary_emb = self.patch_embedder(hidden_states, image_rotary_emb)
+        image_rotary_emb = image_rotary_emb.to(hidden_states.device)
 
         adaln_input = self.time_caption_embed(timestep, encoder_hidden_states, encoder_mask)
 
@@ -537,7 +444,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             hidden_states = layer(
                 hidden_states,
                 mask,
-                freqs_cis,
+                image_rotary_emb,
                 encoder_hidden_states,
                 encoder_mask,
                 adaln_input=adaln_input,
@@ -545,7 +452,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             )
 
         hidden_states = self.final_layer(hidden_states, adaln_input)
-        output = self.unpatchify(hidden_states, img_size, return_tensor=x_is_tensor)
+        output = self.unpatchify(hidden_states, img_size, return_tensor=True)
 
         if not return_dict:
             return (output,)
@@ -554,7 +461,6 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
 
     def precompute_freqs_cis(
         self,
-        dim: int,
         end: int,
         theta: float = 10000.0,
         scaling_factor: float = 1.0,
@@ -578,7 +484,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             torch.Tensor: Precomputed frequency tensor with complex
                 exponentials.
         """
-
+        dim = self.head_dim
         if timestep < scaling_watershed:
             linear_factor = scaling_factor
             ntk_factor = 1.0
