@@ -333,7 +333,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         norm_eps: Optional[float] = 1e-5,
         learn_sigma: Optional[bool] = True,
         qk_norm: Optional[bool] = True,
-        encoder_hidden_size: Optional[int] = 2048,
+        cross_attention_dim: Optional[int] = 2048,
         scaling_factor: Optional[float] = 1.0,
     ) -> None:
         super().__init__()
@@ -530,7 +530,6 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             scaling_watershed=scaling_watershed,
             timestep=timestep[0].item(),
         )
-        x_is_tensor = isinstance(hidden_states, torch.Tensor)
         hidden_states, mask, img_size, freqs_cis = self.patchify_and_embed(hidden_states)
         freqs_cis = freqs_cis.to(hidden_states.device)
 
