@@ -355,7 +355,7 @@ class LoraLoaderMixin:
                     if not is_model_cpu_offload:
                         is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
                     if not is_sequential_cpu_offload:
-                        is_sequential_cpu_offload = (
+                        is_sequential_cpu_offload = component.device.type == "cpu" and (
                             isinstance(component._hf_hook, AlignDevicesHook)
                             or hasattr(component._hf_hook, "hooks")
                             and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
