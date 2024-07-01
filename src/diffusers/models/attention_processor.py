@@ -1621,8 +1621,7 @@ class LuminaAttnProcessor2_0:
         attention_mask: Optional[torch.Tensor] = None,
         query_rotary_emb: Optional[torch.Tensor] = None,
         key_rotary_emb: Optional[torch.Tensor] = None,
-        proportional_attn: Optional[bool] = True,
-        base_sequence_length: Optional[int] = 4096,
+        base_sequence_length: Optional[int] = None,
     ) -> torch.Tensor:
         from .embeddings import apply_rotary_emb
 
@@ -1670,7 +1669,7 @@ class LuminaAttnProcessor2_0:
         if key_rotary_emb is None:
             softmax_scale = None
         else:
-            if proportional_attn:
+            if base_sequence_length is not None:
                 softmax_scale = math.sqrt(math.log(sequence_length, base_sequence_length)) * attn.scale
             else:
                 softmax_scale = attn.scale

@@ -544,8 +544,8 @@ class LuminaFeedForward(nn.Module):
 
     def __init__(
         self,
-        hidden_size: int,
-        intermediate_size: int,
+        dim: int,
+        inner_dim: int,
         multiple_of: Optional[int] = 256,
         ffn_dim_multiplier: Optional[float] = None,
     ):
