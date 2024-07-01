@@ -17,12 +17,22 @@ import argparse
 import torch
 import typing
 
-from diffusers import AutoencoderKL
-from diffusers.models.modeling_outputs import AutoencoderKLOutput
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.models.autoencoders.autoencoder_kl import (
+    AutoencoderKL,
+    AutoencoderKLOutput,
+)
+from diffusers.models.autoencoders.autoencoder_tiny import (
+    AutoencoderTiny,
+    AutoencoderTinyOutput,
+)
 from diffusers.models.autoencoders.vae import DecoderOutput
 from PIL import Image
 from torchvision import transforms  # type: ignore
-from typing import Optional
+from typing import Optional, Union
+
+
+SupportedAutoencoder = Union[AutoencoderKL, AutoencoderTiny]
 
 
 def load_vae_model(
@@ -33,36 +43,47 @@ def load_vae_model(
     variant: Optional[str],
     # NOTE: use subfolder="vae" if the pointed model is for stable diffusion as a whole instead of just the VAE
     subfolder: Optional[str],
-) -> AutoencoderKL:
-    vae = AutoencoderKL.from_pretrained(  # type: ignore
-        model_name_or_path,
-        subfolder=subfolder,
-        revision=revision,
-        variant=variant,
-    )
-    assert isinstance(vae, AutoencoderKL)
+    use_tiny_nn: bool,
+) -> SupportedAutoencoder:
+    if use_tiny_nn:
+        # NOTE: These scaling factors don't have to be the same as each other.
+        down_scale = 2
+        up_scale = 2
+        vae = AutoencoderTiny.from_pretrained(  # type: ignore
+            model_name_or_path,
+            subfolder=subfolder,
+            revision=revision,
+            variant=variant,
+            downscaling_scaling_factor=down_scale,
+            upsampling_scaling_factor=up_scale,
+        )
+        assert isinstance(vae, AutoencoderTiny)
+    else:
+        vae = AutoencoderKL.from_pretrained(  # type: ignore
+            model_name_or_path,
+            subfolder=subfolder,
+            revision=revision,
+            variant=variant,
+        )
+        assert isinstance(vae, AutoencoderKL)
     vae = vae.to(device)
     vae.eval()  # Set the model to inference mode
     return vae
 
 
-def preprocess_image(
+def pil_to_nhwc(
     *,
     device: torch.device,
-    image_path: str,
+    image: Image.Image,
 ) -> torch.Tensor:
-    image = Image.open(image_path).convert("RGB")
-    transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-        ]
-    )
+    assert image.mode == "RGB"
+    transform = transforms.ToTensor()
     nhwc = transform(image).unsqueeze(0).to(device)  # type: ignore
     assert isinstance(nhwc, torch.Tensor)
     return nhwc
 
 
-def postprocess_image(
+def nhwc_to_pil(
     *,
     nhwc: torch.Tensor,
 ) -> Image.Image:
@@ -75,19 +96,60 @@ def concatenate_images(
     *,
     left: Image.Image,
     right: Image.Image,
+    vertical: bool = False,
 ) -> Image.Image:
     width1, height1 = left.size
     width2, height2 = right.size
-    total_width = width1 + width2
-    max_height = max(height1, height2)
-
-    new_image = Image.new("RGB", (total_width, max_height))
-    new_image.paste(left, (0, 0))
-    new_image.paste(right, (width1, 0))
+    if vertical:
+        total_height = height1 + height2
+        max_width = max(width1, width2)
+        new_image = Image.new("RGB", (max_width, total_height))
+        new_image.paste(left, (0, 0))
+        new_image.paste(right, (0, height1))
+    else:
+        total_width = width1 + width2
+        max_height = max(height1, height2)
+        new_image = Image.new("RGB", (total_width, max_height))
+        new_image.paste(left, (0, 0))
+        new_image.paste(right, (width1, 0))
     return new_image
 
 
-def infer_and_show_images(
+def to_latent(
+    *,
+    rgb_nchw: torch.Tensor,
+    vae: SupportedAutoencoder,
+) -> torch.Tensor:
+    rgb_nchw = VaeImageProcessor.normalize(rgb_nchw)  # type: ignore
+    encoding_nchw = vae.encode(typing.cast(torch.FloatTensor, rgb_nchw))
+    if isinstance(encoding_nchw, AutoencoderKLOutput):
+        latent = encoding_nchw.latent_dist.sample()  # type: ignore
+        assert isinstance(latent, torch.Tensor)
+    elif isinstance(encoding_nchw, AutoencoderTinyOutput):
+        latent = encoding_nchw.latents
+        do_internal_vae_scaling = False  # Is this needed?
+        if do_internal_vae_scaling:
+            latent = vae.scale_latents(latent).mul(255).round().byte()  # type: ignore
+            latent = vae.unscale_latents(latent / 255.0)  # type: ignore
+            assert isinstance(latent, torch.Tensor)
+    else:
+        assert False, f"Unknown encoding type: {type(encoding_nchw)}"
+    return latent
+
+
+def from_latent(
+    *,
+    latent_nchw: torch.Tensor,
+    vae: SupportedAutoencoder,
+) -> torch.Tensor:
+    decoding_nchw = vae.decode(latent_nchw)  # type: ignore
+    assert isinstance(decoding_nchw, DecoderOutput)
+    rgb_nchw = VaeImageProcessor.denormalize(decoding_nchw.sample)  # type: ignore
+    assert isinstance(rgb_nchw, torch.Tensor)
+    return rgb_nchw
+
+
+def main_kwargs(
     *,
     device: torch.device,
     input_image_path: str,
@@ -95,6 +157,7 @@ def infer_and_show_images(
     revision: Optional[str],
     variant: Optional[str],
     subfolder: Optional[str],
+    use_tiny_nn: bool,
 ) -> None:
     vae = load_vae_model(
         device=device,
@@ -102,28 +165,28 @@ def infer_and_show_images(
         revision=revision,
         variant=variant,
         subfolder=subfolder,
+        use_tiny_nn=use_tiny_nn,
     )
-    original_image = preprocess_image(
+    original_pil = Image.open(input_image_path).convert("RGB")
+    original_image = pil_to_nhwc(
         device=device,
-        image_path=input_image_path,
+        image=original_pil,
     )
+    print(f"Original image shape: {original_image.shape}")
+    reconstructed_image: Optional[torch.Tensor] = None
+
     with torch.no_grad():
-        encoding = vae.encode(typing.cast(torch.FloatTensor, original_image))
-        assert isinstance(encoding, AutoencoderKLOutput)
-        latent = encoding.latent_dist.sample()  # type: ignore
-        assert isinstance(latent, torch.Tensor)
-        decoding = vae.decode(latent)  # type: ignore
-        assert isinstance(decoding, DecoderOutput)
-        reconstructed_image = decoding.sample
-
-    original_pil = postprocess_image(nhwc=original_image)
-    reconstructed_pil = postprocess_image(nhwc=reconstructed_image)
-
+        latent_image = to_latent(rgb_nchw=original_image, vae=vae)
+        print(f"Latent shape: {latent_image.shape}")
+        reconstructed_image = from_latent(latent_nchw=latent_image, vae=vae)
+        reconstructed_pil = nhwc_to_pil(nhwc=reconstructed_image)
     combined_image = concatenate_images(
         left=original_pil,
         right=reconstructed_pil,
+        vertical=False,
     )
     combined_image.show("Original | Reconstruction")
+    print(f"Reconstructed image shape: {reconstructed_image.shape}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -163,10 +226,21 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use CUDA if available.",
     )
+    parser.add_argument(
+        "--use_tiny_nn",
+        action="store_true",
+        help="Use tiny neural network.",
+    )
     return parser.parse_args()
 
 
-def main() -> None:
+# EXAMPLE USAGE:
+#
+# python vae_roundtrip.py --use_cuda --pretrained_model_name_or_path "runwayml/stable-diffusion-v1-5" --subfolder "vae" --input_image "foo.png"
+#
+# python vae_roundtrip.py --use_cuda --pretrained_model_name_or_path "madebyollin/taesd" --use_tiny_nn --input_image "foo.png"
+#
+def main_cli() -> None:
     args = parse_args()
 
     input_image_path = args.input_image
@@ -176,28 +250,32 @@ def main() -> None:
     assert isinstance(pretrained_model_name_or_path, str)
 
     revision = args.revision
-    assert revision is None or isinstance(revision, str)
+    assert isinstance(revision, (str, type(None)))
 
     variant = args.variant
-    assert variant is None or isinstance(variant, str)
+    assert isinstance(variant, (str, type(None)))
 
     subfolder = args.subfolder
-    assert subfolder is None or isinstance(subfolder, str)
+    assert isinstance(subfolder, (str, type(None)))
 
     use_cuda = args.use_cuda
     assert isinstance(use_cuda, bool)
 
+    use_tiny_nn = args.use_tiny_nn
+    assert isinstance(use_tiny_nn, bool)
+
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    infer_and_show_images(
+    main_kwargs(
         device=device,
         input_image_path=input_image_path,
         pretrained_model_name_or_path=pretrained_model_name_or_path,
         revision=revision,
         variant=variant,
         subfolder=subfolder,
+        use_tiny_nn=use_tiny_nn,
     )
 
 
 if __name__ == "__main__":
-    main()
+    main_cli()
