@@ -993,16 +993,6 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         num_channels_transformer = self.transformer.config.in_channels
         return_image_latents = num_channels_transformer == 16
 
-        # latents, init_latents_orig, noise = self.prepare_latents(
-        #     image,
-        #     latent_timestep,
-        #     batch_size,
-        #     num_images_per_prompt,
-        #     prompt_embeds.dtype,
-        #     device,
-        #     generator,
-        #     is_strength_max=is_strength_max,
-        # )
         latents_outputs = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -1060,11 +1050,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 )
         elif num_channels_transformer != 16:
             raise ValueError(
-                f"The transformer {self.transformer.__class__} should have 16 input channels, not {self.transformer.config.in_channels}."
-            )
-        else:
-            raise ValueError(
-                f"currently we only support the transformer {self.transformer.__class__} should have 16 input channels or 33 input channels."
+                f"The transformer {self.transformer.__class__} should have 16 input channels or 33 input channels, not {self.transformer.config.in_channels}."
             )
 
         # 6. Denoising loop
