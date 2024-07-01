@@ -677,7 +677,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         else:
             image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
-        image_latents = self.vae.config.scaling_factor * image_latents
+        image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
         return image_latents
 
@@ -710,6 +710,8 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             masked_image_latents = masked_image
         else:
             masked_image_latents = retrieve_latents(self.vae.encode(masked_image), generator=generator)
+
+        masked_image_latents = (masked_image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
