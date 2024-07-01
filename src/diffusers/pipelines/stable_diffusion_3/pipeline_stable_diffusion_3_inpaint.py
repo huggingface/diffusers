@@ -25,7 +25,7 @@ from transformers import (
 )
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...models.autoencoders import AutoencoderKL
+from ...models.autoencoders import AsymmetricAutoencoderKL, AutoencoderKL
 from ...models.transformers import SD3Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -606,62 +606,84 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
-
+    
     def prepare_latents(
-        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, is_strength_max=False
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+        image=None,
+        timestep=None,
+        is_strength_max=True,
+        return_noise=False,
+        return_image_latents=False,
     ):
-        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
+        if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
-                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        image = image.to(device=device, dtype=dtype)
+        if (image is None or timestep is None) and not is_strength_max:
+            raise ValueError(
+                "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
+                "However, either the image or the noise timestep has not been provided."
+            )
 
-        batch_size = batch_size * num_images_per_prompt
-        if image.shape[1] == self.vae.config.latent_channels:
-            init_latents = image
+        if return_image_latents or (latents is None and not is_strength_max):
+            image = image.to(device=device, dtype=dtype)
 
-        else:
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
-
-            elif isinstance(generator, list):
-                init_latents = [
-                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
-                    for i in range(batch_size)
-                ]
-                init_latents = torch.cat(init_latents, dim=0)
+            if image.shape[1] == 16:
+                image_latents = image
             else:
-                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+                image_latents = self._encode_vae_image(image=image, generator=generator)
+            image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
 
-            init_latents = (init_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
-
-        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
-            # expand init_latents for batch_size
-            additional_image_per_prompt = batch_size // init_latents.shape[0]
-            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
-        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
-            )
+        if latents is None:
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            # if strength is 1. then initialise the latents to noise, else initial to image + noise
+            latents = noise if is_strength_max else self.scheduler.scale_noise(image_latents, timestep, noise)
         else:
-            init_latents = torch.cat([init_latents], dim=0)
+            noise = latents.to(device)
+            latents = noise
 
-        shape = init_latents.shape
-        init_latents_orig = init_latents
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        outputs = (latents,)
 
-        # get latents
-        init_latents = noise if is_strength_max else self.scheduler.scale_noise(init_latents, timestep, noise)
-        latents = init_latents.to(device=device, dtype=dtype)
+        if return_noise:
+            outputs += (noise,)
 
-        return latents, init_latents_orig, noise
+        if return_image_latents:
+            outputs += (image_latents,)
+
+        return outputs
+    
+    def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
+        if isinstance(generator, list):
+            image_latents = [
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                for i in range(image.shape[0])
+            ]
+            image_latents = torch.cat(image_latents, dim=0)
+        else:
+            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+
+        image_latents = self.vae.config.scaling_factor * image_latents
+
+        return image_latents
 
     def prepare_mask_latents(
-        self, mask, masked_image, batch_size, num_images_per_prompt, height, width, dtype, device, generator
+        self, mask, masked_image, batch_size, num_images_per_prompt, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
@@ -675,7 +697,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
 
         masked_image = masked_image.to(device=device, dtype=dtype)
 
-        if masked_image.shape[1] == 4:
+        if masked_image.shape[1] == 16:
             masked_image_latents = masked_image
         else:
             masked_image_latents = retrieve_latents(self.vae.encode(masked_image), generator=generator)
@@ -698,10 +720,10 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 )
             masked_image_latents = masked_image_latents.repeat(batch_size // masked_image_latents.shape[0], 1, 1, 1)
 
-        # mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
-        # masked_image_latents = (
-        #     torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
-        # )
+        mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
+        masked_image_latents = (
+            torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
+        )
 
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
@@ -737,11 +759,12 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         prompt_3: Optional[Union[str, List[str]]] = None,
-        height: int = None,
-        width: int = None,
         image: PipelineImageInput = None,
         mask_image: PipelineImageInput = None,
         masked_image_latents: PipelineImageInput = None,
+        height: int = None,
+        width: int = None,
+        padding_mask_crop: Optional[int] = None,
         strength: float = 0.6,
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
@@ -762,6 +785,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
+        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -780,6 +804,13 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
+            padding_mask_crop (`int`, *optional*, defaults to `None`):
+                The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied to
+                image and mask_image. If `padding_mask_crop` is not `None`, it will first find a rectangular region
+                with the same aspect ration of the image and contains all masked area, and then expand that area based
+                on `padding_mask_crop`. The image and mask_image will then be cropped based on the expanded area before
+                resizing to the original image size for inpainting. This is useful when the masked area is small while
+                the image is large and contain information irrelevant for inpainting, such as background.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -851,6 +882,9 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
+        callback = kwargs.pop("callback", None)
+        callback_steps = kwargs.pop("callback_steps", None)
+        
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
 
@@ -919,26 +953,67 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        # check that number of inference steps is not < 1 - as this doesn't make sense
+        if num_inference_steps < 1:
+            raise ValueError(
+                f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
+                f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
+            )
         latent_timestep = timesteps[:1].repeat(batch_size * num_inference_steps)
 
         # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
         is_strength_max = strength == 1.0
 
+        # 5. Preprocess mask and image
+
+        if padding_mask_crop is not None:
+            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
+            resize_mode = "fill"
+        else:
+            crops_coords = None
+            resize_mode = "default"
+
+        original_image = image
+        init_image = self.image_processor.preprocess(
+            image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
+        )
+        init_image = init_image.to(dtype=torch.float32)
+
         # 5. Prepare latent and masked latent variables
         num_channels_latents = self.vae.config.latent_channels
         num_channels_transformer = self.transformer.config.in_channels
+        return_image_latents = num_channels_transformer == 16
 
-        if latents is None:
-            latents, init_latents_orig, noise = self.prepare_latents(
-                image,
-                latent_timestep,
-                batch_size,
-                num_images_per_prompt,
-                prompt_embeds.dtype,
-                device,
-                generator,
-                is_strength_max=is_strength_max,
-            )
+        # latents, init_latents_orig, noise = self.prepare_latents(
+        #     image,
+        #     latent_timestep,
+        #     batch_size,
+        #     num_images_per_prompt,
+        #     prompt_embeds.dtype,
+        #     device,
+        #     generator,
+        #     is_strength_max=is_strength_max,
+        # )
+        latents_outputs = self.prepare_latents(
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            latents,
+            image=init_image,
+            timestep=latent_timestep,
+            is_strength_max=is_strength_max,
+            return_noise=True,
+            return_image_latents=return_image_latents,
+        )
+
+        if return_image_latents:
+            latents, noise, image_latents = latents_outputs
+        else:
+            latents, noise = latents_outputs
 
         if masked_image_latents is None:
             masked_image = image * (mask_condition < 0.5)
@@ -955,6 +1030,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             prompt_embeds.dtype,
             device,
             generator,
+            self.do_classifier_free_guidance,
         )
 
         # match the inpainting pipeline and will be updated with input + mask inpainting model later
@@ -1011,6 +1087,21 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
+                if num_channels_transformer == 16:
+                    init_latents_proper = image_latents
+                    if self.do_classifier_free_guidance:
+                        init_mask, _ = mask.chunk(2)
+                    else:
+                        init_mask = mask
+
+                    if i < len(timesteps) - 1:
+                        noise_timestep = timesteps[i + 1]
+                        init_latents_proper = self.scheduler.scale_noise(
+                            init_latents_proper, torch.tensor([noise_timestep]), noise
+                        )
+
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
@@ -1028,10 +1119,15 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                     negative_pooled_prompt_embeds = callback_outputs.pop(
                         "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
                     )
-
-                init_latents_proper = self.scheduler.scale_noise(init_latents_orig, torch.tensor([t]), noise)
-
-                latents = init_latents_proper * (1 - mask) + latents * mask
+                    mask = callback_outputs.pop("mask", mask)
+                    masked_image_latents = callback_outputs.pop("masked_image_latents", masked_image_latents)
+                
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -1040,21 +1136,28 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        latents = init_latents_orig * (1 - mask) + latents * mask
-
-        if output_type == "latent":
+        if not output_type == "latent":
+            condition_kwargs = {}
+            if isinstance(self.vae, AsymmetricAutoencoderKL):
+                init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
+                init_image_condition = init_image.clone()
+                init_image = self._encode_vae_image(init_image, generator=generator)
+                mask_condition = mask_condition.to(device=device, dtype=masked_image_latents.dtype)
+                condition_kwargs = {"image": init_image_condition, "mask": mask_condition}
+            image = self.vae.decode(
+                latents / self.vae.config.scaling_factor, return_dict=False, generator=generator, **condition_kwargs
+            )[0]
+        else:
             image = latents
 
-        else:
-            latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
+        do_denormalize = [True] * image.shape[0]
 
-            image = self.vae.decode(latents, return_dict=False)[0]
-            image = self.image_processor.postprocess(image, output_type=output_type)
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+
+        if padding_mask_crop is not None:
+            image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
 
         # Offload all models
         self.maybe_free_model_hooks()
-
-        if not return_dict:
-            return (image,)
 
         return StableDiffusion3PipelineOutput(images=image)
