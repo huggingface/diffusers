@@ -52,76 +52,6 @@ To learn more, take a look at the [Distributed Inference with 🤗 Accelerate](h
 
 </Tip>
 
-### Device placement
-
-> [!WARNING]
-> This feature is experimental and its APIs might change in the future. 
-
-With Accelerate, you can use the `device_map` to determine how to distribute the models of a pipeline across multiple devices. This is useful in situations where you have more than one GPU.
-
-For example, if you have two 8GB GPUs, then using [`~DiffusionPipeline.enable_model_cpu_offload`] may not work so well because:
-
-* it only works on a single GPU
-* a single model might not fit on a single GPU ([`~DiffusionPipeline.enable_sequential_cpu_offload`] might work but it will be extremely slow and it is also limited to a single GPU)
-
-To make use of both GPUs, you can use the "balanced" device placement strategy which splits the models across all available GPUs.
-
-> [!WARNING]
-> Only the "balanced" strategy is supported at the moment, and we plan to support additional mapping strategies in the future.
-
-```diff
-from diffusers import DiffusionPipeline
-import torch
-
-pipeline = DiffusionPipeline.from_pretrained(
--    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True,
-+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True, device_map="balanced"
-)
-image = pipeline("a dog").images[0]
-image
-```
-
-You can also pass a dictionary to enforce the maximum GPU memory that can be used on each device:
-
-```diff
-from diffusers import DiffusionPipeline
-import torch
-
-max_memory = {0:"1GB", 1:"1GB"}
-pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
-    torch_dtype=torch.float16, 
-    use_safetensors=True, 
-    device_map="balanced",
-+   max_memory=max_memory
-)
-image = pipeline("a dog").images[0]
-image
-```
-
-If a device is not present in `max_memory`, then it will be completely ignored and will not participate in the device placement. 
-
-By default, Diffusers uses the maximum memory of all devices. If the models don't fit on the GPUs, they are offloaded to the CPU. If the CPU doesn't have enough memory, then you might see an error. In that case, you could defer to using [`~DiffusionPipeline.enable_sequential_cpu_offload`] and [`~DiffusionPipeline.enable_model_cpu_offload`].
-
-Call [`~DiffusionPipeline.reset_device_map`] to reset the `device_map` of a pipeline. This is also necessary if you want to use methods like `to()`, [`~DiffusionPipeline.enable_sequential_cpu_offload`], and [`~DiffusionPipeline.enable_model_cpu_offload`] on a pipeline that was device-mapped.
-
-```py
-pipeline.reset_device_map()
-```
-
-Once a pipeline has been device-mapped, you can also access its device map via `hf_device_map`:
-
-```py
-print(pipeline.hf_device_map)
-```
-
-An example device map would look like so:
-
-
-```bash
-{'unet': 1, 'vae': 1, 'safety_checker': 0, 'text_encoder': 0}
-```
-
 ## PyTorch Distributed
 
 PyTorch supports [`DistributedDataParallel`](https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) which enables data parallelism.
@@ -176,3 +106,6 @@ Once you've completed the inference script, use the `--nproc_per_node` argument 
 ```bash
 torchrun run_distributed.py --nproc_per_node=2
 ```
+
+> [!TIP]
+> You can use `device_map` within a [`DiffusionPipeline`] to distribute its model-level components on multiple devices. Refer to the [Device placement](../tutorials/inference_with_big_models#device-placement) guide to learn more.

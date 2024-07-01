@@ -40,7 +40,7 @@ def main():
         print(f"****** Running file: {file} ******")
 
         # Run with canonical settings.
-        if file != "benchmark_text_to_image.py":
+        if file != "benchmark_text_to_image.py" and file != "benchmark_ip_adapters.py":
             command = f"python {file}"
             run_command(command.split())
 
@@ -49,6 +49,10 @@ def main():
 
     # Run variants.
     for file in python_files:
+        # See: https://github.com/pytorch/pytorch/issues/129637
+        if file == "benchmark_ip_adapters.py":
+            continue
+
         if file == "benchmark_text_to_image.py":
             for ckpt in ALL_T2I_CKPTS:
                 command = f"python {file} --ckpt {ckpt}"
