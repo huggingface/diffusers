@@ -910,7 +910,6 @@ def _encode_prompt_with_clip(
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
-    print("batch_size", batch_size)
 
     if tokenizer is not None:
         text_inputs = tokenizer(
@@ -934,7 +933,6 @@ def _encode_prompt_with_clip(
 
     _, seq_len, _ = prompt_embeds.shape
     # duplicate text embeddings for each generation per prompt, using mps friendly method
-    print("HEREEEEEE", prompt_embeds.shape)
     prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
     prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
@@ -1453,7 +1451,6 @@ def main(args):
             # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
         # batch prompts on all training steps
         else:
-            print("tokenizing pre-training loop")
             tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt)
             tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt)
             tokens_three = tokenize_prompt(tokenizer_three, args.instance_prompt)
