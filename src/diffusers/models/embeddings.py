@@ -749,21 +749,20 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         # extra condition1: text
         pooled_projections = self.pooler(encoder_hidden_states)  # (N, 1024)
 
-        # extra condition2: image meta size embdding
         if self.use_style_cond_and_image_meta_size:
+            # extra condition2: image meta size embdding
             image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0)
             image_meta_size = image_meta_size.to(dtype=hidden_dtype)
             image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
 
-        # extra condition3: style embedding
-        if self.use_style_cond_and_image_meta_size:
+            # extra condition3: style embedding
             style_embedding = self.style_embedder(style)  # (N, embedding_dim)
-
-        # Concatenate all extra vectors
-        if self.use_style_cond_and_image_meta_size:
+            
+            # Concatenate all extra vectors
             extra_cond = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
         else:
-            extra_cond = torch.cat([pooled_projections], dim=1)
+            extra_cond = torch.cat([pooled_projections], dim=1)  
+
         conditioning = timesteps_emb + self.extra_embedder(extra_cond)  # [B, D]
 
         return conditioning
