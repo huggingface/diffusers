@@ -20,3 +20,4 @@ jobs:
       install_libgl1: true
       package: diffusers
       languages: en ko zh ja pt
+      custom_container: diffusers/diffusers-doc-builder

@@ -19,7 +19,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import FromOriginalControlNetMixin
+from ..loaders.single_file_model import FromOriginalModelMixin
 from ..utils import BaseOutput, logging
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -54,7 +54,7 @@ class ControlNetOutput(BaseOutput):
             be of shape `(batch_size, channel * resolution, height //resolution, width // resolution)`. Output can be
             used to condition the original UNet's downsampling activations.
         mid_down_block_re_sample (`torch.Tensor`):
-            The activation of the midde block (the lowest sample resolution). Each tensor should be of shape
+            The activation of the middle block (the lowest sample resolution). Each tensor should be of shape
             `(batch_size, channel * lowest_resolution, height // lowest_resolution, width // lowest_resolution)`.
             Output can be used to condition the original UNet's middle block activation.
     """
@@ -108,7 +108,7 @@ class ControlNetConditioningEmbedding(nn.Module):
         return embedding
 
 
-class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
+class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     A ControlNet model.
 
@@ -530,7 +530,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -665,10 +665,10 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        controlnet_cond: torch.FloatTensor,
+        controlnet_cond: torch.Tensor,
         conditioning_scale: float = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
@@ -677,18 +677,18 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guess_mode: bool = False,
         return_dict: bool = True,
-    ) -> Union[ControlNetOutput, Tuple[Tuple[torch.FloatTensor, ...], torch.FloatTensor]]:
+    ) -> Union[ControlNetOutput, Tuple[Tuple[torch.Tensor, ...], torch.Tensor]]:
         """
         The [`ControlNetModel`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The noisy input tensor.
             timestep (`Union[torch.Tensor, float, int]`):
                 The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.
-            controlnet_cond (`torch.FloatTensor`):
+            controlnet_cond (`torch.Tensor`):
                 The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
             conditioning_scale (`float`, defaults to `1.0`):
                 The scale factor for ControlNet outputs.

@@ -20,21 +20,11 @@ limitations under the License.
     <br>
 <p>
 <p align="center">
-    <a href="https://github.com/huggingface/diffusers/blob/main/LICENSE">
-        <img alt="GitHub" src="https://img.shields.io/github/license/huggingface/datasets.svg?color=blue">
-    </a>
-    <a href="https://github.com/huggingface/diffusers/releases">
-        <img alt="GitHub release" src="https://img.shields.io/github/release/huggingface/diffusers.svg">
-    </a>
-    <a href="https://pepy.tech/project/diffusers">
-        <img alt="GitHub release" src="https://static.pepy.tech/badge/diffusers/month">
-    </a>
-    <a href="CODE_OF_CONDUCT.md">
-        <img alt="Contributor Covenant" src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg">
-    </a>
-    <a href="https://twitter.com/diffuserslib">
-        <img alt="X account" src="https://img.shields.io/twitter/url/https/twitter.com/diffuserslib.svg?style=social&label=Follow%20%40diffuserslib">
-    </a>
+    <a href="https://github.com/huggingface/diffusers/blob/main/LICENSE"><img alt="GitHub" src="https://img.shields.io/github/license/huggingface/datasets.svg?color=blue"></a>
+    <a href="https://github.com/huggingface/diffusers/releases"><img alt="GitHub release" src="https://img.shields.io/github/release/huggingface/diffusers.svg"></a>
+    <a href="https://pepy.tech/project/diffusers"><img alt="GitHub release" src="https://static.pepy.tech/badge/diffusers/month"></a>
+    <a href="CODE_OF_CONDUCT.md"><img alt="Contributor Covenant" src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg"></a>
+    <a href="https://twitter.com/diffuserslib"><img alt="X account" src="https://img.shields.io/twitter/url/https/twitter.com/diffuserslib.svg?style=social&label=Follow%20%40diffuserslib"></a>
 </p>
 
 🤗 Diffusers is the go-to library for state-of-the-art pretrained diffusion models for generating images, audio, and even 3D structures of molecules. Whether you're looking for a simple inference solution or training your own diffusion models, 🤗 Diffusers is a modular toolbox that supports both. Our library is designed with a focus on [usability over performance](https://huggingface.co/docs/diffusers/conceptual/philosophy#usability-over-performance), [simple over easy](https://huggingface.co/docs/diffusers/conceptual/philosophy#simple-over-easy), and [customizability over abstractions](https://huggingface.co/docs/diffusers/conceptual/philosophy#tweakable-contributorfriendly-over-abstraction).
@@ -77,7 +67,7 @@ Please refer to the [How to use Stable Diffusion in Apple Silicon](https://huggi
 
 ## Quickstart
 
-Generating outputs is super easy with 🤗 Diffusers. To generate an image from text, use the `from_pretrained` method to load any pretrained diffusion model (browse the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) for 22000+ checkpoints):
+Generating outputs is super easy with 🤗 Diffusers. To generate an image from text, use the `from_pretrained` method to load any pretrained diffusion model (browse the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) for 27.000+ checkpoints):
 
 ```python
 from diffusers import DiffusionPipeline
@@ -219,7 +209,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
 - https://github.com/deep-floyd/IF
 - https://github.com/bentoml/BentoML
 - https://github.com/bmaltais/kohya_ss
-- +9000 other amazing GitHub repositories 💪
+- +12.000 other amazing GitHub repositories 💪
 
 Thank you for using us ❤️.
 

@@ -78,7 +78,7 @@ def torch_dfs(model: torch.nn.Module):
 class StableDiffusionReferencePipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
 ):
-    r""" "
+    r"""
     Pipeline for Stable Diffusion Reference.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -268,10 +268,10 @@ class StableDiffusionReferencePipeline(
         width: int,
         callback_steps: Optional[int],
         negative_prompt: Optional[str] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[torch.Tensor] = None,
-        ip_adapter_image_embeds: Optional[torch.FloatTensor] = None,
+        ip_adapter_image_embeds: Optional[torch.Tensor] = None,
         callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ) -> None:
         """
@@ -283,10 +283,10 @@ class StableDiffusionReferencePipeline(
             width (int): The width of the input image.
             callback_steps (Optional[int]): The number of steps to perform the callback on.
             negative_prompt (Optional[str]): The negative prompt text.
-            prompt_embeds (Optional[torch.FloatTensor]): The prompt embeddings.
-            negative_prompt_embeds (Optional[torch.FloatTensor]): The negative prompt embeddings.
+            prompt_embeds (Optional[torch.Tensor]): The prompt embeddings.
+            negative_prompt_embeds (Optional[torch.Tensor]): The negative prompt embeddings.
             ip_adapter_image (Optional[torch.Tensor]): The input adapter image.
-            ip_adapter_image_embeds (Optional[torch.FloatTensor]): The input adapter image embeddings.
+            ip_adapter_image_embeds (Optional[torch.Tensor]): The input adapter image embeddings.
             callback_on_step_end_tensor_inputs (Optional[List[str]]): The list of tensor inputs to perform the callback on.
 
         Raises:
@@ -357,11 +357,11 @@ class StableDiffusionReferencePipeline(
         num_images_per_prompt: int,
         do_classifier_free_guidance: bool,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         r"""
         Encodes the prompt into embeddings.
 
@@ -371,13 +371,13 @@ class StableDiffusionReferencePipeline(
             num_images_per_prompt (int): The number of images per prompt.
             do_classifier_free_guidance (bool): Whether to use classifier-free guidance.
             negative_prompt (Optional[Union[str, List[str]]], optional): The negative prompt text or a list of negative prompt texts. Defaults to None.
-            prompt_embeds (Optional[torch.FloatTensor], optional): The prompt embeddings. Defaults to None.
-            negative_prompt_embeds (Optional[torch.FloatTensor], optional): The negative prompt embeddings. Defaults to None.
+            prompt_embeds (Optional[torch.Tensor], optional): The prompt embeddings. Defaults to None.
+            negative_prompt_embeds (Optional[torch.Tensor], optional): The negative prompt embeddings. Defaults to None.
             lora_scale (Optional[float], optional): The LoRA scale. Defaults to None.
             **kwargs: Additional keyword arguments.
 
         Returns:
-            torch.FloatTensor: The encoded prompt embeddings.
+            torch.Tensor: The encoded prompt embeddings.
         """
         deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
         deprecate("_encode_prompt()", "1.0.0", deprecation_message, standard_warn=False)
@@ -407,11 +407,11 @@ class StableDiffusionReferencePipeline(
         num_images_per_prompt: int,
         do_classifier_free_guidance: bool,
         negative_prompt: Optional[str] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -428,10 +428,10 @@ class StableDiffusionReferencePipeline(
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -609,7 +609,12 @@ class StableDiffusionReferencePipeline(
         Returns:
             torch.Tensor: The prepared latent vectors.
         """
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -808,7 +813,7 @@ class StableDiffusionReferencePipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        ref_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        ref_image: Union[torch.Tensor, PIL.Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -817,12 +822,12 @@ class StableDiffusionReferencePipeline(
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
@@ -839,9 +844,9 @@ class StableDiffusionReferencePipeline(
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            ref_image (`torch.FloatTensor`, `PIL.Image.Image`):
+            ref_image (`torch.Tensor`, `PIL.Image.Image`):
                 The Reference Control input condition. Reference Control uses this input condition to generate guidance to Unet. If
-                the type is specified as `Torch.FloatTensor`, it is passed to Reference Control as is. `PIL.Image.Image` can
+                the type is specified as `torch.Tensor`, it is passed to Reference Control as is. `PIL.Image.Image` can
                 also be accepted as an image.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
@@ -868,14 +873,14 @@ class StableDiffusionReferencePipeline(
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -887,7 +892,7 @@ class StableDiffusionReferencePipeline(
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
@@ -1012,10 +1017,10 @@ class StableDiffusionReferencePipeline(
 
         def hacked_basic_transformer_inner_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            attention_mask: Optional[torch.FloatTensor] = None,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
-            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            attention_mask: Optional[torch.Tensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
             timestep: Optional[torch.LongTensor] = None,
             cross_attention_kwargs: Dict[str, Any] = None,
             class_labels: Optional[torch.LongTensor] = None,
@@ -1130,12 +1135,12 @@ class StableDiffusionReferencePipeline(
 
         def hack_CrossAttnDownBlock2D_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            temb: Optional[torch.FloatTensor] = None,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
-            attention_mask: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            temb: Optional[torch.Tensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            attention_mask: Optional[torch.Tensor] = None,
             cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
         ):
             eps = 1e-6
 
@@ -1186,10 +1191,10 @@ class StableDiffusionReferencePipeline(
 
         def hacked_DownBlock2D_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            temb: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            temb: Optional[torch.Tensor] = None,
             **kwargs: Any,
-        ) -> Tuple[torch.FloatTensor, ...]:
+        ) -> Tuple[torch.Tensor, ...]:
             eps = 1e-6
 
             output_states = ()
@@ -1231,15 +1236,15 @@ class StableDiffusionReferencePipeline(
 
         def hacked_CrossAttnUpBlock2D_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-            temb: Optional[torch.FloatTensor] = None,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+            temb: Optional[torch.Tensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
             cross_attention_kwargs: Optional[Dict[str, Any]] = None,
             upsample_size: Optional[int] = None,
-            attention_mask: Optional[torch.FloatTensor] = None,
-            encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        ) -> torch.FloatTensor:
+            attention_mask: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
+        ) -> torch.Tensor:
             eps = 1e-6
             # TODO(Patrick, William) - attention mask is not used
             for i, (resnet, attn) in enumerate(zip(self.resnets, self.attentions)):
@@ -1287,12 +1292,12 @@ class StableDiffusionReferencePipeline(
 
         def hacked_UpBlock2D_forward(
             self,
-            hidden_states: torch.FloatTensor,
-            res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-            temb: Optional[torch.FloatTensor] = None,
+            hidden_states: torch.Tensor,
+            res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+            temb: Optional[torch.Tensor] = None,
             upsample_size: Optional[int] = None,
             **kwargs: Any,
-        ) -> torch.FloatTensor:
+        ) -> torch.Tensor:
             eps = 1e-6
             for i, resnet in enumerate(self.resnets):
                 # pop res hidden states

@@ -4,8 +4,11 @@ LABEL repository="diffusers"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt update && \
-    apt install -y bash \
+RUN apt-get -y update \
+    && apt-get install -y software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa
+
+RUN apt install -y bash \
     build-essential \
     git \
     git-lfs \
@@ -37,7 +40,7 @@ RUN python3.9 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
     huggingface-hub \
     Jinja2 \
     librosa \
-    numpy \
+    numpy==1.26.4 \
     scipy \
     tensorboard \
     transformers

@@ -57,50 +57,54 @@ body:
       description: |
         Your issue will be replied to more quickly if you can figure out the right person to tag with @.
         If you know how to use git blame, that is the easiest way, otherwise, here is a rough guide of **who to tag**.
-        
+
         All issues are read by one of the core maintainers, so if you don't know who to tag, just leave this blank and
         a core maintainer will ping the right person.
-        
+
         Please tag a maximum of 2 people.
 
-        Questions on DiffusionPipeline (Saving, Loading, From pretrained, ...):
+        Questions on DiffusionPipeline (Saving, Loading, From pretrained, ...): @sayakpaul @DN6
 
         Questions on pipelines:
-        - Stable Diffusion @yiyixuxu @DN6 @sayakpaul 
-        - Stable Diffusion XL @yiyixuxu @sayakpaul @DN6 
-        - Kandinsky @yiyixuxu 
-        - ControlNet @sayakpaul @yiyixuxu @DN6 
-        - T2I Adapter @sayakpaul @yiyixuxu @DN6 
-        - IF @DN6 
-        - Text-to-Video / Video-to-Video @DN6 @sayakpaul 
-        - Wuerstchen @DN6 
+        - Stable Diffusion @yiyixuxu @asomoza
+        - Stable Diffusion XL @yiyixuxu @sayakpaul @DN6
+        - Stable Diffusion 3: @yiyixuxu @sayakpaul @DN6 @asomoza
+        - Kandinsky @yiyixuxu
+        - ControlNet @sayakpaul @yiyixuxu @DN6
+        - T2I Adapter @sayakpaul @yiyixuxu @DN6
+        - IF @DN6
+        - Text-to-Video / Video-to-Video @DN6 @sayakpaul
+        - Wuerstchen @DN6
         - Other: @yiyixuxu @DN6
+        - Improving generation quality: @asomoza
 
         Questions on models:
-        - UNet @DN6 @yiyixuxu @sayakpaul 
-        - VAE @sayakpaul @DN6 @yiyixuxu 
-        - Transformers/Attention @DN6 @yiyixuxu @sayakpaul @DN6 
+        - UNet @DN6 @yiyixuxu @sayakpaul
+        - VAE @sayakpaul @DN6 @yiyixuxu
+        - Transformers/Attention @DN6 @yiyixuxu @sayakpaul
 
-        Questions on Schedulers: @yiyixuxu 
+        Questions on single file checkpoints: @DN6
 
-        Questions on LoRA: @sayakpaul 
+        Questions on Schedulers: @yiyixuxu
 
-        Questions on Textual Inversion: @sayakpaul 
+        Questions on LoRA: @sayakpaul
 
-        Questions on Training: 
-        - DreamBooth @sayakpaul 
-        - Text-to-Image Fine-tuning @sayakpaul 
-        - Textual Inversion @sayakpaul 
-        - ControlNet @sayakpaul 
+        Questions on Textual Inversion: @sayakpaul
 
-        Questions on Tests: @DN6 @sayakpaul @yiyixuxu 
+        Questions on Training:
+        - DreamBooth @sayakpaul
+        - Text-to-Image Fine-tuning @sayakpaul
+        - Textual Inversion @sayakpaul
+        - ControlNet @sayakpaul
+
+        Questions on Tests: @DN6 @sayakpaul @yiyixuxu
 
         Questions on Documentation: @stevhliu
 
         Questions on JAX- and MPS-related things: @pcuenca
 
-        Questions on audio pipelines: @DN6 
-        
+        Questions on audio pipelines: @sanchit-gandhi
 
-        
+
+
       placeholder: "@Username ..."

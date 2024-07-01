@@ -12,26 +12,50 @@ specific language governing permissions and limitations under the License.
 
 # Single files
 
-Diffusers supports loading pretrained pipeline (or model) weights stored in a single file, such as a `ckpt` or `safetensors` file. These single file types are typically produced from community trained models. There are three classes for loading single file weights:
+The [`~loaders.FromSingleFileMixin.from_single_file`] method allows you to load:
 
-- [`FromSingleFileMixin`] supports loading pretrained pipeline weights stored in a single file, which can either be a `ckpt` or `safetensors` file.
-- [`FromOriginalVAEMixin`] supports loading a pretrained [`AutoencoderKL`] from pretrained ControlNet weights stored in a single file, which can either be a `ckpt` or `safetensors` file.
-- [`FromOriginalControlnetMixin`] supports loading pretrained ControlNet weights stored in a single file, which can either be a `ckpt` or `safetensors` file.
+* a model stored in a single file, which is useful if you're working with models from the diffusion ecosystem, like Automatic1111, and commonly rely on a single-file layout to store and share models
+* a model stored in their originally distributed layout, which is useful if you're working with models finetuned with other services, and want to load it directly into Diffusers model objects and pipelines
 
-<Tip>
+> [!TIP]
+> Read the [Model files and layouts](../../using-diffusers/other-formats) guide to learn more about the Diffusers-multifolder layout versus the single-file layout, and how to load models stored in these different layouts.
 
-To learn more about how to load single file weights, see the [Load different Stable Diffusion formats](../../using-diffusers/other-formats) loading guide.
+## Supported pipelines
 
-</Tip>
+- [`StableDiffusionPipeline`]
+- [`StableDiffusionImg2ImgPipeline`]
+- [`StableDiffusionInpaintPipeline`]
+- [`StableDiffusionControlNetPipeline`]
+- [`StableDiffusionControlNetImg2ImgPipeline`]
+- [`StableDiffusionControlNetInpaintPipeline`]
+- [`StableDiffusionUpscalePipeline`]
+- [`StableDiffusionXLPipeline`]
+- [`StableDiffusionXLImg2ImgPipeline`]
+- [`StableDiffusionXLInpaintPipeline`]
+- [`StableDiffusionXLInstructPix2PixPipeline`]
+- [`StableDiffusionXLControlNetPipeline`]
+- [`StableDiffusionXLKDiffusionPipeline`]
+- [`StableDiffusion3Pipeline`]
+- [`LatentConsistencyModelPipeline`]
+- [`LatentConsistencyModelImg2ImgPipeline`]
+- [`StableDiffusionControlNetXSPipeline`]
+- [`StableDiffusionXLControlNetXSPipeline`]
+- [`LEditsPPPipelineStableDiffusion`]
+- [`LEditsPPPipelineStableDiffusionXL`]
+- [`PIAPipeline`]
+
+## Supported models
+
+- [`UNet2DConditionModel`]
+- [`StableCascadeUNet`]
+- [`AutoencoderKL`]
+- [`ControlNetModel`]
+- [`SD3Transformer2DModel`]
 
 ## FromSingleFileMixin
 
 [[autodoc]] loaders.single_file.FromSingleFileMixin
 
-## FromOriginalVAEMixin
+## FromOriginalModelMixin
 
-[[autodoc]] loaders.autoencoder.FromOriginalVAEMixin
-
-## FromOriginalControlnetMixin
-
-[[autodoc]] loaders.controlnet.FromOriginalControlNetMixin
+[[autodoc]] loaders.single_file_model.FromOriginalModelMixin
