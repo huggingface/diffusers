@@ -287,7 +287,7 @@ refiner = DiffusionPipeline.from_pretrained(
 
 <Tip warning={true}>
 
-You can also use SDXL refiner with a different base model. For example,you can use[Hunyuan-DiT](https://huggingface.co/docs/diffusers/api/pipelines/hunyuandit) or [PixArt-Sigma](https://huggingface.co/docs/diffusers/api/pipelines/pixart_sigma) Text-to-Image pipelines to generate images with better prompt adherence. Once you have generated an image, you can then pass it to SDXL refiner to enhance final generation quality.
+You can use SDXL refiner with a different base model. For example, you can use the [Hunyuan-DiT](../../api/pipelines/hunyuandit) or [PixArt-Sigma](../../api/pipelines/pixart_sigma) pipelines to generate images with better prompt adherence. Once you have generated an image, you can pass it to the SDXL refiner model to enhance final generation quality.
 
 </Tip>
 

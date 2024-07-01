@@ -36,7 +36,7 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 <Tip>
 
-Once you have generated an image using [`HunyuanDiTPipeline`], you can pass that image to SDXL refiner to further improve the final generation quality. Check out this [guide](https://huggingface.co/docs/diffusers/using-diffusers/sdxl#base-to-refiner-model) on how to use SDXL refiner model.
+You can further improve generation quality by passing the generated image from [`HungyuanDiTPipeline`] to the [SDXL refiner](../../using-diffusers/sdxl#base-to-refiner-model) model.
 
 </Tip>
 
