@@ -1062,6 +1062,10 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             raise ValueError(
                 f"The transformer {self.transformer.__class__} should have 16 input channels, not {self.transformer.config.in_channels}."
             )
+        else:
+            raise ValueError(
+                f"currently we only support the transformer {self.transformer.__class__} should have 16 input channels or 33 input channels."
+            )
 
         # 6. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -1095,7 +1099,6 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
-
                 if num_channels_transformer == 16:
                     init_latents_proper = image_latents
                     if self.do_classifier_free_guidance:
