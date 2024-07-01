@@ -70,7 +70,7 @@ accelerate launch train_text_to_image_sdxl.py \
   --report_to="wandb" \
   --validation_prompt="a cute Sundar Pichai creature" --validation_epochs 5 \
   --checkpointing_steps=5000 \
-  --output_dir="sdxl-pokemon-model" \
+  --output_dir="sdxl-naruto-model" \
   --push_to_hub
 ```
 
@@ -91,9 +91,9 @@ model_path = "you-model-id-goes-here" # <-- change this
 pipe = DiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16)
 pipe.to("cuda")
 
-prompt = "A pokemon with green eyes and red legs."
+prompt = "A naruto with green eyes and red legs."
 image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
-image.save("pokemon.png")
+image.save("naruto.png")
 ```
 
 ### Inference in Pytorch XLA
@@ -108,11 +108,11 @@ pipe = DiffusionPipeline.from_pretrained(model_id)
 device = xm.xla_device()
 pipe.to(device)
 
-prompt = "A pokemon with green eyes and red legs."
+prompt = "A naruto with green eyes and red legs."
 start = time()
 image = pipe(prompt, num_inference_steps=inference_steps).images[0]
 print(f'Compilation time is {time()-start} sec')
-image.save("pokemon.png")
+image.save("naruto.png")
 
 start = time()
 image = pipe(prompt, num_inference_steps=inference_steps).images[0]
@@ -142,7 +142,7 @@ on consumer GPUs like Tesla T4, Tesla V100.
 
 ### Training
 
-First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables and, optionally, the `VAE_NAME` variable. Here, we will use [Stable Diffusion XL 1.0-base](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions).
+First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables and, optionally, the `VAE_NAME` variable. Here, we will use [Stable Diffusion XL 1.0-base](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and the [Narutos dataset](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions).
 
 **___Note: It is quite useful to monitor the training progress by regularly generating sample images during training. [Weights and Biases](https://docs.wandb.ai/quickstart) is a nice solution to easily see generating images during training. All you need to do is to run `pip install wandb` before training to automatically log images.___**
 
@@ -172,7 +172,7 @@ accelerate launch train_text_to_image_lora_sdxl.py \
   --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
   --mixed_precision="fp16" \
   --seed=42 \
-  --output_dir="sd-pokemon-model-lora-sdxl" \
+  --output_dir="sd-naruto-model-lora-sdxl" \
   --validation_prompt="cute dragon creature" --report_to="wandb" \
   --push_to_hub
 ```
@@ -237,9 +237,8 @@ accelerate launch  --config_file $ACCELERATE_CONFIG_FILE train_text_to_image_lor
   --max_train_steps=20 \
   --validation_epochs=20 \
   --seed=1234 \
-  --output_dir="sd-pokemon-model-lora-sdxl" \
+  --output_dir="sd-naruto-model-lora-sdxl" \
   --validation_prompt="cute dragon creature"
-
 ```
 
 
@@ -260,7 +259,7 @@ accelerate launch train_text_to_image_lora_sdxl.py \
   --num_train_epochs=2 --checkpointing_steps=500 \
   --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
   --seed=42 \
-  --output_dir="sd-pokemon-model-lora-sdxl-txt" \
+  --output_dir="sd-naruto-model-lora-sdxl-txt" \
   --train_text_encoder \
   --validation_prompt="cute dragon creature" --report_to="wandb" \
   --push_to_hub
@@ -269,18 +268,18 @@ accelerate launch train_text_to_image_lora_sdxl.py \
 ### Inference
 
 Once you have trained a model using above command, the inference can be done simply using the `DiffusionPipeline` after loading the trained LoRA weights.  You
-need to pass the `output_dir` for loading the LoRA weights which, in this case, is `sd-pokemon-model-lora-sdxl`.
+need to pass the `output_dir` for loading the LoRA weights which, in this case, is `sd-naruto-model-lora-sdxl`.
 
 ```python
 from diffusers import DiffusionPipeline
 import torch
 
-model_path = "takuoko/sd-pokemon-model-lora-sdxl"
+model_path = "takuoko/sd-naruto-model-lora-sdxl"
 pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
 pipe.to("cuda")
 pipe.load_lora_weights(model_path)
 
-prompt = "A pokemon with green eyes and red legs."
+prompt = "A naruto with green eyes and red legs."
 image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
-image.save("pokemon.png")
+image.save("naruto.png")
 ```

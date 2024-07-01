@@ -123,7 +123,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
 
 class PatchEmbed(nn.Module):
-    """2D Image to Patch Embedding"""
+    """2D Image to Patch Embedding with support for SD3 cropping."""
 
     def __init__(
         self,
@@ -137,12 +137,14 @@ class PatchEmbed(nn.Module):
         bias=True,
         interpolation_scale=1,
         pos_embed_type="sincos",
+        pos_embed_max_size=None,  # For SD3 cropping
     ):
         super().__init__()
 
         num_patches = (height // patch_size) * (width // patch_size)
         self.flatten = flatten
         self.layer_norm = layer_norm
+        self.pos_embed_max_size = pos_embed_max_size
 
         self.proj = nn.Conv2d(
             in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
@@ -153,26 +155,55 @@ class PatchEmbed(nn.Module):
             self.norm = None
 
         self.patch_size = patch_size
-        # See:
-        # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L161
         self.height, self.width = height // patch_size, width // patch_size
         self.base_size = height // patch_size
         self.interpolation_scale = interpolation_scale
+
+        # Calculate positional embeddings based on max size or default
+        if pos_embed_max_size:
+            grid_size = pos_embed_max_size
+        else:
+            grid_size = int(num_patches**0.5)
+
         if pos_embed_type is None:
             self.pos_embed = None
         elif pos_embed_type == "sincos":
             pos_embed = get_2d_sincos_pos_embed(
-                embed_dim,
-                int(num_patches**0.5),
-                base_size=self.base_size,
-                interpolation_scale=self.interpolation_scale,
+                embed_dim, grid_size, base_size=self.base_size, interpolation_scale=self.interpolation_scale
             )
-            self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
+            persistent = True if pos_embed_max_size else False
+            self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=persistent)
         else:
             raise ValueError(f"Unsupported pos_embed_type: {pos_embed_type}")
 
+    def cropped_pos_embed(self, height, width):
+        """Crops positional embeddings for SD3 compatibility."""
+        if self.pos_embed_max_size is None:
+            raise ValueError("`pos_embed_max_size` must be set for cropping.")
+
+        height = height // self.patch_size
+        width = width // self.patch_size
+        if height > self.pos_embed_max_size:
+            raise ValueError(
+                f"Height ({height}) cannot be greater than `pos_embed_max_size`: {self.pos_embed_max_size}."
+            )
+        if width > self.pos_embed_max_size:
+            raise ValueError(
+                f"Width ({width}) cannot be greater than `pos_embed_max_size`: {self.pos_embed_max_size}."
+            )
+
+        top = (self.pos_embed_max_size - height) // 2
+        left = (self.pos_embed_max_size - width) // 2
+        spatial_pos_embed = self.pos_embed.reshape(1, self.pos_embed_max_size, self.pos_embed_max_size, -1)
+        spatial_pos_embed = spatial_pos_embed[:, top : top + height, left : left + width, :]
+        spatial_pos_embed = spatial_pos_embed.reshape(1, -1, spatial_pos_embed.shape[-1])
+        return spatial_pos_embed
+
     def forward(self, latent):
-        height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
+        if self.pos_embed_max_size is not None:
+            height, width = latent.shape[-2:]
+        else:
+            height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
 
         latent = self.proj(latent)
         if self.flatten:
@@ -181,20 +212,20 @@ class PatchEmbed(nn.Module):
             latent = self.norm(latent)
         if self.pos_embed is None:
             return latent.to(latent.dtype)
-
-        # Interpolate positional embeddings if needed.
-        # (For PixArt-Alpha: https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L162C151-L162C160)
-        if self.height != height or self.width != width:
-            pos_embed = get_2d_sincos_pos_embed(
-                embed_dim=self.pos_embed.shape[-1],
-                grid_size=(height, width),
-                base_size=self.base_size,
-                interpolation_scale=self.interpolation_scale,
-            )
-            pos_embed = torch.from_numpy(pos_embed)
-            pos_embed = pos_embed.float().unsqueeze(0).to(latent.device)
+        # Interpolate or crop positional embeddings as needed
+        if self.pos_embed_max_size:
+            pos_embed = self.cropped_pos_embed(height, width)
         else:
-            pos_embed = self.pos_embed
+            if self.height != height or self.width != width:
+                pos_embed = get_2d_sincos_pos_embed(
+                    embed_dim=self.pos_embed.shape[-1],
+                    grid_size=(height, width),
+                    base_size=self.base_size,
+                    interpolation_scale=self.interpolation_scale,
+                )
+                pos_embed = torch.from_numpy(pos_embed).float().unsqueeze(0).to(latent.device)
+            else:
+                pos_embed = self.pos_embed
 
         return (latent + pos_embed).to(latent.dtype)
 
@@ -626,6 +657,25 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
         return conditioning
 
 
+class CombinedTimestepTextProjEmbeddings(nn.Module):
+    def __init__(self, embedding_dim, pooled_projection_dim):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.text_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
+
+    def forward(self, timestep, pooled_projection):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=pooled_projection.dtype))  # (N, D)
+
+        pooled_projections = self.text_embedder(pooled_projection)
+
+        conditioning = timesteps_emb + pooled_projections
+
+        return conditioning
+
+
 class HunyuanDiTAttentionPool(nn.Module):
     # Copied from https://github.com/Tencent/HunyuanDiT/blob/cb709308d92e6c7e8d59d0dff41b74d35088db6a/hydit/modules/poolers.py#L6
 
@@ -667,7 +717,14 @@ class HunyuanDiTAttentionPool(nn.Module):
 
 
 class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
-    def __init__(self, embedding_dim, pooled_projection_dim=1024, seq_len=256, cross_attention_dim=2048):
+    def __init__(
+        self,
+        embedding_dim,
+        pooled_projection_dim=1024,
+        seq_len=256,
+        cross_attention_dim=2048,
+        use_style_cond_and_image_meta_size=True,
+    ):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
@@ -676,9 +733,15 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         self.pooler = HunyuanDiTAttentionPool(
             seq_len, cross_attention_dim, num_heads=8, output_dim=pooled_projection_dim
         )
+
         # Here we use a default learned embedder layer for future extension.
-        self.style_embedder = nn.Embedding(1, embedding_dim)
-        extra_in_dim = 256 * 6 + embedding_dim + pooled_projection_dim
+        self.use_style_cond_and_image_meta_size = use_style_cond_and_image_meta_size
+        if use_style_cond_and_image_meta_size:
+            self.style_embedder = nn.Embedding(1, embedding_dim)
+            extra_in_dim = 256 * 6 + embedding_dim + pooled_projection_dim
+        else:
+            extra_in_dim = pooled_projection_dim
+
         self.extra_embedder = PixArtAlphaTextProjection(
             in_features=extra_in_dim,
             hidden_size=embedding_dim * 4,
@@ -693,16 +756,20 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         # extra condition1: text
         pooled_projections = self.pooler(encoder_hidden_states)  # (N, 1024)
 
-        # extra condition2: image meta size embdding
-        image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0)
-        image_meta_size = image_meta_size.to(dtype=hidden_dtype)
-        image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
+        if self.use_style_cond_and_image_meta_size:
+            # extra condition2: image meta size embdding
+            image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0)
+            image_meta_size = image_meta_size.to(dtype=hidden_dtype)
+            image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
 
-        # extra condition3: style embedding
-        style_embedding = self.style_embedder(style)  # (N, embedding_dim)
+            # extra condition3: style embedding
+            style_embedding = self.style_embedder(style)  # (N, embedding_dim)
 
-        # Concatenate all extra vectors
-        extra_cond = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
+            # Concatenate all extra vectors
+            extra_cond = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
+        else:
+            extra_cond = torch.cat([pooled_projections], dim=1)
+
         conditioning = timesteps_emb + self.extra_embedder(extra_cond)  # [B, D]
 
         return conditioning
@@ -930,7 +997,7 @@ class GLIGENTextBoundingboxProjection(nn.Module):
 
             objs = self.linears(torch.cat([positive_embeddings, xyxy_embedding], dim=-1))
 
-        # positionet with text and image infomation
+        # positionet with text and image information
         else:
             phrases_masks = phrases_masks.unsqueeze(-1)
             image_masks = image_masks.unsqueeze(-1)
@@ -1001,6 +1068,8 @@ class PixArtAlphaTextProjection(nn.Module):
         self.linear_1 = nn.Linear(in_features=in_features, out_features=hidden_size, bias=True)
         if act_fn == "gelu_tanh":
             self.act_1 = nn.GELU(approximate="tanh")
+        elif act_fn == "silu":
+            self.act_1 = nn.SiLU()
         elif act_fn == "silu_fp32":
             self.act_1 = FP32SiLU()
         else:
@@ -1200,7 +1269,7 @@ class MultiIPAdapterImageProjection(nn.Module):
         if not isinstance(image_embeds, list):
             deprecation_message = (
                 "You have passed a tensor as `image_embeds`.This is deprecated and will be removed in a future release."
-                " Please make sure to update your script to pass `image_embeds` as a list of tensors to supress this warning."
+                " Please make sure to update your script to pass `image_embeds` as a list of tensors to suppress this warning."
             )
             deprecate("image_embeds not a list", "1.0.0", deprecation_message, standard_warn=False)
             image_embeds = [image_embeds.unsqueeze(1)]

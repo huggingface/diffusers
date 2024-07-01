@@ -306,3 +306,36 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_asymmetric_motion_model(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["layers_per_block"] = (2, 3)
+        init_dict["transformer_layers_per_block"] = ((1, 2), (3, 4, 5))
+        init_dict["reverse_transformer_layers_per_block"] = ((7, 6, 7, 4), (4, 2, 2))
+
+        init_dict["temporal_transformer_layers_per_block"] = ((2, 5), (2, 3, 5))
+        init_dict["reverse_temporal_transformer_layers_per_block"] = ((5, 4, 3, 4), (3, 2, 2))
+
+        init_dict["num_attention_heads"] = (2, 4)
+        init_dict["motion_num_attention_heads"] = (4, 4)
+        init_dict["reverse_motion_num_attention_heads"] = (2, 2)
+
+        init_dict["use_motion_mid_block"] = True
+        init_dict["mid_block_layers"] = 2
+        init_dict["transformer_layers_per_mid_block"] = (1, 5)
+        init_dict["temporal_transformer_layers_per_mid_block"] = (2, 4)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.to_tuple()[0]
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")

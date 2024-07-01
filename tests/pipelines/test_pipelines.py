@@ -29,6 +29,7 @@ import PIL.Image
 import requests_mock
 import safetensors.torch
 import torch
+import torch.nn as nn
 from parameterized import parameterized
 from PIL import Image
 from requests.exceptions import HTTPError
@@ -68,12 +69,12 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     get_python_version,
     get_tests_dir,
+    is_torch_compile,
     load_numpy,
     nightly,
     require_compel,
     require_flax,
     require_onnxruntime,
-    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -135,6 +136,7 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
 class CustomEncoder(ModelMixin, ConfigMixin):
     def __init__(self):
         super().__init__()
+        self.linear = nn.Linear(3, 3)
 
 
 class CustomPipeline(DiffusionPipeline):
@@ -1759,7 +1761,7 @@ class PipelineSlowTests(unittest.TestCase):
 
         assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     @unittest.skipIf(
         get_python_version == (3, 12),

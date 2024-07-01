@@ -86,17 +86,17 @@ This example shows training for 2 subjects, but please note that the model can b
 
 Note also that in this script, `sks` and `t@y` were used as tokens to learn the new subjects ([this thread](https://github.com/XavierXiao/Dreambooth-Stable-Diffusion/issues/71) inspired the use of `t@y` as our second identifier). However, there may be better rare tokens to experiment with, and results also seemed to be good when more intuitive words are used.
 
-**Important**: New parameters are added to the script, making possible to validate the progress of the training by 
+**Important**: New parameters are added to the script, making possible to validate the progress of the training by
 generating images at specified steps. Taking also into account that a comma separated list in a text field for a prompt
-it's never a good idea (simply because it is very common in prompts to have them as part of a regular text) we 
-introduce the `concept_list` parameter: allowing to specify a json-like file where you can define the different 
+it's never a good idea (simply because it is very common in prompts to have them as part of a regular text) we
+introduce the `concept_list` parameter: allowing to specify a json-like file where you can define the different
 configuration for each subject that you want to train.
 
 An example of how to generate the file:
 ```python
 import json
 
-# here we are using parameters for prior-preservation and validation as well. 
+# here we are using parameters for prior-preservation and validation as well.
 concepts_list = [
     {
         "instance_prompt":      "drawing of a t@y meme",
@@ -290,7 +290,7 @@ accelerate launch --mixed_precision="fp16" train_dreambooth.py \
 
 ### Fine-tune text encoder with the UNet.
 
-The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces. 
+The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces.
 Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
 
 ___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
@@ -323,7 +323,7 @@ accelerate launch train_dreambooth.py \
 
 ### Using DreamBooth for other pipelines than Stable Diffusion
 
-Altdiffusion also support dreambooth now, the runing comman is basically the same as above, all you need to do is replace the `MODEL_NAME` like this:
+Altdiffusion also supports dreambooth now, the running command is basically the same as above, all you need to do is replace the `MODEL_NAME` like this:
 One can now simply change the `pretrained_model_name_or_path` to another architecture such as [`AltDiffusion`](https://huggingface.co/docs/diffusers/api/pipelines/alt_diffusion).
 
 ```
