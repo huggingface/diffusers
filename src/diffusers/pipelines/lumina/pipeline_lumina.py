@@ -751,10 +751,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if proportional_attn:
-            cross_attention_kwargs["proportional_attn"] = True
             cross_attention_kwargs["base_sequence_length"] = (self.default_image_size // 16) ** 2
-        else:
-            cross_attention_kwargs["proportational_attn"] = False
 
         device = self._execution_device
 
