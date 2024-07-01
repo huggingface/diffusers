@@ -12,25 +12,32 @@ from diffusers import (
     StableDiffusion3InpaintPipeline,
 )
 from diffusers.utils.testing_utils import (
+    enable_full_determinism,
     floats_tensor,
     torch_device,
 )
 
 from ..pipeline_params import (
-    IMAGE_TO_IMAGE_IMAGE_PARAMS,
-    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
-    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+    TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
+    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
+enable_full_determinism()
+
+
 class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unittest.TestCase, PipelineTesterMixin):
     pipeline_class = StableDiffusion3InpaintPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
+    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
     required_optional_params = PipelineTesterMixin.required_optional_params
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    image_params = frozenset(
+        []
+    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
+    image_latents_params = frozenset([])
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"mask", "masked_image_latents"})
 
     def get_dummy_components(self):
         torch.manual_seed(0)
