@@ -1261,10 +1261,10 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None, c
         # We are only ALWAYS interested in the pooled output of the final text encoder
         pooled_prompt_embeds = prompt_embeds[0]
         if clip_skip is None:
-            prompt_embeds = prompt_embeds.hidden_states[-2]
+            prompt_embeds = prompt_embeds[-1][-2]
         else:
             # "2" because SDXL always indexes from the penultimate layer.
-            prompt_embeds = prompt_embeds.hidden_states[-(clip_skip + 2)]
+            prompt_embeds = prompt_embeds[-1][-(clip_skip + 2)]
         bs_embed, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
         prompt_embeds_list.append(prompt_embeds)
