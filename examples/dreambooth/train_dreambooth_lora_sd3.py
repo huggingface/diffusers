@@ -910,6 +910,7 @@ def _encode_prompt_with_clip(
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
+    print("batch_size", batch_size)
 
     if tokenizer is not None:
         text_inputs = tokenizer(
@@ -933,6 +934,7 @@ def _encode_prompt_with_clip(
 
     _, seq_len, _ = prompt_embeds.shape
     # duplicate text embeddings for each generation per prompt, using mps friendly method
+    print("HEREEEEEE", prompt_embeds.shape)
     prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
     prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
@@ -976,7 +978,7 @@ def encode_prompt(
         max_sequence_length,
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
-        text_input_ids=text_input_ids_list[:-1],
+        text_input_ids=text_input_ids_list[-1],
         device=device if device is not None else text_encoders[-1].device,
     )
 
@@ -1451,6 +1453,7 @@ def main(args):
             # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
         # batch prompts on all training steps
         else:
+            print("tokenizing pre-training loop")
             tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt)
             tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt)
             tokens_three = tokenize_prompt(tokenizer_three, args.instance_prompt)
@@ -1607,8 +1610,8 @@ def main(args):
                     if args.train_text_encoder:
                         prompt_embeds, pooled_prompt_embeds = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two, text_encoder_three],
-                            tokenizers=[None, None, tokenizer_three],
-                            prompt=prompts,
+                            tokenizers=[None, None, None],
+                            prompt=args.instance_prompt,
                             max_sequence_length=args.max_sequence_length,
                             text_input_ids_list=[tokens_one, tokens_two, tokens_three],
                         )
