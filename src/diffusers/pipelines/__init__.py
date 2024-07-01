@@ -199,6 +199,11 @@ else:
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
+    _import_structure["stable_audio"] = [
+        "StableAudioDiTModel",
+        "StableAudioProjectionModel",
+        "StableAudioPipeline",
+    ]
     _import_structure["stable_cascade"] = [
         "StableCascadeCombinedPipeline",
         "StableCascadeDecoderPipeline",
@@ -468,6 +473,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
+        from .stable_audio import (
+            StableAudioDiTModel,
+            StableAudioProjectionModel,
+            StableAudioPipeline,
+        )
         from .stable_cascade import (
             StableCascadeCombinedPipeline,
             StableCascadeDecoderPipeline,

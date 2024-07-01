@@ -78,6 +78,10 @@ class Attention(nn.Module):
         only_cross_attention (`bool`, *optional*, defaults to `False`):
             Set to `True` to only use cross attention and not added_kv_proj_dim. Can only be set to `True` if
             `added_kv_proj_dim` is not `None`.
+        kv_heads (`int`,  *optional*, defaults to `None`):
+            The number of key and value heads to use for multi-head attention. Defaults to `heads`.
+            If `kv_heads=heads`, the model will use Multi Head Attention (MHA), if `kv_heads=1` the model will use 
+            Multi Query Attention (MQA) otherwise GQA is used.
         eps (`float`, *optional*, defaults to 1e-5):
             An additional value added to the denominator in group normalization that is used for numerical stability.
         rescale_output_factor (`float`, *optional*, defaults to 1.0):
@@ -110,6 +114,7 @@ class Attention(nn.Module):
         out_bias: bool = True,
         scale_qk: bool = True,
         only_cross_attention: bool = False,
+        kv_heads: Optional[int] = None,
         eps: float = 1e-5,
         rescale_output_factor: float = 1.0,
         residual_connection: bool = False,
@@ -132,6 +137,7 @@ class Attention(nn.Module):
         self.fused_projections = False
         self.out_dim = out_dim if out_dim is not None else query_dim
         self.context_pre_only = context_pre_only
+        self.kv_heads = heads if kv_heads is None else kv_heads
 
         # we make use of this private variable to know whether this class is loaded
         # with an deprecated state dict so that we can convert it on the fly
@@ -200,8 +206,9 @@ class Attention(nn.Module):
 
         if not self.only_cross_attention:
             # only relevant for the `AddedKVProcessor` classes
-            self.to_k = nn.Linear(self.cross_attention_dim, self.inner_dim, bias=bias)
-            self.to_v = nn.Linear(self.cross_attention_dim, self.inner_dim, bias=bias)
+            # `dim_head * self.kv_heads = self.inner_dim`, except if `kv_heads` < `heads`
+            self.to_k = nn.Linear(self.cross_attention_dim, dim_head * self.kv_heads, bias=bias)
+            self.to_v = nn.Linear(self.cross_attention_dim, dim_head * self.kv_heads, bias=bias)
         else:
             self.to_k = None
             self.to_v = None
@@ -1575,6 +1582,107 @@ class AttnProcessor2_0:
 
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+class StableAudioAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
+    used in the Stable Audio model. It applies rotary embedding on query and key vector, and allows MHA, GQA or MQA.
+    """
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        from .embeddings import apply_rotary_emb
+
+        residual = hidden_states
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        head_dim = query.shape[-1] // attn.heads
+        kv_head_dim = key.shape[-1] // attn.kv_heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, attn.kv_heads, kv_head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.kv_heads, kv_head_dim).transpose(1, 2)
+        
+        if attn.kv_heads != attn.heads:
+            # if GQA or MQA, repeat the key/value heads to reach the number of query heads.
+            heads_per_kv_head = attn.heads // attn.kv_heads
+            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1)
+            value = torch.repeat_interleave(value, heads_per_kv_head, dim=1)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # Apply RoPE if needed
+        if rotary_emb is not None:
+            query = apply_rotary_emb(query, rotary_emb)
+            if not attn.is_cross_attention:
+                key = apply_rotary_emb(key, rotary_emb)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1

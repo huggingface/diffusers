@@ -406,12 +406,13 @@ class GaussianFourierProjection(nn.Module):
     """Gaussian Fourier embeddings for noise levels."""
 
     def __init__(
-        self, embedding_size: int = 256, scale: float = 1.0, set_W_to_weight=True, log=True, flip_sin_to_cos=False
+        self, embedding_size: int = 256, scale: float = 1.0, set_W_to_weight=True, log=True, flip_sin_to_cos=False, use_stable_audio_implementation=False,
     ):
         super().__init__()
         self.weight = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
         self.log = log
         self.flip_sin_to_cos = flip_sin_to_cos
+        self.use_stable_audio_implementation = use_stable_audio_implementation
 
         if set_W_to_weight:
             # to delete later
@@ -423,7 +424,11 @@ class GaussianFourierProjection(nn.Module):
         if self.log:
             x = torch.log(x)
 
-        x_proj = x[:, None] * self.weight[None, :] * 2 * np.pi
+        if not self.use_stable_audio_implementation:
+            x_proj = x[:, None] * self.weight[None, :] * 2 * np.pi
+        else:
+            # order of the operations and using matmul instead pointwise multiplication matters, despite performing the same operation
+            x_proj = 2 * np.pi * x[:, None] @ self.weight[None, :]
 
         if self.flip_sin_to_cos:
             out = torch.cat([torch.cos(x_proj), torch.sin(x_proj)], dim=-1)

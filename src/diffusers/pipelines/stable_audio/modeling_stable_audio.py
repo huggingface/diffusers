@@ -43,7 +43,7 @@ from ...utils import BaseOutput, is_torch_version, logging
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention import BasicTransformerBlock, FeedForward, _chunked_feed_forward
-from ...models.attention_processor import Attention, AttentionProcessor, HunyuanAttnProcessor2_0
+from ...models.attention_processor import Attention, AttentionProcessor, StableAudioAttnProcessor2_0
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
@@ -53,7 +53,7 @@ from ...utils.torch_utils import maybe_allow_in_graph
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention import BasicTransformerBlock, FeedForward, _chunked_feed_forward
-from ...models.attention_processor import Attention, AttentionProcessor, HunyuanAttnProcessor2_0
+from ...models.attention_processor import Attention, AttentionProcessor, StableAudioAttnProcessor2_0
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...models.embeddings import GaussianFourierProjection
@@ -101,7 +101,7 @@ class StableAudioProjectionModelOutput(BaseOutput):
     attention_mask: Optional[torch.LongTensor] = None
 
 
-class StableAudioNumberConditioner(ModelMixin, ConfigMixin):
+class StableAudioNumberConditioner(nn.Module):
     """
     A simple linear projection model to map numbers to a latent space.
 
@@ -116,7 +116,6 @@ class StableAudioNumberConditioner(ModelMixin, ConfigMixin):
             Dimensionality of the intermediate number hidden states.
     """
 
-    @register_to_config
     def __init__(
         self,
         number_embedding_dim,
@@ -212,17 +211,14 @@ class StableAudioDiTBlock(nn.Module):
 
     Parameters:
         dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
+        num_attention_heads (`int`): The number of heads to use for the query states.
+        num_key_value_attention_heads (`int`): The number of heads to use for the key and value states.
         attention_head_dim (`int`): The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
         attention_bias (:
             obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
-        only_cross_attention (`bool`, *optional*):
-            Whether to use only cross-attention layers. In this case two cross attention layers are used.
-        double_self_attention (`bool`, *optional*):
-            Whether to use two self-attention layers. In this case no cross attention layers are used.
         upcast_attention (`bool`, *optional*):
             Whether to upcast the attention computation to float32. This is useful for mixed precision training.
         norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
@@ -235,20 +231,19 @@ class StableAudioDiTBlock(nn.Module):
         self,
         dim: int,
         num_attention_heads: int,
+        num_key_value_attention_heads: int,
         attention_head_dim: int,
         dropout=0.0,
         cross_attention_dim: Optional[int] = None,
-        activation_fn: str = "geglu",
+        activation_fn: str = "glu",
         attention_bias: bool = False,
-        only_cross_attention: bool = False,
-        double_self_attention: bool = False,
         upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         final_dropout: bool = False,
         ff_inner_dim: Optional[int] = None,
         ff_bias: bool = True,
-        attention_out_bias: bool = True,
+        attention_out_bias: bool = False,
     ):
         super().__init__()
         # Define 3 blocks. Each block has its own normalization layer.
@@ -260,10 +255,9 @@ class StableAudioDiTBlock(nn.Module):
             dim_head=attention_head_dim,
             dropout=dropout,
             bias=attention_bias,
-            cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
             out_bias=attention_out_bias,
-            processor=HunyuanAttnProcessor2_0(),
+            processor=StableAudioAttnProcessor2_0(),
         )
 
         # 2. Cross-Attn
@@ -271,14 +265,15 @@ class StableAudioDiTBlock(nn.Module):
 
         self.attn2 = Attention(
             query_dim=dim,
-            cross_attention_dim=cross_attention_dim if not double_self_attention else None,
+            cross_attention_dim=cross_attention_dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
+            kv_heads=num_key_value_attention_heads,
             dropout=dropout,
             bias=attention_bias,
             upcast_attention=upcast_attention,
             out_bias=attention_out_bias,
-            processor=HunyuanAttnProcessor2_0(),
+            processor=StableAudioAttnProcessor2_0(),
         )  # is self-attn if encoder_hidden_states is none
 
         # 3. Feed-forward
@@ -322,9 +317,8 @@ class StableAudioDiTBlock(nn.Module):
 
         attn_output = self.attn1(
             norm_hidden_states,
-            encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
             attention_mask=attention_mask,
-            image_rotary_emb=rotary_embedding,
+            rotary_emb=rotary_embedding,
             **cross_attention_kwargs,
         )
 
@@ -339,7 +333,7 @@ class StableAudioDiTBlock(nn.Module):
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=encoder_attention_mask,
-            image_rotary_emb=rotary_embedding,
+            rotary_emb=rotary_embedding,
             **cross_attention_kwargs,
         )
         hidden_states = attn_output + hidden_states
@@ -370,7 +364,8 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
         in_channels (`int`, *optional*, defaults to 64): The number of channels in the input.
         num_layers (`int`, *optional*, defaults to 24): The number of layers of Transformer blocks to use.
         attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
-        num_attention_heads (`int`, *optional*, defaults to 24): The number of heads to use for multi-head attention.
+        num_attention_heads (`int`, *optional*, defaults to 24): The number of heads to use for the query states.
+        num_key_value_attention_heads (`int`, *optional*, defaults to 12): The number of heads to use for the key and value states.
         out_channels (`int`, defaults to 64): Number of output channels.
         cross_attention_dim ( `int`, *optional*, defaults to 768): Dimension of the cross-attention projection.
         timestep_features_dim ( `int`, *optional*, defaults to 256): Dimension of the timestep inner projection.
@@ -387,6 +382,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
         num_layers: int = 24,
         attention_head_dim: int = 64,
         num_attention_heads: int = 24,
+        num_key_value_attention_heads: int = 12,
         out_channels: int = 64,
         cross_attention_dim: int = 768,
         timestep_features_dim: int = 256,
@@ -397,7 +393,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
         self.out_channels = out_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.timestep_features = GaussianFourierProjection(embedding_size=timestep_features_dim//2, flip_sin_to_cos=True, log=False)
+        self.timestep_features = GaussianFourierProjection(embedding_size=timestep_features_dim//2, flip_sin_to_cos=True, log=False, set_W_to_weight=False, use_stable_audio_implementation=True)
 
         self.timestep_proj = nn.Sequential(
             nn.Linear(timestep_features_dim, self.inner_dim, bias=True),
@@ -425,6 +421,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
                 StableAudioDiTBlock(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
+                    num_key_value_attention_heads=num_key_value_attention_heads,
                     attention_head_dim=attention_head_dim,
                     cross_attention_dim=cross_attention_dim,
                 )
@@ -532,7 +529,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        self.set_attn_processor(HunyuanAttnProcessor2_0())
+        self.set_attn_processor(StableAudioAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.HunyuanDiT2DModel.fuse_qkv_projections
     def fuse_qkv_projections(self):
@@ -640,25 +637,25 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
                 
-        cross_attention_hidden_states = self.cross_attention_proj(cross_attention_hidden_states)
+        cross_attention_hidden_states = self.cross_attention_proj(encoder_hidden_states)
         global_hidden_states = self.global_proj(global_hidden_states)
         time_hidden_states = self.timestep_proj(self.timestep_features(timestep))
         
         global_hidden_states = global_hidden_states + time_hidden_states
-        prepend_length = global_hidden_states.shape[0]
         
         
         hidden_states = self.preprocess_conv(hidden_states) + hidden_states
         # (batch_size, dim, sequence_length) -> (batch_size, sequence_length, dim)
         hidden_states = hidden_states.transpose(1,2)
         
+        hidden_states = self.proj_in(hidden_states)
+
         # prepend global states to hidden states
         prepend_mask = torch.ones((hidden_states.shape[0], 1), device=hidden_states.device, dtype=torch.bool)
-        hidden_states = torch.cat([global_hidden_states, hidden_states], dim=-2)
+        hidden_states = torch.cat([global_hidden_states.unsqueeze(1), hidden_states], dim=-2)
         if attention_mask is not None:
             attention_mask = torch.cat([prepend_mask, attention_mask], dim=-1)
 
-        hidden_states = self.proj_in(hidden_states)
 
         for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
@@ -677,7 +674,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
                     create_custom_forward(block),
                     hidden_states,
                     attention_mask,
-                    encoder_hidden_states,
+                    cross_attention_hidden_states,
                     encoder_attention_mask,
                     rotary_embedding,
                     joint_attention_kwargs,
@@ -685,10 +682,10 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
                 )
 
             else:
-                encoder_hidden_states, hidden_states = block(
+                hidden_states = block(
                     hidden_states = hidden_states,
                     attention_mask = attention_mask,
-                    encoder_hidden_states = encoder_hidden_states,
+                    encoder_hidden_states = cross_attention_hidden_states,
                     encoder_attention_mask = encoder_attention_mask,
                     rotary_embedding = rotary_embedding,
                     cross_attention_kwargs = joint_attention_kwargs,
@@ -697,8 +694,8 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
         hidden_states = self.proj_out(hidden_states)
         
         # (batch_size, sequence_length, dim) -> (batch_size, dim, sequence_length)
-        # remove prepend length
-        hidden_states = hidden_states.transpose(1,2)[:, :, prepend_length:]
+        # remove prepend length that has been added by global hidden states
+        hidden_states = hidden_states.transpose(1,2)[:, :, 1:]
         hidden_states = self.postprocess_conv(hidden_states) + hidden_states
         
 
