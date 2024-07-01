@@ -34,6 +34,12 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 </Tip>
 
+<Tip>
+
+You can further improve generation quality by passing the generated image from [`HungyuanDiTPipeline`] to the [SDXL refiner](../../using-diffusers/sdxl#base-to-refiner-model) model.
+
+</Tip>
+
 ## Optimization
 
 You can optimize the pipeline's runtime and memory consumption with torch.compile and feed-forward chunking. To learn about other optimization methods, check out the [Speed up inference](../../optimization/fp16) and [Reduce memory usage](../../optimization/memory) guides.

@@ -37,6 +37,12 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
+<Tip>
+
+You can further improve generation quality by passing the generated image from [`PixArtSigmaPipeline`] to the [SDXL refiner](../../using-diffusers/sdxl#base-to-refiner-model) model.
+
+</Tip>
+
 ## Inference with under 8GB GPU VRAM
 
 Run the [`PixArtSigmaPipeline`] with under 8GB GPU VRAM by loading the text encoder in 8-bit precision. Let's walk through a full-fledged example.
