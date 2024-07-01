@@ -597,7 +597,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if not config.get("num_attention_heads"):
             config["num_attention_heads"] = config["attention_head_dim"]
 
-        config = FrozenDict(config)
+        expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
+        config = FrozenDict({k: config.get(k) for k in config if k in expected_kwargs or k in optional_kwargs})
         model = cls.from_config(config)
 
         if not load_weights:
