@@ -19,7 +19,7 @@ from torch import nn
 
 from ..utils import deprecate, logging
 from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import GEGLU, GELU, ApproximateGELU
+from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU
 from .attention_processor import Attention, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm
@@ -550,34 +550,31 @@ class LuminaFeedForward(nn.Module):
         ffn_dim_multiplier: Optional[float] = None,
     ):
         super().__init__()
-        intermediate_size = int(2 * intermediate_size / 3)
+        inner_dim = int(2 * inner_dim / 3)
         # custom hidden_size factor multiplier
         if ffn_dim_multiplier is not None:
-            intermediate_size = int(ffn_dim_multiplier * intermediate_size)
-        intermediate_size = multiple_of * ((intermediate_size + multiple_of - 1) // multiple_of)
+            inner_dim = int(ffn_dim_multiplier * inner_dim)
+        inner_dim = multiple_of * ((inner_dim + multiple_of - 1) // multiple_of)
 
-        self.w1 = nn.Linear(
-            hidden_size,
-            intermediate_size,
+        self.linear_1 = nn.Linear(
+            dim,
+            inner_dim,
             bias=False,
         )
-        self.w2 = nn.Linear(
-            intermediate_size,
-            hidden_size,
+        self.linear_2 = nn.Linear(
+            inner_dim,
+            dim,
             bias=False,
         )
-        self.w3 = nn.Linear(
-            hidden_size,
-            intermediate_size,
+        self.linear_3 = nn.Linear(
+            dim,
+            inner_dim,
             bias=False,
         )
-
-    # @torch.compile
-    def _forward_silu_gating(self, x1, x3):
-        return F.silu(x1) * x3
+        self.silu = FP32SiLU()
 
     def forward(self, x):
-        return self.w2(self._forward_silu_gating(self.w1(x), self.w3(x)))
+        return self.linear_2(self.silu(self.linear_1(x)) * self.linear_3(x))
 
 
 @maybe_allow_in_graph

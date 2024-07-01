@@ -70,9 +70,9 @@ def main(args):
         ]
 
         # feed forward
-        converted_state_dict[f"layers.{i}.feed_forward.w1.weight"] = all_sd[f"layers.{i}.feed_forward.w1.weight"]
-        converted_state_dict[f"layers.{i}.feed_forward.w2.weight"] = all_sd[f"layers.{i}.feed_forward.w2.weight"]
-        converted_state_dict[f"layers.{i}.feed_forward.w3.weight"] = all_sd[f"layers.{i}.feed_forward.w3.weight"]
+        converted_state_dict[f"layers.{i}.feed_forward.linear_1.weight"] = all_sd[f"layers.{i}.feed_forward.w1.weight"]
+        converted_state_dict[f"layers.{i}.feed_forward.linear_2.weight"] = all_sd[f"layers.{i}.feed_forward.w2.weight"]
+        converted_state_dict[f"layers.{i}.feed_forward.linear_3.weight"] = all_sd[f"layers.{i}.feed_forward.w3.weight"]
 
         # feed forward norm
         converted_state_dict[f"layers.{i}.ffn_norm1.weight"] = all_sd[f"layers.{i}.ffn_norm1.weight"]
