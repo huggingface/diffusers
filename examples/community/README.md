@@ -70,6 +70,7 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 | Stable Diffusion XL IPEX Pipeline | Accelerate Stable Diffusion XL inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion XL on IPEX](#stable-diffusion-xl-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
 | Stable Diffusion BoxDiff Pipeline | Training-free controlled generation with bounding boxes using [BoxDiff](https://github.com/showlab/BoxDiff) | [Stable Diffusion BoxDiff Pipeline](#stable-diffusion-boxdiff) | - | [Jingyang Zhang](https://github.com/zjysteven/) |
 |   FRESCO V2V Pipeline                                                                                                    | Implementation of [[CVPR 2024] FRESCO: Spatial-Temporal Correspondence for Zero-Shot Video Translation](https://arxiv.org/abs/2403.12962)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [FRESCO V2V Pipeline](#fresco)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
+| ConsistencyTTA Pipeline | Implementation of [ConsistencyTTA: Accelerating Diffusion-Based Text-to-Audio Generation with Consistency Distillation](https://arxiv.org/abs/2309.10740) | [ConsistencyTTA Pipeline](#consistencytta-pipeline) | - | [Aryan V S](https://github.com/a-r-r-o-w)
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -4175,3 +4176,38 @@ grid_image.save(grid_dir + "sample.png")
 `pag_scale` : guidance scale of PAG (ex: 5.0)
 
 `pag_applied_layers_index` : index of the layer to apply perturbation (ex: ['m0'])
+
+# ConsistencyTTA Pipeline
+
+This is a Diffusers implementation of [ConsistencyTTA: Accelerating Diffusion-Based Text-to-Audio Generation with Consistency Distillation](https://arxiv.org/abs/2309.10740). For example results, please refer to the project page linked below or [PR 8739](https://github.com/huggingface/diffusers/pull/8739).
+
+[Paper](https://arxiv.org/abs/2309.10740) | [Project Page](https://consistency-tta.github.io/) | [Github](https://github.com/Bai-YT/ConsistencyTTA) | [Checkpoints](https://huggingface.co/Bai-YT/ConsistencyTTA)
+
+```py
+import scipy
+import torch
+from diffusers import DiffusionPipeline
+
+model_id = "a-r-r-o-w/ConsistencyTTA"
+
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.bfloat16,
+    custom_pipeline="pipeline_consistency_txt2audio",
+    trust_remote_code=True,
+).to("cuda")
+
+prompt = "Multiple gun shots followed by a woman screaming"
+
+generator = torch.Generator().manual_seed(42)
+audio = pipe(
+    prompt,
+    num_inference_steps=1,
+    audio_length_in_s=10,
+    guidance_scale=1,
+    guidance_scale_cond=4,
+    generator=generator,
+).audios[0]
+
+scipy.io.wavfile.write("audio.wav", rate=16000, data=audio)
+```
