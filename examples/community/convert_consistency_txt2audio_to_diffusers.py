@@ -2,7 +2,8 @@ import argparse
 from typing import Optional
 
 import torch
-from pipeline_consistency_txt2audio import ConsistencyTTAPipeline, UNet2DConditionGuidedModel
+from modeling_unet import UNet2DConditionGuidedModel
+from pipeline_consistency_txt2audio import ConsistencyTTAPipeline
 from transformers import AutoTokenizer, SpeechT5HifiGan, T5EncoderModel
 
 from diffusers.models import AutoencoderKL
@@ -520,6 +521,6 @@ if __name__ == "__main__":
         pipe.save_pretrained(args.output_path, push_to_hub=args.push_to_hub)
     else:
         pipe = pipe.to(dtype=torch.float16)
-        pipe.save_pretrained(args.output_path, push_to_hub=args.push_to_hub)
+        pipe.save_pretrained(args.output_path, variant="fp16", push_to_hub=args.push_to_hub)
 
 # python3 examples/community/convert_consistency_txt2audio_to_diffusers.py --unet-config-path tango_diffusion_light.json --unet-checkpoint-path ./consistencyttamodels/state_dicts/unet_state_dict.pt --vae-checkpoint-path ./consistencyttamodels/state_dicts/vae_state_dict.pt --text-encoder-name google/flan-t5-large --scheduler-type heun --image-size 512 --output-path converted-consistency-tta
