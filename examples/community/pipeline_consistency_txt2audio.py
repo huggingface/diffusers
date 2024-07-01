@@ -507,7 +507,6 @@ class ConsistencyTTAPipeline(DiffusionPipeline, StableDiffusionMixin):
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
-                    print(i, t)
                     # add noise to latents
                     noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=latents.dtype)
                     latents = self.scheduler.add_noise(latents, noise, t.unsqueeze(0))
