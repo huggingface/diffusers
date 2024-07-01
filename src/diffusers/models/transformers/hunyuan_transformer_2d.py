@@ -249,6 +249,8 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             The length of the clip text embedding.
         text_len_t5 (`int`, *optional*):
             The length of the T5 text embedding.
+        use_style_cond_and_image_meta_size (`bool`,  *optional*):
+            Whether or not to use style condition and image meta size. True for version <=1.1, False for version >= 1.2
     """
 
     @register_to_config
