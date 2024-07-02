@@ -193,7 +193,7 @@ class LuminaNextDiTBlock(nn.Module):
         image_rotary_emb: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
-        adaln_input: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
     ):
         """
@@ -213,8 +213,8 @@ class LuminaNextDiTBlock(nn.Module):
 
             # Self-attention
             hidden_states = modulate(self.attn_norm1(hidden_states), scale_msa)
-            self_attn_output = self.attn(
-                hidden_states=hidden_states,
+            self_attn_output = self.attn1(
+                hidden_states=norm_hidden_states,
                 encoder_hidden_states=hidden_states,
                 attention_mask=attention_mask,
                 query_rotary_emb=image_rotary_emb,
@@ -223,8 +223,8 @@ class LuminaNextDiTBlock(nn.Module):
             )
 
             # Cross-attention
-            norm_encoder_hidden_states = self.attn_encoder_hidden_states_norm(encoder_hidden_states)
-            cross_attn_output = self.cross_attn(
+            norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states)
+            cross_attn_output = self.attn2(
                 hidden_states=hidden_states,
                 encoder_hidden_states=norm_encoder_hidden_states,
                 attention_mask=encoder_mask,
@@ -437,7 +437,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         hidden_states, mask, img_size, image_rotary_emb = self.patch_embedder(hidden_states, image_rotary_emb)
         image_rotary_emb = image_rotary_emb.to(hidden_states.device)
 
-        adaln_input = self.time_caption_embed(timestep, encoder_hidden_states, encoder_mask)
+        temb = self.time_caption_embed(timestep, encoder_hidden_states, encoder_mask)
 
         encoder_mask = encoder_mask.bool()
         for layer in self.layers:
