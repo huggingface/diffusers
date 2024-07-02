@@ -85,7 +85,7 @@ from .pipeline_loading_utils import (
 
 
 if is_accelerate_available():
-    import accelerate
+    from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
 
 
 LIBRARIES = []
@@ -377,16 +377,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 return False
 
             return hasattr(module, "_hf_hook") and (
-                isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
+                isinstance(module._hf_hook, AlignDevicesHook)
                 or hasattr(module._hf_hook, "hooks")
-                and isinstance(module._hf_hook.hooks[0], accelerate.hooks.AlignDevicesHook)
+                and isinstance(module._hf_hook.hooks[0], AlignDevicesHook)
             )
 
         def module_is_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
                 return False
 
-            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, CpuOffload)
 
         # .to("cuda") would raise an error if the pipeline is sequentially offloaded, so we raise our own to make it clearer
         pipeline_is_sequentially_offloaded = any(
@@ -1009,7 +1009,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
         for _, model in self.components.items():
             if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
-                accelerate.hooks.remove_hook_from_module(model, recurse=True)
+                remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
 
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):

@@ -50,8 +50,7 @@ if is_transformers_available():
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
 
 if is_accelerate_available():
-    import accelerate
-    from accelerate import dispatch_model
+    from accelerate import dispatch_model, init_empty_weights
     from accelerate.hooks import remove_hook_from_module
     from accelerate.utils import compute_module_sizes, get_max_memory
 
@@ -443,7 +442,7 @@ def _load_empty_model(
             subfolder=kwargs.pop("subfolder", None),
             user_agent=user_agent,
         )
-        with accelerate.init_empty_weights():
+        with init_empty_weights():
             model = class_obj.from_config(config, **unused_kwargs)
     elif is_transformers_model:
         config_class = getattr(class_obj, "config_class", None)
@@ -461,7 +460,7 @@ def _load_empty_model(
             revision=kwargs.pop("revision", None),
             user_agent=user_agent,
         )
-        with accelerate.init_empty_weights():
+        with init_empty_weights():
             model = class_obj(config)
 
     if model is not None:
@@ -529,7 +528,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 name,
                 is_pipeline_module,
             )
-            with accelerate.init_empty_weights():
+            with init_empty_weights():
                 loaded_sub_model = passed_class_obj[name]
 
         else:

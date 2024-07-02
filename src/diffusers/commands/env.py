@@ -83,9 +83,9 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
         accelerate_version = "not installed"
         if is_accelerate_available():
-            import accelerate
+            from accelerate import __version__
 
-            accelerate_version = accelerate.__version__
+            accelerate_version = __version__
 
         peft_version = "not installed"
         if is_peft_available():

@@ -21,7 +21,7 @@ from .import_utils import is_accelerate_available
 
 
 if is_accelerate_available():
-    import accelerate
+    from accelerate import __version__
 
 
 def apply_forward_hook(method):
@@ -36,7 +36,7 @@ def apply_forward_hook(method):
     """
     if not is_accelerate_available():
         return method
-    accelerate_version = version.parse(accelerate.__version__).base_version
+    accelerate_version = version.parse(__version__).base_version
     if version.parse(accelerate_version) < version.parse("0.17.0"):
         return method
 
