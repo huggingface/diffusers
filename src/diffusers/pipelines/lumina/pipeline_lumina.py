@@ -25,6 +25,7 @@ from transformers import AutoModel, AutoTokenizer
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...models.transformers.lumina_nextdit2d import LuminaNextDiT2DModel
+from ...models.embeddings import get_2d_rotary_pos_embed_lumina
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -642,7 +643,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         return_dict: bool = True,
         clean_caption: bool = True,
         max_sequence_length: int = 256,
-        scaling_watershed: Optional[float] = 0.3,
+        scaling_watershed: Optional[float] = 1.0,
         proportional_attn: Optional[bool] = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
@@ -801,17 +802,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             latents,
         )
         
-        # 6. Prepare image_rotary_emb
-        # Dynamic scaling_factor for different resolution.
-        scaling_factor = math.sqrt(width * height / self.default_image_size**2)
-        image_rotary_emb = self.transformer.precompute_freqs_cis(
-            384,
-            scaling_factor=scaling_factor,
-            scaling_watershed=scaling_watershed,
-            timestep=timesteps[0].item(),
-        )
 
-        # 7. Denoising loop
+        # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -838,6 +830,23 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
 
                 # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
                 current_timestep = 1 - current_timestep / self.scheduler.config.num_train_timesteps
+                
+                # prepare image_rotary_emb for positional encoding
+                # dynamic scaling_factor for different resolution.
+                scaling_factor = math.sqrt(width * height / self.default_image_size**2)
+                if current_timestep < scaling_watershed:
+                    linear_factor = scaling_factor
+                    ntk_factor = 1.0
+                else:
+                    linear_factor = 1.0
+                    ntk_factor = scaling_factor
+                image_rotary_emb = get_2d_rotary_pos_embed_lumina(
+                    self.transformer.head_dim,
+                    384,
+                    384,
+                    linear_factor=linear_factor,
+                    ntk_factor=ntk_factor,
+                )
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,

@@ -276,7 +276,7 @@ class LuminaPatchEmbed(nn.Module):
         )
 
 
-def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
+def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True, reverse=False):
     """
     RoPE for image tokens with 2d structure.
 
@@ -297,6 +297,8 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
     grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
     grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
     grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    if reverse:
+        grid = grid[::-1] # reverse the order of grid_h and grid_w
     grid = np.stack(grid, axis=0)  # [2, W, H]
 
     grid = grid.reshape([2, 1, *grid.shape[1:]])
@@ -318,9 +320,21 @@ def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
     else:
         emb = torch.cat([emb_h, emb_w], dim=1)  # (H*W, D/2)
         return emb
+    
+
+def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, ntk_factor=1.0):
+    assert embed_dim % 4 == 0
+
+    emb_h = get_1d_rotary_pos_embed(embed_dim // 2, len_h, linear_factor=linear_factor, ntk_factor=ntk_factor)  # (H, D/4)
+    emb_w = get_1d_rotary_pos_embed(embed_dim // 2, len_w, linear_factor=linear_factor, ntk_factor=ntk_factor)  # (W, D/4)
+    emb_h = emb_h.view(len_h, 1, embed_dim // 4, 1).repeat(1, len_w, 1, 1) # (H, W, D/4, 1)
+    emb_w = emb_w.view(1, len_w, embed_dim // 4, 1).repeat(len_h, 1, 1, 1) # (H, W, D/4, 1)
+    
+    emb = torch.cat([emb_h, emb_w], dim=-1).flatten(2)  # (H, W, D/2)
+    return emb
 
 
-def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float = 10000.0, use_real=False):
+def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float = 10000.0, use_real=False, linear_factor=1.0, ntk_factor=1.0):
     """
     Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
 
@@ -335,13 +349,17 @@ def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float 
             Scaling factor for frequency computation. Defaults to 10000.0.
         use_real (`bool`, *optional*):
             If True, return real part and imaginary part separately. Otherwise, return complex numbers.
-
+        linear_factor (`float`, *optional*, defaults to 1.0):
+            Scaling factor for the context extrapolation. Defaults to 1.0.
+        ntk_factor (`float`, *optional*, defaults to 1.0):
+            Scaling factor for the NTK-Aware RoPE. Defaults to 1.0.
     Returns:
         `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
     """
     if isinstance(pos, int):
         pos = np.arange(pos)
-    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))  # [D/2]
+    theta = theta * ntk_factor
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim)) / linear_factor # [D/2]
     t = torch.from_numpy(pos).to(freqs.device)  # type: ignore  # [S]
     freqs = torch.outer(t, freqs).float()  # type: ignore   # [S, D/2]
     if use_real:
