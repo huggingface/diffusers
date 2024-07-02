@@ -17,17 +17,17 @@ from typing import Dict, Optional, Union
 import torch
 from torch import nn
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import logging
-from .attention_processor import AttentionProcessor
-from .controlnet import BaseOutput, Tuple, zero_module
-from .embeddings import (
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils import logging
+from ..attention_processor import AttentionProcessor
+from ..embeddings import (
     HunyuanCombinedTimestepTextSizeStyleEmbedding,
     PatchEmbed,
     PixArtAlphaTextProjection,
 )
-from .modeling_utils import ModelMixin
-from .transformers.hunyuan_transformer_2d import HunyuanDiTBlock
+from ..modeling_utils import ModelMixin
+from ..transformers.hunyuan_transformer_2d import HunyuanDiTBlock
+from .controlnet import BaseOutput, Tuple, zero_module
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

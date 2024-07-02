@@ -75,10 +75,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
             VQModel,
         )
-        from .controlnet import ControlNetModel
-        from .controlnet_hunyuan import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
-        from .controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
-        from .controlnet_xs import ControlNetXSAdapter, UNetControlNetXSModel
+        from .controlnets.controlnet import ControlNetModel
+        from .controlnets.controlnet_hunyuan import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
+        from .controlnets.controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
+        from .controlnets.controlnet_xs import ControlNetXSAdapter, UNetControlNetXSModel
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
@@ -108,7 +108,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 
     if is_flax_available():
         from .autoencoders import FlaxAutoencoderKL
-        from .controlnet_flax import FlaxControlNetModel
+        from .controlnets.controlnet_flax import FlaxControlNetModel
         from .unets import FlaxUNet2DConditionModel
 
 else:

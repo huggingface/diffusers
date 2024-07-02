@@ -18,26 +18,26 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders.single_file_model import FromOriginalModelMixin
-from ..utils import BaseOutput, logging
-from .attention_processor import (
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders.single_file_model import FromOriginalModelMixin
+from ...utils import BaseOutput, logging
+from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from .embeddings import TextImageProjection, TextImageTimeEmbedding, TextTimeEmbedding, TimestepEmbedding, Timesteps
-from .modeling_utils import ModelMixin
-from .unets.unet_2d_blocks import (
+from ..embeddings import TextImageProjection, TextImageTimeEmbedding, TextTimeEmbedding, TimestepEmbedding, Timesteps
+from ..modeling_utils import ModelMixin
+from ..unets.unet_2d_blocks import (
     CrossAttnDownBlock2D,
     DownBlock2D,
     UNetMidBlock2D,
     UNetMidBlock2DCrossAttn,
     get_down_block,
 )
-from .unets.unet_2d_condition import UNet2DConditionModel
+from ..unets.unet_2d_condition import UNet2DConditionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

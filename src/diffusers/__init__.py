@@ -792,7 +792,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_flax_objects import *  # noqa F403
     else:
         from .models.autoencoders.vae_flax import FlaxAutoencoderKL
-        from .models.controlnet_flax import FlaxControlNetModel
+        from .models.controlnets.controlnet_flax import FlaxControlNetModel
         from .models.modeling_flax_utils import FlaxModelMixin
         from .models.unets.unet_2d_condition_flax import FlaxUNet2DConditionModel
         from .pipelines import FlaxDiffusionPipeline

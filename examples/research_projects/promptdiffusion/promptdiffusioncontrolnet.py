@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from diffusers.configuration_utils import register_to_config
-from diffusers.models.controlnet import (
+from diffusers.models.controlnets.controlnet import (
     ControlNetConditioningEmbedding,
     ControlNetModel,
     ControlNetOutput,
