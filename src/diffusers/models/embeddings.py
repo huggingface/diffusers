@@ -717,18 +717,33 @@ class HunyuanDiTAttentionPool(nn.Module):
 
 
 class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
-    def __init__(self, embedding_dim, pooled_projection_dim=1024, seq_len=256, cross_attention_dim=2048):
+    def __init__(
+        self,
+        embedding_dim,
+        pooled_projection_dim=1024,
+        seq_len=256,
+        cross_attention_dim=2048,
+        use_style_cond_and_image_meta_size=True,
+    ):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
+        self.size_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+
         self.pooler = HunyuanDiTAttentionPool(
             seq_len, cross_attention_dim, num_heads=8, output_dim=pooled_projection_dim
         )
+
         # Here we use a default learned embedder layer for future extension.
-        self.style_embedder = nn.Embedding(1, embedding_dim)
-        extra_in_dim = 256 * 6 + embedding_dim + pooled_projection_dim
+        self.use_style_cond_and_image_meta_size = use_style_cond_and_image_meta_size
+        if use_style_cond_and_image_meta_size:
+            self.style_embedder = nn.Embedding(1, embedding_dim)
+            extra_in_dim = 256 * 6 + embedding_dim + pooled_projection_dim
+        else:
+            extra_in_dim = pooled_projection_dim
+
         self.extra_embedder = PixArtAlphaTextProjection(
             in_features=extra_in_dim,
             hidden_size=embedding_dim * 4,
@@ -743,16 +758,20 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         # extra condition1: text
         pooled_projections = self.pooler(encoder_hidden_states)  # (N, 1024)
 
-        # extra condition2: image meta size embdding
-        image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0)
-        image_meta_size = image_meta_size.to(dtype=hidden_dtype)
-        image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
+        if self.use_style_cond_and_image_meta_size:
+            # extra condition2: image meta size embdding
+            image_meta_size = self.size_proj(image_meta_size.view(-1))
+            image_meta_size = image_meta_size.to(dtype=hidden_dtype)
+            image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
 
-        # extra condition3: style embedding
-        style_embedding = self.style_embedder(style)  # (N, embedding_dim)
+            # extra condition3: style embedding
+            style_embedding = self.style_embedder(style)  # (N, embedding_dim)
 
-        # Concatenate all extra vectors
-        extra_cond = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
+            # Concatenate all extra vectors
+            extra_cond = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
+        else:
+            extra_cond = torch.cat([pooled_projections], dim=1)
+
         conditioning = timesteps_emb + self.extra_embedder(extra_cond)  # [B, D]
 
         return conditioning
