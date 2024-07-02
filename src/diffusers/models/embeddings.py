@@ -730,6 +730,8 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
+        self.size_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+
         self.pooler = HunyuanDiTAttentionPool(
             seq_len, cross_attention_dim, num_heads=8, output_dim=pooled_projection_dim
         )
@@ -758,7 +760,7 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
 
         if self.use_style_cond_and_image_meta_size:
             # extra condition2: image meta size embdding
-            image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0)
+            image_meta_size = self.size_proj(image_meta_size.view(-1))
             image_meta_size = image_meta_size.to(dtype=hidden_dtype)
             image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
 
