@@ -213,9 +213,7 @@ class LattePipelineIntegrationTests(unittest.TestCase):
     def test_latte(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = LattePipeline.from_pretrained(
-            "/mnt/hwfile/gcc/maxin/work/pretrained/Latte/", torch_dtype=torch.float16
-        )
+        pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
         prompt = self.prompt
 
