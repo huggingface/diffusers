@@ -17,7 +17,7 @@ from .controlnets.controlnet import ControlNetConditioningEmbedding, ControlNetM
 
 class ControlNetOutput(ControlNetOutput):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "Importing `ControlNetOutput` from `diffusers.models.controlnet` is deprecated and this will be removed in a future version. Please use `from diffusers.models.controlents.controlnet import ControlNetOutput`, instead."
+        deprecation_message = "Importing `ControlNetOutput` from `diffusers.models.controlnet` is deprecated and this will be removed in a future version. Please use `from diffusers.models.controlnets.controlnet import ControlNetOutput`, instead."
         deprecate("ControlNetOutput", "0.34", deprecation_message)
         super().__init__(*args, **kwargs)
 
