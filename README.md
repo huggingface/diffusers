@@ -202,6 +202,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
 
 - https://github.com/microsoft/TaskMatrix
 - https://github.com/invoke-ai/InvokeAI
+- https://github.com/InstantID/InstantID
 - https://github.com/apple/ml-stable-diffusion
 - https://github.com/Sanster/lama-cleaner
 - https://github.com/IDEA-Research/Grounded-Segment-Anything
@@ -209,7 +210,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
 - https://github.com/deep-floyd/IF
 - https://github.com/bentoml/BentoML
 - https://github.com/bmaltais/kohya_ss
-- +12.000 other amazing GitHub repositories 💪
+- +12000 other amazing GitHub repositories 💪
 
 Thank you for using us ❤️.
 
