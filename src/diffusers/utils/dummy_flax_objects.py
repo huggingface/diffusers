@@ -2,21 +2,6 @@
 from ..utils import DummyObject, requires_backends
 
 
-class FlaxAutoencoderKL(metaclass=DummyObject):
-    _backends = ["flax"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["flax"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["flax"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["flax"])
-
-
 class FlaxControlNetModel(metaclass=DummyObject):
     _backends = ["flax"]
 
@@ -48,6 +33,21 @@ class FlaxModelMixin(metaclass=DummyObject):
 
 
 class FlaxUNet2DConditionModel(metaclass=DummyObject):
+    _backends = ["flax"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["flax"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["flax"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["flax"])
+
+
+class FlaxAutoencoderKL(metaclass=DummyObject):
     _backends = ["flax"]
 
     def __init__(self, *args, **kwargs):
