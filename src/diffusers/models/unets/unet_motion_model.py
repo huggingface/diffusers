@@ -599,6 +599,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
         config = FrozenDict({k: config.get(k) for k in config if k in expected_kwargs or k in optional_kwargs})
+        config["_class_name"] = cls.__name__
         model = cls.from_config(config)
 
         if not load_weights:
