@@ -16,10 +16,14 @@ from .autoencoders.vq_model import VQEncoderOutput, VQModel
 
 
 class VQEncoderOutput(VQEncoderOutput):
-    deprecation_message = "Importing `VQEncoderOutput` from `diffusers.models.vq_model` is deprecated and this will be removed in a future version. Please use `from diffusers.models.autoencoders.vq_model import VQEncoderOutput`, instead."
-    deprecate("VQEncoderOutput", "0.31", deprecation_message)
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "Importing `VQEncoderOutput` from `diffusers.models.vq_model` is deprecated and this will be removed in a future version. Please use `from diffusers.models.autoencoders.vq_model import VQEncoderOutput`, instead."
+        deprecate("VQEncoderOutput", "0.31", deprecation_message)
+        super().__init__(*args, **kwargs)
 
 
 class VQModel(VQModel):
-    deprecation_message = "Importing `VQModel` from `diffusers.models.vq_model` is deprecated and this will be removed in a future version. Please use `from diffusers.models.autoencoders.vq_model import VQModel`, instead."
-    deprecate("VQModel", "0.31", deprecation_message)
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "Importing `VQModel` from `diffusers.models.vq_model` is deprecated and this will be removed in a future version. Please use `from diffusers.models.autoencoders.vq_model import VQModel`, instead."
+        deprecate("VQModel", "0.31", deprecation_message)
+        super().__init__(*args, **kwargs)
