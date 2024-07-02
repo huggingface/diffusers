@@ -753,6 +753,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
 
         if proportional_attn:
             cross_attention_kwargs["base_sequence_length"] = (self.default_image_size // 16) ** 2
+            
+        scaling_factor = math.sqrt(width * height / self.default_image_size**2)
 
         device = self._execution_device
 
@@ -833,8 +835,10 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 
                 # prepare image_rotary_emb for positional encoding
                 # dynamic scaling_factor for different resolution.
-                scaling_factor = math.sqrt(width * height / self.default_image_size**2)
-                if current_timestep < scaling_watershed:
+                # NOTE: For `Time-aware` denosing mechanism from Lumina-Next 
+                # https://arxiv.org/abs/2406.18583, Sec 2.3
+                # NOTE: We should compute different image_rotary_emb with different timestep.
+                if current_timestep[0] < scaling_watershed:
                     linear_factor = scaling_factor
                     ntk_factor = 1.0
                 else:
