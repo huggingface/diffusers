@@ -229,11 +229,11 @@ class PromptDiffusionControlNetModel(ControlNetModel):
                 In this mode, the ControlNet encoder tries its best to recognize the input content of the input even if
                 you remove all prompts. A `guidance_scale` between 3.0 and 5.0 is recommended.
             return_dict (`bool`, defaults to `True`):
-                Whether or not to return a [`~models.controlnet.ControlNetOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.controlnets.controlnet.ControlNetOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.controlnet.ControlNetOutput`] **or** `tuple`:
-                If `return_dict` is `True`, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
+            [`~models.controlnets.controlnet.ControlNetOutput`] **or** `tuple`:
+                If `return_dict` is `True`, a [`~models.controlnets.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
                 returned where the first element is the sample tensor.
         """
         # check channel order

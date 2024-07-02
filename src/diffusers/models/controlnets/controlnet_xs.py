@@ -1059,7 +1059,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             added_cond_kwargs (`dict`):
                 Additional conditions for the Stable Diffusion XL UNet.
             return_dict (`bool`, defaults to `True`):
-                Whether or not to return a [`~models.controlnet.ControlNetOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.controlnets.controlnet.ControlNetOutput`] instead of a plain tuple.
             apply_control (`bool`, defaults to `True`):
                 If `False`, the input is run only through the base model.
 
