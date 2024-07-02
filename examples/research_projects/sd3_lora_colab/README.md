@@ -1,6 +1,6 @@
 # Running Stable Diffusion 3 DreamBooth LoRA training under 16GB
 
-This is **EDUCATIONAL** project that provides utilities to conduct DreamBooth LoRA training for [Stable Diffusion 3 (SD3)](ttps://huggingface.co/papers/2403.03206) under 16GB GPU VRAM. This means you can successfully try out this project using a free-tier Colab Notebook instance. Here is one for you to quickly get started (TODO: provide Colab link) 🤗
+This is **EDUCATIONAL** project that provides utilities to conduct DreamBooth LoRA training for [Stable Diffusion 3 (SD3)](ttps://huggingface.co/papers/2403.03206) under 16GB GPU VRAM. This means you can successfully try out this project using a free-tier Colab Notebook instance. [Here is one](./sd3_dreambooth_lora_16gb.ipynb) for you to quickly get started 🤗
 
 > [!NOTE]
 > As SD3 is gated, before using it with diffusers you first need to go to the [Stable Diffusion 3 Medium Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
