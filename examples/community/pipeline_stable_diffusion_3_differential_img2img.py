@@ -15,7 +15,6 @@
 import inspect
 from typing import Callable, Dict, List, Optional, Union
 
-import PIL.Image
 import torch
 from transformers import (
     CLIPTextModelWithProjection,
@@ -24,18 +23,18 @@ from transformers import (
     T5TokenizerFast,
 )
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...models.autoencoders import AutoencoderKL
-from ...models.transformers import SD3Transformer2DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import (
+from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
+from diffusers.models.autoencoders import AutoencoderKL
+from diffusers.models.transformers import SD3Transformer2DModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion_3.pipeline_output import StableDiffusion3PipelineOutput
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
+from diffusers.utils import (
     is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import StableDiffusion3PipelineOutput
+from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_torch_xla_available():
@@ -62,7 +61,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to(device)
 
         >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-        >>> init_image = load_image(url).resize((1024, 1024))
+        >>> init_image = load_image(url).resize((512, 512))
 
         >>> prompt = "cat wizard, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney, 8k"
 
@@ -145,7 +144,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
+class StableDiffusion3DifferentialImg2ImgPipeline(DiffusionPipeline):
     r"""
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -212,6 +211,10 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, vae_latent_channels=self.vae.config.latent_channels
         )
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_convert_grayscale=True
+        )
+
         self.tokenizer_max_length = self.tokenizer.model_max_length
         self.default_sample_size = self.transformer.config.sample_size
 
@@ -593,40 +596,35 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
 
         t_start = int(max(num_inference_steps - init_timestep, 0))
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-        if hasattr(self.scheduler, "set_begin_index"):
-            self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
-        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
-            raise ValueError(
-                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
-            )
+    def prepare_latents(
+        self, batch_size, num_channels_latents, height, width, image, timestep, dtype, device, generator=None
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
 
         image = image.to(device=device, dtype=dtype)
 
-        batch_size = batch_size * num_images_per_prompt
-        if image.shape[1] == self.vae.config.latent_channels:
-            init_latents = image
-
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+        elif isinstance(generator, list):
+            init_latents = [
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i]) for i in range(batch_size)
+            ]
+            init_latents = torch.cat(init_latents, dim=0)
         else:
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
+            init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
-            elif isinstance(generator, list):
-                init_latents = [
-                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
-                    for i in range(batch_size)
-                ]
-                init_latents = torch.cat(init_latents, dim=0)
-            else:
-                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
-
-            init_latents = (init_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+        init_latents = (init_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
         if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
             # expand init_latents for batch_size
@@ -642,7 +640,6 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         shape = init_latents.shape
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        # get latents
         init_latents = self.scheduler.scale_noise(init_latents, timestep, noise)
         latents = init_latents.to(device=device, dtype=dtype)
 
@@ -678,6 +675,8 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         prompt_3: Optional[Union[str, List[str]]] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         image: PipelineImageInput = None,
         strength: float = 0.6,
         num_inference_steps: int = 50,
@@ -699,6 +698,7 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
+        map: PipelineImageInput = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -788,6 +788,10 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
+        # 0. Default height and width
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -847,20 +851,32 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 3. Preprocess image
-        image = self.image_processor.preprocess(image)
+        init_image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+
+        map = self.mask_processor.preprocess(
+            map, height=height // self.vae_scale_factor, width=width // self.vae_scale_factor
+        ).to(device)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+
+        # begin diff diff change
+        total_time_steps = num_inference_steps
+        # end diff diff change
+
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 5. Prepare latent variables
+        num_channels_latents = self.transformer.config.in_channels
         if latents is None:
             latents = self.prepare_latents(
-                image,
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                init_image,
                 latent_timestep,
-                batch_size,
-                num_images_per_prompt,
                 prompt_embeds.dtype,
                 device,
                 generator,
@@ -869,10 +885,37 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         # 6. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
+
+        # preparations for diff diff
+        original_with_noise = self.prepare_latents(
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            init_image,
+            timesteps,
+            prompt_embeds.dtype,
+            device,
+            generator,
+        )
+        thresholds = torch.arange(total_time_steps, dtype=map.dtype) / total_time_steps
+        thresholds = thresholds.unsqueeze(1).unsqueeze(1).to(device)
+        masks = map.squeeze() > thresholds
+        # end diff diff preparations
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+
+                # diff diff
+                if i == 0:
+                    latents = original_with_noise[:1]
+                else:
+                    mask = masks[i].unsqueeze(0).to(latents.dtype)
+                    mask = mask.unsqueeze(1)  # fit shape
+                    latents = original_with_noise[i] * mask + latents * (1 - mask)
+                # end diff diff
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
@@ -914,7 +957,6 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
                         "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
                     )
 
-                # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
