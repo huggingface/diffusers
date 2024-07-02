@@ -422,7 +422,7 @@ except OptionalDependencyNotAvailable:
 
 
 else:
-    _import_structure["models.controlnet_flax"] = ["FlaxControlNetModel"]
+    _import_structure["models.controlnets.controlnet_flax"] = ["FlaxControlNetModel"]
     _import_structure["models.modeling_flax_utils"] = ["FlaxModelMixin"]
     _import_structure["models.unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
     _import_structure["models.vae_flax"] = ["FlaxAutoencoderKL"]
