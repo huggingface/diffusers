@@ -418,7 +418,7 @@ my_local_checkpoint_path = hf_hub_download(
 
 my_local_config_path = snapshot_download(
     repo_id="segmind/SSD-1B",
-    allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
 )
 
 pipeline = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, config=my_local_config_path, local_files_only=True)
@@ -438,7 +438,7 @@ my_local_checkpoint_path = hf_hub_download(
 
 my_local_config_path = snapshot_download(
     repo_id="segmind/SSD-1B",
-    allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
     local_dir="my_local_config"
 )
 
@@ -468,7 +468,7 @@ print("My local checkpoint: ", my_local_checkpoint_path)
 
 my_local_config_path = snapshot_download(
     repo_id="segmind/SSD-1B",
-    allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
     local_dir_use_symlinks=False,
 )
 print("My local config: ", my_local_config_path)
