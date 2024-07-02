@@ -318,7 +318,7 @@ class StableAudioPipeline(DiffusionPipeline):
                 attention_mask=attention_mask,
             )
             prompt_embeds = prompt_embeds[0]
-
+            prompt_embeds = prompt_embeds * attention_mask.unsqueeze(-1).to(prompt_embeds.dtype)
         
             projection_output = self.projection_model(
                 text_hidden_states=prompt_embeds,
@@ -335,7 +335,7 @@ class StableAudioPipeline(DiffusionPipeline):
             cross_attention_hidden_states = torch.cat([prompt_embeds,seconds_start_hidden_states, seconds_end_hidden_states], dim=1)
             attention_mask = torch.cat([attention_mask,torch.ones((1,1), device=attention_mask.device), torch.ones((1,1), device=attention_mask.device)], dim=1)
             
-            global_hidden_states = torch.cat([seconds_start_hidden_states, seconds_end_hidden_states], dim=1)
+            global_hidden_states = torch.cat([seconds_start_hidden_states, seconds_end_hidden_states], dim=2)
 
         cross_attention_hidden_states = cross_attention_hidden_states.to(dtype=self.text_encoder.dtype, device=device)
         global_hidden_states = global_hidden_states.to(dtype=self.text_encoder.dtype, device=device)

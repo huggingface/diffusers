@@ -129,6 +129,7 @@ class StableAudioNumberConditioner(nn.Module):
         nn.Linear(in_features=internal_dim + 1, out_features=number_embedding_dim),
         )
         
+        self.number_embedding_dim = number_embedding_dim 
         self.min_value = min_value
         self.max_value = max_value
 
@@ -139,7 +140,7 @@ class StableAudioNumberConditioner(nn.Module):
     ):    
         # Cast the inputs to floats
         floats = [float(x) for x in floats]
-        floats = torch.tensor(floats).to(self.device)
+        floats = torch.tensor(floats).to(self.time_positional_embedding[1].weight.device)
 
         floats = floats.clamp(self.min_value, self.max_value)
 
@@ -150,7 +151,7 @@ class StableAudioNumberConditioner(nn.Module):
         normalized_floats = normalized_floats.to(embedder_dtype)
 
         embedding = self.time_positional_embedding(normalized_floats)
-        float_embeds = embedding.view(-1, 1, self.features)
+        float_embeds = embedding.view(-1, 1, self.number_embedding_dim)
 
         # TODO(YL): do negative elsewhere
         return float_embeds #, torch.ones(float_embeds.shape[0], 1).to(self.device)]
@@ -193,7 +194,7 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
     ):
         text_hidden_states = self.text_projection(text_hidden_states)
         seconds_start_hidden_states = self.start_number_conditioner(start_seconds)
-        seconds_end_hidden_states = self.start_number_conditioner(end_seconds)
+        seconds_end_hidden_states = self.end_number_conditioner(end_seconds)
 
 
         return StableAudioProjectionModelOutput(
