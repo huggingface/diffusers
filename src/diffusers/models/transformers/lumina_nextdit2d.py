@@ -27,7 +27,7 @@ from ..embeddings import (
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import RMSNorm
+from ..normalization import RMSNorm, LuminaRMSNormZero, LuminaLayerNormContinuous
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -167,20 +167,15 @@ class LuminaNextDiTBlock(nn.Module):
             ffn_dim_multiplier=ffn_dim_multiplier,
         )
 
-        self.norm1 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.norm1 = LuminaRMSNormZero(
+            embedding_dim=dim,
+            norm_eps=norm_eps,
+            norm_elementwise_affine=norm_elementwise_affine,
+        )
         self.ffn_norm1 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
         self.norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
         self.ffn_norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
-
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(
-                min(dim, 1024),
-                4 * dim,
-                bias=True,
-            ),
-        )
 
         self.norm1_context = RMSNorm(
             cross_attention_dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine
@@ -208,10 +203,8 @@ class LuminaNextDiTBlock(nn.Module):
         """
         residual = hidden_states
 
-        scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(temb).chunk(4, dim=1)
-
         # Self-attention
-        norm_hidden_states = modulate(self.norm1(hidden_states), scale_msa)
+        norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
         self_attn_output = self.attn1(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_hidden_states,
@@ -346,7 +339,15 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
                 for _ in range(num_layers)
             ]
         )
-        self.final_layer = LuminaFinalLayer(hidden_size, patch_size, self.out_channels)
+        self.norm_out = LuminaLayerNormContinuous(
+            embedding_dim=hidden_size,
+            conditioning_embedding_dim=min(hidden_size, 1024),
+            elementwise_affine=False,
+            eps=1e-6,
+            bias=True,
+            out_dim=patch_size * patch_size * self.out_channels,
+        )
+        # self.final_layer = LuminaFinalLayer(hidden_size, patch_size, self.out_channels)
 
         assert (hidden_size // num_attention_heads) % 4 == 0, "2d rope needs head dim to be divisible by 4"
 
@@ -427,7 +428,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
                 cross_attention_kwargs=cross_attention_kwargs,
             )
 
-        hidden_states = self.final_layer(hidden_states, temb)
+        hidden_states = self.norm_out(hidden_states, temb)
         output = self.unpatchify(hidden_states, img_size, return_tensor=True)
 
         if not return_dict:
