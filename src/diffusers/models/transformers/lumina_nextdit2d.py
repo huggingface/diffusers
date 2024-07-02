@@ -308,27 +308,6 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
                 If return_tensor is False, the reconstructed images will be returned as a list of tensors, where each
                 tensor has shape (H, W, C).
         """
-        pH = pW = self.patch_size
-        if return_tensor:
-            H, W = img_size[0]
-            B = x.size(0)
-            L = (H // pH) * (W // pW)
-            x = x[:, :L].view(B, H // pH, W // pW, pH, pW, self.out_channels)
-            x = x.permute(0, 5, 1, 3, 2, 4).flatten(4, 5).flatten(2, 3)
-            return x
-        else:
-            imgs = []
-            for i in range(x.size(0)):
-                H, W = img_size[i]
-                L = (H // pH) * (W // pW)
-                imgs.append(
-                    x[i][:L]
-                    .view(H // pH, W // pW, pH, pW, self.out_channels)
-                    .permute(4, 0, 2, 1, 3)
-                    .flatten(3, 4)
-                    .flatten(1, 2)
-                )
-        return imgs
 
     def forward(
         self,
@@ -370,7 +349,14 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             )
 
         hidden_states = self.norm_out(hidden_states, temb)
-        output = self.unpatchify(hidden_states, img_size, return_tensor=True)
+
+        # unpatchify
+        height_tokens = width_tokens = self.patch_size
+        height, width = img_size[0]
+        batch_size = hidden_states.size(0)
+        sequence_length = (height // height_tokens) * (width // width_tokens)
+        hidden_states = hidden_states[:, :sequence_length].view(batch_size, height // height_tokens, width // width_tokens, height_tokens, width_tokens, self.out_channels)
+        output = hidden_states.permute(0, 5, 1, 3, 2, 4).flatten(4, 5).flatten(2, 3)
 
         if not return_dict:
             return (output,)
