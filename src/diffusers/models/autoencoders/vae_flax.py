@@ -24,9 +24,9 @@ import jax
 import jax.numpy as jnp
 from flax.core.frozen_dict import FrozenDict
 
-from ..configuration_utils import ConfigMixin, flax_register_to_config
-from ..utils import BaseOutput
-from .modeling_flax_utils import FlaxModelMixin
+from ...configuration_utils import ConfigMixin, flax_register_to_config
+from ...utils import BaseOutput
+from ..modeling_flax_utils import FlaxModelMixin
 
 
 @flax.struct.dataclass
