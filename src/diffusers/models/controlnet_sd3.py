@@ -81,7 +81,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                 JointTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
-                    attention_head_dim=self.inner_dim,
+                    attention_head_dim=self.config.attention_head_dim,
                     context_pre_only=False,
                 )
                 for i in range(num_layers)
