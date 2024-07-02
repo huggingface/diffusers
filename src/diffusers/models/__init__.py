@@ -32,10 +32,13 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
-    _import_structure["controlnet"] = ["ControlNetModel"]
-    _import_structure["controlnet_hunyuan"] = ["HunyuanDiT2DControlNetModel", "HunyuanDiT2DMultiControlNetModel"]
-    _import_structure["controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
-    _import_structure["controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
+    _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
+    _import_structure["controlnets.controlnet_hunyuan"] = [
+        "HunyuanDiT2DControlNetModel",
+        "HunyuanDiT2DMultiControlNetModel",
+    ]
+    _import_structure["controlnets.controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
+    _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
@@ -75,10 +78,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
             VQModel,
         )
-        from .controlnets.controlnet import ControlNetModel
-        from .controlnets.controlnet_hunyuan import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
-        from .controlnets.controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
-        from .controlnets.controlnet_xs import ControlNetXSAdapter, UNetControlNetXSModel
+        from .controlnets import (
+            ControlNetModel,
+            ControlNetXSAdapter,
+            HunyuanDiT2DControlNetModel,
+            HunyuanDiT2DMultiControlNetModel,
+            SD3ControlNetModel,
+            SD3MultiControlNetModel,
+            UNetControlNetXSModel,
+        )
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
@@ -108,7 +116,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 
     if is_flax_available():
         from .autoencoders import FlaxAutoencoderKL
-        from .controlnets.controlnet_flax import FlaxControlNetModel
+        from .controlnets import FlaxControlNetModel
         from .unets import FlaxUNet2DConditionModel
 
 else:
