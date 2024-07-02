@@ -75,10 +75,8 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         scheduler = DDIMScheduler()
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
-        # text_encoder = T5EncoderModel.from_pretrained("/mnt/hwfile/gcc/maxin/work/pretrained/hf-internal-testing/tiny-random-t5")
 
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
-        # tokenizer = AutoTokenizer.from_pretrained("/mnt/hwfile/gcc/maxin/work/pretrained/hf-internal-testing/tiny-random-t5")
 
         components = {
             "transformer": transformer.eval(),
