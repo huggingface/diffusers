@@ -36,36 +36,36 @@ def main(args):
         converted_state_dict[f"layers.{i}.adaLN_modulation.1.bias"] = all_sd[f"layers.{i}.adaLN_modulation.1.bias"]
 
         # qkv
-        converted_state_dict[f"layers.{i}.attn.to_q.weight"] = all_sd[f"layers.{i}.attention.wq.weight"]
-        converted_state_dict[f"layers.{i}.attn.to_k.weight"] = all_sd[f"layers.{i}.attention.wk.weight"]
-        converted_state_dict[f"layers.{i}.attn.to_v.weight"] = all_sd[f"layers.{i}.attention.wv.weight"]
+        converted_state_dict[f"layers.{i}.attn1.to_q.weight"] = all_sd[f"layers.{i}.attention.wq.weight"]
+        converted_state_dict[f"layers.{i}.attn1.to_k.weight"] = all_sd[f"layers.{i}.attention.wk.weight"]
+        converted_state_dict[f"layers.{i}.attn1.to_v.weight"] = all_sd[f"layers.{i}.attention.wv.weight"]
 
         # cap
-        converted_state_dict[f"layers.{i}.cross_attn.to_q.weight"] = all_sd[f"layers.{i}.attention.wq.weight"]
-        converted_state_dict[f"layers.{i}.cross_attn.to_k.weight"] = all_sd[f"layers.{i}.attention.wk_y.weight"]
-        converted_state_dict[f"layers.{i}.cross_attn.to_v.weight"] = all_sd[f"layers.{i}.attention.wv_y.weight"]
+        converted_state_dict[f"layers.{i}.attn2.to_q.weight"] = all_sd[f"layers.{i}.attention.wq.weight"]
+        converted_state_dict[f"layers.{i}.attn2.to_k.weight"] = all_sd[f"layers.{i}.attention.wk_y.weight"]
+        converted_state_dict[f"layers.{i}.attn2.to_v.weight"] = all_sd[f"layers.{i}.attention.wv_y.weight"]
 
         # output
-        converted_state_dict[f"layers.{i}.cross_attn.to_out.0.weight"] = all_sd[f"layers.{i}.attention.wo.weight"]
+        converted_state_dict[f"layers.{i}.attn2.to_out.0.weight"] = all_sd[f"layers.{i}.attention.wo.weight"]
 
         # attention
         # qk norm
-        converted_state_dict[f"layers.{i}.attn.norm_q.weight"] = all_sd[f"layers.{i}.attention.q_norm.weight"]
-        converted_state_dict[f"layers.{i}.attn.norm_q.bias"] = all_sd[f"layers.{i}.attention.q_norm.bias"]
+        converted_state_dict[f"layers.{i}.attn1.norm_q.weight"] = all_sd[f"layers.{i}.attention.q_norm.weight"]
+        converted_state_dict[f"layers.{i}.attn1.norm_q.bias"] = all_sd[f"layers.{i}.attention.q_norm.bias"]
 
-        converted_state_dict[f"layers.{i}.attn.norm_k.weight"] = all_sd[f"layers.{i}.attention.k_norm.weight"]
-        converted_state_dict[f"layers.{i}.attn.norm_k.bias"] = all_sd[f"layers.{i}.attention.k_norm.bias"]
+        converted_state_dict[f"layers.{i}.attn1.norm_k.weight"] = all_sd[f"layers.{i}.attention.k_norm.weight"]
+        converted_state_dict[f"layers.{i}.attn1.norm_k.bias"] = all_sd[f"layers.{i}.attention.k_norm.bias"]
 
-        converted_state_dict[f"layers.{i}.cross_attn.norm_q.weight"] = all_sd[f"layers.{i}.attention.q_norm.weight"]
-        converted_state_dict[f"layers.{i}.cross_attn.norm_q.bias"] = all_sd[f"layers.{i}.attention.q_norm.bias"]
+        converted_state_dict[f"layers.{i}.attn2.norm_q.weight"] = all_sd[f"layers.{i}.attention.q_norm.weight"]
+        converted_state_dict[f"layers.{i}.attn2.norm_q.bias"] = all_sd[f"layers.{i}.attention.q_norm.bias"]
 
-        converted_state_dict[f"layers.{i}.cross_attn.norm_k.weight"] = all_sd[f"layers.{i}.attention.ky_norm.weight"]
-        converted_state_dict[f"layers.{i}.cross_attn.norm_k.bias"] = all_sd[f"layers.{i}.attention.ky_norm.bias"]
+        converted_state_dict[f"layers.{i}.attn2.norm_k.weight"] = all_sd[f"layers.{i}.attention.ky_norm.weight"]
+        converted_state_dict[f"layers.{i}.attn2.norm_k.bias"] = all_sd[f"layers.{i}.attention.ky_norm.bias"]
 
         # attention norm
         converted_state_dict[f"layers.{i}.attn_norm1.weight"] = all_sd[f"layers.{i}.attention_norm1.weight"]
         converted_state_dict[f"layers.{i}.attn_norm2.weight"] = all_sd[f"layers.{i}.attention_norm2.weight"]
-        converted_state_dict[f"layers.{i}.attn_encoder_hidden_states_norm.weight"] = all_sd[
+        converted_state_dict[f"layers.{i}.norm1_context.weight"] = all_sd[
             f"layers.{i}.attention_y_norm.weight"
         ]
 

@@ -132,7 +132,7 @@ class LuminaNextDiTBlock(nn.Module):
         self.gate = nn.Parameter(torch.zeros([num_attention_heads]))
 
         # Self-attention
-        self.attn = Attention(
+        self.attn1 = Attention(
             query_dim=dim,
             cross_attention_dim=None,
             dim_head=dim // num_attention_heads,
@@ -144,10 +144,10 @@ class LuminaNextDiTBlock(nn.Module):
             out_bias=False,
             processor=LuminaAttnProcessor2_0(),
         )
-        self.attn.to_out = nn.Identity()
+        self.attn1.to_out = nn.Identity()
 
         # Cross-attention
-        self.cross_attn = Attention(
+        self.attn2 = Attention(
             query_dim=dim,
             cross_attention_dim=cross_attention_dim,
             dim_head=dim // num_attention_heads,
@@ -167,10 +167,10 @@ class LuminaNextDiTBlock(nn.Module):
             ffn_dim_multiplier=ffn_dim_multiplier,
         )
 
-        self.attn_norm1 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.norm1 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
         self.ffn_norm1 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
-        self.attn_norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
         self.ffn_norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
         self.adaLN_modulation = nn.Sequential(
@@ -182,7 +182,7 @@ class LuminaNextDiTBlock(nn.Module):
             ),
         )
 
-        self.attn_encoder_hidden_states_norm = RMSNorm(
+        self.norm1_context = RMSNorm(
             cross_attention_dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine
         )
 
@@ -193,7 +193,7 @@ class LuminaNextDiTBlock(nn.Module):
         image_rotary_emb: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
+        temb: torch.Tensor = None,
         cross_attention_kwargs: Dict[str, Any] = None,
     ):
         """
@@ -208,65 +208,41 @@ class LuminaNextDiTBlock(nn.Module):
         """
         residual = hidden_states
 
-        if adaln_input is not None:
-            scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).chunk(4, dim=1)
+        scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(temb).chunk(4, dim=1)
 
-            # Self-attention
-            hidden_states = modulate(self.attn_norm1(hidden_states), scale_msa)
-            self_attn_output = self.attn1(
-                hidden_states=norm_hidden_states,
-                encoder_hidden_states=hidden_states,
-                attention_mask=attention_mask,
-                query_rotary_emb=image_rotary_emb,
-                key_rotary_emb=image_rotary_emb,
-                **cross_attention_kwargs,
-            )
+        # Self-attention
+        norm_hidden_states = modulate(self.norm1(hidden_states), scale_msa)
+        self_attn_output = self.attn1(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=norm_hidden_states,
+            attention_mask=attention_mask,
+            query_rotary_emb=image_rotary_emb,
+            key_rotary_emb=image_rotary_emb,
+            **cross_attention_kwargs,
+        )
 
-            # Cross-attention
-            norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states)
-            cross_attn_output = self.attn2(
-                hidden_states=hidden_states,
-                encoder_hidden_states=norm_encoder_hidden_states,
-                attention_mask=encoder_mask,
-                query_rotary_emb=image_rotary_emb,
-                key_rotary_emb=None,
-                **cross_attention_kwargs,
-            )
-            cross_attn_output = cross_attn_output * self.gate.tanh().view(1, 1, -1, 1)
-            mixed_attn_output = self_attn_output + cross_attn_output
-            mixed_attn_output = mixed_attn_output.flatten(-2)
-            # linear proj
-            hidden_states = self.cross_attn.to_out[0](mixed_attn_output)
+        # Cross-attention
+        norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states)
+        cross_attn_output = self.attn2(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=norm_encoder_hidden_states,
+            attention_mask=encoder_mask,
+            query_rotary_emb=image_rotary_emb,
+            key_rotary_emb=None,
+            **cross_attention_kwargs,
+        )
+        cross_attn_output = cross_attn_output * self.gate.tanh().view(1, 1, -1, 1)
+        mixed_attn_output = self_attn_output + cross_attn_output
+        mixed_attn_output = mixed_attn_output.flatten(-2)
+        # linear proj
+        hidden_states = self.attn2.to_out[0](mixed_attn_output)
 
-            hidden_states = residual + gate_msa.unsqueeze(1).tanh() * self.attn_norm2(hidden_states)
+        hidden_states = residual + gate_msa.unsqueeze(1).tanh() * self.norm2(hidden_states)
 
-            mlp_output = self.feed_forward(
-                modulate(self.ffn_norm1(hidden_states), scale_mlp),
-            )
-            hidden_states = hidden_states + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(mlp_output)
-        else:
-            hidden_states = self.attn_norm1(hidden_states)
-            # Self-attention
-            self_attn_output = self.attn(
-                hidden_states=hidden_states,
-                encoder_hidden_states=None,
-                attention_mask=attention_mask,
-                image_rotary_emb=image_rotary_emb,
-                **cross_attention_kwargs,
-            )
-
-            # Cross-attention
-            cross_attn_output = self.cross_attn(
-                hidden_states=hidden_states,
-                encoder_hidden_states=self.attn_encoder_hidden_states_norm(encoder_hidden_states),
-                attention_mask=encoder_mask,
-                image_rotary_emb=None,
-                **cross_attention_kwargs,
-            )
-            hidden_states = residual + self.attn_norm2(cross_attn_output)
-
-            mlp_output = self.feed_forward(self.ffn_norm1(hidden_states))
-            hidden_states = hidden_states + self.ffn_norm2(hidden_states)
+        mlp_output = self.feed_forward(
+            modulate(self.ffn_norm1(hidden_states), scale_mlp),
+        )
+        hidden_states = hidden_states + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(mlp_output)
 
         return hidden_states
 
@@ -447,11 +423,11 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
                 image_rotary_emb,
                 encoder_hidden_states,
                 encoder_mask,
-                adaln_input=adaln_input,
+                temb=temb,
                 cross_attention_kwargs=cross_attention_kwargs,
             )
 
-        hidden_states = self.final_layer(hidden_states, adaln_input)
+        hidden_states = self.final_layer(hidden_states, temb)
         output = self.unpatchify(hidden_states, img_size, return_tensor=True)
 
         if not return_dict:
