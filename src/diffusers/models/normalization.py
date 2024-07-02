@@ -22,7 +22,10 @@ import torch.nn.functional as F
 
 from ..utils import is_torch_version
 from .activations import get_activation
-from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings, LuminaCombinedTimestepCaptionEmbedding
+from .embeddings import (
+    CombinedTimestepLabelEmbeddings,
+    PixArtAlphaCombinedTimestepSizeEmbeddings,
+)
 
 
 class AdaLayerNorm(nn.Module):
@@ -91,6 +94,7 @@ class LuminaRMSNormZero(nn.Module):
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.
     """
+
     def __init__(self, embedding_dim: int, norm_eps: float, norm_elementwise_affine: bool):
         super().__init__()
         self.silu = nn.SiLU()
@@ -99,7 +103,7 @@ class LuminaRMSNormZero(nn.Module):
             4 * embedding_dim,
             bias=True,
         )
-        self.norm = RMSNorm(embedding_dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine) 
+        self.norm = RMSNorm(embedding_dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
     def forward(
         self,
@@ -217,6 +221,7 @@ class AdaLayerNormContinuous(nn.Module):
         x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]
         return x
 
+
 class LuminaLayerNormContinuous(nn.Module):
     def __init__(
         self,
@@ -249,7 +254,11 @@ class LuminaLayerNormContinuous(nn.Module):
                 bias=bias,
             )
 
-    def forward(self, x: torch.Tensor, conditioning_embedding: torch.Tensor,) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        conditioning_embedding: torch.Tensor,
+    ) -> torch.Tensor:
         # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
         emb = self.linear_1(self.silu(conditioning_embedding).to(x.dtype))
         scale = emb
@@ -259,7 +268,6 @@ class LuminaLayerNormContinuous(nn.Module):
             x = self.linear_2(x)
 
         return x
-
 
 
 if is_torch_version(">=", "2.1.0"):

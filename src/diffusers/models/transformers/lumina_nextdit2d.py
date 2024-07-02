@@ -27,7 +27,7 @@ from ..embeddings import (
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import RMSNorm, LuminaRMSNormZero, LuminaLayerNormContinuous
+from ..normalization import LuminaLayerNormContinuous, LuminaRMSNormZero, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -35,58 +35,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 def modulate(x, scale):
     return x * (1 + scale.unsqueeze(1))
-
-
-class LuminaFinalLayer(nn.Module):
-    """
-    The final layer of LuminaNextDiT.
-
-    Parameters:
-        hidden_size (`int`):
-            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's
-            hidden representations.
-        patch_size (`int`): The patch size of noise.
-        out_channels (`int`): The number of output channels.
-    """
-
-    def __init__(self, hidden_size, patch_size, out_channels):
-        super().__init__()
-        self.norm_final = nn.LayerNorm(
-            hidden_size,
-            elementwise_affine=False,
-            eps=1e-6,
-        )
-        self.linear = nn.Linear(
-            hidden_size,
-            patch_size * patch_size * out_channels,
-            bias=True,
-        )
-
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(
-                min(hidden_size, 1024),
-                hidden_size,
-                bias=True,
-            ),
-        )
-
-    def forward(self, x, c):
-        """
-        Forward pass of the LuminaFinalLayer.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-            c (torch.Tensor): The conditioning tensor.
-        Returns:
-            torch.Tensor: The output tensor.
-        """
-        scale = self.adaLN_modulation(c)
-
-        x = modulate(self.norm_final(x), scale)
-        x = self.linear(x)
-
-        return x
 
 
 class LuminaNextDiTBlock(nn.Module):
@@ -177,9 +125,7 @@ class LuminaNextDiTBlock(nn.Module):
         self.norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
         self.ffn_norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
-        self.norm1_context = RMSNorm(
-            cross_attention_dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine
-        )
+        self.norm1_context = RMSNorm(cross_attention_dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
 
     def forward(
         self,

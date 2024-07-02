@@ -24,8 +24,8 @@ from transformers import AutoModel, AutoTokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
-from ...models.transformers.lumina_nextdit2d import LuminaNextDiT2DModel
 from ...models.embeddings import get_2d_rotary_pos_embed_lumina
+from ...models.transformers.lumina_nextdit2d import LuminaNextDiT2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -753,7 +753,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
 
         if proportional_attn:
             cross_attention_kwargs["base_sequence_length"] = (self.default_image_size // 16) ** 2
-            
+
         scaling_factor = math.sqrt(width * height / self.default_image_size**2)
 
         device = self._execution_device
@@ -803,7 +803,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             generator,
             latents,
         )
-        
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -832,10 +831,10 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
 
                 # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
                 current_timestep = 1 - current_timestep / self.scheduler.config.num_train_timesteps
-                
+
                 # prepare image_rotary_emb for positional encoding
                 # dynamic scaling_factor for different resolution.
-                # NOTE: For `Time-aware` denosing mechanism from Lumina-Next 
+                # NOTE: For `Time-aware` denosing mechanism from Lumina-Next
                 # https://arxiv.org/abs/2406.18583, Sec 2.3
                 # NOTE: We should compute different image_rotary_emb with different timestep.
                 if current_timestep[0] < scaling_watershed:
