@@ -243,8 +243,6 @@ class BasicTransformerBlock(nn.Module):
             The type of positional embeddings to apply to.
         num_positional_embeddings (`int`, *optional*, defaults to `None`):
             The maximum number of positional embeddings to apply.
-        squeeze_hidden_states (`bool`, *optional*, defaults to `True`): 
-            Whether to squeeze the hidden states. Set to `False` for Latte.
     """
 
     def __init__(
