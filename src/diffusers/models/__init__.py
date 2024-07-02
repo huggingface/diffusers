@@ -62,10 +62,10 @@ if is_torch_available():
     _import_structure["unets.uvit_2d"] = ["UVit2DModel"]
 
 if is_flax_available():
-    _import_structure["autoencoders.vae_flax"] = ["FlaxAutoencoderKL"]
-
-    _import_structure["controlnet_flax"] = ["FlaxControlNetModel"]
+    _import_structure["controlents.controlnet_flax"] = ["FlaxControlNetModel"]
     _import_structure["unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
+    _import_structure["vae_flax"] = ["FlaxAutoencoderKL"]
+
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
@@ -115,9 +115,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
 
     if is_flax_available():
-        from .autoencoders import FlaxAutoencoderKL
         from .controlnets import FlaxControlNetModel
         from .unets import FlaxUNet2DConditionModel
+        from .vae_flax import FlaxAutoencoderKL
 
 else:
     import sys
