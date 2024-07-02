@@ -33,10 +33,6 @@ from ..normalization import LuminaLayerNormContinuous, LuminaRMSNormZero, RMSNor
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def modulate(x, scale):
-    return x * (1 + scale.unsqueeze(1))
-
-
 class LuminaNextDiTBlock(nn.Module):
     """
     Initialize a LuminaNextDiTBlock.
@@ -178,9 +174,8 @@ class LuminaNextDiTBlock(nn.Module):
 
         hidden_states = residual + gate_msa.unsqueeze(1).tanh() * self.norm2(hidden_states)
 
-        mlp_output = self.feed_forward(
-            modulate(self.ffn_norm1(hidden_states), scale_mlp),
-        )
+        mlp_output = self.feed_forward(self.ffn_norm1(hidden_states) * (1 + scale_mlp.unsqueeze(0)))
+
         hidden_states = hidden_states + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(mlp_output)
 
         return hidden_states
