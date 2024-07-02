@@ -88,7 +88,7 @@ def main():
     test_modules.extend(ALWAYS_TEST_PIPELINE_MODULES)
 
     # Get unique modules
-    test_modules = list(set(test_modules))
+    test_modules = sorted(set(test_modules))
     print(json.dumps(test_modules))
 
     save_path = f"{PATH_TO_REPO}/reports"
