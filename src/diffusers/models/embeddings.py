@@ -276,7 +276,7 @@ class LuminaPatchEmbed(nn.Module):
         )
 
 
-def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True, reverse=False):
+def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
     """
     RoPE for image tokens with 2d structure.
 
@@ -297,8 +297,6 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True, r
     grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
     grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
     grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    if reverse:
-        grid = grid[::-1] # reverse the order of grid_h and grid_w
     grid = np.stack(grid, axis=0)  # [2, W, H]
 
     grid = grid.reshape([2, 1, *grid.shape[1:]])
