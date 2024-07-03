@@ -31,6 +31,7 @@ from ..utils import (
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
     delete_adapter_layers,
+    deprecate,
     get_adapter_name,
     get_peft_kwargs,
     is_accelerate_available,
@@ -399,6 +400,7 @@ class LoraBaseMixin:
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: Optional[List[str]] = None,
+        **kwargs,
     ):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
@@ -436,6 +438,21 @@ class LoraBaseMixin:
         ```
         """
         from peft.tuners.tuners_utils import BaseTunerLayer
+
+        if "fuse_unet" in kwargs:
+            depr_message = "Passing `fuse_unet` to `fuse_lora()` is deprecated and will be ignored. Please use the `fuse_denoiser` argument. `fuse_unet` will be removed in a future version."
+            deprecate(
+                "fuse_unet",
+                "1.0.0",
+                depr_message,
+            )
+        if "fuse_transformer" in kwargs:
+            depr_message = "Passing `fuse_transformer` to `fuse_lora()` is deprecated and will be ignored. Please use the `fuse_denoiser` argument. `fuse_transformer` will be removed in a future version."
+            deprecate(
+                "fuse_transformer",
+                "1.0.0",
+                depr_message,
+            )
 
         fuse_unet = True if fuse_denoiser and self.is_unet_denoiser else False
         fuse_transformer = True if fuse_denoiser and self.is_transformer_denoiser else False
@@ -479,10 +496,10 @@ class LoraBaseMixin:
         if fuse_denoiser or fuse_text_encoder:
             self.num_fused_loras += 1
 
-    def unfuse_lora(self, unfuse_denoiser: bool = True, unfuse_text_encoder: bool = True):
+    def unfuse_lora(self, unfuse_denoiser: bool = True, unfuse_text_encoder: bool = True, **kwargs):
         r"""
         Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.fuse_lora).
+        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
 
         <Tip warning={true}>
 
@@ -497,6 +514,21 @@ class LoraBaseMixin:
                 LoRA parameters then it won't have any effect.
         """
         from peft.tuners.tuners_utils import BaseTunerLayer
+
+        if "unfuse_unet" in kwargs:
+            depr_message = "Passing `unfuse_unet` to `unfuse_lora()` is deprecated and will be ignored. Please use the `fuse_denoiser` argument. `unfuse_unet` will be removed in a future version."
+            deprecate(
+                "unfuse_unet",
+                "1.0.0",
+                depr_message,
+            )
+        if "unfuse_transformer" in kwargs:
+            depr_message = "Passing `unfuse_transformer` to `unfuse_lora()` is deprecated and will be ignored. Please use the `fuse_denoiser` argument. `unfuse_transformer` will be removed in a future version."
+            deprecate(
+                "unfuse_transformer",
+                "1.0.0",
+                depr_message,
+            )
 
         unfuse_unet = True if unfuse_denoiser and self.is_unet_denoiser else False
         unfuse_transformer = True if unfuse_denoiser and self.is_transformer_denoiser else False

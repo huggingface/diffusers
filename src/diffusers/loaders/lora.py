@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -222,79 +222,6 @@ class LoraLoaderMixin(LoraBaseMixin):
             state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
-
-    # This method acts as an interface to distinguish between `fuse_unet` and `fuse_transformer` arguments
-    # properly and lets us reuse the `fuse_lora` method of the superclass.
-    def fuse_lora(
-        self,
-        fuse_unet: bool = True,
-        fuse_text_encoder: bool = True,
-        lora_scale: float = 1.0,
-        safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
-    ):
-        r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            fuse_unet (`bool`, defaults to `True`): Whether to fuse the UNet LoRA parameters.
-            fuse_text_encoder (`bool`, defaults to `True`):
-                Whether to fuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
-        """
-        super().fuse_lora(
-            fuse_denoiser=fuse_unet,
-            fuse_text_encoder=fuse_text_encoder,
-            lora_scale=lora_scale,
-            safe_fusing=safe_fusing,
-            adapter_names=adapter_names,
-        )
-
-    # This method acts as an interface to distinguish between `unfuse_unet` and `unfuse_transformer` arguments
-    # properly and lets us reuse the `unfuse_lora` method of the superclass.
-    def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
-        r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
-        """
-        super().unfuse_lora(unfuse_denoiser=unfuse_unet, unfuse_text_encoder=unfuse_text_encoder)
 
     @classmethod
     def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None):
@@ -539,83 +466,6 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
     transformer_name = TRANSFORMER_NAME
     text_encoder_name = TEXT_ENCODER_NAME
     is_transformer_denoiser = True
-
-    # This method acts as an interface to distinguish between `fuse_unet` and `fuse_transformer` arguments
-    # properly and lets us reuse the `fuse_lora` method of the superclass.
-    def fuse_lora(
-        self,
-        fuse_transformer: bool = True,
-        fuse_text_encoder: bool = True,
-        lora_scale: float = 1.0,
-        safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
-    ):
-        r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            fuse_transformer (`bool`, defaults to `True`): Whether to fuse the transformer LoRA parameters.
-            fuse_text_encoder (`bool`, defaults to `True`):
-                Whether to fuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights(
-            "nerijs/pixel-art-medium-128-v0.1",
-            weight_name="pixel-art-medium-128-v0.1.safetensors",
-            adapter_name="pixel",
-        )
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
-        """
-        super().fuse_lora(
-            fuse_denoiser=fuse_transformer,
-            fuse_text_encoder=fuse_text_encoder,
-            lora_scale=lora_scale,
-            safe_fusing=safe_fusing,
-            adapter_names=adapter_names,
-        )
-
-    # This method acts as an interface to distinguish between `unfuse_unet` and `unfuse_transformer` arguments
-    # properly and lets us reuse the `unfuse_lora` method of the superclass.
-    def unfuse_lora(self, unfuse_transformer: bool = True, unfuse_text_encoder: bool = True):
-        r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the transformer LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
-        """
-        super().unfuse_lora(unfuse_denoiser=unfuse_transformer, unfuse_text_encoder=unfuse_text_encoder)
 
     def load_lora_weights(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
