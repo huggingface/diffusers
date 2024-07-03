@@ -291,7 +291,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         model.enable_gradient_checkpointing()
 
         EXPECTED_SET = {
-            "Transformer2DModel",
+            "ContinuousTransformer2DModelBlock",
             "UNetMidBlock2DCrossAttn",
             "ControlNetXSCrossAttnDownBlock2D",
             "ControlNetXSCrossAttnMidBlock2D",

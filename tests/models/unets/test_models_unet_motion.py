@@ -186,7 +186,7 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
             "CrossAttnDownBlockMotion",
             "UNetMidBlockCrossAttnMotion",
             "UpBlockMotion",
-            "Transformer2DModel",
+            "ContinuousTransformer2DModelBlock",
             "DownBlockMotion",
         }
 

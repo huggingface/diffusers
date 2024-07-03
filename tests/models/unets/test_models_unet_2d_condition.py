@@ -628,7 +628,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             "CrossAttnDownBlock2D",
             "UNetMidBlock2DCrossAttn",
             "UpBlock2D",
-            "Transformer2DModel",
+            "ContinuousTransformer2DModelBlock",
             "DownBlock2D",
         }
 
