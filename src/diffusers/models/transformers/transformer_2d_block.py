@@ -26,7 +26,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class ContinuousTransformer2DModelBlock(nn.Module):
     """
-    A 2D Transformer block for image-like data.
+    A 2D Transformer block for continuous image-like data.
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
