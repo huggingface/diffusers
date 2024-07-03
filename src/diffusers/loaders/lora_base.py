@@ -548,11 +548,11 @@ class LoraBaseMixin:
 
         # Determine denoiser name (`unet`, `transformer`, etc.).
         denoiser_name = None
-        for component in self, self._lora_loadable_modules:
-            denoiser = getattr(self, component)
-            if issubclass(denoiser.__class__, ModelMixin):
-                denoiser_name = component
-                break
+        for component in self._lora_loadable_modules:
+            denoiser = getattr(self, component, None)
+            if denoiser is not None and issubclass(denoiser.__class__, ModelMixin):
+                    denoiser_name = component
+                    break
 
         for adapter_name, weights in zip(adapter_names, adapter_weights):
             if isinstance(weights, dict):
