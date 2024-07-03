@@ -292,21 +292,6 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
 
         assert (hidden_size // num_attention_heads) % 4 == 0, "2d rope needs head dim to be divisible by 4"
 
-    def unpatchify(self, x: torch.Tensor, img_size: List[Tuple[int, int]], return_tensor=False) -> List[torch.Tensor]:
-        """
-        Reconstructs the original images from the patchified tensor.
-
-        Args:
-            x (torch.Tensor): The patchified tensor of shape (N, T, patch_size**2 * C).
-            img_size (List[Tuple[int, int]]): The list of image sizes for each image in the batch.
-            return_tensor (bool, optional): Whether to return the reconstructed images as a tensor.
-                If False, the reconstructed images will be returned as a list of tensors. Defaults to False.
-
-        Returns:
-            List[torch.Tensor] or torch.Tensor: The reconstructed images.
-                If return_tensor is True, the reconstructed images will be returned as a tensor of shape (N, C, H, W).
-                If return_tensor is False, the reconstructed images will be returned as a list of tensors, where each
-                tensor has shape (H, W, C).
         """
 
     def forward(
