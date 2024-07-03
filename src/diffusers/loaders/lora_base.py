@@ -24,13 +24,14 @@ import torch.nn as nn
 from huggingface_hub import model_info
 from huggingface_hub.constants import HF_HUB_OFFLINE
 
-from ..models.modeling_utils import load_state_dict
+from ..models.modeling_utils import ModelMixin, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     delete_adapter_layers,
     deprecate,
     is_accelerate_available,
+    is_peft_available,
     is_transformers_available,
     logging,
     recurse_remove_peft_layers,
@@ -42,6 +43,8 @@ from ..utils import (
 if is_transformers_available():
     from transformers import PreTrainedModel
 
+if is_peft_available():
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
 if is_accelerate_available():
     from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
@@ -49,12 +52,139 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)
 
 
+def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
+    """
+    Fuses LoRAs for the text encoder.
+
+    Args:
+        text_encoder (`torch.nn.Module`):
+            The text encoder module to set the adapter layers for. If `None`, it will try to get the `text_encoder`
+            attribute.
+        lora_scale (`float`, defaults to 1.0):
+            Controls how much to influence the outputs with the LoRA parameters.
+        safe_fusing (`bool`, defaults to `False`):
+            Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
+        adapter_names (`List[str]` or `str`):
+            The names of the adapters to use.
+    """
+    merge_kwargs = {"safe_merge": safe_fusing}
+
+    for module in text_encoder.modules():
+        if isinstance(module, BaseTunerLayer):
+            if lora_scale != 1.0:
+                module.scale_layer(lora_scale)
+
+            # For BC with previous PEFT versions, we need to check the signature
+            # of the `merge` method to see if it supports the `adapter_names` argument.
+            supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+            if "adapter_names" in supported_merge_kwargs:
+                merge_kwargs["adapter_names"] = adapter_names
+            elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                raise ValueError(
+                    "The `adapter_names` argument is not supported with your PEFT version. "
+                    "Please upgrade to the latest version of PEFT. `pip install -U peft`"
+                )
+
+            module.merge(**merge_kwargs)
+
+
+def unfuse_text_encoder_lora(text_encoder):
+    """
+    Unfuses LoRAs for the text encoder.
+
+    Args:
+        text_encoder (`torch.nn.Module`):
+            The text encoder module to set the adapter layers for. If `None`, it will try to get the `text_encoder`
+            attribute.
+    """
+    for module in text_encoder.modules():
+        if isinstance(module, BaseTunerLayer):
+            module.unmerge()
+
+
+def set_adapters_for_text_encoder(
+    adapter_names: Union[List[str], str],
+    text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
+    text_encoder_weights: Optional[Union[float, List[float], List[None]]] = None,
+):
+    """
+    Sets the adapter layers for the text encoder.
+
+    Args:
+        adapter_names (`List[str]` or `str`):
+            The names of the adapters to use.
+        text_encoder (`torch.nn.Module`, *optional*):
+            The text encoder module to set the adapter layers for. If `None`, it will try to get the `text_encoder`
+            attribute.
+        text_encoder_weights (`List[float]`, *optional*):
+            The weights to use for the text encoder. If `None`, the weights are set to `1.0` for all the adapters.
+    """
+    if text_encoder is None:
+        raise ValueError(
+            "The pipeline does not have a default `pipe.text_encoder` class. Please make sure to pass a `text_encoder` instead."
+        )
+
+    def process_weights(adapter_names, weights):
+        # Expand weights into a list, one entry per adapter
+        # e.g. for 2 adapters:  7 -> [7,7] ; [3, None] -> [3, None]
+        if not isinstance(weights, list):
+            weights = [weights] * len(adapter_names)
+
+        if len(adapter_names) != len(weights):
+            raise ValueError(
+                f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
+            )
+
+        # Set None values to default of 1.0
+        # e.g. [7,7] -> [7,7] ; [3, None] -> [3,1]
+        weights = [w if w is not None else 1.0 for w in weights]
+
+        return weights
+
+    adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+    text_encoder_weights = process_weights(adapter_names, text_encoder_weights)
+    set_weights_and_activate_adapters(text_encoder, adapter_names, text_encoder_weights)
+
+
+def disable_lora_for_text_encoder(text_encoder: Optional["PreTrainedModel"] = None):
+    """
+    Disables the LoRA layers for the text encoder.
+
+    Args:
+        text_encoder (`torch.nn.Module`, *optional*):
+            The text encoder module to disable the LoRA layers for. If `None`, it will try to get the `text_encoder`
+            attribute.
+    """
+    if text_encoder is None:
+        raise ValueError("Text Encoder not found.")
+    set_adapter_layers(text_encoder, enabled=False)
+
+
+def enable_lora_for_text_encoder(text_encoder: Optional["PreTrainedModel"] = None):
+    """
+    Enables the LoRA layers for the text encoder.
+
+    Args:
+        text_encoder (`torch.nn.Module`, *optional*):
+            The text encoder module to enable the LoRA layers for. If `None`, it will try to get the `text_encoder`
+            attribute.
+    """
+    if text_encoder is None:
+        raise ValueError("Text Encoder not found.")
+    set_adapter_layers(text_encoder, enabled=True)
+
+
+def _remove_text_encoder_monkey_patch(text_encoder):
+    recurse_remove_peft_layers(text_encoder)
+    if getattr(text_encoder, "peft_config", None) is not None:
+        del text_encoder.peft_config
+        text_encoder._hf_peft_config_loaded = None
+
+
 class LoraBaseMixin:
     """Utility class for handling LoRAs."""
 
-    is_unet_denoiser = False
-    is_transformer_denoiser = False
-    num_fused_loras = 0
+    _lora_loadable_modules = []
 
     def load_lora_weights(self, **kwargs):
         raise NotImplementedError("`load_lora_weights()` is not implemented.")
@@ -66,20 +196,6 @@ class LoraBaseMixin:
     @classmethod
     def lora_state_dict(cls, **kwargs):
         raise NotImplementedError("`lora_state_dict()` is not implemented.")
-
-    def _remove_text_encoder_monkey_patch(self):
-        if hasattr(self, "text_encoder"):
-            recurse_remove_peft_layers(self.text_encoder)
-            # TODO: @younesbelkada handle this in transformers side
-            if getattr(self.text_encoder, "peft_config", None) is not None:
-                del self.text_encoder.peft_config
-                self.text_encoder._hf_peft_config_loaded = None
-
-        if hasattr(self, "text_encoder_2"):
-            recurse_remove_peft_layers(self.text_encoder_2)
-            if getattr(self.text_encoder_2, "peft_config", None) is not None:
-                del self.text_encoder_2.peft_config
-                self.text_encoder_2._hf_peft_config_loaded = None
 
     @classmethod
     def _optionally_disable_offloading(cls, _pipeline):
@@ -265,13 +381,17 @@ class LoraBaseMixin:
         else:
             raise ValueError("No valid denoiser found in the network.")
 
-        # Safe to call the following regardless of LoRA.
-        self._remove_text_encoder_monkey_patch()
+        for component in self._lora_loadable_modules:
+            model = getattr(self, component, None)
+            if model is not None:
+                if issubclass(model, ModelMixin):
+                    model.unload_lora()
+                elif issubclass(model, PreTrainedModel):
+                    _remove_text_encoder_monkey_patch(model)
 
     def fuse_lora(
         self,
-        fuse_denoiser: bool = True,
-        fuse_text_encoder: bool = True,
+        components: List[str] = [],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: Optional[List[str]] = None,
@@ -287,11 +407,7 @@ class LoraBaseMixin:
         </Tip>
 
         Args:
-            fuse_denoiser (`bool`, defaults to `True`):
-                Whether to fuse the denoiser (UNet, Transformer, etc.) LoRA parameters.
-            fuse_text_encoder (`bool`, defaults to `True`):
-                Whether to fuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
+            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
             lora_scale (`float`, defaults to 1.0):
                 Controls how much to influence the outputs with the LoRA parameters.
             safe_fusing (`bool`, defaults to `False`):
@@ -312,66 +428,46 @@ class LoraBaseMixin:
         pipeline.fuse_lora(lora_scale=0.7)
         ```
         """
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
         if "fuse_unet" in kwargs:
-            depr_message = "Passing `fuse_unet` to `fuse_lora()` is deprecated and will be ignored. Please use the `fuse_denoiser` argument. `fuse_unet` will be removed in a future version."
+            depr_message = "Passing `fuse_unet` to `fuse_lora()` is deprecated and will be ignored. Please use the `components` argument and provide a list of the components whose LoRAs are to be fused. `fuse_unet` will be removed in a future version."
             deprecate(
                 "fuse_unet",
                 "1.0.0",
                 depr_message,
             )
         if "fuse_transformer" in kwargs:
-            depr_message = "Passing `fuse_transformer` to `fuse_lora()` is deprecated and will be ignored. Please use the `fuse_denoiser` argument. `fuse_transformer` will be removed in a future version."
+            depr_message = "Passing `fuse_transformer` to `fuse_lora()` is deprecated and will be ignored. Please use the `components` argument and provide a list of the components whose LoRAs are to be fused. `fuse_transformer` will be removed in a future version."
             deprecate(
                 "fuse_transformer",
                 "1.0.0",
                 depr_message,
             )
-
-        fuse_unet = True if fuse_denoiser and self.is_unet_denoiser else False
-        fuse_transformer = True if fuse_denoiser and self.is_transformer_denoiser else False
-
-        if fuse_unet:
-            unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            unet.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
-        elif fuse_transformer:
-            transformer = (
-                getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+        if "fuse_text_encoder" in kwargs:
+            depr_message = "Passing `fuse_text_encoder` to `fuse_lora()` is deprecated and will be ignored. Please use the `components` argument and provide a list of the components whose LoRAs are to be fused. `fuse_text_encoder` will be removed in a future version."
+            deprecate(
+                "fuse_text_encoder",
+                "1.0.0",
+                depr_message,
             )
-            transformer.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
 
-        def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
-            merge_kwargs = {"safe_merge": safe_fusing}
+        for fuse_component in components:
+            if fuse_component not in self._lora_loadable_modules:
+                raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
 
-            for module in text_encoder.modules():
-                if isinstance(module, BaseTunerLayer):
-                    if lora_scale != 1.0:
-                        module.scale_layer(lora_scale)
+            model = getattr(self, fuse_component, None)
+            if model is not None:
+                # check if diffusers model
+                if issubclass(model, ModelMixin):
+                    model.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
+                # handle transformers models.
+                if issubclass(model, PreTrainedModel):
+                    fuse_text_encoder_lora(
+                        model, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+                    )
 
-                    # For BC with previous PEFT versions, we need to check the signature
-                    # of the `merge` method to see if it supports the `adapter_names` argument.
-                    supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
-                    if "adapter_names" in supported_merge_kwargs:
-                        merge_kwargs["adapter_names"] = adapter_names
-                    elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
-                        raise ValueError(
-                            "The `adapter_names` argument is not supported with your PEFT version. "
-                            "Please upgrade to the latest version of PEFT. `pip install -U peft`"
-                        )
+        self.num_fused_loras += 1
 
-                    module.merge(**merge_kwargs)
-
-        if fuse_text_encoder:
-            if hasattr(self, "text_encoder"):
-                fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing, adapter_names=adapter_names)
-            if hasattr(self, "text_encoder_2"):
-                fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing, adapter_names=adapter_names)
-
-        if fuse_denoiser or fuse_text_encoder:
-            self.num_fused_loras += 1
-
-    def unfuse_lora(self, unfuse_denoiser: bool = True, unfuse_text_encoder: bool = True, **kwargs):
+    def unfuse_lora(self, components: List[str] = [], **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
@@ -383,136 +479,48 @@ class LoraBaseMixin:
         </Tip>
 
         Args:
+            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
             unfuse_text_encoder (`bool`, defaults to `True`):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
         if "unfuse_unet" in kwargs:
-            depr_message = "Passing `unfuse_unet` to `unfuse_lora()` is deprecated and will be ignored. Please use the `fuse_denoiser` argument. `unfuse_unet` will be removed in a future version."
+            depr_message = "Passing `unfuse_unet` to `unfuse_lora()` is deprecated and will be ignored. Please use the `components` argument. `unfuse_unet` will be removed in a future version."
             deprecate(
                 "unfuse_unet",
                 "1.0.0",
                 depr_message,
             )
         if "unfuse_transformer" in kwargs:
-            depr_message = "Passing `unfuse_transformer` to `unfuse_lora()` is deprecated and will be ignored. Please use the `fuse_denoiser` argument. `unfuse_transformer` will be removed in a future version."
+            depr_message = "Passing `unfuse_transformer` to `unfuse_lora()` is deprecated and will be ignored. Please use the `components` argument. `unfuse_transformer` will be removed in a future version."
             deprecate(
                 "unfuse_transformer",
                 "1.0.0",
                 depr_message,
             )
-
-        unfuse_unet = True if unfuse_denoiser and self.is_unet_denoiser else False
-        unfuse_transformer = True if unfuse_denoiser and self.is_transformer_denoiser else False
-
-        if unfuse_unet:
-            unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            for module in unet.modules():
-                if isinstance(module, BaseTunerLayer):
-                    module.unmerge()
-        elif unfuse_transformer:
-            transformer = (
-                getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+        if "unfuse_text_encoder" in kwargs:
+            depr_message = "Passing `unfuse_text_encoder` to `unfuse_lora()` is deprecated and will be ignored. Please use the `components` argument. `unfuse_text_encoder` will be removed in a future version."
+            deprecate(
+                "unfuse_text_encoder",
+                "1.0.0",
+                depr_message,
             )
-            for module in transformer.modules():
-                if isinstance(module, BaseTunerLayer):
-                    module.unmerge()
 
-        def unfuse_text_encoder_lora(text_encoder):
-            for module in text_encoder.modules():
-                if isinstance(module, BaseTunerLayer):
-                    module.unmerge()
+        for fuse_component in components:
+            if fuse_component not in self._lora_loadable_modules:
+                raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
 
-        if unfuse_text_encoder:
-            if hasattr(self, "text_encoder"):
-                unfuse_text_encoder_lora(self.text_encoder)
-            if hasattr(self, "text_encoder_2"):
-                unfuse_text_encoder_lora(self.text_encoder_2)
+            model = getattr(self, fuse_component, None)
+            if model is not None:
+                if issubclass(model, ModelMixin):
+                    for module in model.modules():
+                        if isinstance(module, BaseTunerLayer):
+                            module.unmerge()
+                if issubclass(model, PreTrainedModel):
+                    unfuse_text_encoder_lora(model)
 
         self.num_fused_loras -= 1
-
-    def set_adapters_for_text_encoder(
-        self,
-        adapter_names: Union[List[str], str],
-        text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
-        text_encoder_weights: Optional[Union[float, List[float], List[None]]] = None,
-    ):
-        """
-        Sets the adapter layers for the text encoder.
-
-        Args:
-            adapter_names (`List[str]` or `str`):
-                The names of the adapters to use.
-            text_encoder (`torch.nn.Module`, *optional*):
-                The text encoder module to set the adapter layers for. If `None`, it will try to get the `text_encoder`
-                attribute.
-            text_encoder_weights (`List[float]`, *optional*):
-                The weights to use for the text encoder. If `None`, the weights are set to `1.0` for all the adapters.
-        """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
-        def process_weights(adapter_names, weights):
-            # Expand weights into a list, one entry per adapter
-            # e.g. for 2 adapters:  7 -> [7,7] ; [3, None] -> [3, None]
-            if not isinstance(weights, list):
-                weights = [weights] * len(adapter_names)
-
-            if len(adapter_names) != len(weights):
-                raise ValueError(
-                    f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
-                )
-
-            # Set None values to default of 1.0
-            # e.g. [7,7] -> [7,7] ; [3, None] -> [3,1]
-            weights = [w if w is not None else 1.0 for w in weights]
-
-            return weights
-
-        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
-        text_encoder_weights = process_weights(adapter_names, text_encoder_weights)
-        text_encoder = text_encoder or getattr(self, "text_encoder", None)
-        if text_encoder is None:
-            raise ValueError(
-                "The pipeline does not have a default `pipe.text_encoder` class. Please make sure to pass a `text_encoder` instead."
-            )
-        set_weights_and_activate_adapters(text_encoder, adapter_names, text_encoder_weights)
-
-    def disable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):
-        """
-        Disables the LoRA layers for the text encoder.
-
-        Args:
-            text_encoder (`torch.nn.Module`, *optional*):
-                The text encoder module to disable the LoRA layers for. If `None`, it will try to get the
-                `text_encoder` attribute.
-        """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
-        text_encoder = text_encoder or getattr(self, "text_encoder", None)
-        if text_encoder is None:
-            raise ValueError("Text Encoder not found.")
-        set_adapter_layers(text_encoder, enabled=False)
-
-    def enable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):
-        """
-        Enables the LoRA layers for the text encoder.
-
-        Args:
-            text_encoder (`torch.nn.Module`, *optional*):
-                The text encoder module to enable the LoRA layers for. If `None`, it will try to get the `text_encoder`
-                attribute.
-        """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-        text_encoder = text_encoder or getattr(self, "text_encoder", None)
-        if text_encoder is None:
-            raise ValueError("Text Encoder not found.")
-        set_adapter_layers(self.text_encoder, enabled=True)
 
     def set_adapters(
         self,
@@ -544,7 +552,7 @@ class LoraBaseMixin:
             for adapter in all_adapters
         }  # eg {"adapter1": ["unet"], "adapter2": ["unet", "text_encoder"]}
 
-        denoiser_name = "unet" if self.is_unet_denoiser else "transformer"
+        denoiser_name = self._lora_loadable_modules[0]
         for adapter_name, weights in zip(adapter_names, adapter_weights):
             if isinstance(weights, dict):
                 denoiser_lora_weight = weights.pop(denoiser_name, None)
@@ -580,62 +588,40 @@ class LoraBaseMixin:
             text_encoder_lora_weights.append(text_encoder_lora_weight)
             text_encoder_2_lora_weights.append(text_encoder_2_lora_weight)
 
-        if denoiser_name == "unet":
-            unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            # Handle the UNET
-            unet.set_adapters(adapter_names, denoiser_lora_weights)
-        else:
-            transformer = (
-                getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-            )
-            # Handle the UNET
-            transformer.set_adapters(adapter_names, denoiser_lora_weights)
-
-        # Handle the Text Encoder
-        if hasattr(self, "text_encoder"):
-            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, text_encoder_lora_weights)
-        if hasattr(self, "text_encoder_2"):
-            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, text_encoder_2_lora_weights)
+        for component in self._lora_loadable_modules:
+            model = getattr(self, component, None)
+            if model is not None:
+                if issubclass(model, ModelMixin):
+                    model.set_adapters(adapter_names, denoiser_lora_weights)
+                elif isinstance(component, PreTrainedModel):
+                    if component == "text_encoder":
+                        set_adapters_for_text_encoder(adapter_names, model, text_encoder_lora_weights)
+                    elif component == "text_encoder_2":
+                        set_adapters_for_text_encoder(adapter_names, model, text_encoder_2_lora_weight)
 
     def disable_lora(self):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        # Disable denoiser adapters
-        if self.is_unet_denoiser:
-            unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            unet.disable_lora()
-        else:
-            transformer = (
-                getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-            )
-            transformer.disable_lora()
-
-        # Disable text encoder adapters
-        if hasattr(self, "text_encoder"):
-            self.disable_lora_for_text_encoder(self.text_encoder)
-        if hasattr(self, "text_encoder_2"):
-            self.disable_lora_for_text_encoder(self.text_encoder_2)
+        for component in self._lora_loadable_modules:
+            model = getattr(self, component, None)
+            if model is not None:
+                if issubclass(model, ModelMixin):
+                    model.disable_lora()
+                elif issubclass(model, PreTrainedModel):
+                    disable_lora_for_text_encoder(model)
 
     def enable_lora(self):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        # Enable unet adapters
-        if self.is_unet_denoiser:
-            unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            unet.enable_lora()
-        else:
-            transformer = (
-                getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-            )
-            transformer.enable_lora()
-
-        # Enable text encoder adapters
-        if hasattr(self, "text_encoder"):
-            self.enable_lora_for_text_encoder(self.text_encoder)
-        if hasattr(self, "text_encoder_2"):
-            self.enable_lora_for_text_encoder(self.text_encoder_2)
+        for component in self._lora_loadable_modules:
+            model = getattr(self, component, None)
+            if model is not None:
+                if issubclass(model, ModelMixin):
+                    model.enable_lora()
+                elif issubclass(model, PreTrainedModel):
+                    enable_lora_for_text_encoder(model)
 
     def delete_adapters(self, adapter_names: Union[List[str], str]):
         """
@@ -650,22 +636,14 @@ class LoraBaseMixin:
         if isinstance(adapter_names, str):
             adapter_names = [adapter_names]
 
-        # Delete unet adapters
-        if self.is_unet_denoiser:
-            unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            unet.delete_adapters(adapter_names)
-        else:
-            transformer = (
-                getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-            )
-            transformer.delete_adapters(adapter_names)
-
-        for adapter_name in adapter_names:
-            # Delete text encoder adapters
-            if hasattr(self, "text_encoder"):
-                delete_adapter_layers(self.text_encoder, adapter_name)
-            if hasattr(self, "text_encoder_2"):
-                delete_adapter_layers(self.text_encoder_2, adapter_name)
+        for component in self._lora_loadable_modules:
+            model = getattr(self, component, None)
+            if model is not None:
+                if issubclass(model, ModelMixin):
+                    model.delete_adapters(adapter_names)
+                elif issubclass(model, PreTrainedModel):
+                    for adapter_name in adapter_names:
+                        delete_adapter_layers(model, adapter_name)
 
     def get_active_adapters(self) -> List[str]:
         """
@@ -688,18 +666,15 @@ class LoraBaseMixin:
                 "PEFT backend is required for this method. Please install the latest version of PEFT `pip install -U peft`"
             )
 
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
         active_adapters = []
-        if self.is_unet_denoiser:
-            denoiser = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        else:
-            denoiser = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
 
-        for module in denoiser.modules():
-            if isinstance(module, BaseTunerLayer):
-                active_adapters = module.active_adapters
-                break
+        for component in self._lora_loadable_modules:
+            model = getattr(self, component, None)
+            if model is not None and issubclass(model, ModelMixin):
+                for module in model.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        active_adapters = module.active_adapters
+                        break
 
         return active_adapters
 
@@ -714,25 +689,14 @@ class LoraBaseMixin:
 
         set_adapters = {}
 
-        if hasattr(self, "text_encoder") and hasattr(self.text_encoder, "peft_config"):
-            set_adapters["text_encoder"] = list(self.text_encoder.peft_config.keys())
-
-        if hasattr(self, "text_encoder_2") and hasattr(self.text_encoder_2, "peft_config"):
-            set_adapters["text_encoder_2"] = list(self.text_encoder_2.peft_config.keys())
-
-        if self.is_unet_denoiser:
-            denoiser = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            denoiser_name = self.unet_name
-        else:
-            denoiser = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-            denoiser_name = self.transformer_name
-
-        if hasattr(self, denoiser_name) and hasattr(denoiser, "peft_config"):
-            set_adapters[denoiser_name] = (
-                list(self.unet.peft_config.keys())
-                if self.is_unet_denoiser
-                else list(self.transformer.peft_config.keys())
-            )
+        for component in self._lora_loadable_modules:
+            model = getattr(self, component, None)
+            if (
+                model is not None
+                and issubclass(model, (ModelMixin, PreTrainedModel))
+                and hasattr(model, "peft_config")
+            ):
+                set_adapters[component] = list(model.peft_config.keys())
 
         return set_adapters
 
@@ -750,51 +714,19 @@ class LoraBaseMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        # Handle the denoiser
-        if self.is_unet_denoiser:
-            denoiser = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        else:
-            denoiser = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-
-        for denoiser_module in denoiser.modules():
-            if isinstance(denoiser_module, BaseTunerLayer):
-                for adapter_name in adapter_names:
-                    denoiser_module.lora_A[adapter_name].to(device)
-                    denoiser_module.lora_B[adapter_name].to(device)
-                    # this is a param, not a module, so device placement is not in-place -> re-assign
-                    if (
-                        hasattr(denoiser_module, "lora_magnitude_vector")
-                        and denoiser_module.lora_magnitude_vector is not None
-                    ):
-                        denoiser_module.lora_magnitude_vector[adapter_name] = denoiser_module.lora_magnitude_vector[
-                            adapter_name
-                        ].to(device)
-
-        # Handle the text encoder
-        modules_to_process = []
-        if hasattr(self, "text_encoder"):
-            modules_to_process.append(self.text_encoder)
-
-        if hasattr(self, "text_encoder_2"):
-            modules_to_process.append(self.text_encoder_2)
-
-        for text_encoder in modules_to_process:
-            # loop over submodules
-            for text_encoder_module in text_encoder.modules():
-                if isinstance(text_encoder_module, BaseTunerLayer):
-                    for adapter_name in adapter_names:
-                        text_encoder_module.lora_A[adapter_name].to(device)
-                        text_encoder_module.lora_B[adapter_name].to(device)
-                        # this is a param, not a module, so device placement is not in-place -> re-assign
-                        if (
-                            hasattr(text_encoder_module, "lora_magnitude_vector")
-                            and text_encoder_module.lora_magnitude_vector is not None
-                        ):
-                            text_encoder_module.lora_magnitude_vector[
-                                adapter_name
-                            ] = text_encoder_module.lora_magnitude_vector[adapter_name].to(device)
+        for component in self._lora_loadable_modules:
+            model = getattr(self, component, None)
+            if model is not None:
+                for module in model.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        for adapter_name in adapter_names:
+                            module.lora_A[adapter_name].to(device)
+                            module.lora_B[adapter_name].to(device)
+                            # this is a param, not a module, so device placement is not in-place -> re-assign
+                            if hasattr(module, "lora_magnitude_vector") and module.lora_magnitude_vector is not None:
+                                module.lora_magnitude_vector[adapter_name] = module.lora_magnitude_vector[
+                                    adapter_name
+                                ].to(device)
 
     @staticmethod
     def pack_weights(layers, prefix):
