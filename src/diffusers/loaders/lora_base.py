@@ -441,7 +441,7 @@ class LoraBaseMixin:
             )
 
         if len(components) == 0:
-            raise ValueError("`component` cannot be an empty list.")
+            raise ValueError("`components` cannot be an empty list.")
 
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
@@ -501,7 +501,7 @@ class LoraBaseMixin:
             )
 
         if len(components) == 0:
-            raise ValueError("`component` cannot be an empty list.")
+            raise ValueError("`components` cannot be an empty list.")
 
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
@@ -546,7 +546,14 @@ class LoraBaseMixin:
             for adapter in all_adapters
         }  # eg {"adapter1": ["unet"], "adapter2": ["unet", "text_encoder"]}
 
-        denoiser_name = self._lora_loadable_modules[0]
+        # Determine denoiser name (`unet`, `transformer`, etc.).
+        denoiser_name = None
+        for component in self, self._lora_loadable_modules:
+            denoiser = getattr(self, component)
+            if issubclass(denoiser.__class__, ModelMixin):
+                denoiser_name = component
+                break
+
         for adapter_name, weights in zip(adapter_names, adapter_weights):
             if isinstance(weights, dict):
                 denoiser_lora_weight = weights.pop(denoiser_name, None)
