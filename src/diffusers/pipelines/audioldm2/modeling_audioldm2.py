@@ -35,7 +35,7 @@ from ...models.embeddings import (
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from ...models.transformers.transformer_2d import Transformer2DModel
+from ...models.transformers import ContinuousTransformer2DModelBlock
 from ...models.unets.unet_2d_blocks import DownBlock2D, UpBlock2D
 from ...models.unets.unet_2d_condition import UNet2DConditionOutput
 from ...utils import BaseOutput, is_torch_version, logging
@@ -1060,7 +1060,7 @@ class CrossAttnDownBlock2D(nn.Module):
             )
             for j in range(len(cross_attention_dim)):
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
@@ -1236,7 +1236,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         for i in range(num_layers):
             for j in range(len(cross_attention_dim)):
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         in_channels // num_attention_heads,
                         in_channels=in_channels,
@@ -1412,7 +1412,7 @@ class CrossAttnUpBlock2D(nn.Module):
             )
             for j in range(len(cross_attention_dim)):
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,

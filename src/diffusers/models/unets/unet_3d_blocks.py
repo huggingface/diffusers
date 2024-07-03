@@ -28,7 +28,7 @@ from ..resnet import (
     Upsample2D,
 )
 from ..transformers.dual_transformer_2d import DualTransformer2DModel
-from ..transformers.transformer_2d import Transformer2DModel
+from ..transformers.transformer_2d_block import ContinuousTransformer2DModelBlock
 from ..transformers.transformer_temporal import (
     TransformerSpatioTemporalModel,
     TransformerTemporalModel,
@@ -375,7 +375,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
 
         for _ in range(num_layers):
             attentions.append(
-                Transformer2DModel(
+                ContinuousTransformer2DModelBlock(
                     in_channels // num_attention_heads,
                     num_attention_heads,
                     in_channels=in_channels,
@@ -513,7 +513,7 @@ class CrossAttnDownBlock3D(nn.Module):
                 )
             )
             attentions.append(
-                Transformer2DModel(
+                ContinuousTransformer2DModelBlock(
                     out_channels // num_attention_heads,
                     num_attention_heads,
                     in_channels=out_channels,
@@ -747,7 +747,7 @@ class CrossAttnUpBlock3D(nn.Module):
                 )
             )
             attentions.append(
-                Transformer2DModel(
+                ContinuousTransformer2DModelBlock(
                     out_channels // num_attention_heads,
                     num_attention_heads,
                     in_channels=out_channels,
@@ -1162,7 +1162,7 @@ class CrossAttnDownBlockMotion(nn.Module):
 
             if not dual_cross_attention:
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
@@ -1373,7 +1373,7 @@ class CrossAttnUpBlockMotion(nn.Module):
 
             if not dual_cross_attention:
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
@@ -1736,7 +1736,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         for i in range(num_layers):
             if not dual_cross_attention:
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         in_channels // num_attention_heads,
                         in_channels=in_channels,

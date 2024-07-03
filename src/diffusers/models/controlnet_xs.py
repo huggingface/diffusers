@@ -33,12 +33,12 @@ from .attention_processor import (
 from .controlnet import ControlNetConditioningEmbedding
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
+from .transformers import ContinuousTransformer2DModelBlock
 from .unets.unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     Downsample2D,
     ResnetBlock2D,
-    Transformer2DModel,
     UNetMidBlock2DCrossAttn,
     Upsample2D,
 )
@@ -147,7 +147,7 @@ def get_down_block_adapter(
 
         if has_crossattn:
             attentions.append(
-                Transformer2DModel(
+                ContinuousTransformer2DModelBlock(
                     num_attention_heads,
                     ctrl_out_channels // num_attention_heads,
                     in_channels=ctrl_out_channels,
@@ -1281,7 +1281,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
             if has_crossattn:
                 base_attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         base_num_attention_heads,
                         base_out_channels // base_num_attention_heads,
                         in_channels=base_out_channels,
@@ -1293,7 +1293,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
                     )
                 )
                 ctrl_attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         ctrl_num_attention_heads,
                         ctrl_out_channels // ctrl_num_attention_heads,
                         in_channels=ctrl_out_channels,
@@ -1732,7 +1732,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
 
             if has_crossattn:
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,

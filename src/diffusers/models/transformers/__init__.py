@@ -9,5 +9,6 @@ if is_torch_available():
     from .prior_transformer import PriorTransformer
     from .t5_film_transformer import T5FilmDecoder
     from .transformer_2d import Transformer2DModel
+    from .transformer_2d_block import ContinuousTransformer2DModelBlock
     from .transformer_sd3 import SD3Transformer2DModel
     from .transformer_temporal import TransformerTemporalModel

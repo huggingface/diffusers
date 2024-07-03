@@ -31,8 +31,8 @@ from ....models.embeddings import (
     Timesteps,
 )
 from ....models.resnet import ResnetBlockCondNorm2D
+from ....models.transformers import ContinuousTransformer2DModelBlock
 from ....models.transformers.dual_transformer_2d import DualTransformer2DModel
-from ....models.transformers.transformer_2d import Transformer2DModel
 from ....models.unets.unet_2d_condition import UNet2DConditionOutput
 from ....utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ....utils.torch_utils import apply_freeu
@@ -1677,7 +1677,7 @@ class CrossAttnDownBlockFlat(nn.Module):
             )
             if not dual_cross_attention:
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
@@ -1957,7 +1957,7 @@ class CrossAttnUpBlockFlat(nn.Module):
             )
             if not dual_cross_attention:
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
@@ -2294,7 +2294,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         for i in range(num_layers):
             if not dual_cross_attention:
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,

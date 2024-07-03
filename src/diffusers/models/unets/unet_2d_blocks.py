@@ -34,7 +34,7 @@ from ..resnet import (
     Upsample2D,
 )
 from ..transformers.dual_transformer_2d import DualTransformer2DModel
-from ..transformers.transformer_2d import Transformer2DModel
+from ..transformers.transformer_2d_block import ContinuousTransformer2DModelBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -801,7 +801,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         for i in range(num_layers):
             if not dual_cross_attention:
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
@@ -1198,7 +1198,7 @@ class CrossAttnDownBlock2D(nn.Module):
             )
             if not dual_cross_attention:
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
@@ -2444,7 +2444,7 @@ class CrossAttnUpBlock2D(nn.Module):
             )
             if not dual_cross_attention:
                 attentions.append(
-                    Transformer2DModel(
+                    ContinuousTransformer2DModelBlock(
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,

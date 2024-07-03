@@ -115,6 +115,10 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         self.is_input_vectorized = num_vector_embeds is not None
         self.is_input_patches = in_channels is not None and patch_size is not None
 
+        if self.is_input_continuous:
+            deprecation_message = "Using `Transformer2DModel` when the input is continuous is deprecared and it will be removed in a future version. Please use `ContinuousTransformer2DModelBlock`, importing from `diffusers.models.transformers.transformer_2d_block`."
+            deprecate("Continuous transformer block.", "1.0.0", deprecation_message)
+
         if self.is_input_continuous and self.is_input_vectorized:
             raise ValueError(
                 f"Cannot define both `in_channels`: {in_channels} and `num_vector_embeds`: {num_vector_embeds}. Make"
