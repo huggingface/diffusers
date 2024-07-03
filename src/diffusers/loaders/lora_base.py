@@ -440,6 +440,9 @@ class LoraBaseMixin:
                 depr_message,
             )
 
+        if len(components) == 0:
+            raise ValueError("`component` cannot be an empty list.")
+
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
                 raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
@@ -497,18 +500,19 @@ class LoraBaseMixin:
                 depr_message,
             )
 
+        if len(components) == 0:
+            raise ValueError("`component` cannot be an empty list.")
+
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
                 raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
 
             model = getattr(self, fuse_component, None)
             if model is not None:
-                if issubclass(model.__class__, ModelMixin):
+                if issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
                             module.unmerge()
-                if issubclass(model.__class__, PreTrainedModel):
-                    unfuse_text_encoder_lora(model)
 
         self.num_fused_loras -= 1
 
@@ -583,7 +587,7 @@ class LoraBaseMixin:
             if model is not None:
                 if issubclass(model.__class__, ModelMixin):
                     model.set_adapters(adapter_names, denoiser_lora_weights)
-                elif isinstance(model.__class__, PreTrainedModel):
+                elif issubclass(model.__class__, PreTrainedModel):
                     if component == "text_encoder":
                         set_adapters_for_text_encoder(adapter_names, model, text_encoder_lora_weights)
                     elif component == "text_encoder_2":
