@@ -57,6 +57,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         pooled_projection_dim: int = 1024,
         text_len: int = 77,
         text_len_t5: int = 256,
+        use_style_cond_and_image_meta_size: bool=True
     ):
         super().__init__()
         self.num_heads = num_attention_heads
@@ -87,6 +88,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
             pooled_projection_dim=pooled_projection_dim,
             seq_len=text_len_t5,
             cross_attention_dim=cross_attention_dim_t5,
+            use_style_cond_and_image_meta_size=use_style_cond_and_image_meta_size
         )
 
         # controlnet_blocks
