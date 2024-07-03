@@ -12,13 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # LoRA
 
-LoRA is a fast and lightweight training method that inserts and trains a significantly smaller number of parameters instead of all the model parameters. This produces a smaller file (~100 MBs) and makes it easier to quickly train a model to learn a new concept. LoRA weights are typically loaded into the denoiser, text encoder or both. The denoiser usually corresponds to a UNet ([`UNet2DConditionModel`], for example) or a Transformer ([`SD3Transformer2DModel`], for example). There are several classes for loading LoRA weights:
+LoRA is a fast and lightweight training method that inserts and trains a significantly smaller number of parameters instead of all the model parameters. This produces a smaller file (~100 MBs) and makes it easier to quickly train a model to learn a new concept. LoRA weights are typically loaded into the UNet, text encoder or both. There are two classes for loading LoRA weights:
 
 - [`LoraLoaderMixin`] provides functions for loading and unloading, fusing and unfusing, enabling and disabling, and more functions for managing LoRA weights. This class can be used with any model.
 - [`StableDiffusionXLLoraLoaderMixin`] is a [Stable Diffusion (SDXL)](../../api/pipelines/stable_diffusion/stable_diffusion_xl) version of the [`LoraLoaderMixin`] class for loading and saving LoRA weights. It can only be used with the SDXL model.
-- [`SD3LoraLoaderMixin`] provides similar functions for [Stable Diffusion 3](https://huggingface.co/blog/sd3).
-- [`AmusedLoraLoaderMixin`] is for the [`AmusedPipeline`].
-- [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
 
 <Tip>
 
@@ -33,15 +30,3 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 ## StableDiffusionXLLoraLoaderMixin
 
 [[autodoc]] loaders.lora.StableDiffusionXLLoraLoaderMixin
-
-## SD3LoraLoaderMixin
-
-[[autodoc]] loaders.lora.SD3LoraLoaderMixin
-
-## AmusedLoraLoaderMixin
-
-[[autodoc]] loaders.lora.AmusedLoraLoaderMixin
-
-## LoraBaseMixin
-
-[[autodoc]] loaders.lora_base.LoraBaseMixin
