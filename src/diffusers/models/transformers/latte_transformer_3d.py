@@ -30,30 +30,41 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
 
     """
-    A 3D Transformer model for video-like data.
+    A 3D Transformer model for video-like data,
+    paper: https://arxiv.org/abs/2401.03048,
+    offical code: https://github.com/Vchitect/Latte
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
         attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
         in_channels (`int`, *optional*):
-            The number of channels in the input and output (specify if the input is **continuous**).
+            The number of channels in the input.
+        out_channels (`int`, *optional*):
+            The number of channels in the output.
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
+        attention_bias (`bool`, *optional*):
+            Configure if the `TransformerBlocks` attention should contain a bias parameter.
         sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
             This is fixed during training since it is used to learn a number of position embeddings.
-        num_vector_embeds (`int`, *optional*):
-            The number of classes of the vector embeddings of the latent pixels (specify if the input is **discrete**).
-            Includes the class for the masked latent pixel.
+        patch_size (`int`, *optional*):
+            The size of the patches to use in the patch embedding layer.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
         num_embeds_ada_norm ( `int`, *optional*):
             The number of diffusion steps used during training. Pass if at least one of the norm_layers is
             `AdaLayerNorm`. This is fixed during training since it is used to learn a number of embeddings that are
             added to the hidden states.
-
             During inference, you can denoise for up to but not more steps than `num_embeds_ada_norm`.
-        attention_bias (`bool`, *optional*):
-            Configure if the `TransformerBlocks` attention should contain a bias parameter.
+        norm_type (`str`, *optional*, defaults to `"layer_norm"`):
+            The type of normalization to use. Options are `"layer_norm"` or `"ada_layer_norm"`.
+        norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
+            Whether or not to use elementwise affine in normalization layers.
+        norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon value to use in normalization layers.
+        caption_channels (`int`, *optional*):
+            The number of channels in the caption embeddings.
+        video_length (`int`, *optional*):
+            The number of frames in the video-like data.
     """
 
     @register_to_config
@@ -71,7 +82,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         patch_size: Optional[int] = None,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
-        use_linear_projection: bool = False,
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
@@ -85,7 +95,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         self.height = sample_size
         self.width = sample_size
 
-        interpolation_scale = self.config.sample_size // 64  # => 64 (= 512 pixart) has interpolation scale 1
+        interpolation_scale = self.config.sample_size // 64
         interpolation_scale = max(interpolation_scale, 1)
         self.pos_embed = PatchEmbed(
             height=sample_size,
@@ -177,11 +187,13 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         Args:
             hidden_states shape `(batch size, channel, frame, height, width)`:
                 Input `hidden_states`.
+            timestep ( `torch.LongTensor`, *optional*):
+                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
             encoder_hidden_states ( `torch.FloatTensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
-            timestep ( `torch.LongTensor`, *optional*):
-                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
+            added_cond_kwargs ( `Dict[str, torch.Tensor]`, *optional*):
+                Additional conditions to be applied as an embedding in `AdaLayerNorm`.
             class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
                 Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
                 `AdaLayerZeroNorm`.
