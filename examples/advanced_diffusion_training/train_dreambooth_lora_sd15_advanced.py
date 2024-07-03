@@ -57,7 +57,7 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
 from diffusers.utils import (
@@ -1317,11 +1317,11 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+        lora_state_dict, network_alphas = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
+        StableDiffusionLoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
 
         text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
-        LoraLoaderMixin.load_lora_into_text_encoder(
+        StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder(
             text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
         )
 

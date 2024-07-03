@@ -20,7 +20,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...loaders import LoraLoaderMixin
+from ...loaders import StableDiffusionLoraLoaderMixin
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import BaseOutput, deprecate, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -62,7 +62,7 @@ class WuerstchenPriorPipelineOutput(BaseOutput):
     image_embeddings: Union[torch.Tensor, np.ndarray]
 
 
-class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
+class WuerstchenPriorPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
     """
     Pipeline for generating image prior for Wuerstchen.
 
@@ -70,8 +70,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     The pipeline also inherits the following loading methods:
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
 
     Args:
         prior ([`Prior`]):

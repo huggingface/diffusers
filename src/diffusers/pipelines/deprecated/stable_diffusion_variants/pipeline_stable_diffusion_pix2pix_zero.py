@@ -29,7 +29,7 @@ from transformers import (
 )
 
 from ....image_processor import PipelineImageInput, VaeImageProcessor
-from ....loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ....loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ....models import AutoencoderKL, UNet2DConditionModel
 from ....models.attention_processor import Attention
 from ....models.lora import adjust_lora_scale_text_encoder
@@ -446,7 +446,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline, StableDiffusionMixin
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -579,7 +579,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline, StableDiffusionMixin
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if self.text_encoder is not None:
-            if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
+            if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 

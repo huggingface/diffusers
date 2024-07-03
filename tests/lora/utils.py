@@ -488,7 +488,7 @@ class PeftLoraLoaderMixinTests:
         )
         for scheduler_cls in scheduler_classes:
             components, _, _ = self.get_dummy_components(scheduler_cls)
-            # Verify `LoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
+            # Verify `StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
             text_lora_config = LoraConfig(
                 r=4,
                 rank_pattern={"q_proj": 1, "k_proj": 2, "v_proj": 3},

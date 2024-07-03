@@ -20,6 +20,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from ..utils import (
     USE_PEFT_BACKEND,
     convert_unet_state_dict_to_peft,
+    deprecate,
     get_adapter_name,
     get_peft_kwargs,
     is_peft_version,
@@ -41,9 +42,9 @@ LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 LORA_DEPRECATION_MESSAGE = "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT make sure to install the latest PEFT and transformers packages in the future."
 
 
-class LoraLoaderMixin(LoraBaseMixin):
+class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     r"""
-    Load LoRA layers into [`UNet2DConditionModel`] and
+    Load LoRA layers into Stable Diffusion [`UNet2DConditionModel`] and
     [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel).
     """
 
@@ -60,19 +61,20 @@ class LoraLoaderMixin(LoraBaseMixin):
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
-        See [`~loaders.LoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
+        loaded.
 
-        See [`~loaders.LoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is loaded into
-        `self.unet`.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is
+        loaded into `self.unet`.
 
-        See [`~loaders.LoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state dict is loaded
-        into `self.text_encoder`.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state
+        dict is loaded into `self.text_encoder`.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             kwargs (`dict`, *optional*):
-                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
@@ -313,11 +315,17 @@ class LoraLoaderMixin(LoraBaseMixin):
         )
 
 
-class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
-    """This class overrides `LoraLoaderMixin` with LoRA loading/saving code that's specific
-    to SDXL ([`StableDiffusionXLPipeline`].)"""
+class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into Stable Diffusion XL [`UNet2DConditionModel`],
+    [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), and
+    [`CLIPTextModelWithProjection`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection).
+    """
 
-    # Override to properly handle the loading and unloading of the additional text encoder.
+    text_encoder_name = TEXT_ENCODER_NAME
+    unet_name = UNET_NAME
+    is_unet_denoiser = True
+
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -330,22 +338,23 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
-        See [`~loaders.LoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
+        loaded.
 
-        See [`~loaders.LoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is loaded into
-        `self.unet`.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is
+        loaded into `self.unet`.
 
-        See [`~loaders.LoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state dict is loaded
-        into `self.text_encoder`.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state
+        dict is loaded into `self.text_encoder`.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
             kwargs (`dict`, *optional*):
-                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -393,6 +402,157 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
                 _pipeline=self,
+            )
+
+    @classmethod
+    @validate_hf_hub_args
+    # Copied from diffusers.loaders.lora.StableDiffusionLoraLoaderMixin.lora_state_dict
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        **kwargs,
+    ):
+        r"""
+        Return state dict for lora weights and the network alphas.
+
+        <Tip warning={true}>
+
+        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
+
+        This function is experimental and might change in the future.
+
+        </Tip>
+
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+                Can be either:
+
+                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
+                      the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
+                      with [`ModelMixin.save_pretrained`].
+                    - A [torch state
+                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
+                won't be downloaded from the Hub.
+            token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            subfolder (`str`, *optional*, defaults to `""`):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+            weight_name (`str`, *optional*, defaults to None):
+                Name of the serialized state dict file.
+        """
+        # Load the main state dict first which has the LoRA layers for either of
+        # UNet and text encoder or both.
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", None)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        unet_config = kwargs.pop("unet_config", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {
+            "file_type": "attn_procs_weights",
+            "framework": "pytorch",
+        }
+
+        state_dict = cls._fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        network_alphas = None
+        # TODO: replace it with a method from `state_dict_utils`
+        if all(
+            (
+                k.startswith("lora_te_")
+                or k.startswith("lora_unet_")
+                or k.startswith("lora_te1_")
+                or k.startswith("lora_te2_")
+            )
+            for k in state_dict.keys()
+        ):
+            # Map SDXL blocks correctly.
+            if unet_config is not None:
+                # use unet config to remap block numbers
+                state_dict = _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
+            state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(state_dict)
+
+        return state_dict, network_alphas
+
+    @classmethod
+    # Copied from diffusers.loaders.lora.StableDiffusionLoraLoaderMixin.load_lora_into_unet
+    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None):
+        """
+        This will load the LoRA layers specified in `state_dict` into `unet`.
+
+        Parameters:
+            state_dict (`dict`):
+                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
+                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
+                encoder lora layers.
+            network_alphas (`Dict[str, float]`):
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
+            unet (`UNet2DConditionModel`):
+                The UNet model to load the LoRA layers into.
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
+        # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
+        # their prefixes.
+        keys = list(state_dict.keys())
+        only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
+        if not only_text_encoder:
+            # Load the layers corresponding to UNet.
+            logger.info(f"Loading {cls.unet_name}.")
+            unet.load_attn_procs(
+                state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline
             )
 
     @classmethod
@@ -460,7 +620,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
 
 class SD3LoraLoaderMixin(LoraBaseMixin):
     r"""
-    Load LoRA layers into [`SD3Transformer2DModel`]. Specific to [`StableDiffusion3Pipeline`].
+    Load LoRA layers into [`SD3Transformer2DModel`],
+    [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), and
+    [`CLIPTextModelWithProjection`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection).
+
+    Specific to [`StableDiffusion3Pipeline`].
     """
 
     transformer_name = TRANSFORMER_NAME
@@ -476,16 +640,17 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
-        See [`~loaders.LoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
+        loaded.
 
-        See [`~loaders.LoraLoaderMixin.load_lora_into_transformer`] for more details on how the state dict is loaded
-        into `self.transformer`.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
+        dict is loaded into `self.transformer`.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             kwargs (`dict`, *optional*):
-                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
@@ -772,9 +937,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         )
 
 
-# The reason why we subclass from `LoraLoaderMixin` here is because Amused initially
-# relied on `LoraLoaderMixin` for its LoRA support.
-class AmusedLoraLoaderMixin(LoraLoaderMixin):
+# The reason why we subclass from `StableDiffusionLoraLoaderMixin` here is because Amused initially
+# relied on `StableDiffusionLoraLoaderMixin` for its LoRA support.
+class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
     is_unet_denoiser = False
     is_transformer_denoiser = True
     transformer_name = TRANSFORMER_NAME
@@ -920,3 +1085,10 @@ class AmusedLoraLoaderMixin(LoraLoaderMixin):
             save_function=save_function,
             safe_serialization=safe_serialization,
         )
+
+
+class LoraLoaderMixin(StableDiffusionLoraLoaderMixin):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "LoraLoaderMixin is deprecated and this will be removed in a future version. Please use `StableDiffusionLoraLoaderMixin`, instead."
+        deprecate("LoraLoaderMixin", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)

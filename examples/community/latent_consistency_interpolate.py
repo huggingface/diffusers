@@ -6,7 +6,7 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import FromSingleFileMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
@@ -190,7 +190,11 @@ def slerp(
 
 
 class LatentConsistencyModelWalkPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    StableDiffusionLoraLoaderMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for text-to-image generation using a latent consistency model.
@@ -200,8 +204,8 @@ class LatentConsistencyModelWalkPipeline(
 
     The pipeline also inherits the following loading methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
 
     Args:
@@ -317,7 +321,7 @@ class LatentConsistencyModelWalkPipeline(
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -449,7 +453,7 @@ class LatentConsistencyModelWalkPipeline(
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
+        if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
             unscale_lora_layers(self.text_encoder, lora_scale)
 
