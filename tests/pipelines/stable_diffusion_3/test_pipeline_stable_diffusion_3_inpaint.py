@@ -111,7 +111,6 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
     def get_dummy_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
         mask_image = torch.ones((1, 1, 32, 32)).to(device)
-        image = image / 2 + 0.5
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:

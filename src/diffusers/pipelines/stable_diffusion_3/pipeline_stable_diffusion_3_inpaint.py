@@ -23,8 +23,9 @@ from transformers import (
     T5TokenizerFast,
 )
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...models.autoencoders import AsymmetricAutoencoderKL, AutoencoderKL
+from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import SD3Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -795,7 +796,6 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
-        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -914,8 +914,8 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
@@ -978,11 +978,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
-        # 3. Preprocess image and mask
-        image = self.image_processor.preprocess(image, height, width)
-        mask_condition = self.mask_processor.preprocess(mask_image, height, width)
-
-        # 4. Prepare timesteps
+        # 3. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         # check that number of inference steps is not < 1 - as this doesn't make sense
@@ -996,7 +992,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
         is_strength_max = strength == 1.0
 
-        # 5. Preprocess mask and image
+        # 4. Preprocess mask and image
         if padding_mask_crop is not None:
             crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
             resize_mode = "fill"
@@ -1010,7 +1006,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         )
         init_image = init_image.to(dtype=torch.float32)
 
-        # 5. Prepare latent and masked latent variables
+        # 5. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         num_channels_transformer = self.transformer.config.in_channels
         return_image_latents = num_channels_transformer == 16
@@ -1036,8 +1032,13 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
         else:
             latents, noise = latents_outputs
 
+        # 6. Prepare mask latent variables
+        mask_condition = self.mask_processor.preprocess(
+            mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
+        )
+
         if masked_image_latents is None:
-            masked_image = image * (mask_condition < 0.5)
+            masked_image = init_image * (mask_condition < 0.5)
         else:
             masked_image = masked_image_latents
 
@@ -1075,7 +1076,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 f"The transformer {self.transformer.__class__} should have 16 input channels or 33 input channels, not {self.transformer.config.in_channels}."
             )
 
-        # 6. Denoising loop
+        # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1150,16 +1151,9 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                     xm.mark_step()
 
         if not output_type == "latent":
-            condition_kwargs = {}
-            if isinstance(self.vae, AsymmetricAutoencoderKL):
-                init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
-                init_image_condition = init_image.clone()
-                init_image = self._encode_vae_image(init_image, generator=generator)
-                mask_condition = mask_condition.to(device=device, dtype=masked_image_latents.dtype)
-                condition_kwargs = {"image": init_image_condition, "mask": mask_condition}
-            image = self.vae.decode(
-                latents / self.vae.config.scaling_factor, return_dict=False, generator=generator, **condition_kwargs
-            )[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
+                0
+            ]
         else:
             image = latents
 
