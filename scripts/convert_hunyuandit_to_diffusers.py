@@ -1,37 +1,39 @@
+import argparse
 
 import torch
-from huggingface_hub import hf_hub_download
+
 from diffusers import HunyuanDiT2DModel
-import safetensors.torch
+
 
 def main(args):
-    state_dict = torch.load(args.pt_checkpoint_path, map_location='cpu')
+    state_dict = torch.load(args.pt_checkpoint_path, map_location="cpu")
 
-    if args.load_key != 'none':
+    if args.load_key != "none":
         try:
             state_dict = state_dict[args.load_key]
-        except:
-            print('Please load from the following keys:')
-            for key in state_dict.keys():
-                print(key)
-            raise NotImplementedError
+        except KeyError:
+            raise KeyError(
+                f"{args.load_key} not found in the checkpoint."
+                f"Please load from the following keys:{state_dict.keys()}"
+            )
 
     device = "cuda"
     model_config = HunyuanDiT2DModel.load_config("Tencent-Hunyuan/HunyuanDiT-Diffusers", subfolder="transformer")
-    model_config['use_style_cond_and_image_meta_size'] = args.use_style_cond_and_image_meta_size ### version <= v1.1: True; version >= v1.2: False
+    model_config[
+        "use_style_cond_and_image_meta_size"
+    ] = args.use_style_cond_and_image_meta_size  ### version <= v1.1: True; version >= v1.2: False
 
     # input_size -> sample_size, text_dim -> cross_attention_dim
     for key in state_dict:
-        print('local:', key)
+        print("local:", key)
 
     model = HunyuanDiT2DModel.from_config(model_config).to(device)
 
     for key in model.state_dict():
-        print('diffusers:', key)
+        print("diffusers:", key)
 
     num_layers = 40
     for i in range(num_layers):
-
         # attn1
         # Wkqv -> to_q, to_k, to_v
         q, k, v = torch.chunk(state_dict[f"blocks.{i}.attn1.Wqkv.weight"], 3, dim=0)
@@ -105,7 +107,7 @@ def main(args):
         state_dict[f"blocks.{i}.norm3.bias"] = norm2_bias
 
         # norm1 -> norm1.norm
-        # default_modulation.1 -> norm1.linear 
+        # default_modulation.1 -> norm1.linear
         state_dict[f"blocks.{i}.norm1.norm.weight"] = state_dict[f"blocks.{i}.norm1.weight"]
         state_dict[f"blocks.{i}.norm1.norm.bias"] = state_dict[f"blocks.{i}.norm1.bias"]
         state_dict[f"blocks.{i}.norm1.linear.weight"] = state_dict[f"blocks.{i}.default_modulation.1.weight"]
@@ -144,7 +146,6 @@ def main(args):
     state_dict.pop("pooler.c_proj.weight")
     state_dict.pop("pooler.c_proj.bias")
     state_dict.pop("pooler.positional_embedding")
-
 
     # t_embedder -> time_embedding (`TimestepEmbedding`)
     state_dict["time_extra_emb.timestep_embedder.linear_1.bias"] = state_dict["t_embedder.mlp.0.bias"]
@@ -188,6 +189,7 @@ def main(args):
         shift, scale = weight.chunk(2, dim=0)
         new_weight = torch.cat([scale, shift], dim=0)
         return new_weight
+
     state_dict["norm_out.linear.weight"] = swap_scale_shift(state_dict["final_layer.adaLN_modulation.1.weight"])
     state_dict["norm_out.linear.bias"] = swap_scale_shift(state_dict["final_layer.adaLN_modulation.1.bias"])
     state_dict.pop("final_layer.adaLN_modulation.1.weight")
@@ -200,7 +202,7 @@ def main(args):
     state_dict.pop("final_layer.linear.bias")
 
     # style_embedder
-    if model_config['use_style_cond_and_image_meta_size']:
+    if model_config["use_style_cond_and_image_meta_size"]:
         print(state_dict["style_embedder.weight"])
         print(state_dict["style_embedder.weight"].shape)
         state_dict["time_extra_emb.style_embedder.weight"] = state_dict["style_embedder.weight"][0:1]
@@ -209,11 +211,16 @@ def main(args):
     model.load_state_dict(state_dict)
 
     from diffusers import HunyuanDiTPipeline
+
     if args.use_style_cond_and_image_meta_size:
-        pipe = HunyuanDiTPipeline.from_pretrained("Tencent-Hunyuan/HunyuanDiT-Diffusers", transformer=model, torch_dtype=torch.float32)
+        pipe = HunyuanDiTPipeline.from_pretrained(
+            "Tencent-Hunyuan/HunyuanDiT-Diffusers", transformer=model, torch_dtype=torch.float32
+        )
     else:
-        pipe = HunyuanDiTPipeline.from_pretrained("Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers", transformer=model, torch_dtype=torch.float32)
-    pipe.to('cuda')
+        pipe = HunyuanDiTPipeline.from_pretrained(
+            "Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers", transformer=model, torch_dtype=torch.float32
+        )
+    pipe.to("cuda")
     pipe.to(dtype=torch.float32)
 
     if args.save:
@@ -221,11 +228,14 @@ def main(args):
 
     # ### NOTE: HunyuanDiT supports both Chinese and English inputs
     prompt = "一个宇航员在骑马"
-    #prompt = "An astronaut riding a horse"
-    generator=torch.Generator(device="cuda").manual_seed(0)
-    image = pipe(height=1024, width=1024, prompt=prompt, generator=generator, num_inference_steps=25, guidance_scale=5.0).images[0]
+    # prompt = "An astronaut riding a horse"
+    generator = torch.Generator(device="cuda").manual_seed(0)
+    image = pipe(
+        height=1024, width=1024, prompt=prompt, generator=generator, num_inference_steps=25, guidance_scale=5.0
+    ).images[0]
 
     image.save("img.png")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -237,15 +247,21 @@ if __name__ == "__main__":
         "--pt_checkpoint_path", default=None, type=str, required=True, help="Path to the .pt pretrained model."
     )
     parser.add_argument(
-        "--output_checkpoint_path", default=None, type=str, required=False, help="Path to the output converted diffusers pipeline."
+        "--output_checkpoint_path",
+        default=None,
+        type=str,
+        required=False,
+        help="Path to the output converted diffusers pipeline.",
     )
     parser.add_argument(
-        "--load_key", default='none', type=str, required=False, help="The key to load from the pretrained .pt file"
+        "--load_key", default="none", type=str, required=False, help="The key to load from the pretrained .pt file"
     )
     parser.add_argument(
-        "--use_style_cond_and_image_meta_size", type=bool, default=False, help="version <= v1.1: True; version >= v1.2: False"
+        "--use_style_cond_and_image_meta_size",
+        type=bool,
+        default=False,
+        help="version <= v1.1: True; version >= v1.2: False",
     )
-
 
     args = parser.parse_args()
     main(args)

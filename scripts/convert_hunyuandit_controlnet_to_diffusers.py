@@ -1,40 +1,41 @@
-import torch
-from huggingface_hub import hf_hub_download
-from diffusers import HunyuanDiT2DControlNetModel
-from diffusers import HunyuanDiTPipeline
-import safetensors.torch
 import argparse
 
-def main(args):
-    state_dict = torch.load(args.pt_checkpoint_path, map_location='cpu')
+import torch
 
-    if args.load_key != 'none':
+from diffusers import HunyuanDiT2DControlNetModel
+
+
+def main(args):
+    state_dict = torch.load(args.pt_checkpoint_path, map_location="cpu")
+
+    if args.load_key != "none":
         try:
             state_dict = state_dict[args.load_key]
-        except:
-            print('Please load from the following keys:')
-            for key in state_dict.keys():
-                print(key)
-            raise NotImplementedError
-
+        except KeyError:
+            raise KeyError(
+                f"{args.load_key} not found in the checkpoint."
+                "Please load from the following keys:{state_dict.keys()}"
+            )
     device = "cuda"
 
-    model_config = HunyuanDiT2DControlNetModel.load_config("Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers", subfolder="transformer")
-    model_config['use_style_cond_and_image_meta_size'] = args.use_style_cond_and_image_meta_size ### version <= v1.1: True; version >= v1.2: False
+    model_config = HunyuanDiT2DControlNetModel.load_config(
+        "Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers", subfolder="transformer"
+    )
+    model_config[
+        "use_style_cond_and_image_meta_size"
+    ] = args.use_style_cond_and_image_meta_size  ### version <= v1.1: True; version >= v1.2: False
     print(model_config)
- 
-    for key in state_dict:
-        print('local:', key)
 
-            
+    for key in state_dict:
+        print("local:", key)
+
     model = HunyuanDiT2DControlNetModel.from_config(model_config).to(device)
 
     for key in model.state_dict():
-        print('diffusers:', key)
+        print("diffusers:", key)
 
     num_layers = 19
     for i in range(num_layers):
-
         # attn1
         # Wkqv -> to_q, to_k, to_v
         q, k, v = torch.chunk(state_dict[f"blocks.{i}.attn1.Wqkv.weight"], 3, dim=0)
@@ -108,7 +109,7 @@ def main(args):
         state_dict[f"blocks.{i}.norm3.bias"] = norm2_bias
 
         # norm1 -> norm1.norm
-        # default_modulation.1 -> norm1.linear 
+        # default_modulation.1 -> norm1.linear
         state_dict[f"blocks.{i}.norm1.norm.weight"] = state_dict[f"blocks.{i}.norm1.weight"]
         state_dict[f"blocks.{i}.norm1.norm.bias"] = state_dict[f"blocks.{i}.norm1.bias"]
         state_dict[f"blocks.{i}.norm1.linear.weight"] = state_dict[f"blocks.{i}.default_modulation.1.weight"]
@@ -160,7 +161,6 @@ def main(args):
     state_dict.pop("pooler.c_proj.bias")
     state_dict.pop("pooler.positional_embedding")
 
-
     # t_embedder -> time_embedding (`TimestepEmbedding`)
     state_dict["time_extra_emb.timestep_embedder.linear_1.bias"] = state_dict["t_embedder.mlp.0.bias"]
     state_dict["time_extra_emb.timestep_embedder.linear_1.weight"] = state_dict["t_embedder.mlp.0.weight"]
@@ -199,7 +199,7 @@ def main(args):
     state_dict.pop("extra_embedder.2.weight")
 
     # style_embedder
-    if model_config['use_style_cond_and_image_meta_size']:
+    if model_config["use_style_cond_and_image_meta_size"]:
         print(state_dict["style_embedder.weight"])
         print(state_dict["style_embedder.weight"].shape)
         state_dict["time_extra_emb.style_embedder.weight"] = state_dict["style_embedder.weight"][0:1]
@@ -209,6 +209,7 @@ def main(args):
 
     if args.save:
         model.save_pretrained(args.output_checkpoint_path)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -220,15 +221,21 @@ if __name__ == "__main__":
         "--pt_checkpoint_path", default=None, type=str, required=True, help="Path to the .pt pretrained model."
     )
     parser.add_argument(
-        "--output_checkpoint_path", default=None, type=str, required=False, help="Path to the output converted diffusers pipeline."
+        "--output_checkpoint_path",
+        default=None,
+        type=str,
+        required=False,
+        help="Path to the output converted diffusers pipeline.",
     )
     parser.add_argument(
-        "--load_key", default='none', type=str, required=False, help="The key to load from the pretrained .pt file"
+        "--load_key", default="none", type=str, required=False, help="The key to load from the pretrained .pt file"
     )
     parser.add_argument(
-        "--use_style_cond_and_image_meta_size", type=bool, default=False, help="version <= v1.1: True; version >= v1.2: False"
+        "--use_style_cond_and_image_meta_size",
+        type=bool,
+        default=False,
+        help="version <= v1.1: True; version >= v1.2: False",
     )
-
 
     args = parser.parse_args()
     main(args)
