@@ -370,23 +370,12 @@ class LoraBaseMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        if self.is_unet_denoiser:
-            unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            unet.unload_lora()
-        elif self.is_transformer_denoiser:
-            transformer = (
-                getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-            )
-            transformer.unload_lora()
-        else:
-            raise ValueError("No valid denoiser found in the network.")
-
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
             if model is not None:
-                if issubclass(model, ModelMixin):
+                if issubclass(model.__class__, ModelMixin):
                     model.unload_lora()
-                elif issubclass(model, PreTrainedModel):
+                elif issubclass(model.__class__, PreTrainedModel):
                     _remove_text_encoder_monkey_patch(model)
 
     def fuse_lora(
@@ -457,10 +446,10 @@ class LoraBaseMixin:
             model = getattr(self, fuse_component, None)
             if model is not None:
                 # check if diffusers model
-                if issubclass(model, ModelMixin):
+                if issubclass(model.__class__, ModelMixin):
                     model.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
                 # handle transformers models.
-                if issubclass(model, PreTrainedModel):
+                if issubclass(model.__class__, PreTrainedModel):
                     fuse_text_encoder_lora(
                         model, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
                     )
@@ -513,11 +502,11 @@ class LoraBaseMixin:
 
             model = getattr(self, fuse_component, None)
             if model is not None:
-                if issubclass(model, ModelMixin):
+                if issubclass(model.__class__, ModelMixin):
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
                             module.unmerge()
-                if issubclass(model, PreTrainedModel):
+                if issubclass(model.__class__, PreTrainedModel):
                     unfuse_text_encoder_lora(model)
 
         self.num_fused_loras -= 1
@@ -591,9 +580,9 @@ class LoraBaseMixin:
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
             if model is not None:
-                if issubclass(model, ModelMixin):
+                if issubclass(model.__class__, ModelMixin):
                     model.set_adapters(adapter_names, denoiser_lora_weights)
-                elif isinstance(component, PreTrainedModel):
+                elif isinstance(model.__class__, PreTrainedModel):
                     if component == "text_encoder":
                         set_adapters_for_text_encoder(adapter_names, model, text_encoder_lora_weights)
                     elif component == "text_encoder_2":
@@ -606,9 +595,9 @@ class LoraBaseMixin:
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
             if model is not None:
-                if issubclass(model, ModelMixin):
+                if issubclass(model.__class__, ModelMixin):
                     model.disable_lora()
-                elif issubclass(model, PreTrainedModel):
+                elif issubclass(model.__class__, PreTrainedModel):
                     disable_lora_for_text_encoder(model)
 
     def enable_lora(self):
@@ -618,9 +607,9 @@ class LoraBaseMixin:
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
             if model is not None:
-                if issubclass(model, ModelMixin):
+                if issubclass(model.__class__, ModelMixin):
                     model.enable_lora()
-                elif issubclass(model, PreTrainedModel):
+                elif issubclass(model.__class__, PreTrainedModel):
                     enable_lora_for_text_encoder(model)
 
     def delete_adapters(self, adapter_names: Union[List[str], str]):
@@ -639,9 +628,9 @@ class LoraBaseMixin:
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
             if model is not None:
-                if issubclass(model, ModelMixin):
+                if issubclass(model.__class__, ModelMixin):
                     model.delete_adapters(adapter_names)
-                elif issubclass(model, PreTrainedModel):
+                elif issubclass(model.__class__, PreTrainedModel):
                     for adapter_name in adapter_names:
                         delete_adapter_layers(model, adapter_name)
 
@@ -693,7 +682,7 @@ class LoraBaseMixin:
             model = getattr(self, component, None)
             if (
                 model is not None
-                and issubclass(model, (ModelMixin, PreTrainedModel))
+                and issubclass(model.__class__, (ModelMixin, PreTrainedModel))
                 and hasattr(model, "peft_config")
             ):
                 set_adapters[component] = list(model.peft_config.keys())
