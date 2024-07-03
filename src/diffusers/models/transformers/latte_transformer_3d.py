@@ -177,7 +177,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         cross_attention_kwargs: Dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        use_image_num: int = 0,
         enable_temporal_attentions: bool = True,
         return_dict: bool = True,
     ):
@@ -213,7 +212,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
 
                 If `ndim == 2`: will be interpreted as a mask, then converted into a bias consistent with the format
                 above. This bias will be added to the cross-attention scores.
-            use_image_num: (`int`, *optional*, defaults to 0): The number of images to use in the input for training.
             enable_temporal_attentions: (`bool`, *optional*, defaults to `True`): Whether to enable temporal attentions.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
@@ -224,29 +222,10 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
             `tuple` where the first element is the sample tensor.
         """
         input_batch_size, c, frame, h, w = hidden_states.shape
-        frame = frame - use_image_num
         # 'b c f h w -> (b f) c h w'
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(-1, c, h, w)
 
-        # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
-        #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
-        #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
-        # expects mask of shape:
-        #   [batch, key_tokens]
-        # adds singleton query_tokens dimension:
-        #   [batch,                    1, key_tokens]
-        # this helps to broadcast it as a bias over attention scores, which will be in one of the following shapes:
-        #   [batch,  heads, query_tokens, key_tokens] (e.g. torch sdp attn)
-        #   [batch * heads, query_tokens, key_tokens] (e.g. xformers or classic attn)
-        if attention_mask is not None and attention_mask.ndim == 2:
-            # assume that mask is expressed as:
-            #   (1 = keep,      0 = discard)
-            # convert mask into a bias that can be added to attention scores:
-            #       (keep = +0,     discard = -10000.0)
-            attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
-            attention_mask = attention_mask.unsqueeze(1)
-
-        # 1. Input
+        # Input
         height, width = hidden_states.shape[-2] // self.config.patch_size, hidden_states.shape[-1] // self.config.patch_size
         num_patches = height * width
 
@@ -256,15 +235,16 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         timestep, embedded_timestep = self.adaln_single(
             timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype)
 
-        # 2. Blocks
+        # Prepare text embeddings for spatial block
         batch_size = hidden_states.shape[0]
         encoder_hidden_states = self.caption_projection(encoder_hidden_states) # 3 120 1152
         encoder_hidden_states_spatial = encoder_hidden_states.repeat_interleave(frame, dim=0).view(-1, encoder_hidden_states.shape[-2], encoder_hidden_states.shape[-1])
 
-        # prepare timesteps for spatial and temporal block
-        timestep_spatial = timestep.repeat_interleave(frame + use_image_num, dim=0).view(-1, timestep.shape[-1])
+        # Prepare timesteps for spatial and temporal block
+        timestep_spatial = timestep.repeat_interleave(frame, dim=0).view(-1, timestep.shape[-1])
         timestep_temp = timestep.repeat_interleave(num_patches, dim=0).view(-1, timestep.shape[-1])
 
+        # Spatial and temporal transformer blocks
         for i, (spatial_block, temp_block) in enumerate(zip(self.transformer_blocks, self.temporal_transformer_blocks)):
 
             if self.training and self.gradient_checkpointing:
@@ -338,7 +318,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states = hidden_states.reshape(input_batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
                     hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
-        embedded_timestep = embedded_timestep.repeat_interleave(frame + use_image_num, dim=0).view(-1, embedded_timestep.shape[-1])
+        embedded_timestep = embedded_timestep.repeat_interleave(frame, dim=0).view(-1, embedded_timestep.shape[-1])
         shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
         hidden_states = self.norm_out(hidden_states)
         # Modulation
