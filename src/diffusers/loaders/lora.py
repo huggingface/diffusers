@@ -46,13 +46,6 @@ TRANSFORMER_NAME = "transformer"
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
-LORA_COMPONENT_MAPPING = {
-    "unet": UNET_NAME,
-    "transformer": TRANSFORMER_NAME,
-    "text_encoder": TEXT_ENCODER_NAME,
-    "text_encoder_2": f"{TEXT_ENCODER_NAME}_2",
-}
-
 
 class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     r"""
