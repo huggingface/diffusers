@@ -185,6 +185,7 @@ class LoraBaseMixin:
     """Utility class for handling LoRAs."""
 
     _lora_loadable_modules = []
+    num_fused_loras = 0
 
     def load_lora_weights(self, **kwargs):
         raise NotImplementedError("`load_lora_weights()` is not implemented.")
