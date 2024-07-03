@@ -1513,6 +1513,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                     _pipeline.enable_model_cpu_offload()
                 elif is_sequential_cpu_offload:
                     _pipeline.enable_sequential_cpu_offload()
+                # Unsafe code />
 
     @classmethod
     def save_lora_weights(
