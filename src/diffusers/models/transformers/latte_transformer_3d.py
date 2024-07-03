@@ -243,31 +243,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                     None, # class_labels
                     use_reentrant=False,
                 )
-
-                if enable_temporal_attentions:
-                    # (b f) t d -> (b t) f d
-                    hidden_states = hidden_states.reshape(batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
-                    hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
-
-
-                    if i == 0:
-                        hidden_states = hidden_states + self.temp_pos_embed
-                    
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        temp_block,
-                        hidden_states,
-                        None, # attention_mask
-                        None, # encoder_hidden_states
-                        None, # encoder_attention_mask
-                        timestep_temp,
-                        None, # cross_attention_kwargs
-                        None, # class_labels
-                        use_reentrant=False,
-                    )
-
-                    # (b t) f d -> (b f) t d
-                    hidden_states = hidden_states.reshape(batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
-                    hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
             else:
                 hidden_states = spatial_block(
                     hidden_states,
@@ -279,15 +254,27 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                     None, # class_labels
                 )
 
-                if enable_temporal_attentions:
+            if enable_temporal_attentions:
+                # (b f) t d -> (b t) f d
+                hidden_states = hidden_states.reshape(batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
+                hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
-                    # (b f) t d -> (b t) f d
-                    hidden_states = hidden_states.reshape(batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
-                    hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
-
-                    if i == 0 and num_frame > 1:
-                        hidden_states = hidden_states + self.temp_pos_embed
-                    
+                if i == 0:
+                    hidden_states = hidden_states + self.temp_pos_embed
+                
+                if self.training and self.gradient_checkpointing:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        temp_block,
+                        hidden_states,
+                        None, # attention_mask
+                        None, # encoder_hidden_states
+                        None, # encoder_attention_mask
+                        timestep_temp,
+                        None, # cross_attention_kwargs
+                        None, # class_labels
+                        use_reentrant=False,
+                    )
+                else:
                     hidden_states = temp_block(
                         hidden_states,
                         None, # attention_mask
@@ -298,9 +285,9 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                         None, # class_labels
                     )
 
-                    # (b f) t d -> (b t) f d
-                    hidden_states = hidden_states.reshape(batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
-                    hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
+                # (b f) t d -> (b t) f d
+                hidden_states = hidden_states.reshape(batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
+                hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
         embedded_timestep = embedded_timestep.repeat_interleave(num_frame, dim=0).view(-1, embedded_timestep.shape[-1])
         shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
