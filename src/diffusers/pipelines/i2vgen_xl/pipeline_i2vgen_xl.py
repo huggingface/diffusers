@@ -1,4 +1,4 @@
-# Copyright 2023 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,21 +22,17 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import LoraLoaderMixin
 from ...models import AutoencoderKL
-from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from ...schedulers import DDIMScheduler
 from ...utils import (
-    USE_PEFT_BACKEND,
     BaseOutput,
     logging,
     replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ...video_processor import VideoProcessor
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -48,10 +44,14 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import I2VGenXLPipeline
         >>> from diffusers.utils import export_to_gif, load_image
 
-        >>> pipeline = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
+        >>> pipeline = I2VGenXLPipeline.from_pretrained(
+        ...     "ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16"
+        ... )
         >>> pipeline.enable_model_cpu_offload()
 
-        >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png?raw=true"
+        >>> image_url = (
+        ...     "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"
+        ... )
         >>> image = load_image(image_url).convert("RGB")
 
         >>> prompt = "Papers were floating in the air on a table in the library"
@@ -64,33 +64,11 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=50,
         ...     negative_prompt=negative_prompt,
         ...     guidance_scale=9.0,
-        ...     generator=generator
+        ...     generator=generator,
         ... ).frames[0]
         >>> video_path = export_to_gif(frames, "i2v.gif")
         ```
 """
-
-
-# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
-def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
-    batch_size, channels, num_frames, height, width = video.shape
-    outputs = []
-    for batch_idx in range(batch_size):
-        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-        batch_output = processor.postprocess(batch_vid, output_type)
-
-        outputs.append(batch_output)
-
-    if output_type == "np":
-        outputs = np.stack(outputs)
-
-    elif output_type == "pt":
-        outputs = torch.stack(outputs)
-
-    elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
-
-    return outputs
 
 
 @dataclass
@@ -98,9 +76,10 @@ class I2VGenXLPipelineOutput(BaseOutput):
     r"""
      Output class for image-to-video pipeline.
 
-     Args:
+    Args:
          frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
-             List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing denoised
+             List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
+             denoised
      PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
     `(batch_size, num_frames, channels, height, width)`
     """
@@ -108,7 +87,10 @@ class I2VGenXLPipelineOutput(BaseOutput):
     frames: Union[torch.Tensor, np.ndarray, List[List[PIL.Image.Image]]]
 
 
-class I2VGenXLPipeline(DiffusionPipeline):
+class I2VGenXLPipeline(
+    DiffusionPipeline,
+    StableDiffusionMixin,
+):
     r"""
     Pipeline for image-to-video generation as proposed in [I2VGenXL](https://i2vgen-xl.github.io/).
 
@@ -153,7 +135,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         # `do_resize=False` as we do custom resizing.
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_resize=False)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor, do_resize=False)
 
     @property
     def guidance_scale(self):
@@ -166,48 +148,14 @@ class I2VGenXLPipeline(DiffusionPipeline):
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.vae.enable_tiling()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
-
     def encode_prompt(
         self,
         prompt,
         device,
         num_videos_per_prompt,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        lora_scale: Optional[float] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         clip_skip: Optional[int] = None,
     ):
         r"""
@@ -226,30 +174,17 @@ class I2VGenXLPipeline(DiffusionPipeline):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            lora_scale (`float`, *optional*):
-                A LoRA scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
         """
-        # set lora scale so that monkey patched LoRA
-        # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
-            self._lora_scale = lora_scale
-
-            # dynamically adjust the LoRA scale
-            if not USE_PEFT_BACKEND:
-                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-            else:
-                scale_lora_layers(self.text_encoder, lora_scale)
-
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -380,18 +315,14 @@ class I2VGenXLPipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
-        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
-            # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder, lora_scale)
-
         return prompt_embeds, negative_prompt_embeds
 
     def _encode_image(self, image, device, num_videos_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
-            image = self.image_processor.pil_to_numpy(image)
-            image = self.image_processor.numpy_to_pt(image)
+            image = self.video_processor.pil_to_numpy(image)
+            image = self.video_processor.numpy_to_pt(image)
 
             # Normalize the image with CLIP training stats.
             image = self.feature_extractor(
@@ -503,7 +434,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
             and not isinstance(image, list)
         ):
             raise ValueError(
-                "`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
                 f" {type(image)}"
             )
 
@@ -565,34 +496,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
-    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
-
-        The suffixes after the scaling factors represent the stages where they are being applied.
-
-        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
-        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
-
-        Args:
-            s1 (`float`):
-                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            s2 (`float`):
-                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
-            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
-        """
-        if not hasattr(self, "unet"):
-            raise ValueError("The pipeline must have `unet` for using FreeU.")
-        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_freeu
-    def disable_freeu(self):
-        """Disables the FreeU mechanism if enabled."""
-        self.unet.disable_freeu()
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -610,9 +513,9 @@ class I2VGenXLPipeline(DiffusionPipeline):
         num_videos_per_prompt: Optional[int] = 1,
         decode_chunk_size: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -624,7 +527,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
+            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.Tensor`):
                 Image or images to guide image generation. If you provide a tensor, it needs to be compatible with
                 [`CLIPImageProcessor`](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json).
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -632,7 +535,8 @@ class I2VGenXLPipeline(DiffusionPipeline):
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
             target_fps (`int`, *optional*):
-                Frames per second. The rate at which the generated images shall be exported to a video after generation. This is also used as a "micro-condition" while generation.
+                Frames per second. The rate at which the generated images shall be exported to a video after
+                generation. This is also used as a "micro-condition" while generation.
             num_frames (`int`, *optional*):
                 The number of video frames to generate.
             num_inference_steps (`int`, *optional*):
@@ -649,20 +553,20 @@ class I2VGenXLPipeline(DiffusionPipeline):
             num_videos_per_prompt (`int`, *optional*):
                 The number of images to generate per prompt.
             decode_chunk_size (`int`, *optional*):
-                The number of frames to decode at a time. The higher the chunk size, the higher the temporal consistency
-                between frames, but also the higher the memory consumption. By default, the decoder will decode all frames at once
-                for maximal quality. Reduce `decode_chunk_size` to reduce memory usage.
+                The number of frames to decode at a time. The higher the chunk size, the higher the temporal
+                consistency between frames, but also the higher the memory consumption. By default, the decoder will
+                decode all frames at once for maximal quality. Reduce `decode_chunk_size` to reduce memory usage.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -706,9 +610,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
         self._guidance_scale = guidance_scale
 
         # 3.1 Encode input text prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
@@ -716,7 +617,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
             clip_skip=clip_skip,
         )
         # For classifier free guidance, we need to do two forward passes.
@@ -736,7 +636,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
         # 3.2.2 Image latents.
         resized_image = _center_crop_wide(image, (width, height))
-        image = self.image_processor.preprocess(resized_image).to(device=device, dtype=image_embeddings.dtype)
+        image = self.video_processor.preprocess(resized_image).to(device=device, dtype=image_embeddings.dtype)
         image_latents = self.prepare_image_latents(
             image,
             device=device,
@@ -811,13 +711,14 @@ class I2VGenXLPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
+        # 8. Post processing
         if output_type == "latent":
-            return I2VGenXLPipelineOutput(frames=latents)
+            video = latents
+        else:
+            video_tensor = self.decode_latents(latents, decode_chunk_size=decode_chunk_size)
+            video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
-        video_tensor = self.decode_latents(latents, decode_chunk_size=decode_chunk_size)
-        video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
-
-        # Offload all models
+        # 9. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:

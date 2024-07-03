@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -106,7 +106,7 @@ pip install -e ".[flax]"
 
 これらのコマンドは、リポジトリをクローンしたフォルダと Python のライブラリパスをリンクします。
 Python は通常のライブラリパスに加えて、クローンしたフォルダの中を探すようになります。
-例えば、Python パッケージが通常 `~/anaconda3/envs/main/lib/python3.8/site-packages/` にインストールされている場合、Python はクローンした `~/diffusers/` フォルダも同様に参照します。
+例えば、Python パッケージが通常 `~/anaconda3/envs/main/lib/python3.10/site-packages/` にインストールされている場合、Python はクローンした `~/diffusers/` フォルダも同様に参照します。
 
 <Tip warning={true}>
 

@@ -18,7 +18,7 @@ from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_PARAMS, VIDEO_TO_VIDEO_BATCH_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineFromPipeTesterMixin, PipelineTesterMixin
 
 
 def to_np(tensor):
@@ -28,7 +28,9 @@ def to_np(tensor):
     return tensor
 
 
-class AnimateDiffVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class AnimateDiffVideoToVideoPipelineFastTests(
+    IPAdapterTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase
+):
     pipeline_class = AnimateDiffVideoToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = VIDEO_TO_VIDEO_BATCH_PARAMS
@@ -135,6 +137,34 @@ class AnimateDiffVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.Tes
     def test_attention_slicing_forward_pass(self):
         pass
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array(
+                [
+                    0.4947,
+                    0.4780,
+                    0.4340,
+                    0.4666,
+                    0.4028,
+                    0.4645,
+                    0.4915,
+                    0.4101,
+                    0.4308,
+                    0.4581,
+                    0.3582,
+                    0.4953,
+                    0.4466,
+                    0.5348,
+                    0.5863,
+                    0.5299,
+                    0.5213,
+                    0.5017,
+                ]
+            )
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_inference_batch_single_identical(
         self,
         batch_size=2,
@@ -224,7 +254,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.Tes
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
@@ -237,6 +267,17 @@ class AnimateDiffVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.Tes
         inputs = self.get_dummy_inputs(torch_device)
         inputs.pop("prompt")
         inputs["prompt_embeds"] = torch.randn((1, 4, 32), device=torch_device)
+        pipe(**inputs)
+
+    def test_latent_inputs(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["latents"] = torch.randn((1, 4, 1, 32, 32), device=torch_device)
+        inputs.pop("video")
         pipe(**inputs)
 
     @unittest.skipIf(
@@ -267,3 +308,38 @@ class AnimateDiffVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.Tes
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+
+    def test_free_init(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        inputs_normal = self.get_dummy_inputs(torch_device)
+        frames_normal = pipe(**inputs_normal).frames[0]
+
+        pipe.enable_free_init(
+            num_iters=2,
+            use_fast_sampling=True,
+            method="butterworth",
+            order=4,
+            spatial_stop_frequency=0.25,
+            temporal_stop_frequency=0.25,
+        )
+        inputs_enable_free_init = self.get_dummy_inputs(torch_device)
+        frames_enable_free_init = pipe(**inputs_enable_free_init).frames[0]
+
+        pipe.disable_free_init()
+        inputs_disable_free_init = self.get_dummy_inputs(torch_device)
+        frames_disable_free_init = pipe(**inputs_disable_free_init).frames[0]
+
+        sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_init)).sum()
+        max_diff_disabled = np.abs(to_np(frames_normal) - to_np(frames_disable_free_init)).max()
+        self.assertGreater(
+            sum_enabled, 1e1, "Enabling of FreeInit should lead to results different from the default pipeline results"
+        )
+        self.assertLess(
+            max_diff_disabled,
+            1e-4,
+            "Disabling of FreeInit should lead to results similar to the default pipeline results",
+        )

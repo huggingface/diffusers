@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class Kandinsky3UNetOutput(BaseOutput):
-    sample: torch.FloatTensor = None
+    sample: torch.Tensor = None
 
 
 class Kandinsky3EncoderProj(nn.Module):

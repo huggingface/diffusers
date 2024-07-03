@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -51,7 +51,7 @@ prompt = "portrait photo of a old warrior chief"
 pipeline = pipeline.to("cuda")
 ```
 
-为了确保您可以使用相同的图像并对其进行改进，使用 [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) 方法，然后设置一个随机数种子 以确保其 [复现性](./using-diffusers/reproducibility):
+为了确保您可以使用相同的图像并对其进行改进，使用 [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) 方法，然后设置一个随机数种子 以确保其 [复现性](./using-diffusers/reusing_seeds):
 
 ```python
 import torch

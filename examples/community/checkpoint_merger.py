@@ -81,6 +81,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
 
                 force - Whether to ignore mismatch in model_config.json for the current models. Defaults to False.
 
+                variant - which variant of a pretrained model to load, e.g. "fp16" (None)
+
         """
         # Default kwargs from DiffusionPipeline
         cache_dir = kwargs.pop("cache_dir", None)
@@ -89,6 +91,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
         token = kwargs.pop("token", None)
+        variant = kwargs.pop("variant", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         device_map = kwargs.pop("device_map", None)
@@ -100,7 +103,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         print(f"Combining with alpha={alpha}, interpolation mode={interp}")
 
         checkpoint_count = len(pretrained_model_name_or_path_list)
-        # Ignore result from model_index_json comparision of the two checkpoints
+        # Ignore result from model_index_json comparison of the two checkpoints
         force = kwargs.pop("force", False)
 
         # If less than 2 checkpoints, nothing to merge. If more than 3, not supported for now.
@@ -135,7 +138,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             comparison_result &= self._compare_model_configs(config_dicts[idx - 1], config_dicts[idx])
             if not force and comparison_result is False:
                 raise ValueError("Incompatible checkpoints. Please check model_index.json for the models.")
-                print(config_dicts[0], config_dicts[1])
         print("Compatible model_index.json files found")
         # Step 2: Basic Validation has succeeded. Let's download the models and save them into our local files.
         cached_folders = []
@@ -173,7 +175,10 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         # Step 3:-
         # Load the first checkpoint as a diffusion pipeline and modify its module state_dict in place
         final_pipe = DiffusionPipeline.from_pretrained(
-            cached_folders[0], torch_dtype=torch_dtype, device_map=device_map
+            cached_folders[0],
+            torch_dtype=torch_dtype,
+            device_map=device_map,
+            variant=variant,
         )
         final_pipe.to(self.device)
 
@@ -211,7 +216,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                         ]
                         checkpoint_path_2 = files[0] if len(files) > 0 else None
                 # For an attr if both checkpoint_path_1 and 2 are None, ignore.
-                # If atleast one is present, deal with it according to interp method, of course only if the state_dict keys match.
+                # If at least one is present, deal with it according to interp method, of course only if the state_dict keys match.
                 if checkpoint_path_1 is None and checkpoint_path_2 is None:
                     print(f"Skipping {attr}: not present in 2nd or 3d model")
                     continue

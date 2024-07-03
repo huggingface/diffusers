@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import logging
 import math
 import os
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import accelerate
@@ -52,8 +53,11 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
+if is_wandb_available():
+    import wandb
+
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.29.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -61,6 +65,48 @@ DATASET_NAME_MAPPING = {
     "fusing/instructpix2pix-1000-samples": ("input_image", "edit_prompt", "edited_image"),
 }
 WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
+
+
+def log_validation(
+    pipeline,
+    args,
+    accelerator,
+    generator,
+):
+    logger.info(
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f" {args.validation_prompt}."
+    )
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    # run inference
+    original_image = download_image(args.val_image_url)
+    edited_images = []
+    if torch.backends.mps.is_available():
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
+
+    with autocast_ctx:
+        for _ in range(args.num_validation_images):
+            edited_images.append(
+                pipeline(
+                    args.validation_prompt,
+                    image=original_image,
+                    num_inference_steps=20,
+                    image_guidance_scale=1.5,
+                    guidance_scale=7,
+                    generator=generator,
+                ).images[0]
+            )
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "wandb":
+            wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
+            for edited_image in edited_images:
+                wandb_table.add_data(wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt)
+            tracker.log({"validation": wandb_table})
 
 
 def parse_args():
@@ -380,6 +426,11 @@ def download_image(url):
 
 def main():
     args = parse_args()
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
 
     if args.non_ema_revision is not None:
         deprecate(
@@ -399,12 +450,11 @@ def main():
         project_config=accelerator_project_config,
     )
 
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
-    if args.report_to == "wandb":
-        if not is_wandb_available():
-            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -483,7 +533,7 @@ def main():
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -507,7 +557,8 @@ def main():
                     model.save_pretrained(os.path.join(output_dir, "unet"))
 
                     # make sure to pop weight so that corresponding model is not saved again
-                    weights.pop()
+                    if weights:
+                        weights.pop()
 
         def load_model_hook(models, input_dir):
             if args.use_ema:
@@ -913,11 +964,6 @@ def main():
                 and (args.validation_prompt is not None)
                 and (epoch % args.validation_epochs == 0)
             ):
-                logger.info(
-                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
-                # create pipeline
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_unet.store(unet.parameters())
@@ -932,35 +978,14 @@ def main():
                     variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
-                pipeline = pipeline.to(accelerator.device)
-                pipeline.set_progress_bar_config(disable=True)
 
-                # run inference
-                original_image = download_image(args.val_image_url)
-                edited_images = []
-                with torch.autocast(
-                    str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
-                ):
-                    for _ in range(args.num_validation_images):
-                        edited_images.append(
-                            pipeline(
-                                args.validation_prompt,
-                                image=original_image,
-                                num_inference_steps=20,
-                                image_guidance_scale=1.5,
-                                guidance_scale=7,
-                                generator=generator,
-                            ).images[0]
-                        )
+                log_validation(
+                    pipeline,
+                    args,
+                    accelerator,
+                    generator,
+                )
 
-                for tracker in accelerator.trackers:
-                    if tracker.name == "wandb":
-                        wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
-                        for edited_image in edited_images:
-                            wandb_table.add_data(
-                                wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt
-                            )
-                        tracker.log({"validation": wandb_table})
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
                     ema_unet.restore(unet.parameters())
@@ -971,7 +996,6 @@ def main():
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = unwrap_model(unet)
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
 
@@ -979,7 +1003,7 @@ def main():
             args.pretrained_model_name_or_path,
             text_encoder=unwrap_model(text_encoder),
             vae=unwrap_model(vae),
-            unet=unet,
+            unet=unwrap_model(unet),
             revision=args.revision,
             variant=args.variant,
         )
@@ -993,31 +1017,13 @@ def main():
                 ignore_patterns=["step_*", "epoch_*"],
             )
 
-        if args.validation_prompt is not None:
-            edited_images = []
-            pipeline = pipeline.to(accelerator.device)
-            with torch.autocast(str(accelerator.device).replace(":0", "")):
-                for _ in range(args.num_validation_images):
-                    edited_images.append(
-                        pipeline(
-                            args.validation_prompt,
-                            image=original_image,
-                            num_inference_steps=20,
-                            image_guidance_scale=1.5,
-                            guidance_scale=7,
-                            generator=generator,
-                        ).images[0]
-                    )
-
-            for tracker in accelerator.trackers:
-                if tracker.name == "wandb":
-                    wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
-                    for edited_image in edited_images:
-                        wandb_table.add_data(
-                            wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt
-                        )
-                    tracker.log({"test": wandb_table})
-
+        if (args.val_image_url is not None) and (args.validation_prompt is not None):
+            log_validation(
+                pipeline,
+                args,
+                accelerator,
+                generator,
+            )
     accelerator.end_training()
 
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,9 +35,9 @@ from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetMo
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    get_python_version,
     load_image,
     load_numpy,
-    numpy_cosine_similarity_distance,
     require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
@@ -54,6 +54,7 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
@@ -110,7 +111,11 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
 
 
 class ControlNetPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -206,7 +211,7 @@ class ControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
         }
 
@@ -214,6 +219,12 @@ class ControlNetPipelineFastTests(
 
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5234, 0.3333, 0.1745, 0.7605, 0.6224, 0.4637, 0.6989, 0.7526, 0.4665])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -273,7 +284,7 @@ class ControlNetPipelineFastTests(
 
 
 class StableDiffusionMultiControlNetPipelineFastTests(
-    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -297,7 +308,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -397,7 +408,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": images,
         }
 
@@ -449,6 +460,12 @@ class StableDiffusionMultiControlNetPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.2422, 0.3425, 0.4048, 0.5351, 0.3503, 0.2419, 0.4645, 0.4570, 0.3804])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_save_pretrained_raise_not_implemented_exception(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -488,9 +505,18 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         assert np.abs(image - output_1.images).max() < 1e-3
 
+        # multiple prompts, multiple image conditioning
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"], inputs["prompt"], inputs["prompt"]]
+        inputs["image"] = [inputs["image"], inputs["image"], inputs["image"], inputs["image"]]
+        output_2 = sd_pipe(**inputs)
+        image = output_2.images
+
+        assert image.shape == (4, 64, 64, 3)
+
 
 class StableDiffusionMultiControlNetOneModelPipelineFastTests(
-    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -514,7 +540,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet = ControlNetModel(
@@ -597,7 +623,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": images,
         }
 
@@ -653,6 +679,12 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5264, 0.3203, 0.1602, 0.8235, 0.6332, 0.4593, 0.7226, 0.7777, 0.4780])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_save_pretrained_raise_not_implemented_exception(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -669,6 +701,11 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 @slow
 @require_torch_gpu
 class ControlNetPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -987,6 +1024,10 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 
     @require_python39_or_higher
     @require_torch_2
+    @unittest.skipIf(
+        get_python_version == (3, 12),
+        reason="Torch Dynamo isn't yet supported for Python 3.12.",
+    )
     def test_stable_diffusion_compile(self):
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
 
@@ -1021,56 +1062,15 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.1338, 0.1597, 0.1202, 0.1687, 0.1377, 0.1017, 0.2070, 0.1574, 0.1348])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_load_local(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
-
-        controlnet = ControlNetModel.from_single_file(
-            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
-        )
-        pipe_sf = StableDiffusionControlNetPipeline.from_single_file(
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
-            safety_checker=None,
-            controlnet=controlnet,
-            scheduler_type="pndm",
-        )
-        pipe_sf.unet.set_default_attn_processor()
-        pipe_sf.enable_model_cpu_offload()
-
-        control_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-        ).resize((512, 512))
-        prompt = "bird"
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipe(
-            prompt,
-            image=control_image,
-            generator=generator,
-            output_type="np",
-            num_inference_steps=3,
-        ).images[0]
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        output_sf = pipe_sf(
-            prompt,
-            image=control_image,
-            generator=generator,
-            output_type="np",
-            num_inference_steps=3,
-        ).images[0]
-
-        max_diff = numpy_cosine_similarity_distance(output_sf.flatten(), output.flatten())
-        assert max_diff < 1e-3
-
 
 @slow
 @require_torch_gpu
 class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

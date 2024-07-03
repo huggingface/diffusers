@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -103,13 +103,13 @@ accelerate launch train_unconditional.py \
 <div class="flex justify-center">
     <img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png"/>
 </div>
-[Pokemon](https://huggingface.co/datasets/huggan/pokemon) 데이터셋을 사용할 경우:
+[Naruto](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) 데이터셋을 사용할 경우:
 
 ```bash
 accelerate launch train_unconditional.py \
-  --dataset_name="huggan/pokemon" \
+  --dataset_name="lambdalabs/naruto-blip-captions" \
   --resolution=64 \
-  --output_dir="ddpm-ema-pokemon-64" \
+  --output_dir="ddpm-ema-naruto-64" \
   --train_batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
@@ -129,9 +129,9 @@ accelerate launch train_unconditional.py \
 
 ```bash
 accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
-  --dataset_name="huggan/pokemon" \
+  --dataset_name="lambdalabs/naruto-blip-captions" \
   --resolution=64 --center_crop --random_flip \
-  --output_dir="ddpm-ema-pokemon-64" \
+  --output_dir="ddpm-ema-naruto-64" \
   --train_batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
