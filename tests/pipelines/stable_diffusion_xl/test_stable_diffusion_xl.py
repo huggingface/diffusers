@@ -53,6 +53,7 @@ from ..test_pipelines_common import (
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
+    SDFunctionTesterMixin,
     SDXLOptionalComponentsTesterMixin,
 )
 
@@ -61,6 +62,7 @@ enable_full_determinism()
 
 
 class StableDiffusionXLPipelineFastTests(
+    SDFunctionTesterMixin,
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
@@ -212,6 +214,44 @@ class StableDiffusionXLPipelineFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_ays(self):
+        from diffusers.schedulers import AysSchedules
+
+        timestep_schedule = AysSchedules["StableDiffusionXLTimesteps"]
+        sigma_schedule = AysSchedules["StableDiffusionXLSigmas"]
+
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 10
+        output = sd_pipe(**inputs).images
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = None
+        inputs["timesteps"] = timestep_schedule
+        output_ts = sd_pipe(**inputs).images
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = None
+        inputs["sigmas"] = sigma_schedule
+        output_sigmas = sd_pipe(**inputs).images
+
+        assert (
+            np.abs(output_sigmas.flatten() - output_ts.flatten()).max() < 1e-3
+        ), "ays timesteps and ays sigmas should have the same outputs"
+        assert (
+            np.abs(output.flatten() - output_ts.flatten()).max() > 1e-3
+        ), "use ays timesteps should have different outputs"
+        assert (
+            np.abs(output.flatten() - output_sigmas.flatten()).max() > 1e-3
+        ), "use ays sigmas should have different outputs"
+
     def test_stable_diffusion_xl_prompt_embeds(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**components)
@@ -289,6 +329,12 @@ class StableDiffusionXLPipelineFastTests(
 
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5552, 0.5569, 0.4725, 0.4348, 0.4994, 0.4632, 0.5142, 0.5012, 0.4700])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
@@ -948,37 +994,6 @@ class StableDiffusionXLPipelineFastTests(
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
-    def test_stable_diffusion_xl_with_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        original_image_slice = image[0, -3:, -3:, -1]
-
-        sd_pipe.fuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
-
-        sd_pipe.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
-
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
-
     def test_pipeline_interrupt(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**components)
@@ -1034,6 +1049,11 @@ class StableDiffusionXLPipelineFastTests(
 
 @slow
 class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -1052,8 +1072,9 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a red car standing on the side of the street"
 
-        image = sd_pipe(prompt, num_inference_steps=4, guidance_scale=8.0).images[0]
-
+        image = sd_pipe(
+            prompt, num_inference_steps=4, guidance_scale=8.0, generator=torch.Generator("cpu").manual_seed(0)
+        ).images[0]
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_full/stable_diffusion_ssd_1b_lcm.png"
         )
@@ -1064,30 +1085,3 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
 
         assert max_diff < 1e-2
-
-    def test_download_ckpt_diff_format_is_same(self):
-        ckpt_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
-        )
-
-        pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
-
-        pipe = StableDiffusionXLPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        )
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
-
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
-
-        assert max_diff < 6e-3

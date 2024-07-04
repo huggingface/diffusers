@@ -32,17 +32,16 @@ from transformers import (
 from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
-    DDIMScheduler,
+    EDMDPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
     LCMScheduler,
     StableDiffusionXLImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    numpy_cosine_similarity_distance,
+    load_image,
     require_torch_gpu,
     slow,
     torch_device,
@@ -310,6 +309,12 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
 
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5174, 0.4512, 0.5006, 0.6273, 0.5160, 0.6825, 0.6655, 0.5840, 0.5675])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_xl_img2img_tiny_autoencoder(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -778,41 +783,51 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
 
 
 @slow
-class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
+class StableDiffusionXLImg2ImgPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_download_ckpt_diff_format_is_same(self):
-        ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors"
-        init_image = load_image(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_img2img/sketch-mountains-input.png"
+    def test_stable_diffusion_xl_img2img_playground(self):
+        torch.manual_seed(0)
+        model_path = "playgroundai/playground-v2.5-1024px-aesthetic"
+
+        sd_pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            model_path, torch_dtype=torch.float16, variant="fp16", add_watermarker=False
         )
 
-        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16
+        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.scheduler = EDMDPMSolverMultistepScheduler.from_config(
+            sd_pipe.scheduler.config, use_karras_sigmas=True
         )
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
+        sd_pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe(
-            prompt="mountains", image=init_image, num_inference_steps=5, generator=generator, output_type="np"
-        ).images[0]
+        prompt = "a photo of an astronaut riding a horse on mars"
 
-        pipe_single_file = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
-        pipe_single_file.scheduler = DDIMScheduler.from_config(pipe_single_file.scheduler.config)
-        pipe_single_file.unet.set_default_attn_processor()
-        pipe_single_file.enable_model_cpu_offload()
+        url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image_single_file = pipe_single_file(
-            prompt="mountains", image=init_image, num_inference_steps=5, generator=generator, output_type="np"
-        ).images[0]
+        init_image = load_image(url).convert("RGB")
 
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
+        image = sd_pipe(
+            prompt,
+            num_inference_steps=30,
+            guidance_scale=8.0,
+            image=init_image,
+            height=1024,
+            width=1024,
+            output_type="np",
+        ).images
 
-        assert max_diff < 5e-2
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 1024, 1024, 3)
+
+        expected_slice = np.array([0.3519, 0.3149, 0.3364, 0.3505, 0.3402, 0.3371, 0.3554, 0.3495, 0.3333])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

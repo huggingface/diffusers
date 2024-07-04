@@ -110,7 +110,7 @@ def betas_for_alpha_bar(
             return math.exp(t * -12.0)
 
     else:
-        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
+        raise ValueError(f"Unsupported alpha_transform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
@@ -153,9 +153,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+            An offset added to the inference steps, as required by some model families.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -186,7 +184,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
@@ -235,7 +233,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
 
@@ -259,21 +257,21 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
     def scale_model_input(
         self,
-        sample: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
-    ) -> torch.FloatTensor:
+        sample: torch.Tensor,
+        timestep: Union[float, torch.Tensor],
+    ) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
             timestep (`int`, *optional*):
                 The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
         if self.step_index is None:
@@ -327,7 +325,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         log_sigmas = np.log(sigmas)
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
 
-        if self.use_karras_sigmas:
+        if self.config.use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
@@ -372,7 +370,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sig_proposed])
         return timesteps
 
-    # copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
         log_sigma = np.log(np.maximum(sigma, 1e-10))
@@ -396,8 +394,8 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         t = t.reshape(sigma.shape)
         return t
 
-    # copied from diffusers.schedulers.scheduling_euler_discrete._convert_to_karras
-    def _convert_to_karras(self, in_sigmas: torch.FloatTensor) -> torch.FloatTensor:
+    # copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
+    def _convert_to_karras(self, in_sigmas: torch.Tensor) -> torch.Tensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
         sigma_min: float = in_sigmas[-1].item()
@@ -416,9 +414,9 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
-        timestep: Union[float, torch.FloatTensor],
-        sample: Union[torch.FloatTensor, np.ndarray],
+        model_output: Union[torch.Tensor, np.ndarray],
+        timestep: Union[float, torch.Tensor],
+        sample: Union[torch.Tensor, np.ndarray],
         return_dict: bool = True,
         s_noise: float = 1.0,
     ) -> Union[SchedulerOutput, Tuple]:
@@ -427,11 +425,11 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor` or `np.ndarray`):
+            model_output (`torch.Tensor` or `np.ndarray`):
                 The direct output from learned diffusion model.
-            timestep (`float` or `torch.FloatTensor`):
+            timestep (`float` or `torch.Tensor`):
                 The current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor` or `np.ndarray`):
+            sample (`torch.Tensor` or `np.ndarray`):
                 A current instance of a sample created by the diffusion process.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~schedulers.scheduling_utils.SchedulerOutput`] or tuple.
@@ -452,10 +450,10 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             self.noise_sampler = BrownianTreeNoiseSampler(sample, min_sigma, max_sigma, self.noise_sampler_seed)
 
         # Define functions to compute sigma and t from each other
-        def sigma_fn(_t: torch.FloatTensor) -> torch.FloatTensor:
+        def sigma_fn(_t: torch.Tensor) -> torch.Tensor:
             return _t.neg().exp()
 
-        def t_fn(_sigma: torch.FloatTensor) -> torch.FloatTensor:
+        def t_fn(_sigma: torch.Tensor) -> torch.Tensor:
             return _sigma.log().neg()
 
         if self.state_in_first_order:
@@ -528,10 +526,10 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
-        timesteps: torch.FloatTensor,
-    ) -> torch.FloatTensor:
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
+        timesteps: torch.Tensor,
+    ) -> torch.Tensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
@@ -545,7 +543,11 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         # self.begin_index is None when scheduler is used for training, or pipeline does not implement set_begin_index
         if self.begin_index is None:
             step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        elif self.step_index is not None:
+            # add_noise is called after first denoising step (for inpainting)
+            step_indices = [self.step_index] * timesteps.shape[0]
         else:
+            # add noise is called before first denoising step to create initial latent(img2img)
             step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()

@@ -16,12 +16,12 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn
 
-from ..utils import USE_PEFT_BACKEND, deprecate
-from .activations import get_activation
+from ..utils import deprecate
+from .activations import FP32SiLU, get_activation
 from .attention_processor import Attention
-from .lora import LoRACompatibleLinear
 
 
 def get_timestep_embedding(
@@ -123,7 +123,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
 
 class PatchEmbed(nn.Module):
-    """2D Image to Patch Embedding"""
+    """2D Image to Patch Embedding with support for SD3 cropping."""
 
     def __init__(
         self,
@@ -136,12 +136,15 @@ class PatchEmbed(nn.Module):
         flatten=True,
         bias=True,
         interpolation_scale=1,
+        pos_embed_type="sincos",
+        pos_embed_max_size=None,  # For SD3 cropping
     ):
         super().__init__()
 
         num_patches = (height // patch_size) * (width // patch_size)
         self.flatten = flatten
         self.layer_norm = layer_norm
+        self.pos_embed_max_size = pos_embed_max_size
 
         self.proj = nn.Conv2d(
             in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
@@ -152,40 +155,186 @@ class PatchEmbed(nn.Module):
             self.norm = None
 
         self.patch_size = patch_size
-        # See:
-        # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L161
         self.height, self.width = height // patch_size, width // patch_size
         self.base_size = height // patch_size
         self.interpolation_scale = interpolation_scale
-        pos_embed = get_2d_sincos_pos_embed(
-            embed_dim, int(num_patches**0.5), base_size=self.base_size, interpolation_scale=self.interpolation_scale
-        )
-        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
+
+        # Calculate positional embeddings based on max size or default
+        if pos_embed_max_size:
+            grid_size = pos_embed_max_size
+        else:
+            grid_size = int(num_patches**0.5)
+
+        if pos_embed_type is None:
+            self.pos_embed = None
+        elif pos_embed_type == "sincos":
+            pos_embed = get_2d_sincos_pos_embed(
+                embed_dim, grid_size, base_size=self.base_size, interpolation_scale=self.interpolation_scale
+            )
+            persistent = True if pos_embed_max_size else False
+            self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=persistent)
+        else:
+            raise ValueError(f"Unsupported pos_embed_type: {pos_embed_type}")
+
+    def cropped_pos_embed(self, height, width):
+        """Crops positional embeddings for SD3 compatibility."""
+        if self.pos_embed_max_size is None:
+            raise ValueError("`pos_embed_max_size` must be set for cropping.")
+
+        height = height // self.patch_size
+        width = width // self.patch_size
+        if height > self.pos_embed_max_size:
+            raise ValueError(
+                f"Height ({height}) cannot be greater than `pos_embed_max_size`: {self.pos_embed_max_size}."
+            )
+        if width > self.pos_embed_max_size:
+            raise ValueError(
+                f"Width ({width}) cannot be greater than `pos_embed_max_size`: {self.pos_embed_max_size}."
+            )
+
+        top = (self.pos_embed_max_size - height) // 2
+        left = (self.pos_embed_max_size - width) // 2
+        spatial_pos_embed = self.pos_embed.reshape(1, self.pos_embed_max_size, self.pos_embed_max_size, -1)
+        spatial_pos_embed = spatial_pos_embed[:, top : top + height, left : left + width, :]
+        spatial_pos_embed = spatial_pos_embed.reshape(1, -1, spatial_pos_embed.shape[-1])
+        return spatial_pos_embed
 
     def forward(self, latent):
-        height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
+        if self.pos_embed_max_size is not None:
+            height, width = latent.shape[-2:]
+        else:
+            height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
 
         latent = self.proj(latent)
         if self.flatten:
             latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
         if self.layer_norm:
             latent = self.norm(latent)
-
-        # Interpolate positional embeddings if needed.
-        # (For PixArt-Alpha: https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L162C151-L162C160)
-        if self.height != height or self.width != width:
-            pos_embed = get_2d_sincos_pos_embed(
-                embed_dim=self.pos_embed.shape[-1],
-                grid_size=(height, width),
-                base_size=self.base_size,
-                interpolation_scale=self.interpolation_scale,
-            )
-            pos_embed = torch.from_numpy(pos_embed)
-            pos_embed = pos_embed.float().unsqueeze(0).to(latent.device)
+        if self.pos_embed is None:
+            return latent.to(latent.dtype)
+        # Interpolate or crop positional embeddings as needed
+        if self.pos_embed_max_size:
+            pos_embed = self.cropped_pos_embed(height, width)
         else:
-            pos_embed = self.pos_embed
+            if self.height != height or self.width != width:
+                pos_embed = get_2d_sincos_pos_embed(
+                    embed_dim=self.pos_embed.shape[-1],
+                    grid_size=(height, width),
+                    base_size=self.base_size,
+                    interpolation_scale=self.interpolation_scale,
+                )
+                pos_embed = torch.from_numpy(pos_embed).float().unsqueeze(0).to(latent.device)
+            else:
+                pos_embed = self.pos_embed
 
         return (latent + pos_embed).to(latent.dtype)
+
+
+def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
+    """
+    RoPE for image tokens with 2d structure.
+
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size
+    crops_coords (`Tuple[int]`)
+        The top-left and bottom-right coordinates of the crop.
+    grid_size (`Tuple[int]`):
+        The grid size of the positional embedding.
+    use_real (`bool`):
+        If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+
+    Returns:
+        `torch.Tensor`: positional embdding with shape `( grid_size * grid_size, embed_dim/2)`.
+    """
+    start, stop = crops_coords
+    grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
+    grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
+    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    grid = np.stack(grid, axis=0)  # [2, W, H]
+
+    grid = grid.reshape([2, 1, *grid.shape[1:]])
+    pos_embed = get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=use_real)
+    return pos_embed
+
+
+def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
+    assert embed_dim % 4 == 0
+
+    # use half of dimensions to encode grid_h
+    emb_h = get_1d_rotary_pos_embed(embed_dim // 2, grid[0].reshape(-1), use_real=use_real)  # (H*W, D/4)
+    emb_w = get_1d_rotary_pos_embed(embed_dim // 2, grid[1].reshape(-1), use_real=use_real)  # (H*W, D/4)
+
+    if use_real:
+        cos = torch.cat([emb_h[0], emb_w[0]], dim=1)  # (H*W, D/2)
+        sin = torch.cat([emb_h[1], emb_w[1]], dim=1)  # (H*W, D/2)
+        return cos, sin
+    else:
+        emb = torch.cat([emb_h, emb_w], dim=1)  # (H*W, D/2)
+        return emb
+
+
+def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float = 10000.0, use_real=False):
+    """
+    Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
+
+    This function calculates a frequency tensor with complex exponentials using the given dimension 'dim' and the end
+    index 'end'. The 'theta' parameter scales the frequencies. The returned tensor contains complex values in complex64
+    data type.
+
+    Args:
+        dim (`int`): Dimension of the frequency tensor.
+        pos (`np.ndarray` or `int`): Position indices for the frequency tensor. [S] or scalar
+        theta (`float`, *optional*, defaults to 10000.0):
+            Scaling factor for frequency computation. Defaults to 10000.0.
+        use_real (`bool`, *optional*):
+            If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+
+    Returns:
+        `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
+    """
+    if isinstance(pos, int):
+        pos = np.arange(pos)
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))  # [D/2]
+    t = torch.from_numpy(pos).to(freqs.device)  # type: ignore  # [S]
+    freqs = torch.outer(t, freqs).float()  # type: ignore   # [S, D/2]
+    if use_real:
+        freqs_cos = freqs.cos().repeat_interleave(2, dim=1)  # [S, D]
+        freqs_sin = freqs.sin().repeat_interleave(2, dim=1)  # [S, D]
+        return freqs_cos, freqs_sin
+    else:
+        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
+        return freqs_cis
+
+
+def apply_rotary_emb(
+    x: torch.Tensor,
+    freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
+    to the given query or key 'x' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
+    reshaped as complex numbers, and the frequency tensor is reshaped for broadcasting compatibility. The resulting
+    tensors contain rotary embeddings and are returned as real tensors.
+
+    Args:
+        x (`torch.Tensor`):
+            Query or key tensor to apply rotary embeddings. [B, H, S, D] xk (torch.Tensor): Key tensor to apply
+        freqs_cis (`Tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
+    """
+    cos, sin = freqs_cis  # [S, D]
+    cos = cos[None, None]
+    sin = sin[None, None]
+    cos, sin = cos.to(x.device), sin.to(x.device)
+
+    x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+    x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+
+    return out
 
 
 class TimestepEmbedding(nn.Module):
@@ -200,9 +349,8 @@ class TimestepEmbedding(nn.Module):
         sample_proj_bias=True,
     ):
         super().__init__()
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
 
-        self.linear_1 = linear_cls(in_channels, time_embed_dim, sample_proj_bias)
+        self.linear_1 = nn.Linear(in_channels, time_embed_dim, sample_proj_bias)
 
         if cond_proj_dim is not None:
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
@@ -215,7 +363,7 @@ class TimestepEmbedding(nn.Module):
             time_embed_dim_out = out_dim
         else:
             time_embed_dim_out = time_embed_dim
-        self.linear_2 = linear_cls(time_embed_dim, time_embed_dim_out, sample_proj_bias)
+        self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim_out, sample_proj_bias)
 
         if post_act_fn is None:
             self.post_act = None
@@ -267,9 +415,10 @@ class GaussianFourierProjection(nn.Module):
 
         if set_W_to_weight:
             # to delete later
+            del self.weight
             self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
-
             self.weight = self.W
+            del self.W
 
     def forward(self, x):
         if self.log:
@@ -426,7 +575,7 @@ class TextImageProjection(nn.Module):
         self.image_embeds = nn.Linear(image_embed_dim, self.num_image_text_embeds * cross_attention_dim)
         self.text_proj = nn.Linear(text_embed_dim, cross_attention_dim)
 
-    def forward(self, text_embeds: torch.FloatTensor, image_embeds: torch.FloatTensor):
+    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
         batch_size = text_embeds.shape[0]
 
         # image
@@ -452,7 +601,7 @@ class ImageProjection(nn.Module):
         self.image_embeds = nn.Linear(image_embed_dim, self.num_image_text_embeds * cross_attention_dim)
         self.norm = nn.LayerNorm(cross_attention_dim)
 
-    def forward(self, image_embeds: torch.FloatTensor):
+    def forward(self, image_embeds: torch.Tensor):
         batch_size = image_embeds.shape[0]
 
         # image
@@ -470,8 +619,24 @@ class IPAdapterFullImageProjection(nn.Module):
         self.ff = FeedForward(image_embed_dim, cross_attention_dim, mult=1, activation_fn="gelu")
         self.norm = nn.LayerNorm(cross_attention_dim)
 
-    def forward(self, image_embeds: torch.FloatTensor):
+    def forward(self, image_embeds: torch.Tensor):
         return self.norm(self.ff(image_embeds))
+
+
+class IPAdapterFaceIDImageProjection(nn.Module):
+    def __init__(self, image_embed_dim=1024, cross_attention_dim=1024, mult=1, num_tokens=1):
+        super().__init__()
+        from .attention import FeedForward
+
+        self.num_tokens = num_tokens
+        self.cross_attention_dim = cross_attention_dim
+        self.ff = FeedForward(image_embed_dim, cross_attention_dim * num_tokens, mult=mult, activation_fn="gelu")
+        self.norm = nn.LayerNorm(cross_attention_dim)
+
+    def forward(self, image_embeds: torch.Tensor):
+        x = self.ff(image_embeds)
+        x = x.reshape(-1, self.num_tokens, self.cross_attention_dim)
+        return self.norm(x)
 
 
 class CombinedTimestepLabelEmbeddings(nn.Module):
@@ -489,6 +654,126 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
         class_labels = self.class_embedder(class_labels)  # (N, D)
 
         conditioning = timesteps_emb + class_labels  # (N, D)
+
+        return conditioning
+
+
+class CombinedTimestepTextProjEmbeddings(nn.Module):
+    def __init__(self, embedding_dim, pooled_projection_dim):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.text_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
+
+    def forward(self, timestep, pooled_projection):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=pooled_projection.dtype))  # (N, D)
+
+        pooled_projections = self.text_embedder(pooled_projection)
+
+        conditioning = timesteps_emb + pooled_projections
+
+        return conditioning
+
+
+class HunyuanDiTAttentionPool(nn.Module):
+    # Copied from https://github.com/Tencent/HunyuanDiT/blob/cb709308d92e6c7e8d59d0dff41b74d35088db6a/hydit/modules/poolers.py#L6
+
+    def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
+        super().__init__()
+        self.positional_embedding = nn.Parameter(torch.randn(spacial_dim + 1, embed_dim) / embed_dim**0.5)
+        self.k_proj = nn.Linear(embed_dim, embed_dim)
+        self.q_proj = nn.Linear(embed_dim, embed_dim)
+        self.v_proj = nn.Linear(embed_dim, embed_dim)
+        self.c_proj = nn.Linear(embed_dim, output_dim or embed_dim)
+        self.num_heads = num_heads
+
+    def forward(self, x):
+        x = x.permute(1, 0, 2)  # NLC -> LNC
+        x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)  # (L+1)NC
+        x = x + self.positional_embedding[:, None, :].to(x.dtype)  # (L+1)NC
+        x, _ = F.multi_head_attention_forward(
+            query=x[:1],
+            key=x,
+            value=x,
+            embed_dim_to_check=x.shape[-1],
+            num_heads=self.num_heads,
+            q_proj_weight=self.q_proj.weight,
+            k_proj_weight=self.k_proj.weight,
+            v_proj_weight=self.v_proj.weight,
+            in_proj_weight=None,
+            in_proj_bias=torch.cat([self.q_proj.bias, self.k_proj.bias, self.v_proj.bias]),
+            bias_k=None,
+            bias_v=None,
+            add_zero_attn=False,
+            dropout_p=0,
+            out_proj_weight=self.c_proj.weight,
+            out_proj_bias=self.c_proj.bias,
+            use_separate_proj_weight=True,
+            training=self.training,
+            need_weights=False,
+        )
+        return x.squeeze(0)
+
+
+class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
+    def __init__(
+        self,
+        embedding_dim,
+        pooled_projection_dim=1024,
+        seq_len=256,
+        cross_attention_dim=2048,
+        use_style_cond_and_image_meta_size=True,
+    ):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+
+        self.size_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+
+        self.pooler = HunyuanDiTAttentionPool(
+            seq_len, cross_attention_dim, num_heads=8, output_dim=pooled_projection_dim
+        )
+
+        # Here we use a default learned embedder layer for future extension.
+        self.use_style_cond_and_image_meta_size = use_style_cond_and_image_meta_size
+        if use_style_cond_and_image_meta_size:
+            self.style_embedder = nn.Embedding(1, embedding_dim)
+            extra_in_dim = 256 * 6 + embedding_dim + pooled_projection_dim
+        else:
+            extra_in_dim = pooled_projection_dim
+
+        self.extra_embedder = PixArtAlphaTextProjection(
+            in_features=extra_in_dim,
+            hidden_size=embedding_dim * 4,
+            out_features=embedding_dim,
+            act_fn="silu_fp32",
+        )
+
+    def forward(self, timestep, encoder_hidden_states, image_meta_size, style, hidden_dtype=None):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, 256)
+
+        # extra condition1: text
+        pooled_projections = self.pooler(encoder_hidden_states)  # (N, 1024)
+
+        if self.use_style_cond_and_image_meta_size:
+            # extra condition2: image meta size embdding
+            image_meta_size = self.size_proj(image_meta_size.view(-1))
+            image_meta_size = image_meta_size.to(dtype=hidden_dtype)
+            image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
+
+            # extra condition3: style embedding
+            style_embedding = self.style_embedder(style)  # (N, embedding_dim)
+
+            # Concatenate all extra vectors
+            extra_cond = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
+        else:
+            extra_cond = torch.cat([pooled_projections], dim=1)
+
+        conditioning = timesteps_emb + self.extra_embedder(extra_cond)  # [B, D]
 
         return conditioning
 
@@ -516,7 +801,7 @@ class TextImageTimeEmbedding(nn.Module):
         self.text_norm = nn.LayerNorm(time_embed_dim)
         self.image_proj = nn.Linear(image_embed_dim, time_embed_dim)
 
-    def forward(self, text_embeds: torch.FloatTensor, image_embeds: torch.FloatTensor):
+    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
         # text
         time_text_embeds = self.text_proj(text_embeds)
         time_text_embeds = self.text_norm(time_text_embeds)
@@ -533,7 +818,7 @@ class ImageTimeEmbedding(nn.Module):
         self.image_proj = nn.Linear(image_embed_dim, time_embed_dim)
         self.image_norm = nn.LayerNorm(time_embed_dim)
 
-    def forward(self, image_embeds: torch.FloatTensor):
+    def forward(self, image_embeds: torch.Tensor):
         # image
         time_image_embeds = self.image_proj(image_embeds)
         time_image_embeds = self.image_norm(time_image_embeds)
@@ -563,7 +848,7 @@ class ImageHintTimeEmbedding(nn.Module):
             nn.Conv2d(256, 4, 3, padding=1),
         )
 
-    def forward(self, image_embeds: torch.FloatTensor, hint: torch.FloatTensor):
+    def forward(self, image_embeds: torch.Tensor, hint: torch.Tensor):
         # image
         time_image_embeds = self.image_proj(image_embeds)
         time_image_embeds = self.image_norm(time_image_embeds)
@@ -715,7 +1000,7 @@ class GLIGENTextBoundingboxProjection(nn.Module):
 
             objs = self.linears(torch.cat([positive_embeddings, xyxy_embedding], dim=-1))
 
-        # positionet with text and image infomation
+        # positionet with text and image information
         else:
             phrases_masks = phrases_masks.unsqueeze(-1)
             image_masks = image_masks.unsqueeze(-1)
@@ -779,11 +1064,20 @@ class PixArtAlphaTextProjection(nn.Module):
     Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
     """
 
-    def __init__(self, in_features, hidden_size, num_tokens=120):
+    def __init__(self, in_features, hidden_size, out_features=None, act_fn="gelu_tanh"):
         super().__init__()
+        if out_features is None:
+            out_features = hidden_size
         self.linear_1 = nn.Linear(in_features=in_features, out_features=hidden_size, bias=True)
-        self.act_1 = nn.GELU(approximate="tanh")
-        self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True)
+        if act_fn == "gelu_tanh":
+            self.act_1 = nn.GELU(approximate="tanh")
+        elif act_fn == "silu":
+            self.act_1 = nn.SiLU()
+        elif act_fn == "silu_fp32":
+            self.act_1 = FP32SiLU()
+        else:
+            raise ValueError(f"Unknown activation function: {act_fn}")
+        self.linear_2 = nn.Linear(in_features=hidden_size, out_features=out_features, bias=True)
 
     def forward(self, caption):
         hidden_states = self.linear_1(caption)
@@ -792,21 +1086,52 @@ class PixArtAlphaTextProjection(nn.Module):
         return hidden_states
 
 
+class IPAdapterPlusImageProjectionBlock(nn.Module):
+    def __init__(
+        self,
+        embed_dims: int = 768,
+        dim_head: int = 64,
+        heads: int = 16,
+        ffn_ratio: float = 4,
+    ) -> None:
+        super().__init__()
+        from .attention import FeedForward
+
+        self.ln0 = nn.LayerNorm(embed_dims)
+        self.ln1 = nn.LayerNorm(embed_dims)
+        self.attn = Attention(
+            query_dim=embed_dims,
+            dim_head=dim_head,
+            heads=heads,
+            out_bias=False,
+        )
+        self.ff = nn.Sequential(
+            nn.LayerNorm(embed_dims),
+            FeedForward(embed_dims, embed_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
+        )
+
+    def forward(self, x, latents, residual):
+        encoder_hidden_states = self.ln0(x)
+        latents = self.ln1(latents)
+        encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
+        latents = self.attn(latents, encoder_hidden_states) + residual
+        latents = self.ff(latents) + latents
+        return latents
+
+
 class IPAdapterPlusImageProjection(nn.Module):
     """Resampler of IP-Adapter Plus.
 
     Args:
-    ----
-        embed_dims (int): The feature dimension. Defaults to 768.
-        output_dims (int): The number of output channels, that is the same
-            number of the channels in the
-            `unet.config.cross_attention_dim`. Defaults to 1024.
-        hidden_dims (int): The number of hidden channels. Defaults to 1280.
-        depth (int): The number of blocks. Defaults to 8.
-        dim_head (int): The number of head channels. Defaults to 64.
-        heads (int): Parallel attention heads. Defaults to 16.
-        num_queries (int): The number of queries. Defaults to 8.
-        ffn_ratio (float): The expansion ratio of feedforward network hidden
+        embed_dims (int): The feature dimension. Defaults to 768. output_dims (int): The number of output channels,
+        that is the same
+            number of the channels in the `unet.config.cross_attention_dim`. Defaults to 1024.
+        hidden_dims (int):
+            The number of hidden channels. Defaults to 1280. depth (int): The number of blocks. Defaults
+        to 8. dim_head (int): The number of head channels. Defaults to 64. heads (int): Parallel attention heads.
+        Defaults to 16. num_queries (int):
+            The number of queries. Defaults to 8. ffn_ratio (float): The expansion ratio
+        of feedforward network hidden
             layer channels. Defaults to 4.
     """
 
@@ -822,8 +1147,6 @@ class IPAdapterPlusImageProjection(nn.Module):
         ffn_ratio: float = 4,
     ) -> None:
         super().__init__()
-        from .attention import FeedForward  # Lazy import to avoid circular import
-
         self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dims) / hidden_dims**0.5)
 
         self.proj_in = nn.Linear(embed_dims, hidden_dims)
@@ -831,53 +1154,108 @@ class IPAdapterPlusImageProjection(nn.Module):
         self.proj_out = nn.Linear(hidden_dims, output_dims)
         self.norm_out = nn.LayerNorm(output_dims)
 
-        self.layers = nn.ModuleList([])
-        for _ in range(depth):
-            self.layers.append(
-                nn.ModuleList(
-                    [
-                        nn.LayerNorm(hidden_dims),
-                        nn.LayerNorm(hidden_dims),
-                        Attention(
-                            query_dim=hidden_dims,
-                            dim_head=dim_head,
-                            heads=heads,
-                            out_bias=False,
-                        ),
-                        nn.Sequential(
-                            nn.LayerNorm(hidden_dims),
-                            FeedForward(hidden_dims, hidden_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
-                        ),
-                    ]
-                )
-            )
+        self.layers = nn.ModuleList(
+            [IPAdapterPlusImageProjectionBlock(hidden_dims, dim_head, heads, ffn_ratio) for _ in range(depth)]
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
 
         Args:
-        ----
             x (torch.Tensor): Input Tensor.
-
         Returns:
-        -------
             torch.Tensor: Output Tensor.
         """
         latents = self.latents.repeat(x.size(0), 1, 1)
 
         x = self.proj_in(x)
 
-        for ln0, ln1, attn, ff in self.layers:
+        for block in self.layers:
             residual = latents
-
-            encoder_hidden_states = ln0(x)
-            latents = ln1(latents)
-            encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
-            latents = attn(latents, encoder_hidden_states) + residual
-            latents = ff(latents) + latents
+            latents = block(x, latents, residual)
 
         latents = self.proj_out(latents)
         return self.norm_out(latents)
+
+
+class IPAdapterFaceIDPlusImageProjection(nn.Module):
+    """FacePerceiverResampler of IP-Adapter Plus.
+
+    Args:
+        embed_dims (int): The feature dimension. Defaults to 768. output_dims (int): The number of output channels,
+        that is the same
+            number of the channels in the `unet.config.cross_attention_dim`. Defaults to 1024.
+        hidden_dims (int):
+            The number of hidden channels. Defaults to 1280. depth (int): The number of blocks. Defaults
+        to 8. dim_head (int): The number of head channels. Defaults to 64. heads (int): Parallel attention heads.
+        Defaults to 16. num_tokens (int): Number of tokens num_queries (int): The number of queries. Defaults to 8.
+        ffn_ratio (float): The expansion ratio of feedforward network hidden
+            layer channels. Defaults to 4.
+        ffproj_ratio (float): The expansion ratio of feedforward network hidden
+            layer channels (for ID embeddings). Defaults to 4.
+    """
+
+    def __init__(
+        self,
+        embed_dims: int = 768,
+        output_dims: int = 768,
+        hidden_dims: int = 1280,
+        id_embeddings_dim: int = 512,
+        depth: int = 4,
+        dim_head: int = 64,
+        heads: int = 16,
+        num_tokens: int = 4,
+        num_queries: int = 8,
+        ffn_ratio: float = 4,
+        ffproj_ratio: int = 2,
+    ) -> None:
+        super().__init__()
+        from .attention import FeedForward
+
+        self.num_tokens = num_tokens
+        self.embed_dim = embed_dims
+        self.clip_embeds = None
+        self.shortcut = False
+        self.shortcut_scale = 1.0
+
+        self.proj = FeedForward(id_embeddings_dim, embed_dims * num_tokens, activation_fn="gelu", mult=ffproj_ratio)
+        self.norm = nn.LayerNorm(embed_dims)
+
+        self.proj_in = nn.Linear(hidden_dims, embed_dims)
+
+        self.proj_out = nn.Linear(embed_dims, output_dims)
+        self.norm_out = nn.LayerNorm(output_dims)
+
+        self.layers = nn.ModuleList(
+            [IPAdapterPlusImageProjectionBlock(embed_dims, dim_head, heads, ffn_ratio) for _ in range(depth)]
+        )
+
+    def forward(self, id_embeds: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            id_embeds (torch.Tensor): Input Tensor (ID embeds).
+        Returns:
+            torch.Tensor: Output Tensor.
+        """
+        id_embeds = id_embeds.to(self.clip_embeds.dtype)
+        id_embeds = self.proj(id_embeds)
+        id_embeds = id_embeds.reshape(-1, self.num_tokens, self.embed_dim)
+        id_embeds = self.norm(id_embeds)
+        latents = id_embeds
+
+        clip_embeds = self.proj_in(self.clip_embeds)
+        x = clip_embeds.reshape(-1, clip_embeds.shape[2], clip_embeds.shape[3])
+
+        for block in self.layers:
+            residual = latents
+            latents = block(x, latents, residual)
+
+        latents = self.proj_out(latents)
+        out = self.norm_out(latents)
+        if self.shortcut:
+            out = id_embeds + self.shortcut_scale * out
+        return out
 
 
 class MultiIPAdapterImageProjection(nn.Module):
@@ -885,7 +1263,7 @@ class MultiIPAdapterImageProjection(nn.Module):
         super().__init__()
         self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
 
-    def forward(self, image_embeds: List[torch.FloatTensor]):
+    def forward(self, image_embeds: List[torch.Tensor]):
         projected_image_embeds = []
 
         # currently, we accept `image_embeds` as
@@ -894,7 +1272,7 @@ class MultiIPAdapterImageProjection(nn.Module):
         if not isinstance(image_embeds, list):
             deprecation_message = (
                 "You have passed a tensor as `image_embeds`.This is deprecated and will be removed in a future release."
-                " Please make sure to update your script to pass `image_embeds` as a list of tensors to supress this warning."
+                " Please make sure to update your script to pass `image_embeds` as a list of tensors to suppress this warning."
             )
             deprecate("image_embeds not a list", "1.0.0", deprecation_message, standard_warn=False)
             image_embeds = [image_embeds.unsqueeze(1)]

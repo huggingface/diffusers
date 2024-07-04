@@ -126,7 +126,7 @@ def get_karras_sigmas(
     return sigmas
 
 
-def get_discretized_lognormal_weights(noise_levels: torch.FloatTensor, p_mean: float = -1.1, p_std: float = 2.0):
+def get_discretized_lognormal_weights(noise_levels: torch.Tensor, p_mean: float = -1.1, p_std: float = 2.0):
     """
     Calculates the unnormalized weights for a 1D array of noise level sigma_i based on the discretized lognormal"
     " distribution used in the iCT paper (given in Equation 10).
@@ -137,14 +137,14 @@ def get_discretized_lognormal_weights(noise_levels: torch.FloatTensor, p_mean: f
     return weights
 
 
-def get_loss_weighting_schedule(noise_levels: torch.FloatTensor):
+def get_loss_weighting_schedule(noise_levels: torch.Tensor):
     """
     Calculates the loss weighting schedule lambda given a set of noise levels.
     """
     return 1.0 / (noise_levels[1:] - noise_levels[:-1])
 
 
-def add_noise(original_samples: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.FloatTensor):
+def add_noise(original_samples: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor):
     # Make sure timesteps (Karras sigmas) have the same device and dtype as original_samples
     sigmas = timesteps.to(device=original_samples.device, dtype=original_samples.dtype)
     while len(sigmas.shape) < len(original_samples.shape):
@@ -219,7 +219,7 @@ def log_validation(unet, scheduler, args, accelerator, weight_dtype, step, name=
         if args.num_classes is not None:
             class_labels = list(range(args.num_classes))
         else:
-            logger.warn(
+            logger.warning(
                 "The model is class-conditional but the number of classes is not set. The generated images will be"
                 " unconditional rather than class-conditional."
             )
@@ -266,7 +266,7 @@ def log_validation(unet, scheduler, args, accelerator, weight_dtype, step, name=
 
             tracker.log({f"validation/{name}": formatted_images})
         else:
-            logger.warn(f"image logging not implemented for {tracker.name}")
+            logger.warning(f"image logging not implemented for {tracker.name}")
 
     del pipeline
     gc.collect()
@@ -863,14 +863,14 @@ def main(args):
     elif args.model_config_name_or_path is None:
         # TODO: use default architectures from iCT paper
         if not args.class_conditional and (args.num_classes is not None or args.class_embed_type is not None):
-            logger.warn(
+            logger.warning(
                 f"`--class_conditional` is set to `False` but `--num_classes` is set to {args.num_classes} and"
                 f" `--class_embed_type` is set to {args.class_embed_type}. These values will be overridden to `None`."
             )
             args.num_classes = None
             args.class_embed_type = None
         elif args.class_conditional and args.num_classes is None and args.class_embed_type is None:
-            logger.warn(
+            logger.warning(
                 "`--class_conditional` is set to `True` but neither `--num_classes` nor `--class_embed_type` is set."
                 "`class_conditional` will be overridden to `False`."
             )
@@ -996,7 +996,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()

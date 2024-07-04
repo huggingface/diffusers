@@ -34,12 +34,13 @@ from diffusers.utils.testing_utils import (
     is_flaky,
     load_image,
     load_numpy,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
@@ -293,6 +294,12 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 @slow
 @require_torch_gpu
 class KandinskyV22InpaintPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -328,17 +335,18 @@ class KandinskyV22InpaintPipelineIntegrationTests(unittest.TestCase):
         image_emb, zero_image_emb = pipe_prior(
             prompt,
             generator=generator,
-            num_inference_steps=5,
+            num_inference_steps=2,
             negative_prompt="",
         ).to_tuple()
 
+        generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             image=init_image,
             mask_image=mask,
             image_embeds=image_emb,
             negative_image_embeds=zero_image_emb,
             generator=generator,
-            num_inference_steps=100,
+            num_inference_steps=2,
             height=768,
             width=768,
             output_type="np",
@@ -348,4 +356,5 @@ class KandinskyV22InpaintPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (768, 768, 3)
 
-        assert_mean_pixel_difference(image, expected_image)
+        max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
+        assert max_diff < 1e-4

@@ -37,10 +37,10 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    is_torch_compile,
     load_image,
     load_numpy,
     nightly,
-    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -179,7 +179,7 @@ class StableDiffusionImg2ImgPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -252,6 +252,12 @@ class StableDiffusionImg2ImgPipelineFastTests(
         expected_slice = np.array([0.4593, 0.3408, 0.4232, 0.4749, 0.4476, 0.4115, 0.4357, 0.4733, 0.4663])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.4932, 0.5092, 0.5135, 0.5517, 0.5626, 0.6621, 0.6490, 0.5021, 0.5441])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_img2img_multiple_init_images(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -389,6 +395,11 @@ class StableDiffusionImg2ImgPipelineFastTests(
 @slow
 @require_torch_gpu
 class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -461,7 +472,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_img2img_intermediate_state(self):
         number_of_steps = 0
 
-        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+        def callback_fn(step: int, timestep: int, latents: torch.Tensor) -> None:
             callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
@@ -502,7 +513,6 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
@@ -633,7 +643,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         assert out.nsfw_content_detected[0], f"Safety checker should work for prompt: {inputs['prompt']}"
         assert np.abs(out.images[0]).sum() < 1e-5  # should be all zeros
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     def test_img2img_compile(self):
         seed = 0
@@ -648,6 +658,11 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

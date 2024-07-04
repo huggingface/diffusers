@@ -18,6 +18,7 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
+from ..models.modeling_utils import load_state_dict
 from ..utils import _get_model_file, is_accelerate_available, is_transformers_available, logging
 
 
@@ -37,7 +38,7 @@ TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
 def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs):
     cache_dir = kwargs.pop("cache_dir", None)
     force_download = kwargs.pop("force_download", False)
-    resume_download = kwargs.pop("resume_download", False)
+    resume_download = kwargs.pop("resume_download", None)
     proxies = kwargs.pop("proxies", None)
     local_files_only = kwargs.pop("local_files_only", None)
     token = kwargs.pop("token", None)
@@ -100,7 +101,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                     subfolder=subfolder,
                     user_agent=user_agent,
                 )
-                state_dict = torch.load(model_file, map_location="cpu")
+                state_dict = load_state_dict(model_file)
         else:
             state_dict = pretrained_model_name_or_path
 
@@ -307,9 +308,9 @@ class TextualInversionLoaderMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+            resume_download:
+                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
+                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -418,15 +419,20 @@ class TextualInversionLoaderMixin:
         # 7.1 Offload all hooks in case the pipeline was cpu offloaded before make sure, we offload and onload again
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
-        for _, component in self.components.items():
-            if isinstance(component, nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the textual inversion parameters will be loaded and the hooks will be applied again."
-                    )
-                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+        if self.hf_device_map is None:
+            for _, component in self.components.items():
+                if isinstance(component, nn.Module):
+                    if hasattr(component, "_hf_hook"):
+                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                        is_sequential_cpu_offload = (
+                            isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                            or hasattr(component._hf_hook, "hooks")
+                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+                        )
+                        logger.info(
+                            "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the textual inversion parameters will be loaded and the hooks will be applied again."
+                        )
+                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
         # 7.2 save expected device and dtype
         device = text_encoder.device
@@ -486,20 +492,35 @@ class TextualInversionLoaderMixin:
 
         # Example 3: unload from SDXL
         pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        embedding_path = hf_hub_download(repo_id="linoyts/web_y2k", filename="web_y2k_emb.safetensors", repo_type="model")
+        embedding_path = hf_hub_download(
+            repo_id="linoyts/web_y2k", filename="web_y2k_emb.safetensors", repo_type="model"
+        )
 
         # load embeddings to the text encoders
         state_dict = load_file(embedding_path)
 
         # load embeddings of text_encoder 1 (CLIP ViT-L/14)
-        pipeline.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+        pipeline.load_textual_inversion(
+            state_dict["clip_l"],
+            token=["<s0>", "<s1>"],
+            text_encoder=pipeline.text_encoder,
+            tokenizer=pipeline.tokenizer,
+        )
         # load embeddings of text_encoder 2 (CLIP ViT-G/14)
-        pipeline.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
+        pipeline.load_textual_inversion(
+            state_dict["clip_g"],
+            token=["<s0>", "<s1>"],
+            text_encoder=pipeline.text_encoder_2,
+            tokenizer=pipeline.tokenizer_2,
+        )
 
         # Unload explicitly from both text encoders abd tokenizers
-        pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
-        pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
-
+        pipeline.unload_textual_inversion(
+            tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer
+        )
+        pipeline.unload_textual_inversion(
+            tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2
+        )
         ```
         """
 

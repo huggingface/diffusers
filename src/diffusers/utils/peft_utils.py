@@ -14,6 +14,7 @@
 """
 PEFT utilities: Utilities related to peft library
 """
+
 import collections
 import importlib
 from typing import Optional
@@ -63,9 +64,11 @@ def recurse_remove_peft_layers(model):
             module_replaced = False
 
             if isinstance(module, LoraLayer) and isinstance(module, torch.nn.Linear):
-                new_module = torch.nn.Linear(module.in_features, module.out_features, bias=module.bias is not None).to(
-                    module.weight.device
-                )
+                new_module = torch.nn.Linear(
+                    module.in_features,
+                    module.out_features,
+                    bias=module.bias is not None,
+                ).to(module.weight.device)
                 new_module.weight = module.weight
                 if module.bias is not None:
                     new_module.bias = module.bias
@@ -109,6 +112,9 @@ def scale_lora_layers(model, weight):
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
+    if weight == 1.0:
+        return
+
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
             module.scale_layer(weight)
@@ -127,6 +133,9 @@ def unscale_lora_layers(model, weight: Optional[float] = None):
             value.
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
+
+    if weight == 1.0:
+        return
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
@@ -170,6 +179,7 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
 
     # layer names without the Diffusers specific
     target_modules = list({name.split(".lora")[0] for name in peft_state_dict.keys()})
+    use_dora = any("lora_magnitude_vector" in k for k in peft_state_dict)
 
     lora_config_kwargs = {
         "r": r,
@@ -177,6 +187,7 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
         "rank_pattern": rank_pattern,
         "alpha_pattern": alpha_pattern,
         "target_modules": target_modules,
+        "use_dora": use_dora,
     }
     return lora_config_kwargs
 
@@ -227,16 +238,32 @@ def delete_adapter_layers(model, adapter_name):
 def set_weights_and_activate_adapters(model, adapter_names, weights):
     from peft.tuners.tuners_utils import BaseTunerLayer
 
+    def get_module_weight(weight_for_adapter, module_name):
+        if not isinstance(weight_for_adapter, dict):
+            # If weight_for_adapter is a single number, always return it.
+            return weight_for_adapter
+
+        for layer_name, weight_ in weight_for_adapter.items():
+            if layer_name in module_name:
+                return weight_
+
+        parts = module_name.split(".")
+        # e.g. key = "down_blocks.1.attentions.0"
+        key = f"{parts[0]}.{parts[1]}.attentions.{parts[3]}"
+        block_weight = weight_for_adapter.get(key, 1.0)
+
+        return block_weight
+
     # iterate over each adapter, make it active and set the corresponding scaling weight
     for adapter_name, weight in zip(adapter_names, weights):
-        for module in model.modules():
+        for module_name, module in model.named_modules():
             if isinstance(module, BaseTunerLayer):
                 # For backward compatbility with previous PEFT versions
                 if hasattr(module, "set_adapter"):
                     module.set_adapter(adapter_name)
                 else:
                     module.active_adapter = adapter_name
-                module.set_scale(adapter_name, weight)
+                module.set_scale(adapter_name, get_module_weight(weight, module_name))
 
     # set multiple active adapters
     for module in model.modules():

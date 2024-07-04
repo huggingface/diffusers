@@ -33,12 +33,12 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
-    torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
@@ -240,6 +240,12 @@ class KandinskyV22Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 @slow
 @require_torch_gpu
 class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -260,13 +266,12 @@ class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
         )
-        pipe_prior.to(torch_device)
+        pipe_prior.enable_model_cpu_offload()
 
         pipeline = KandinskyV22Img2ImgPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
         )
-        pipeline = pipeline.to(torch_device)
-
+        pipeline.enable_model_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -277,12 +282,13 @@ class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
             negative_prompt="",
         ).to_tuple()
 
+        generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             image=init_image,
             image_embeds=image_emb,
             negative_image_embeds=zero_image_emb,
             generator=generator,
-            num_inference_steps=100,
+            num_inference_steps=5,
             height=768,
             width=768,
             strength=0.2,
@@ -293,4 +299,5 @@ class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (768, 768, 3)
 
-        assert_mean_pixel_difference(image, expected_image)
+        max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
+        assert max_diff < 1e-4

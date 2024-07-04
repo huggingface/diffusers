@@ -4,8 +4,11 @@ LABEL repository="diffusers"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt update && \
-    apt install -y bash \
+RUN apt-get -y update \
+    && apt-get install -y software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa
+
+RUN apt install -y bash \
     build-essential \
     git \
     git-lfs \
@@ -24,8 +27,8 @@ RUN python3.9 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-RUN python3.9 -m pip install --no-cache-dir --upgrade pip && \
-    python3.9 -m pip install --no-cache-dir \
+RUN python3.9 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
+    python3.9 -m uv pip install --no-cache-dir \
     torch \
     torchvision \
     torchaudio \
@@ -37,7 +40,7 @@ RUN python3.9 -m pip install --no-cache-dir --upgrade pip && \
     huggingface-hub \
     Jinja2 \
     librosa \
-    numpy \
+    numpy==1.26.4 \
     scipy \
     tensorboard \
     transformers

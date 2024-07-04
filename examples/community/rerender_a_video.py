@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -21,6 +20,7 @@ import PIL.Image
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
+from gmflow.gmflow import GMFlow
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.image_processor import VaeImageProcessor
@@ -32,13 +32,6 @@ from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionS
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate, logging
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
-
-
-gmflow_dir = "/path/to/gmflow"
-sys.path.insert(0, gmflow_dir)
-from gmflow.gmflow import GMFlow  # noqa: E402
-
-from utils.utils import InputPadder  # noqa: E402
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -119,11 +112,11 @@ def forward_backward_consistency_check(fwd_flow, bwd_flow, alpha=0.01, beta=0.5)
 
 
 @torch.no_grad()
-def get_warped_and_mask(flow_model, image1, image2, image3=None, pixel_consistency=False):
+def get_warped_and_mask(flow_model, image1, image2, image3=None, pixel_consistency=False, device=None):
     if image3 is None:
         image3 = image1
     padder = InputPadder(image1.shape, padding_factor=8)
-    image1, image2 = padder.pad(image1[None].cuda(), image2[None].cuda())
+    image1, image2 = padder.pad(image1[None].to(device), image2[None].to(device))
     results_dict = flow_model(
         image1, image2, attn_splits_list=[2], corr_radius_list=[-1], prop_radius_list=[-1], pred_bidir_flow=True
     )
@@ -149,12 +142,12 @@ class TextToVideoSDPipelineOutput(BaseOutput):
     Output class for text-to-video pipelines.
 
     Args:
-        frames (`List[np.ndarray]` or `torch.FloatTensor`)
+        frames (`List[np.ndarray]` or `torch.Tensor`)
             List of denoised frames (essentially images) as NumPy arrays of shape `(height, width, num_channels)` or as
             a `torch` tensor. The length of the list denotes the video length (the number of frames).
     """
 
-    frames: Union[List[np.ndarray], torch.FloatTensor]
+    frames: Union[List[np.ndarray], torch.Tensor]
 
 
 @torch.no_grad()
@@ -307,6 +300,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
         feature_extractor: CLIPImageProcessor,
         image_encoder=None,
         requires_safety_checker: bool = True,
+        device=None,
     ):
         super().__init__(
             vae,
@@ -320,6 +314,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             image_encoder,
             requires_safety_checker,
         )
+        self.to(device)
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -374,7 +369,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             attention_type="swin",
             ffn_dim_expansion=4,
             num_transformer_layers=6,
-        ).to("cuda")
+        ).to(self.device)
 
         checkpoint = torch.utils.model_zoo.load_url(
             "https://huggingface.co/Anonymous-sub/Rerender/resolve/main/models/gmflow_sintel-0c07dcb3.pth",
@@ -594,20 +589,20 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        frames: Union[List[np.ndarray], torch.FloatTensor] = None,
-        control_frames: Union[List[np.ndarray], torch.FloatTensor] = None,
+        frames: Union[List[np.ndarray], torch.Tensor] = None,
+        control_frames: Union[List[np.ndarray], torch.Tensor] = None,
         strength: float = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 0.8,
@@ -629,8 +624,8 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            frames (`List[np.ndarray]` or `torch.FloatTensor`): The input images to be used as the starting point for the image generation process.
-            control_frames (`List[np.ndarray]` or `torch.FloatTensor`): The ControlNet input images condition to provide guidance to the `unet` for generation.
+            frames (`List[np.ndarray]` or `torch.Tensor`): The input images to be used as the starting point for the image generation process.
+            control_frames (`List[np.ndarray]` or `torch.Tensor`): The ControlNet input images condition to provide guidance to the `unet` for generation.
             strength ('float'): SDEdit strength.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -651,14 +646,14 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -670,7 +665,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
@@ -928,13 +923,13 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             prev_image = self.image_processor.preprocess(prev_image).to(dtype=torch.float32)
 
             warped_0, bwd_occ_0, bwd_flow_0 = get_warped_and_mask(
-                self.flow_model, first_image, image[0], first_result, False
+                self.flow_model, first_image, image[0], first_result, False, self.device
             )
             blend_mask_0 = blur(F.max_pool2d(bwd_occ_0, kernel_size=9, stride=1, padding=4))
             blend_mask_0 = torch.clamp(blend_mask_0 + bwd_occ_0, 0, 1)
 
             warped_pre, bwd_occ_pre, bwd_flow_pre = get_warped_and_mask(
-                self.flow_model, prev_image[0], image[0], prev_result, False
+                self.flow_model, prev_image[0], image[0], prev_result, False, self.device
             )
             blend_mask_pre = blur(F.max_pool2d(bwd_occ_pre, kernel_size=9, stride=1, padding=4))
             blend_mask_pre = torch.clamp(blend_mask_pre + bwd_occ_pre, 0, 1)
@@ -1176,3 +1171,24 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             return output_frames
 
         return TextToVideoSDPipelineOutput(frames=output_frames)
+
+
+class InputPadder:
+    """Pads images such that dimensions are divisible by 8"""
+
+    def __init__(self, dims, mode="sintel", padding_factor=8):
+        self.ht, self.wd = dims[-2:]
+        pad_ht = (((self.ht // padding_factor) + 1) * padding_factor - self.ht) % padding_factor
+        pad_wd = (((self.wd // padding_factor) + 1) * padding_factor - self.wd) % padding_factor
+        if mode == "sintel":
+            self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
+        else:
+            self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, 0, pad_ht]
+
+    def pad(self, *inputs):
+        return [F.pad(x, self._pad, mode="replicate") for x in inputs]
+
+    def unpad(self, x):
+        ht, wd = x.shape[-2:]
+        c = [self._pad[2], ht - self._pad[3], self._pad[0], wd - self._pad[1]]
+        return x[..., c[0] : c[1], c[2] : c[3]]

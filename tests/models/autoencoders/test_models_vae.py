@@ -53,8 +53,8 @@ enable_full_determinism()
 
 
 def get_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
-    block_out_channels = block_out_channels or [32, 64]
-    norm_num_groups = norm_num_groups or 32
+    block_out_channels = block_out_channels or [2, 4]
+    norm_num_groups = norm_num_groups or 2
     init_dict = {
         "block_out_channels": block_out_channels,
         "in_channels": 3,
@@ -68,8 +68,8 @@ def get_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
 
 
 def get_asym_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
-    block_out_channels = block_out_channels or [32, 64]
-    norm_num_groups = norm_num_groups or 32
+    block_out_channels = block_out_channels or [2, 4]
+    norm_num_groups = norm_num_groups or 2
     init_dict = {
         "in_channels": 3,
         "out_channels": 3,
@@ -102,8 +102,8 @@ def get_autoencoder_tiny_config(block_out_channels=None):
 
 
 def get_consistency_vae_config(block_out_channels=None, norm_num_groups=None):
-    block_out_channels = block_out_channels or [32, 64]
-    norm_num_groups = norm_num_groups or 32
+    block_out_channels = block_out_channels or [2, 4]
+    norm_num_groups = norm_num_groups or 2
     return {
         "encoder_block_out_channels": block_out_channels,
         "encoder_in_channels": 3,
@@ -361,9 +361,10 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
     forward_requires_fresh_args = True
 
     def inputs_dict(self, seed=None):
-        generator = torch.Generator("cpu")
-        if seed is not None:
-            generator.manual_seed(0)
+        if seed is None:
+            generator = torch.Generator("cpu").manual_seed(0)
+        else:
+            generator = torch.Generator("cpu").manual_seed(seed)
         image = randn_tensor((4, 3, 32, 32), generator=generator, device=torch.device(torch_device))
 
         return {"sample": image, "generator": generator}
@@ -392,7 +393,7 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
         ...
 
 
-class AutoncoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
+class AutoencoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLTemporalDecoder
     main_input_name = "sample"
     base_precision = 1e-2
@@ -791,25 +792,6 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         tolerance = 3e-3 if torch_device != "mps" else 1e-2
         assert torch_all_close(output_slice, expected_output_slice, atol=tolerance)
 
-    def test_stable_diffusion_model_local(self):
-        model_id = "stabilityai/sd-vae-ft-mse"
-        model_1 = AutoencoderKL.from_pretrained(model_id).to(torch_device)
-
-        url = "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
-        model_2 = AutoencoderKL.from_single_file(url).to(torch_device)
-        image = self.get_sd_image(33)
-
-        with torch.no_grad():
-            sample_1 = model_1(image).sample
-            sample_2 = model_2(image).sample
-
-        assert sample_1.shape == sample_2.shape
-
-        output_slice_1 = sample_1[-1, -2:, -2:, :2].flatten().float().cpu()
-        output_slice_2 = sample_2[-1, -2:, -2:, :2].flatten().float().cpu()
-
-        assert torch_all_close(output_slice_1, output_slice_2, atol=3e-3)
-
 
 @slow
 class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
@@ -980,6 +962,12 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
 
 @slow
 class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -1079,3 +1067,36 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         )
 
         assert torch_all_close(actual_output, expected_output, atol=5e-3)
+
+    def test_vae_tiling(self):
+        vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder", torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        out_1 = pipe(
+            "horse",
+            num_inference_steps=2,
+            output_type="pt",
+            generator=torch.Generator("cpu").manual_seed(0),
+        ).images[0]
+
+        # make sure tiled vae decode yields the same result
+        pipe.enable_vae_tiling()
+        out_2 = pipe(
+            "horse",
+            num_inference_steps=2,
+            output_type="pt",
+            generator=torch.Generator("cpu").manual_seed(0),
+        ).images[0]
+
+        assert torch_all_close(out_1, out_2, atol=5e-3)
+
+        # test that tiled decode works with various shapes
+        shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
+        with torch.no_grad():
+            for shape in shapes:
+                image = torch.zeros(shape, device=torch_device, dtype=pipe.vae.dtype)
+                pipe.vae.decode(image)

@@ -29,22 +29,20 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
     LCMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionInpaintPipeline,
     UNet2DConditionModel,
 )
-from diffusers.models.attention_processor import AttnProcessor
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import prepare_mask_and_masked_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    is_torch_compile,
     load_image,
     load_numpy,
     nightly,
-    numpy_cosine_similarity_distance,
-    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -199,7 +197,7 @@ class StableDiffusionInpaintPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -387,6 +385,15 @@ class StableDiffusionInpaintPipelineFastTests(
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
+    def test_ip_adapter_single(self, from_simple=False, expected_pipe_slice=None):
+        if not from_simple:
+            expected_pipe_slice = None
+            if torch_device == "cpu":
+                expected_pipe_slice = np.array(
+                    [0.4390, 0.5452, 0.3772, 0.5448, 0.6031, 0.4480, 0.5194, 0.4687, 0.4640]
+                )
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
 
 class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipelineFastTests):
     pipeline_class = StableDiffusionInpaintPipeline
@@ -470,9 +477,15 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
             "generator": [generator1, generator2],
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.6345, 0.5395, 0.5611, 0.5403, 0.5830, 0.5855, 0.5193, 0.5443, 0.5211])
+        return super().test_ip_adapter_single(from_simple=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -557,6 +570,29 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
         image_slice2 = images[1, -3:, -3:, -1]
         assert np.abs(image_slice1.flatten() - image_slice2.flatten()).max() > 1e-2
 
+    def test_stable_diffusion_inpaint_euler(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionInpaintPipeline(**components)
+        sd_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device, output_pil=False)
+        half_dim = inputs["image"].shape[2] // 2
+        inputs["mask_image"][0, 0, :half_dim, :half_dim] = 0
+
+        inputs["num_inference_steps"] = 4
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+
+        expected_slice = np.array(
+            [[0.6387283, 0.5564158, 0.58631873, 0.5539942, 0.5494673, 0.6461868, 0.5251618, 0.5497595, 0.5508756]]
+        )
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
+
 
 @slow
 @require_torch_gpu
@@ -586,7 +622,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -668,7 +704,6 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
@@ -680,7 +715,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     def test_inpaint_compile(self):
         seed = 0
@@ -747,44 +782,6 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.3757, 0.3875, 0.4445, 0.4353, 0.3780, 0.4513, 0.3965, 0.3984, 0.4362])
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
-    def test_download_local(self):
-        filename = hf_hub_download("runwayml/stable-diffusion-inpainting", filename="sd-v1-5-inpainting.ckpt")
-
-        pipe = StableDiffusionInpaintPipeline.from_single_file(filename, torch_dtype=torch.float16)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.to("cuda")
-
-        inputs = self.get_inputs(torch_device)
-        inputs["num_inference_steps"] = 1
-        image_out = pipe(**inputs).images[0]
-
-        assert image_out.shape == (512, 512, 3)
-
-    def test_download_ckpt_diff_format_is_same(self):
-        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
-
-        pipe = StableDiffusionInpaintPipeline.from_single_file(ckpt_path)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.to("cuda")
-
-        inputs = self.get_inputs(torch_device)
-        inputs["num_inference_steps"] = 5
-        image_ckpt = pipe(**inputs).images[0]
-
-        pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.to("cuda")
-
-        inputs = self.get_inputs(torch_device)
-        inputs["num_inference_steps"] = 5
-        image = pipe(**inputs).images[0]
-
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
-
-        assert max_diff < 1e-4
-
 
 @slow
 @require_torch_gpu
@@ -814,7 +811,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -912,7 +909,6 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
             "runwayml/stable-diffusion-inpainting", safety_checker=None, torch_dtype=torch.float16
         )
         pipe.vae = vae
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
@@ -924,7 +920,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
         # make sure that less than 2.45 GB is allocated
         assert mem_bytes < 2.45 * 10**9
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     def test_inpaint_compile(self):
         pass
@@ -1010,13 +1006,15 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
 
         assert image_out.shape == (512, 512, 3)
 
-    def test_download_ckpt_diff_format_is_same(self):
-        pass
-
 
 @nightly
 @require_torch_gpu
 class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -1039,7 +1037,7 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 50,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -1106,530 +1104,3 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
         )
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
-
-
-class StableDiffusionInpaintingPrepareMaskAndMaskedImageTests(unittest.TestCase):
-    def test_pil_inputs(self):
-        height, width = 32, 32
-        im = np.random.randint(0, 255, (height, width, 3), dtype=np.uint8)
-        im = Image.fromarray(im)
-        mask = np.random.randint(0, 255, (height, width), dtype=np.uint8) > 127.5
-        mask = Image.fromarray((mask * 255).astype(np.uint8))
-
-        t_mask, t_masked, t_image = prepare_mask_and_masked_image(im, mask, height, width, return_image=True)
-
-        self.assertTrue(isinstance(t_mask, torch.Tensor))
-        self.assertTrue(isinstance(t_masked, torch.Tensor))
-        self.assertTrue(isinstance(t_image, torch.Tensor))
-
-        self.assertEqual(t_mask.ndim, 4)
-        self.assertEqual(t_masked.ndim, 4)
-        self.assertEqual(t_image.ndim, 4)
-
-        self.assertEqual(t_mask.shape, (1, 1, height, width))
-        self.assertEqual(t_masked.shape, (1, 3, height, width))
-        self.assertEqual(t_image.shape, (1, 3, height, width))
-
-        self.assertTrue(t_mask.dtype == torch.float32)
-        self.assertTrue(t_masked.dtype == torch.float32)
-        self.assertTrue(t_image.dtype == torch.float32)
-
-        self.assertTrue(t_mask.min() >= 0.0)
-        self.assertTrue(t_mask.max() <= 1.0)
-        self.assertTrue(t_masked.min() >= -1.0)
-        self.assertTrue(t_masked.min() <= 1.0)
-        self.assertTrue(t_image.min() >= -1.0)
-        self.assertTrue(t_image.min() >= -1.0)
-
-        self.assertTrue(t_mask.sum() > 0.0)
-
-    def test_np_inputs(self):
-        height, width = 32, 32
-
-        im_np = np.random.randint(0, 255, (height, width, 3), dtype=np.uint8)
-        im_pil = Image.fromarray(im_np)
-        mask_np = (
-            np.random.randint(
-                0,
-                255,
-                (
-                    height,
-                    width,
-                ),
-                dtype=np.uint8,
-            )
-            > 127.5
-        )
-        mask_pil = Image.fromarray((mask_np * 255).astype(np.uint8))
-
-        t_mask_np, t_masked_np, t_image_np = prepare_mask_and_masked_image(
-            im_np, mask_np, height, width, return_image=True
-        )
-        t_mask_pil, t_masked_pil, t_image_pil = prepare_mask_and_masked_image(
-            im_pil, mask_pil, height, width, return_image=True
-        )
-
-        self.assertTrue((t_mask_np == t_mask_pil).all())
-        self.assertTrue((t_masked_np == t_masked_pil).all())
-        self.assertTrue((t_image_np == t_image_pil).all())
-
-    def test_torch_3D_2D_inputs(self):
-        height, width = 32, 32
-
-        im_tensor = torch.randint(
-            0,
-            255,
-            (
-                3,
-                height,
-                width,
-            ),
-            dtype=torch.uint8,
-        )
-        mask_tensor = (
-            torch.randint(
-                0,
-                255,
-                (
-                    height,
-                    width,
-                ),
-                dtype=torch.uint8,
-            )
-            > 127.5
-        )
-        im_np = im_tensor.numpy().transpose(1, 2, 0)
-        mask_np = mask_tensor.numpy()
-
-        t_mask_tensor, t_masked_tensor, t_image_tensor = prepare_mask_and_masked_image(
-            im_tensor / 127.5 - 1, mask_tensor, height, width, return_image=True
-        )
-        t_mask_np, t_masked_np, t_image_np = prepare_mask_and_masked_image(
-            im_np, mask_np, height, width, return_image=True
-        )
-
-        self.assertTrue((t_mask_tensor == t_mask_np).all())
-        self.assertTrue((t_masked_tensor == t_masked_np).all())
-        self.assertTrue((t_image_tensor == t_image_np).all())
-
-    def test_torch_3D_3D_inputs(self):
-        height, width = 32, 32
-
-        im_tensor = torch.randint(
-            0,
-            255,
-            (
-                3,
-                height,
-                width,
-            ),
-            dtype=torch.uint8,
-        )
-        mask_tensor = (
-            torch.randint(
-                0,
-                255,
-                (
-                    1,
-                    height,
-                    width,
-                ),
-                dtype=torch.uint8,
-            )
-            > 127.5
-        )
-        im_np = im_tensor.numpy().transpose(1, 2, 0)
-        mask_np = mask_tensor.numpy()[0]
-
-        t_mask_tensor, t_masked_tensor, t_image_tensor = prepare_mask_and_masked_image(
-            im_tensor / 127.5 - 1, mask_tensor, height, width, return_image=True
-        )
-        t_mask_np, t_masked_np, t_image_np = prepare_mask_and_masked_image(
-            im_np, mask_np, height, width, return_image=True
-        )
-
-        self.assertTrue((t_mask_tensor == t_mask_np).all())
-        self.assertTrue((t_masked_tensor == t_masked_np).all())
-        self.assertTrue((t_image_tensor == t_image_np).all())
-
-    def test_torch_4D_2D_inputs(self):
-        height, width = 32, 32
-
-        im_tensor = torch.randint(
-            0,
-            255,
-            (
-                1,
-                3,
-                height,
-                width,
-            ),
-            dtype=torch.uint8,
-        )
-        mask_tensor = (
-            torch.randint(
-                0,
-                255,
-                (
-                    height,
-                    width,
-                ),
-                dtype=torch.uint8,
-            )
-            > 127.5
-        )
-        im_np = im_tensor.numpy()[0].transpose(1, 2, 0)
-        mask_np = mask_tensor.numpy()
-
-        t_mask_tensor, t_masked_tensor, t_image_tensor = prepare_mask_and_masked_image(
-            im_tensor / 127.5 - 1, mask_tensor, height, width, return_image=True
-        )
-        t_mask_np, t_masked_np, t_image_np = prepare_mask_and_masked_image(
-            im_np, mask_np, height, width, return_image=True
-        )
-
-        self.assertTrue((t_mask_tensor == t_mask_np).all())
-        self.assertTrue((t_masked_tensor == t_masked_np).all())
-        self.assertTrue((t_image_tensor == t_image_np).all())
-
-    def test_torch_4D_3D_inputs(self):
-        height, width = 32, 32
-
-        im_tensor = torch.randint(
-            0,
-            255,
-            (
-                1,
-                3,
-                height,
-                width,
-            ),
-            dtype=torch.uint8,
-        )
-        mask_tensor = (
-            torch.randint(
-                0,
-                255,
-                (
-                    1,
-                    height,
-                    width,
-                ),
-                dtype=torch.uint8,
-            )
-            > 127.5
-        )
-        im_np = im_tensor.numpy()[0].transpose(1, 2, 0)
-        mask_np = mask_tensor.numpy()[0]
-
-        t_mask_tensor, t_masked_tensor, t_image_tensor = prepare_mask_and_masked_image(
-            im_tensor / 127.5 - 1, mask_tensor, height, width, return_image=True
-        )
-        t_mask_np, t_masked_np, t_image_np = prepare_mask_and_masked_image(
-            im_np, mask_np, height, width, return_image=True
-        )
-
-        self.assertTrue((t_mask_tensor == t_mask_np).all())
-        self.assertTrue((t_masked_tensor == t_masked_np).all())
-        self.assertTrue((t_image_tensor == t_image_np).all())
-
-    def test_torch_4D_4D_inputs(self):
-        height, width = 32, 32
-
-        im_tensor = torch.randint(
-            0,
-            255,
-            (
-                1,
-                3,
-                height,
-                width,
-            ),
-            dtype=torch.uint8,
-        )
-        mask_tensor = (
-            torch.randint(
-                0,
-                255,
-                (
-                    1,
-                    1,
-                    height,
-                    width,
-                ),
-                dtype=torch.uint8,
-            )
-            > 127.5
-        )
-        im_np = im_tensor.numpy()[0].transpose(1, 2, 0)
-        mask_np = mask_tensor.numpy()[0][0]
-
-        t_mask_tensor, t_masked_tensor, t_image_tensor = prepare_mask_and_masked_image(
-            im_tensor / 127.5 - 1, mask_tensor, height, width, return_image=True
-        )
-        t_mask_np, t_masked_np, t_image_np = prepare_mask_and_masked_image(
-            im_np, mask_np, height, width, return_image=True
-        )
-
-        self.assertTrue((t_mask_tensor == t_mask_np).all())
-        self.assertTrue((t_masked_tensor == t_masked_np).all())
-        self.assertTrue((t_image_tensor == t_image_np).all())
-
-    def test_torch_batch_4D_3D(self):
-        height, width = 32, 32
-
-        im_tensor = torch.randint(
-            0,
-            255,
-            (
-                2,
-                3,
-                height,
-                width,
-            ),
-            dtype=torch.uint8,
-        )
-        mask_tensor = (
-            torch.randint(
-                0,
-                255,
-                (
-                    2,
-                    height,
-                    width,
-                ),
-                dtype=torch.uint8,
-            )
-            > 127.5
-        )
-
-        im_nps = [im.numpy().transpose(1, 2, 0) for im in im_tensor]
-        mask_nps = [mask.numpy() for mask in mask_tensor]
-
-        t_mask_tensor, t_masked_tensor, t_image_tensor = prepare_mask_and_masked_image(
-            im_tensor / 127.5 - 1, mask_tensor, height, width, return_image=True
-        )
-        nps = [prepare_mask_and_masked_image(i, m, height, width, return_image=True) for i, m in zip(im_nps, mask_nps)]
-        t_mask_np = torch.cat([n[0] for n in nps])
-        t_masked_np = torch.cat([n[1] for n in nps])
-        t_image_np = torch.cat([n[2] for n in nps])
-
-        self.assertTrue((t_mask_tensor == t_mask_np).all())
-        self.assertTrue((t_masked_tensor == t_masked_np).all())
-        self.assertTrue((t_image_tensor == t_image_np).all())
-
-    def test_torch_batch_4D_4D(self):
-        height, width = 32, 32
-
-        im_tensor = torch.randint(
-            0,
-            255,
-            (
-                2,
-                3,
-                height,
-                width,
-            ),
-            dtype=torch.uint8,
-        )
-        mask_tensor = (
-            torch.randint(
-                0,
-                255,
-                (
-                    2,
-                    1,
-                    height,
-                    width,
-                ),
-                dtype=torch.uint8,
-            )
-            > 127.5
-        )
-
-        im_nps = [im.numpy().transpose(1, 2, 0) for im in im_tensor]
-        mask_nps = [mask.numpy()[0] for mask in mask_tensor]
-
-        t_mask_tensor, t_masked_tensor, t_image_tensor = prepare_mask_and_masked_image(
-            im_tensor / 127.5 - 1, mask_tensor, height, width, return_image=True
-        )
-        nps = [prepare_mask_and_masked_image(i, m, height, width, return_image=True) for i, m in zip(im_nps, mask_nps)]
-        t_mask_np = torch.cat([n[0] for n in nps])
-        t_masked_np = torch.cat([n[1] for n in nps])
-        t_image_np = torch.cat([n[2] for n in nps])
-
-        self.assertTrue((t_mask_tensor == t_mask_np).all())
-        self.assertTrue((t_masked_tensor == t_masked_np).all())
-        self.assertTrue((t_image_tensor == t_image_np).all())
-
-    def test_shape_mismatch(self):
-        height, width = 32, 32
-
-        # test height and width
-        with self.assertRaises(AssertionError):
-            prepare_mask_and_masked_image(
-                torch.randn(
-                    3,
-                    height,
-                    width,
-                ),
-                torch.randn(64, 64),
-                height,
-                width,
-                return_image=True,
-            )
-        # test batch dim
-        with self.assertRaises(AssertionError):
-            prepare_mask_and_masked_image(
-                torch.randn(
-                    2,
-                    3,
-                    height,
-                    width,
-                ),
-                torch.randn(4, 64, 64),
-                height,
-                width,
-                return_image=True,
-            )
-        # test batch dim
-        with self.assertRaises(AssertionError):
-            prepare_mask_and_masked_image(
-                torch.randn(
-                    2,
-                    3,
-                    height,
-                    width,
-                ),
-                torch.randn(4, 1, 64, 64),
-                height,
-                width,
-                return_image=True,
-            )
-
-    def test_type_mismatch(self):
-        height, width = 32, 32
-
-        # test tensors-only
-        with self.assertRaises(TypeError):
-            prepare_mask_and_masked_image(
-                torch.rand(
-                    3,
-                    height,
-                    width,
-                ),
-                torch.rand(
-                    3,
-                    height,
-                    width,
-                ).numpy(),
-                height,
-                width,
-                return_image=True,
-            )
-        # test tensors-only
-        with self.assertRaises(TypeError):
-            prepare_mask_and_masked_image(
-                torch.rand(
-                    3,
-                    height,
-                    width,
-                ).numpy(),
-                torch.rand(
-                    3,
-                    height,
-                    width,
-                ),
-                height,
-                width,
-                return_image=True,
-            )
-
-    def test_channels_first(self):
-        height, width = 32, 32
-
-        # test channels first for 3D tensors
-        with self.assertRaises(AssertionError):
-            prepare_mask_and_masked_image(
-                torch.rand(height, width, 3),
-                torch.rand(
-                    3,
-                    height,
-                    width,
-                ),
-                height,
-                width,
-                return_image=True,
-            )
-
-    def test_tensor_range(self):
-        height, width = 32, 32
-
-        # test im <= 1
-        with self.assertRaises(ValueError):
-            prepare_mask_and_masked_image(
-                torch.ones(
-                    3,
-                    height,
-                    width,
-                )
-                * 2,
-                torch.rand(
-                    height,
-                    width,
-                ),
-                height,
-                width,
-                return_image=True,
-            )
-        # test im >= -1
-        with self.assertRaises(ValueError):
-            prepare_mask_and_masked_image(
-                torch.ones(
-                    3,
-                    height,
-                    width,
-                )
-                * (-2),
-                torch.rand(
-                    height,
-                    width,
-                ),
-                height,
-                width,
-                return_image=True,
-            )
-        # test mask <= 1
-        with self.assertRaises(ValueError):
-            prepare_mask_and_masked_image(
-                torch.rand(
-                    3,
-                    height,
-                    width,
-                ),
-                torch.ones(
-                    height,
-                    width,
-                )
-                * 2,
-                height,
-                width,
-                return_image=True,
-            )
-        # test mask >= 0
-        with self.assertRaises(ValueError):
-            prepare_mask_and_masked_image(
-                torch.rand(
-                    3,
-                    height,
-                    width,
-                ),
-                torch.ones(
-                    height,
-                    width,
-                )
-                * -1,
-                height,
-                width,
-                return_image=True,
-            )

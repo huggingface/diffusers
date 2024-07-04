@@ -11,6 +11,7 @@ $ python convert_zero123_to_diffusers.py \
    --original_config_file /path/zero123/configs/sd-objaverse-finetune-c_concat-256.yaml
 ```
 """
+
 import argparse
 
 import torch
@@ -112,7 +113,7 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
             assert "adm_in_channels" in unet_params
             projection_class_embeddings_input_dim = unet_params["adm_in_channels"]
         else:
-            raise NotImplementedError(f"Unknown conditional unet num_classes config: {unet_params["num_classes"]}")
+            raise NotImplementedError(f"Unknown conditional unet num_classes config: {unet_params['num_classes']}")
 
     config = {
         "sample_size": image_size // vae_scale_factor,
