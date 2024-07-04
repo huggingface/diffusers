@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # LuminaNextDiT2DModel
 
-A Diffusion Transformer model for 2D data from [Lumina-T2X](https://github.com/Alpha-VLLM/Lumina-T2X).
+A Next Version of Diffusion Transformer model for 2D data from [Lumina-T2X](https://github.com/Alpha-VLLM/Lumina-T2X).
 
 ## LuminaNextDiT2DModel
 

@@ -89,7 +89,7 @@ class AdaLayerNormZero(nn.Module):
 
 class LuminaRMSNormZero(nn.Module):
     """
-    Norm layer adaptive rms norm zero (adaLN-Zero).
+    Norm layer adaptive RMS normalization zero.
 
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.

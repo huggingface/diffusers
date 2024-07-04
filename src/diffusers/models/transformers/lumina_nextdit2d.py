@@ -35,27 +35,19 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class LuminaNextDiTBlock(nn.Module):
     """
-    Initialize a LuminaNextDiTBlock.
+    A LuminaNextDiTBlock for LuminaNextDiT2DModel.
 
-    Args:
-        layer_id (int): Identifier for the layer.
-        hidden_size (int): Embedding dimension of the input features.
-        num_attention_heads (int): Number of attention heads.
-        num_kv_heads (Optional[int]): Number of attention heads in key and
-            value features (if using GQA), or set to None for the same as query.
-        multiple_of (int):
-        ffn_dim_multiplier (float):
-        norm_eps (float):
-
-    Attributes:
-        num_attention_heads (int): Number of attention heads.
-        hidden_size (int): Dimension size of the model.
-        head_dim (int): Dimension size of each attention head.
-        attention (Attention): Attention module.
-        feed_forward (FeedForward): FeedForward module.
-        layer_id (int): Identifier for the layer.
-        attention_norm (RMSNorm): Layer normalization for attention output.
-        ffn_norm (RMSNorm): Layer normalization for feedforward output.
+    Parameters:
+        dim (`int`): Embedding dimension of the input features.
+        num_attention_heads (`int`): Number of attention heads.
+        num_kv_heads (`int`):
+            Number of attention heads in key and value features (if using GQA), or set to None for the same as query.
+        multiple_of (`int`): The number of multiple of ffn layer.
+        ffn_dim_multiplier (`float`): The multipier factor of ffn layer dimension.
+        norm_eps (`float`): The eps for norm layer.
+        qk_norm (`bool`): normalization for query and key.
+        cross_attention_dim (`int`): Cross attention embedding dimension of the input text prompt hidden_states.
+        norm_elementwise_affine (`bool`, *optional*, defaults to True),
     """
 
     def __init__(
@@ -130,18 +122,20 @@ class LuminaNextDiTBlock(nn.Module):
         image_rotary_emb: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
-        temb: torch.Tensor = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
+        temb: torch.Tensor,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
         Perform a forward pass through the LuminaNextDiTBlock.
 
-        Args:
-            hidden_states (torch.Tensor): Input tensor.
-            image_rotary_emb (torch.Tensor): Precomputed cosine and sine frequencies.
-        Returns:
-            torch.Tensor: Output tensor after applying attention and
-                feedforward layers.
+        Parameters:
+            hidden_states (`torch.Tensor`): The input of hidden_states for LuminaNextDiTBlock.
+            attention_mask (`torch.Tensor): The input of hidden_states corresponse attention mask.
+            image_rotary_emb (`torch.Tensor`): Precomputed cosine and sine frequencies.
+            encoder_hidden_states: (`torch.Tensor`): The hidden_states of text prompt are processed by Gemma encoder.
+            encoder_mask (`torch.Tensor`): The hidden_states of text prompt attention mask.
+            temb (`torch.Tensor`): Timestep embedding with text prompt embedding.
+            cross_attention_kwargs (`Dict[str, Any]`): kwargs for cross attention.
         """
         residual = hidden_states
 
@@ -212,9 +206,9 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         ffn_dim_multiplier (`float`, *optional*):
             A multiplier for the dimensionality of the feed-forward network. If None, it uses a default value based on
             the model configuration.
-        norm_eps float = (`float`, *optional*, defaults to 1e-5):
+        norm_eps (`float`, *optional*, defaults to 1e-5):
             A small value added to the denominator for numerical stability in normalization layers.
-        learn_sigma bool = (`bool`, *optional*, defaults to True):
+        learn_sigma (`bool`, *optional*, defaults to True):
             Whether the model should learn the sigma parameter, which might be related to uncertainty or variance in
             predictions.
         qk_norm (`bool`, *optional*, defaults to True):
@@ -305,14 +299,11 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         """
         Forward pass of LuminaNextDiT.
 
-        Args:
+        Parameters:
             hidden_states (torch.Tensor): Input tensor of shape (N, C, H, W).
             timestep (torch.Tensor): Tensor of diffusion timesteps of shape (N,).
             encoder_hidden_states (torch.Tensor): Tensor of caption features of shape (N, D).
             encoder_mask (torch.Tensor): Tensor of caption masks of shape (N, L).
-
-        Returns:
-            torch.Tensor: Output tensor of shape (N, C, H, W).
         """
         hidden_states, mask, img_size, image_rotary_emb = self.patch_embedder(hidden_states, image_rotary_emb)
         image_rotary_emb = image_rotary_emb.to(hidden_states.device)

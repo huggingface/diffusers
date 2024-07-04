@@ -593,8 +593,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         else:
             latents = latents.to(device)
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
         return latents
 
     @property
