@@ -2,12 +2,14 @@ from .combined import (
     CombinedTimestepLabelEmbeddings,
     CombinedTimestepTextProjEmbeddings,
     PixArtAlphaCombinedTimestepSizeEmbeddings,
+    ImageHintTimeEmbedding,
+    TextImageProjection,
+    TextImageTimeEmbedding,
 )
 from .image_text import (
     AttentionPooling,
     HunyuanCombinedTimestepTextSizeStyleEmbedding,
     HunyuanDiTAttentionPool,
-    ImageHintTimeEmbedding,
     ImagePositionalEmbeddings,
     ImageProjection,
     ImageTimeEmbedding,
@@ -18,8 +20,6 @@ from .image_text import (
     IPAdapterPlusImageProjectionBlock,
     MultiIPAdapterImageProjection,
     PixArtAlphaTextProjection,
-    TextImageProjection,
-    TextImageTimeEmbedding,
     TextTimeEmbedding,
 )
 from .others import (
