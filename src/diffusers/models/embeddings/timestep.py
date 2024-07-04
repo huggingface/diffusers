@@ -129,9 +129,11 @@ class GaussianFourierProjection(nn.Module):
 
         if set_W_to_weight:
             # to delete later
+            del self.weight
             self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
 
             self.weight = self.W
+            del self.W
 
     def forward(self, x):
         if self.log:
