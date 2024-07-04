@@ -1,7 +1,6 @@
 from .combined import (
     CombinedTimestepLabelEmbeddings,
     CombinedTimestepTextProjEmbeddings,
-    LabelEmbedding,
     PixArtAlphaCombinedTimestepSizeEmbeddings,
 )
 from .image_text import (
@@ -26,6 +25,7 @@ from .image_text import (
 from .others import (
     GLIGENTextBoundingboxProjection,
     get_fourier_embeds_from_boundingbox,
+    LabelEmbedding,
 )
 from .position import (
     PatchEmbed,
