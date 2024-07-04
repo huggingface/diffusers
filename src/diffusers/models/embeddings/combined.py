@@ -103,7 +103,7 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
 class CombinedTimestepTextProjEmbeddings(nn.Module):
     def __init__(self, embedding_dim, pooled_projection_dim):
         super().__init__()
-        from .image_text import PixArtAlphaTextProjection
+        from .text import PixArtAlphaTextProjection
         from .timestep import TimestepEmbedding, Timesteps
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
