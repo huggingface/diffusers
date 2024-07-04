@@ -116,7 +116,6 @@ class LavenderFlowAttnProcessor2_0:
         *args,
         **kwargs,
     ) -> torch.FloatTensor:
-        residual = hidden_states
         batch_size = hidden_states.shape[0]
 
         # `sample` projections.
@@ -132,9 +131,9 @@ class LavenderFlowAttnProcessor2_0:
 
         # attention
         if encoder_hidden_states is not None:
-            query = torch.cat([query, encoder_hidden_states_query_proj], dim=1)
-            key = torch.cat([key, encoder_hidden_states_key_proj], dim=1)
-            value = torch.cat([value, encoder_hidden_states_value_proj], dim=1)
+            query = torch.cat([encoder_hidden_states_query_proj, query], dim=1)
+            key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
+            value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -151,8 +150,8 @@ class LavenderFlowAttnProcessor2_0:
         # Split the attention outputs.
         if encoder_hidden_states is not None:
             hidden_states, encoder_hidden_states = (
-                hidden_states[:, : residual.shape[1]],
-                hidden_states[:, residual.shape[1] :],
+                hidden_states[:, encoder_hidden_states.shape[1] :],
+                hidden_states[:, : encoder_hidden_states.shape[1]],
             )
 
         # linear proj
@@ -385,15 +384,17 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
 
         # Apply patch embedding, timestep embedding, and project the caption embeddings.
         hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
+        # print(f"{hidden_states[0, :4, :4]=}")
         temb = self.time_step_embed(timestep).to(dtype=next(self.parameters()).dtype)
         temb = self.time_step_proj(temb)
-        print(f"{temb[0, :4]=}")
+        # print(f"{temb[0, :4]=}")
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
         # This doesn't apply to the negative prompt embeds. So, we need to keep that in mind.
         if use_register_tokens:
             encoder_hidden_states = torch.cat(
                 [self.register_tokens.repeat(encoder_hidden_states.size(0), 1, 1), encoder_hidden_states], dim=1
             )
+        # print(f"{encoder_hidden_states[0, :4, :4]=}")
 
         for index_block, block in enumerate(self.joint_transformer_blocks):
             if self.training and self.gradient_checkpointing:
@@ -420,6 +421,7 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 )
+                # print(f"{encoder_hidden_states[0, :4, :4]=}")
 
         if len(self.single_transformer_blocks) > 0:
             encoder_seq_len = encoder_hidden_states.size(1)

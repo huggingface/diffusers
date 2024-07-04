@@ -43,23 +43,23 @@ def convert_transformer(state_dict):
     # MMDiT blocks 🎸.
     for i in range(mmdit_layers):
         # feed-forward
-        for path in ["mlpX", "mlpC"]:
-            diffuser_path = "ff" if path == "mlpX" else "ff_context"
+        path_mapping = {"mlpX": "ff", "mlpC": "ff_context"}
+        for orig_k, diffuser_k in path_mapping.items():
             for k in ["c_fc1", "c_fc2", "c_proj"]:
-                converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_path}.{k}.weight"] = state_dict.pop(
-                    f"model.double_layers.{i}.{path}.{k}.weight"
+                converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_k}.{k}.weight"] = state_dict.pop(
+                    f"model.double_layers.{i}.{orig_k}.{k}.weight"
                 )
 
         # norms
-        for path in ["modX", "modC"]:
-            diffuser_path = "norm1" if path == "modX" else "norm1_context"
-            converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_path}.linear.weight"] = state_dict.pop(
-                f"model.double_layers.{i}.{path}.1.weight"
+        path_mapping = {"modX": "norm1", "modC": "norm1_context"}
+        for orig_k, diffuser_k in path_mapping.items():
+            converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_k}.linear.weight"] = state_dict.pop(
+                f"model.double_layers.{i}.{orig_k}.1.weight"
             )
 
         # attns
-        x_attn_mapping = {"w1q": "to_q", "w1k": "to_k", "w1v": "to_v", "w1o": "to_out.0"}
-        context_attn_mapping = {"w2q": "add_q_proj", "w2k": "add_k_proj", "w2v": "add_v_proj", "w2o": "to_add_out"}
+        x_attn_mapping = {"w2q": "to_q", "w2k": "to_k", "w2v": "to_v", "w2o": "to_out.0"}
+        context_attn_mapping = {"w1q": "add_q_proj", "w1k": "add_k_proj", "w1v": "add_v_proj", "w1o": "to_add_out"}
         for attn_mapping in [x_attn_mapping, context_attn_mapping]:
             for k, v in attn_mapping.items():
                 converted_state_dict[f"joint_transformer_blocks.{i}.attn.{v}.weight"] = state_dict.pop(
