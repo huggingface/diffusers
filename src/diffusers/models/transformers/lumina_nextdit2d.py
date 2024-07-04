@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -292,7 +292,6 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
 
         assert (hidden_size // num_attention_heads) % 4 == 0, "2d rope needs head dim to be divisible by 4"
 
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -339,7 +338,9 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         height, width = img_size[0]
         batch_size = hidden_states.size(0)
         sequence_length = (height // height_tokens) * (width // width_tokens)
-        hidden_states = hidden_states[:, :sequence_length].view(batch_size, height // height_tokens, width // width_tokens, height_tokens, width_tokens, self.out_channels)
+        hidden_states = hidden_states[:, :sequence_length].view(
+            batch_size, height // height_tokens, width // width_tokens, height_tokens, width_tokens, self.out_channels
+        )
         output = hidden_states.permute(0, 5, 1, 3, 2, 4).flatten(4, 5).flatten(2, 3)
 
         if not return_dict:

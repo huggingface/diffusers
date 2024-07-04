@@ -575,17 +575,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         return caption.strip()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(
-        self,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-        latents=None,
-    ):
+    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (
             batch_size,
             num_channels_latents,
@@ -603,6 +593,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         else:
             latents = latents.to(device)
 
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
         return latents
 
     @property
