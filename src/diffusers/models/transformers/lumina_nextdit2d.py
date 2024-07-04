@@ -80,7 +80,7 @@ class LuminaNextDiTBlock(nn.Module):
             query_dim=dim,
             cross_attention_dim=None,
             dim_head=dim // num_attention_heads,
-            qk_norm="layer_norm" if qk_norm else None,
+            qk_norm="layer_norm_across_heads" if qk_norm else None,
             heads=num_attention_heads,
             kv_heads=num_kv_heads,
             eps=1e-5,
@@ -95,7 +95,7 @@ class LuminaNextDiTBlock(nn.Module):
             query_dim=dim,
             cross_attention_dim=cross_attention_dim,
             dim_head=dim // num_attention_heads,
-            qk_norm="layer_norm" if qk_norm else None,
+            qk_norm="layer_norm_across_heads" if qk_norm else None,
             heads=num_attention_heads,
             kv_heads=num_kv_heads,
             eps=1e-5,
@@ -174,7 +174,7 @@ class LuminaNextDiTBlock(nn.Module):
 
         hidden_states = residual + gate_msa.unsqueeze(1).tanh() * self.norm2(hidden_states)
 
-        mlp_output = self.feed_forward(self.ffn_norm1(hidden_states) * (1 + scale_mlp.unsqueeze(0)))
+        mlp_output = self.feed_forward(self.ffn_norm1(hidden_states) * (1 + scale_mlp.unsqueeze(1)))
 
         hidden_states = hidden_states + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(mlp_output)
 
@@ -292,7 +292,6 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
 
         assert (hidden_size // num_attention_heads) % 4 == 0, "2d rope needs head dim to be divisible by 4"
 
-        """
 
     def forward(
         self,
