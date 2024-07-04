@@ -2581,6 +2581,7 @@ class PAGIdentitySelfAttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
+        print("here")
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
