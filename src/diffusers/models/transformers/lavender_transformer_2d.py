@@ -41,7 +41,7 @@ def find_multiple(n: int, k: int) -> int:
 
 # Lavender Flow patch embed doesn't use convs for projections.
 # Additionally, it uses learned positional embeddings.
-class LvenderFlowPatchEmbed(nn.Module):
+class LavenderFlowPatchEmbed(nn.Module):
     def __init__(
         self,
         height=224,
@@ -117,19 +117,7 @@ class LavenderFlowAttnProcessor2_0:
         **kwargs,
     ) -> torch.FloatTensor:
         residual = hidden_states
-
-        input_ndim = hidden_states.ndim
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        if encoder_hidden_states is not None:
-            context_input_ndim = encoder_hidden_states.ndim
-            if context_input_ndim == 4:
-                batch_size, channel, height, width = encoder_hidden_states.shape
-                encoder_hidden_states = encoder_hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-            batch_size = encoder_hidden_states.shape[0]
+        batch_size = hidden_states.shape[0]
 
         # `sample` projections.
         query = attn.to_q(hidden_states)
@@ -171,13 +159,8 @@ class LavenderFlowAttnProcessor2_0:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
-        if encoder_hidden_states is not None and not attn.context_pre_only:
+        if encoder_hidden_states is not None:
             encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-        if encoder_hidden_states is not None and context_input_ndim == 4:
-            encoder_hidden_states = encoder_hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
 
         if encoder_hidden_states is not None:
             return hidden_states, encoder_hidden_states
@@ -185,7 +168,7 @@ class LavenderFlowAttnProcessor2_0:
             return hidden_states
 
 
-class LavenderFlowDiTTransformerBlock(nn.module):
+class LavenderFlowDiTTransformerBlock(nn.Module):
     """Similar `LavenderFlowTransformerBlock with a single DiT instead of an MMDiT."""
 
     def __init__(self, dim, num_attention_heads, attention_head_dim):
@@ -200,8 +183,10 @@ class LavenderFlowDiTTransformerBlock(nn.module):
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             qk_norm="layer_norm",
+            use_fp32_layer_norm=True,
             out_dim=dim,
             bias=False,
+            out_bias=False,
             processor=processor,
         )
 
@@ -263,10 +248,12 @@ class LavenderFlowTransformerBlock(nn.Module):
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             qk_norm="layer_norm",
+            use_fp32_layer_norm=True,
             out_dim=dim,
-            context_pre_only=is_last,
             bias=False,
+            out_bias=False,
             processor=processor,
+            context_pre_only=False,
         )
 
         self.norm2 = FP32LayerNorm(dim, elementwise_affine=False, bias=False)
@@ -323,7 +310,7 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
         sample_size: int = 64,
         patch_size: int = 2,
         in_channels: int = 4,
-        num_layers: int = 36,
+        num_mmdit_layers: int = 4,
         num_single_dit_layers: int = 32,
         attention_head_dim: int = 256,
         num_attention_heads: int = 12,
@@ -337,7 +324,7 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
         self.out_channels = out_channels if out_channels is not None else default_out_channels
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
-        self.pos_embed = LvenderFlowPatchEmbed(
+        self.pos_embed = LavenderFlowPatchEmbed(
             height=self.config.sample_size,
             width=self.config.sample_size,
             patch_size=self.config.patch_size,
@@ -349,7 +336,7 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
         self.context_embedder = nn.Linear(
             self.config.joint_attention_dim, self.config.caption_projection_dim, bias=False
         )
-        self.time_step_embed = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=1)
+        self.time_step_embed = Timesteps(num_channels=256, downscale_freq_shift=0, scale=1000, flip_sin_to_cos=True)
         self.time_step_proj = TimestepEmbedding(in_channels=256, time_embed_dim=self.inner_dim)
 
         self.joint_transformer_blocks = nn.ModuleList(
@@ -358,9 +345,8 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
-                    is_last=i == num_layers - 1,
                 )
-                for i in range(self.config.num_layers)
+                for i in range(self.config.num_mmdit_layers)
             ]
         )
         self.single_transformer_blocks = nn.ModuleList(
@@ -374,7 +360,7 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
             ]
         )
 
-        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, norm_type="no_norm")
+        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, norm_type="no_norm", bias=False)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=False)
 
         # https://arxiv.org/abs/2309.16588
@@ -401,6 +387,7 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
         temb = self.time_step_embed(timestep).to(dtype=next(self.parameters()).dtype)
         temb = self.time_step_proj(temb)
+        print(f"{temb[0, :4]=}")
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
         # This doesn't apply to the negative prompt embeds. So, we need to keep that in mind.
         if use_register_tokens:
@@ -435,10 +422,10 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
                 )
 
         if len(self.single_transformer_blocks) > 0:
-            for index_block, block in enumerate(self.single_transformer_blocks):
-                encoder_seq_len = encoder_hidden_states.size(1)
-                combined_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+            encoder_seq_len = encoder_hidden_states.size(1)
+            combined_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
+            for index_block, block in enumerate(self.single_transformer_blocks):
                 if self.training and self.gradient_checkpointing:
 
                     def create_custom_forward(module, return_dict=None):

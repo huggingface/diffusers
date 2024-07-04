@@ -23,7 +23,6 @@ from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, logging
 from ..utils.import_utils import is_torch_npu_available, is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
-from .normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -119,6 +118,8 @@ class Attention(nn.Module):
         use_fp32_layer_norm=False,
     ):
         super().__init__()
+        from .normalization import FP32LayerNorm
+
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.query_dim = query_dim
         self.use_bias = bias
@@ -215,10 +216,10 @@ class Attention(nn.Module):
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
-            self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
+            self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=out_bias)
+            self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=out_bias)
             if self.context_pre_only is not None:
-                self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
+                self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=out_bias)
 
         self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
