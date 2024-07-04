@@ -14,8 +14,12 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import torch
 import typing
+from typing import Optional, Union
+
+import torch
+from PIL import Image
+from torchvision import transforms  # type: ignore
 
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.models.autoencoders.autoencoder_kl import (
@@ -27,9 +31,6 @@ from diffusers.models.autoencoders.autoencoder_tiny import (
     AutoencoderTinyOutput,
 )
 from diffusers.models.autoencoders.vae import DecoderOutput
-from PIL import Image
-from torchvision import transforms  # type: ignore
-from typing import Optional, Union
 
 
 SupportedAutoencoder = Union[AutoencoderKL, AutoencoderTiny]
