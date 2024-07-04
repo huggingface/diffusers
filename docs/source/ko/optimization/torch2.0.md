@@ -30,7 +30,7 @@ pip install --upgrade torch diffusers
 1. **가속화된 트랜스포머 구현**
 
    PyTorch 2.0에는 [`torch.nn.functional.scaled_dot_product_attention`](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention) 함수를 통해 최적화된 memory-efficient attention의 구현이 포함되어 있습니다. 이는 입력 및 GPU 유형에 따라 여러 최적화를 자동으로 활성화합니다. 이는 [xFormers](https://github.com/facebookresearch/xformers)의 `memory_efficient_attention`과 유사하지만 기본적으로 PyTorch에 내장되어 있습니다.
-   
+
    이러한 최적화는 PyTorch 2.0이 설치되어 있고 `torch.nn.functional.scaled_dot_product_attention`을 사용할 수 있는 경우 Diffusers에서 기본적으로 활성화됩니다. 이를 사용하려면 `torch 2.0`을 설치하고 파이프라인을 사용하기만 하면 됩니다. 예를 들어:
 
     ```Python
@@ -84,7 +84,7 @@ pip install --upgrade torch diffusers
     ```
 
     GPU 유형에 따라 `compile()`은 가속화된 트랜스포머 최적화를 통해 **5% - 300%**의 _추가 성능 향상_을 얻을 수 있습니다. 그러나 컴파일은 Ampere(A100, 3090), Ada(4090) 및 Hopper(H100)와 같은 최신 GPU 아키텍처에서 더 많은 성능 향상을 가져올 수 있음을 참고하세요.
-    
+
     컴파일은 완료하는 데 약간의 시간이 걸리므로, 파이프라인을 한 번 준비한 다음 동일한 유형의 추론 작업을 여러 번 수행해야 하는 상황에 가장 적합합니다. 다른 이미지 크기에서 컴파일된 파이프라인을 호출하면 시간적 비용이 많이 들 수 있는 컴파일 작업이 다시 트리거됩니다.
 
 
@@ -94,9 +94,9 @@ PyTorch 2.0의 효율적인 어텐션 구현과 `torch.compile`을 사용하여 
 
 ### 벤치마킹 코드
 
-#### Stable Diffusion text-to-image 
+#### Stable Diffusion text-to-image
 
-```python 
+```python
 from diffusers import DiffusionPipeline
 import torch
 
@@ -118,9 +118,9 @@ for _ in range(3):
     images = pipe(prompt=prompt).images
 ```
 
-#### Stable Diffusion image-to-image 
+#### Stable Diffusion image-to-image
 
-```python 
+```python
 from diffusers import StableDiffusionImg2ImgPipeline
 import requests
 import torch
@@ -153,7 +153,7 @@ for _ in range(3):
 
 #### Stable Diffusion - inpainting
 
-```python 
+```python
 from diffusers import StableDiffusionInpaintPipeline
 import requests
 import torch
@@ -191,9 +191,9 @@ for _ in range(3):
     image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
 
-#### ControlNet 
+#### ControlNet
 
-```python 
+```python
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 import requests
 import torch
@@ -231,7 +231,7 @@ for _ in range(3):
 
 #### IF text-to-image + upscaling
 
-```python 
+```python
 from diffusers import DiffusionPipeline
 import torch
 
@@ -269,7 +269,7 @@ PyTorch 2.0 및 `torch.compile()`로 얻을 수 있는 가능한 속도 향상�
 
 ![t2i_speedup](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/pt2_benchmarks/t2i_speedup.png)
 
-To give you an even better idea of how this speed-up holds for the other pipelines presented above, consider the following 
+To give you an even better idea of how this speed-up holds for the other pipelines presented above, consider the following
 plot that shows the benchmarking numbers from an A100 across three different batch sizes
 (with PyTorch 2.0 nightly and `torch.compile()`):
 이 속도 향상이 위에 제시된 다른 파이프라인에 대해서도 어떻게 유지되는지 더 잘 이해하기 위해, 세 가지의 다른 배치 크기에 걸쳐 A100의 벤치마킹(PyTorch 2.0 nightly 및 `torch.compile() 사용) 수치를 보여주는 차트를 보입니다:
@@ -434,8 +434,8 @@ _(위 차트의 벤치마크 메트릭은 **초당 iteration 수(iterations/seco
 
 ## 참고
 
-* Follow [this PR](https://github.com/huggingface/diffusers/pull/3313) for more details on the environment used for conducting the benchmarks. 
-* For the IF pipeline and batch sizes > 1, we only used a batch size of >1 in the first IF pipeline for text-to-image generation and NOT for upscaling. So, that means the two upscaling pipelines received a batch size of 1. 
+* Follow [this PR](https://github.com/huggingface/diffusers/pull/3313) for more details on the environment used for conducting the benchmarks.
+* For the IF pipeline and batch sizes > 1, we only used a batch size of >1 in the first IF pipeline for text-to-image generation and NOT for upscaling. So, that means the two upscaling pipelines received a batch size of 1.
 
 *Thanks to [Horace He](https://github.com/Chillee) from the PyTorch team for their support in improving our support of `torch.compile()` in Diffusers.*
 

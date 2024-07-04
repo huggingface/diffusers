@@ -1,4 +1,4 @@
-# Copyright 2024 HunyuanDiT Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 HunyuanDiT Authors, Qixun Wang and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional
+from typing import Dict, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -21,7 +21,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
-from ..attention_processor import Attention, HunyuanAttnProcessor2_0
+from ..attention_processor import Attention, AttentionProcessor, HunyuanAttnProcessor2_0
 from ..embeddings import (
     HunyuanCombinedTimestepTextSizeStyleEmbedding,
     PatchEmbed,
@@ -166,6 +166,7 @@ class HunyuanDiTBlock(nn.Module):
         self._chunk_size = None
         self._chunk_dim = 0
 
+    # Copied from diffusers.models.attention.BasicTransformerBlock.set_chunk_feed_forward
     def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
         # Sets chunk feed-forward
         self._chunk_size = chunk_size
@@ -248,6 +249,8 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             The length of the clip text embedding.
         text_len_t5 (`int`, *optional*):
             The length of the T5 text embedding.
+        use_style_cond_and_image_meta_size (`bool`,  *optional*):
+            Whether or not to use style condition and image meta size. True for version <=1.1, False for version >= 1.2
     """
 
     @register_to_config
@@ -269,6 +272,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         pooled_projection_dim: int = 1024,
         text_len: int = 77,
         text_len_t5: int = 256,
+        use_style_cond_and_image_meta_size: bool = True,
     ):
         super().__init__()
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
@@ -300,6 +304,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             pooled_projection_dim=pooled_projection_dim,
             seq_len=text_len_t5,
             cross_attention_dim=cross_attention_dim_t5,
+            use_style_cond_and_image_meta_size=use_style_cond_and_image_meta_size,
         )
 
         # HunyuanDiT Blocks
@@ -321,6 +326,110 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
+    def fuse_qkv_projections(self):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
+        are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+        """
+        self.original_attn_processors = None
+
+        for _, attn_processor in self.attn_processors.items():
+            if "Added" in str(attn_processor.__class__.__name__):
+                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+
+        self.original_attn_processors = self.attn_processors
+
+        for module in self.modules():
+            if isinstance(module, Attention):
+                module.fuse_projections(fuse=True)
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
+    def unfuse_qkv_projections(self):
+        """Disables the fused QKV projection if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        """
+        if self.original_attn_processors is not None:
+            self.set_attn_processor(self.original_attn_processors)
+
+    @property
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+        r"""
+        Returns:
+            `dict` of attention processors: A dictionary containing all attention processors used in the model with
+            indexed by its weight name.
+        """
+        # set recursively
+        processors = {}
+
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor()
+
+            for sub_name, child in module.named_children():
+                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
+
+            return processors
+
+        for name, module in self.named_children():
+            fn_recursive_add_processors(name, module, processors)
+
+        return processors
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+        r"""
+        Sets the attention processor to use to compute attention.
+
+        Parameters:
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+                The instantiated processor class or a dictionary of processor classes that will be set as the processor
+                for **all** `Attention` layers.
+
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
+
+        """
+        count = len(self.attn_processors.keys())
+
+        if isinstance(processor, dict) and len(processor) != count:
+            raise ValueError(
+                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
+                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
+            )
+
+        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+            if hasattr(module, "set_processor"):
+                if not isinstance(processor, dict):
+                    module.set_processor(processor)
+                else:
+                    module.set_processor(processor.pop(f"{name}.processor"))
+
+            for sub_name, child in module.named_children():
+                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
+
+        for name, module in self.named_children():
+            fn_recursive_attn_processor(name, module, processor)
+
+    def set_default_attn_processor(self):
+        """
+        Disables custom attention processors and sets the default attention implementation.
+        """
+        self.set_attn_processor(HunyuanAttnProcessor2_0())
+
     def forward(
         self,
         hidden_states,
@@ -332,6 +441,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         image_meta_size=None,
         style=None,
         image_rotary_emb=None,
+        controlnet_block_samples=None,
         return_dict=True,
     ):
         """
@@ -386,7 +496,10 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         skips = []
         for layer, block in enumerate(self.blocks):
             if layer > self.config.num_layers // 2:
-                skip = skips.pop()
+                if controlnet_block_samples is not None:
+                    skip = skips.pop() + controlnet_block_samples.pop()
+                else:
+                    skip = skips.pop()
                 hidden_states = block(
                     hidden_states,
                     temb=temb,
@@ -404,6 +517,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
             if layer < (self.config.num_layers // 2 - 1):
                 skips.append(hidden_states)
+
+        if controlnet_block_samples is not None and len(controlnet_block_samples) != 0:
+            raise ValueError("The number of controls is not equal to the number of skip connections.")
 
         # final layer
         hidden_states = self.norm_out(hidden_states, temb.to(torch.float32))
@@ -425,3 +541,45 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
+
+    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
+    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+        """
+        Sets the attention processor to use [feed forward
+        chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
+
+        Parameters:
+            chunk_size (`int`, *optional*):
+                The chunk size of the feed-forward layers. If not specified, will run feed-forward layer individually
+                over each tensor of dim=`dim`.
+            dim (`int`, *optional*, defaults to `0`):
+                The dimension over which the feed-forward computation should be chunked. Choose between dim=0 (batch)
+                or dim=1 (sequence length).
+        """
+        if dim not in [0, 1]:
+            raise ValueError(f"Make sure to set `dim` to either 0 or 1, not {dim}")
+
+        # By default chunk size is 1
+        chunk_size = chunk_size or 1
+
+        def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
+            if hasattr(module, "set_chunk_feed_forward"):
+                module.set_chunk_feed_forward(chunk_size=chunk_size, dim=dim)
+
+            for child in module.children():
+                fn_recursive_feed_forward(child, chunk_size, dim)
+
+        for module in self.children():
+            fn_recursive_feed_forward(module, chunk_size, dim)
+
+    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
+    def disable_forward_chunking(self):
+        def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
+            if hasattr(module, "set_chunk_feed_forward"):
+                module.set_chunk_feed_forward(chunk_size=chunk_size, dim=dim)
+
+            for child in module.children():
+                fn_recursive_feed_forward(child, chunk_size, dim)
+
+        for module in self.children():
+            fn_recursive_feed_forward(module, None, 0)
