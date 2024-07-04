@@ -48,6 +48,15 @@ class AdaLayerNorm(nn.Module):
         return x
 
 
+# Copied from diffusers.models.transformers.hunyuan_transformer_2d.FP32LayerNorm
+class FP32LayerNorm(nn.LayerNorm):
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        origin_dtype = inputs.dtype
+        return F.layer_norm(
+            inputs.float(), self.normalized_shape, self.weight.float(), self.bias.float(), self.eps
+        ).to(origin_dtype)
+
+
 class AdaLayerNormZero(nn.Module):
     r"""
     Norm layer adaptive layer norm zero (adaLN-Zero).
@@ -57,7 +66,7 @@ class AdaLayerNormZero(nn.Module):
         num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
-    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None):
+    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None, use_fp32_layer_norm=False, bias=True):
         super().__init__()
         if num_embeddings is not None:
             self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
@@ -65,8 +74,12 @@ class AdaLayerNormZero(nn.Module):
             self.emb = None
 
         self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
-        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=bias)
+        self.norm = (
+            nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+            if not use_fp32_layer_norm
+            else FP32LayerNorm(embedding_dim, elementwise_affine=False, bias=False)
+        )
 
     def forward(
         self,
@@ -169,22 +182,35 @@ class AdaLayerNormContinuous(nn.Module):
         eps=1e-5,
         bias=True,
         norm_type="layer_norm",
+        use_fp32_layer_norm=False,
     ):
         super().__init__()
+        if use_fp32_layer_norm and norm_type != "layer_norm":
+            raise ValueError("`use_fp32_layer_norm` can only be True when `norm_type` is 'layer_norm'.")
+
         self.silu = nn.SiLU()
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=bias)
         if norm_type == "layer_norm":
-            self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+            self.norm = (
+                LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+                if not use_fp32_layer_norm
+                else FP32LayerNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
+            )
         elif norm_type == "rms_norm":
             self.norm = RMSNorm(embedding_dim, eps, elementwise_affine)
+        elif norm_type == "no_norm":
+            self.norm = None
         else:
             raise ValueError(f"unknown norm_type {norm_type}")
 
     def forward(self, x: torch.Tensor, conditioning_embedding: torch.Tensor) -> torch.Tensor:
-        # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
+        # convert back to the original dtype in case `conditioning_embedding` is upcasted to float32 (needed for hunyuanDiT)
         emb = self.linear(self.silu(conditioning_embedding).to(x.dtype))
         scale, shift = torch.chunk(emb, 2, dim=1)
-        x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]
+        # lavender flow doesn't have a norm at one place here
+        if self.norm is not None:
+            x = self.norm(x)
+        x = x * (1 + scale)[:, None, :] + shift[:, None, :]
         return x
 
 

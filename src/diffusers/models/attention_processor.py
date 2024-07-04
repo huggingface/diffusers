@@ -23,6 +23,7 @@ from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, logging
 from ..utils.import_utils import is_torch_npu_available, is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
+from .normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -115,6 +116,7 @@ class Attention(nn.Module):
         processor: Optional["AttnProcessor"] = None,
         out_dim: int = None,
         context_pre_only=None,
+        use_fp32_layer_norm=False,
     ):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
@@ -166,8 +168,16 @@ class Attention(nn.Module):
             self.norm_q = None
             self.norm_k = None
         elif qk_norm == "layer_norm":
-            self.norm_q = nn.LayerNorm(dim_head, eps=eps)
-            self.norm_k = nn.LayerNorm(dim_head, eps=eps)
+            self.norm_q = (
+                nn.LayerNorm(dim_head, eps=eps)
+                if not use_fp32_layer_norm
+                else FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
+            )
+            self.norm_k = (
+                nn.LayerNorm(dim_head, eps=eps)
+                if not use_fp32_layer_norm
+                else FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
+            )
         else:
             raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None or 'layer_norm'")
 
