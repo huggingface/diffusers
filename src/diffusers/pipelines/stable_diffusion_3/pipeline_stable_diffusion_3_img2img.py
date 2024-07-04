@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to(device)
 
         >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-        >>> init_image = load_image(url).resize((512, 512))
+        >>> init_image = load_image(url).resize((1024, 1024))
 
         >>> prompt = "cat wizard, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney, 8k"
 
