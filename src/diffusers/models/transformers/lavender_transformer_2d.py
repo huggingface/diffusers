@@ -178,6 +178,7 @@ class LavenderFlowTransformerBlock(nn.Module):
             query_dim=dim,
             cross_attention_dim=None,
             added_kv_proj_dim=dim,
+            added_proj_bias=False,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             qk_norm="fp32_layer_norm",

@@ -103,6 +103,7 @@ class Attention(nn.Module):
         cross_attention_norm_num_groups: int = 32,
         qk_norm: Optional[str] = None,
         added_kv_proj_dim: Optional[int] = None,
+        added_proj_bias: Optional[bool] = None,
         norm_num_groups: Optional[int] = None,
         spatial_norm_dim: Optional[int] = None,
         out_bias: bool = True,
@@ -210,10 +211,10 @@ class Attention(nn.Module):
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=out_bias)
-            self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=out_bias)
+            self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+            self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
             if self.context_pre_only is not None:
-                self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=out_bias)
+                self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
 
         self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
