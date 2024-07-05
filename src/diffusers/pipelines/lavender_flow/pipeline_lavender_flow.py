@@ -18,7 +18,7 @@ import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
 
 from ...image_processor import VaeImageProcessor
-from ...models import AutoencoderKL, SD3Transformer2DModel
+from ...models import AutoencoderKL, LavenderFlowTransformer2DModel
 from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
@@ -98,7 +98,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
         tokenizer: T5Tokenizer,
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKL,
-        transformer: SD3Transformer2DModel,
+        transformer: LavenderFlowTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()

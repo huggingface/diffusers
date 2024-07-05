@@ -242,6 +242,7 @@ else:
             "StableDiffusionLDM3DPipeline",
         ]
     )
+    _import_structure["lavender_flow"] = ["LavenderFlowPipeline"]
     _import_structure["stable_diffusion_3"] = ["StableDiffusion3Pipeline", "StableDiffusion3Img2ImgPipeline"]
     _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
@@ -480,6 +481,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LatentConsistencyModelPipeline,
         )
         from .latent_diffusion import LDMTextToImagePipeline
+        from .lavender_flow import LavenderFlowPipeline
         from .ledits_pp import (
             LEditsPPDiffusionPipelineOutput,
             LEditsPPInversionPipelineOutput,
