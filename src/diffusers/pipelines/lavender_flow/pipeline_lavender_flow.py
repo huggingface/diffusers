@@ -182,7 +182,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         do_classifier_free_guidance: bool = True,
-        negative_prompt: str = "",
+        negative_prompt: str = "This is watermark, jpeg image white background, web image",
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
