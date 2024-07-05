@@ -35,7 +35,7 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
         torch.manual_seed(0)
         transformer = LuminaNextDiT2DModel(
             sample_size=128,
-            patch_size=2, 
+            patch_size=2,
             in_channels=4,
             hidden_size=2304,
             num_layers=24,
