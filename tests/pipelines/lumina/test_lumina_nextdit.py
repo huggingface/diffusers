@@ -39,7 +39,7 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
             in_channels=4,
             hidden_size=2304,
             num_layers=24,
-            num_attention_heads=32,
+            num_atqtention_heads=32,
             num_kv_heads=8,
             multiple_of=256,
             ffn_dim_multiplier=None,
@@ -53,8 +53,8 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
         vae = AutoencoderKL()
 
         scheduler = FlowMatchEulerDiscreteScheduler()
-        text_encoder = AutoModel.from_pretrained("google/gemma-2b")
-        tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b")
+        text_encoder = AutoModel.from_pretrained("hf-internal-testing/dummy-gemma")
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/dummy-gemma")
 
         components = {
             "transformer": transformer.eval(),
