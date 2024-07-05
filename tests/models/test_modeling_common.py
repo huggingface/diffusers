@@ -885,11 +885,11 @@ class ModelTesterMixin:
 
     @require_torch_gpu
     def test_sharded_checkpoints(self):
+        torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
 
-        torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
