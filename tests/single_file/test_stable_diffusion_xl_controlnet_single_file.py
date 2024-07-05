@@ -195,3 +195,12 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
                 local_files_only=True,
             )
         super()._compare_component_configs(pipe, pipe_single_file)
+
+    def test_single_file_setting_pipeline_dtype_to_fp16(self):
+        controlnet = ControlNetModel.from_pretrained(
+            "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
+        )
+        single_file_pipe = self.pipeline_class.from_single_file(
+            self.ckpt_path, controlnet=controlnet, safety_checker=None, torch_dtype=torch.float16
+        )
+        super().test_single_file_setting_pipeline_dtype_to_fp16(single_file_pipe)
