@@ -339,7 +339,6 @@ class LavenderFlowPipeline(DiffusionPipeline):
         num_images_per_prompt: Optional[int] = 1,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
-        eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
