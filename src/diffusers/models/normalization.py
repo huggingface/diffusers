@@ -69,7 +69,7 @@ class AdaLayerNormZero(nn.Module):
         num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
-    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None, use_fp32_layer_norm=False, bias=True):
+    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None, norm_type="layer_norm", bias=True):
         super().__init__()
         if num_embeddings is not None:
             self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
@@ -78,11 +78,14 @@ class AdaLayerNormZero(nn.Module):
 
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=bias)
-        self.norm = (
-            nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
-            if not use_fp32_layer_norm
-            else FP32LayerNorm(embedding_dim, elementwise_affine=False, bias=False)
-        )
+        if norm_type == "layer_norm":
+            self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+        elif norm_type == "fp32_layer_norm":
+            self.norm = FP32LayerNorm(embedding_dim, elementwise_affine=False, bias=False)
+        else:
+            raise ValueError(
+                f"Unsupported `norm_type` ({norm_type}) provided. Supported ones are: 'layer_norm', 'fp32_layer_norm'."
+            )
 
     def forward(
         self,
@@ -185,20 +188,15 @@ class AdaLayerNormContinuous(nn.Module):
         eps=1e-5,
         bias=True,
         norm_type="layer_norm",
-        use_fp32_layer_norm=False,
     ):
         super().__init__()
-        if use_fp32_layer_norm and norm_type != "layer_norm":
-            raise ValueError("`use_fp32_layer_norm` can only be True when `norm_type` is 'layer_norm'.")
 
         self.silu = nn.SiLU()
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=bias)
         if norm_type == "layer_norm":
-            self.norm = (
-                LayerNorm(embedding_dim, eps, elementwise_affine, bias)
-                if not use_fp32_layer_norm
-                else FP32LayerNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
-            )
+            self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+        elif norm_type == "fp32_layer_norm":
+            self.norm = FP32LayerNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
         elif norm_type == "rms_norm":
             self.norm = RMSNorm(embedding_dim, eps, elementwise_affine)
         elif norm_type == "no_norm":

@@ -106,7 +106,7 @@ class LavenderFlowDiTTransformerBlock(nn.Module):
     def __init__(self, dim, num_attention_heads, attention_head_dim):
         super().__init__()
 
-        self.norm1 = AdaLayerNormZero(dim, bias=False, use_fp32_layer_norm=True)
+        self.norm1 = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
 
         processor = LavenderFlowAttnProcessor2_0()
         self.attn = Attention(
@@ -114,8 +114,7 @@ class LavenderFlowDiTTransformerBlock(nn.Module):
             cross_attention_dim=None,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
-            qk_norm="layer_norm",
-            use_fp32_layer_norm=True,
+            qk_norm="fp32_layer_norm",
             out_dim=dim,
             bias=False,
             out_bias=False,
@@ -165,14 +164,14 @@ class LavenderFlowTransformerBlock(nn.Module):
         self.is_last = is_last
         context_norm_type = "ada_norm_continous" if is_last else "ada_norm_zero"
 
-        self.norm1 = AdaLayerNormZero(dim, bias=False, use_fp32_layer_norm=True)
+        self.norm1 = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
 
         if context_norm_type == "ada_norm_continous":
             self.norm1_context = AdaLayerNormContinuous(
-                dim, dim, elementwise_affine=False, bias=False, use_fp32_layer_norm=True
+                dim, dim, elementwise_affine=False, bias=False, norm_type="fp32_layer_norm"
             )
         elif context_norm_type == "ada_norm_zero":
-            self.norm1_context = AdaLayerNormZero(dim, bias=False, use_fp32_layer_norm=True)
+            self.norm1_context = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
 
         processor = LavenderFlowAttnProcessor2_0()
         self.attn = Attention(
@@ -181,9 +180,8 @@ class LavenderFlowTransformerBlock(nn.Module):
             added_kv_proj_dim=dim,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
-            qk_norm="layer_norm",
-            added_qk_norm="layer_norm",
-            use_fp32_layer_norm=True,
+            qk_norm="fp32_layer_norm",
+            added_qk_norm="fp32_layer_norm",
             out_dim=dim,
             bias=False,
             out_bias=False,
