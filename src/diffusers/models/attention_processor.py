@@ -102,7 +102,6 @@ class Attention(nn.Module):
         cross_attention_norm: Optional[str] = None,
         cross_attention_norm_num_groups: int = 32,
         qk_norm: Optional[str] = None,
-        added_qk_norm: Optional[str] = None,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
         spatial_norm_dim: Optional[int] = None,
@@ -177,18 +176,6 @@ class Attention(nn.Module):
         else:
             raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None or 'layer_norm'")
 
-        if added_qk_norm is None:
-            self.norm_added_q = None
-            self.norm_added_k = None
-        elif added_qk_norm == "layer_norm":
-            self.norm_added_q = nn.LayerNorm(dim_head, eps=eps)
-            self.norm_added_k = nn.LayerNorm(dim_head, eps=eps)
-        elif added_qk_norm == "fp32_layer_norm":
-            self.norm_added_q = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
-            self.norm_added_k = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
-        else:
-            raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None or 'layer_norm'")
-
         if cross_attention_norm is None:
             self.norm_cross = None
         elif cross_attention_norm == "layer_norm":
@@ -234,6 +221,17 @@ class Attention(nn.Module):
 
         if self.context_pre_only is not None and not self.context_pre_only:
             self.to_add_out = nn.Linear(self.inner_dim, self.out_dim, bias=out_bias)
+
+        if qk_norm is not None and added_kv_proj_dim is not None:
+            if qk_norm == "layer_norm":
+                self.norm_added_q = nn.LayerNorm(dim_head, eps=eps)
+                self.norm_added_k = nn.LayerNorm(dim_head, eps=eps)
+            elif qk_norm == "fp32_layer_norm":
+                self.norm_added_q = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
+                self.norm_added_k = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
+        else:
+            self.norm_added_q = None
+            self.norm_added_k = None
 
         # set attention processor
         # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
