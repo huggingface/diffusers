@@ -113,6 +113,7 @@ class LavenderFlowAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
+        i=0,
         *args,
         **kwargs,
     ) -> torch.FloatTensor:
@@ -129,18 +130,43 @@ class LavenderFlowAttnProcessor2_0:
             encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
             encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
 
-        # attention
+        # Reshape.
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim)
+        key = key.view(batch_size, -1, attn.heads, head_dim)
+        value = value.view(batch_size, -1, attn.heads, head_dim)
+
+        # Apply QK norm.
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # Concatenate the projections.
         if encoder_hidden_states is not None:
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            )
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(batch_size, -1, attn.heads, head_dim)
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            )
+
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_q(encoder_hidden_states_key_proj)
+
             query = torch.cat([encoder_hidden_states_query_proj, query], dim=1)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
             value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
 
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
 
+        # Attention.
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, dropout_p=0.0, scale=attn.scale, is_causal=False
         )
@@ -167,6 +193,7 @@ class LavenderFlowAttnProcessor2_0:
             return hidden_states
 
 
+@maybe_allow_in_graph
 class LavenderFlowDiTTransformerBlock(nn.Module):
     """Similar `LavenderFlowTransformerBlock with a single DiT instead of an MMDiT."""
 
@@ -192,23 +219,21 @@ class LavenderFlowDiTTransformerBlock(nn.Module):
         self.norm2 = FP32LayerNorm(dim, elementwise_affine=False, bias=False)
         self.ff = LavenderFlowFeedForward(dim, dim * 4)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: torch.FloatTensor):
+    def forward(self, hidden_states: torch.FloatTensor, temb: torch.FloatTensor, i=9999):
+        residual = hidden_states
+
         # Norm + Projection.
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
         # Attention.
-        attn_output = self.attn(hidden_states=norm_hidden_states)
+        attn_output = self.attn(hidden_states=norm_hidden_states, i=i)
 
         # Process attention outputs for the `hidden_states`.
-        attn_output = gate_msa.unsqueeze(1) * attn_output
-        hidden_states = hidden_states + attn_output
-
-        norm_hidden_states = self.norm2(hidden_states)
-        norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
-        ff_output = self.ff(norm_hidden_states)
-        ff_output = gate_mlp.unsqueeze(1) * ff_output
-
-        hidden_states = hidden_states + ff_output
+        hidden_states = self.norm2(residual + gate_msa.unsqueeze(1) * attn_output)
+        hidden_states = hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        ff_output = self.ff(hidden_states)
+        hidden_states = gate_mlp.unsqueeze(1) * ff_output
+        hidden_states = residual + hidden_states
 
         return hidden_states
 
@@ -216,7 +241,11 @@ class LavenderFlowDiTTransformerBlock(nn.Module):
 @maybe_allow_in_graph
 class LavenderFlowTransformerBlock(nn.Module):
     r"""
-    Transformer block for Lavender Flow. Similar to SD3 MMDiT.
+    Transformer block for Lavender Flow. Similar to SD3 MMDiT. Differences (non-exhaustive):
+
+        * QK Norm in the attention blocks
+        * No bias in the attention blocks
+        * Most LayerNorms are in FP32
 
     Parameters:
         dim (`int`): The number of channels in the input and output.
@@ -247,6 +276,7 @@ class LavenderFlowTransformerBlock(nn.Module):
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             qk_norm="layer_norm",
+            added_qk_norm="layer_norm",
             use_fp32_layer_norm=True,
             out_dim=dim,
             bias=False,
@@ -264,8 +294,11 @@ class LavenderFlowTransformerBlock(nn.Module):
             self.ff_context = None
 
     def forward(
-        self, hidden_states: torch.FloatTensor, encoder_hidden_states: torch.FloatTensor, temb: torch.FloatTensor
+        self, hidden_states: torch.FloatTensor, encoder_hidden_states: torch.FloatTensor, temb: torch.FloatTensor, i=0
     ):
+        residual = hidden_states
+        residual_context = encoder_hidden_states
+
         # Norm + Projection.
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
@@ -274,28 +307,20 @@ class LavenderFlowTransformerBlock(nn.Module):
 
         # Attention.
         attn_output, context_attn_output = self.attn(
-            hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states
+            hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states, i=i
         )
 
         # Process attention outputs for the `hidden_states`.
-        attn_output = gate_msa.unsqueeze(1) * attn_output
-        hidden_states = hidden_states + attn_output
-
-        norm_hidden_states = self.norm2(hidden_states)
-        norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
-        ff_output = self.ff(norm_hidden_states)
-        ff_output = gate_mlp.unsqueeze(1) * ff_output
-
-        hidden_states = hidden_states + ff_output
+        hidden_states = self.norm2(residual + gate_msa.unsqueeze(1) * attn_output)
+        hidden_states = hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        hidden_states = gate_mlp.unsqueeze(1) * self.ff(hidden_states)
+        hidden_states = residual + hidden_states
 
         # Process attention outputs for the `encoder_hidden_states`.
-        context_attn_output = c_gate_msa.unsqueeze(1) * context_attn_output
-        encoder_hidden_states = encoder_hidden_states + context_attn_output
-
-        norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
-        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
-        context_ff_output = self.ff_context(norm_encoder_hidden_states)
-        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+        encoder_hidden_states = self.norm2_context(residual_context + c_gate_msa.unsqueeze(1) * context_attn_output)
+        encoder_hidden_states = encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+        encoder_hidden_states = c_gate_mlp.unsqueeze(1) * self.ff_context(encoder_hidden_states)
+        encoder_hidden_states = residual_context + encoder_hidden_states
 
         return encoder_hidden_states, hidden_states
 
@@ -377,25 +402,20 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
-        use_register_tokens: bool = True,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         height, width = hidden_states.shape[-2:]
 
         # Apply patch embedding, timestep embedding, and project the caption embeddings.
         hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
-        # print(f"{hidden_states[0, :4, :4]=}")
         temb = self.time_step_embed(timestep).to(dtype=next(self.parameters()).dtype)
         temb = self.time_step_proj(temb)
-        # print(f"{temb[0, :4]=}")
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
-        # This doesn't apply to the negative prompt embeds. So, we need to keep that in mind.
-        if use_register_tokens:
-            encoder_hidden_states = torch.cat(
-                [self.register_tokens.repeat(encoder_hidden_states.size(0), 1, 1), encoder_hidden_states], dim=1
-            )
-        # print(f"{encoder_hidden_states[0, :4, :4]=}")
+        encoder_hidden_states = torch.cat(
+            [self.register_tokens.repeat(encoder_hidden_states.size(0), 1, 1), encoder_hidden_states], dim=1
+        )
 
+        # MMDiT blocks.
         for index_block, block in enumerate(self.joint_transformer_blocks):
             if self.training and self.gradient_checkpointing:
 
@@ -419,10 +439,10 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
 
             else:
                 encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb, i=index_block
                 )
-                # print(f"{encoder_hidden_states[0, :4, :4]=}")
 
+        # Single DiT blocks that combine the `hidden_states` (image) and `encoder_hidden_states` (text)
         if len(self.single_transformer_blocks) > 0:
             encoder_seq_len = encoder_hidden_states.size(1)
             combined_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
@@ -450,7 +470,7 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
                 else:
                     combined_hidden_states = block(hidden_states=combined_hidden_states, temb=temb)
 
-                hidden_states = combined_hidden_states[:, encoder_seq_len:]
+            hidden_states = combined_hidden_states[:, encoder_seq_len:]
 
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)

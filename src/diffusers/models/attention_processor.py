@@ -102,6 +102,7 @@ class Attention(nn.Module):
         cross_attention_norm: Optional[str] = None,
         cross_attention_norm_num_groups: int = 32,
         qk_norm: Optional[str] = None,
+        added_qk_norm: Optional[str] = None,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
         spatial_norm_dim: Optional[int] = None,
@@ -175,6 +176,23 @@ class Attention(nn.Module):
                 else FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
             )
             self.norm_k = (
+                nn.LayerNorm(dim_head, eps=eps)
+                if not use_fp32_layer_norm
+                else FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
+            )
+        else:
+            raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None or 'layer_norm'")
+
+        if added_qk_norm is None:
+            self.norm_added_q = None
+            self.norm_added_k = None
+        elif added_qk_norm == "layer_norm":
+            self.norm_added_q = (
+                nn.LayerNorm(dim_head, eps=eps)
+                if not use_fp32_layer_norm
+                else FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
+            )
+            self.norm_added_k = (
                 nn.LayerNorm(dim_head, eps=eps)
                 if not use_fp32_layer_norm
                 else FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)

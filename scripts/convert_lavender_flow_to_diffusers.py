@@ -21,6 +21,13 @@ def calculate_layers(state_dict_keys, key_prefix):
     return len(dit_layers)
 
 
+# similar to SD3 but only for the last norm layer
+def swap_scale_shift(weight, dim):
+    shift, scale = weight.chunk(2, dim=0)
+    new_weight = torch.cat([scale, shift], dim=0)
+    return new_weight
+
+
 def convert_transformer(state_dict):
     converted_state_dict = {}
     state_dict_keys = list(state_dict.keys())
@@ -88,7 +95,7 @@ def convert_transformer(state_dict):
 
     # Final blocks.
     converted_state_dict["proj_out.weight"] = state_dict.pop("model.final_linear.weight")
-    converted_state_dict["norm_out.linear.weight"] = state_dict.pop("model.modF.1.weight")
+    converted_state_dict["norm_out.linear.weight"] = swap_scale_shift(state_dict.pop("model.modF.1.weight"), dim=None)
 
     return converted_state_dict
 
@@ -101,17 +108,10 @@ def populate_state_dict(args):
     single_dit_layers = calculate_layers(state_dict_keys, key_prefix="single_layers")
 
     converted_state_dict = convert_transformer(original_state_dict)
-
-    # with init_empty_weights():
-    #     model_diffusers = LavenderFlowTransformer2DModel(num_mmdit_layers=mmdit_layers, num_single_dit_layers=single_dit_layers)
-
-    # with torch.no_grad():
-    #     unexpected_keys = load_model_dict_into_meta(model_diffusers, converted_state_dict)
     model_diffusers = LavenderFlowTransformer2DModel(
         num_mmdit_layers=mmdit_layers, num_single_dit_layers=single_dit_layers
     )
     model_diffusers.load_state_dict(converted_state_dict, strict=True)
-    # assert len(unexpected_keys) == 0, "Something wrong."
 
     return model_diffusers
 
