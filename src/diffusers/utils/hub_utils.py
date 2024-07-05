@@ -456,7 +456,7 @@ def _get_checkpoint_shard_files(
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
     allow_patterns = original_shard_filenames
     if subfolder is not None:
-        allow_patterns = [subfolder+ "/" + p for p in allow_patterns]
+        allow_patterns = [subfolder + "/" + p for p in allow_patterns]
 
     ignore_patterns = ["*.json", "*.md"]
     if not local_files_only:
