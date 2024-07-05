@@ -110,6 +110,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -224,9 +225,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        # See Section 3.1. of the paper.
         max_length = max_sequence_length
-
         if prompt_embeds is None:
             text_inputs = self.tokenizer(
                 prompt,
@@ -236,7 +235,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             text_inputs = {k: v.to(device) for k, v in text_inputs.items()}
-            text_input_ids = text_inputs.input_ids
+            text_input_ids = text_inputs["input_ids"]
             untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
             if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
@@ -249,7 +248,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
                 )
 
             prompt_embeds = self.text_encoder(**text_inputs)[0]
-            prompt_attention_mask = text_inputs.attention_mask.unsqueeze(-1).expand(prompt_embeds.shape)
+            prompt_attention_mask = text_inputs["attention_mask"].unsqueeze(-1).expand(prompt_embeds.shape)
             prompt_embeds = prompt_embeds * prompt_attention_mask
 
         if self.text_encoder is not None:
@@ -265,7 +264,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-        prompt_attention_mask = prompt_attention_mask.view(bs_embed, -1)
+        prompt_attention_mask = prompt_attention_mask.reshape(bs_embed, -1)
         prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         # get unconditional embeddings for classifier free guidance
@@ -281,8 +280,8 @@ class LavenderFlowPipeline(DiffusionPipeline):
             )
             uncond_input = {k: v.to(device) for k, v in uncond_input.items()}
             negative_prompt_embeds = self.text_encoder(**uncond_input)[0]
-            negative_prompt_attention_mask = uncond_input.attention_mask.unsqueeze(-1).expand(
-                negative_prompt_embeds.shape
+            negative_prompt_attention_mask = (
+                uncond_input["attention_mask"].unsqueeze(-1).expand(negative_prompt_embeds.shape)
             )
             negative_prompt_embeds = negative_prompt_embeds * negative_prompt_attention_mask
 
@@ -295,7 +294,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-            negative_prompt_attention_mask = negative_prompt_attention_mask.view(bs_embed, -1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.reshape(bs_embed, -1)
             negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
         else:
             negative_prompt_embeds = None
@@ -394,7 +393,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
             negative_prompt_attention_mask,
         )
 
-        # 2. Default height and width to transformer
+        # 2. Determine batch size.
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -437,6 +436,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
+        effective_batch_size = batch_size * num_images_per_prompt
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             latent_channels,
@@ -450,12 +450,21 @@ class LavenderFlowPipeline(DiffusionPipeline):
 
         # 6. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        dt = 1.0 / num_inference_steps
+        dt = (
+            torch.tensor([dt] * effective_batch_size)
+            .to(self.device)
+            .view([effective_batch_size, *([1] * len(latents.shape[1:]))])
+        )
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
+            for i, t in enumerate(range(num_inference_steps, 0, -1)):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latent_model_input.shape[0])
+                t = t / num_inference_steps
+                timestep = (
+                    torch.tensor([t]).expand(latent_model_input.shape[0]).to(latents.device, dtype=latents.dtype)
+                )
 
                 # predict noise model_output
                 noise_pred = self.transformer(
@@ -471,7 +480,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                latents = (latents - dt * noise_pred).to(latents.dtype)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
