@@ -2775,6 +2775,26 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
         return hidden_states
 
 
+class LoRAAttnProcessor:
+    def __init__(self):
+        pass
+
+
+class LoRAAttnProcessor2_0:
+    def __init__(self):
+        pass
+
+
+class LoRAXFormersAttnProcessor:
+    def __init__(self):
+        pass
+
+
+class LoRAAttnAddedKVProcessor:
+    def __init__(self):
+        pass
+
+
 ADDED_KV_ATTENTION_PROCESSORS = (
     AttnAddedKVProcessor,
     SlicedAttnAddedKVProcessor,
