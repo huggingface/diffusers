@@ -1290,6 +1290,7 @@ def main(args):
                         text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
                             get_peft_model_state_dict(model)
                         )
+                else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
@@ -1856,10 +1857,10 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-            if torch.backends.mps.is_available():
-                autocast_ctx = nullcontext()
-            else:
-                autocast_ctx = torch.autocast(accelerator.device.type)
+                if torch.backends.mps.is_available():
+                    autocast_ctx = nullcontext()
+                else:
+                    autocast_ctx = torch.autocast(accelerator.device.type)
 
                 with autocast_ctx:
                     images = [
@@ -1880,7 +1881,6 @@ def main(args):
                                 ]
                             }
                         )
-
                 del pipeline
                 torch.cuda.empty_cache()
 
@@ -1982,7 +1982,7 @@ def main(args):
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
         peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
         kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
-        save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")
+        save_file(kohya_state_dict, f"{args.output_dir}/{Path(args.output_dir).name}.safetensors")
 
         save_model_card(
             model_id if not args.push_to_hub else repo_id,
