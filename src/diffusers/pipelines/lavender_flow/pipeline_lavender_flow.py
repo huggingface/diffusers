@@ -17,6 +17,8 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
 
+import numpy as np
+
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, LavenderFlowTransformer2DModel
 from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
@@ -428,6 +430,8 @@ class LavenderFlowPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
         # 4. Prepare timesteps
+
+        sigmas = np.linspace(1.0, 1/num_inference_steps,num_inference_steps)
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
@@ -448,20 +452,13 @@ class LavenderFlowPipeline(DiffusionPipeline):
 
         # 6. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-        dt = 1.0 / num_inference_steps
-        dt = (
-            torch.tensor([dt] * effective_batch_size)
-            .to(self.device)
-            .view([effective_batch_size, *([1] * len(latents.shape[1:]))])
-        )
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(range(num_inference_steps, 0, -1)):
+            for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                t = t / num_inference_steps
                 timestep = (
-                    torch.tensor([t]).expand(latent_model_input.shape[0]).to(latents.device, dtype=latents.dtype)
+                    torch.tensor([t/1000]).expand(latent_model_input.shape[0]).to(latents.device, dtype=latents.dtype)
                 )
 
                 # predict noise model_output
@@ -476,9 +473,9 @@ class LavenderFlowPipeline(DiffusionPipeline):
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
+     
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = (latents - dt * noise_pred).to(latents.dtype)
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
