@@ -48,7 +48,6 @@ class AdaLayerNorm(nn.Module):
         return x
 
 
-# Copied from diffusers.models.transformers.hunyuan_transformer_2d.FP32LayerNorm
 class FP32LayerNorm(nn.LayerNorm):
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         origin_dtype = inputs.dtype
