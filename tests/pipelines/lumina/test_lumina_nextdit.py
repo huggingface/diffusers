@@ -39,7 +39,7 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
             in_channels=4,
             hidden_size=2304,
             num_layers=24,
-            num_atqtention_heads=32,
+            num_attention_heads=32,
             num_kv_heads=8,
             multiple_of=256,
             ffn_dim_multiplier=None,
