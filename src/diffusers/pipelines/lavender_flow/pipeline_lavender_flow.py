@@ -199,8 +199,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
                 prompt to be encoded
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt not to guide the image generation. If not defined, one has to pass `negative_prompt_embeds`
-                instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`). For
-                PixArt-Alpha, this should be "".
+                instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 whether to use classifier free guidance or not
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -211,9 +210,8 @@ class LavenderFlowPipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. For PixArt-Alpha, it's should be the embeddings of the ""
-                string.
-            max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
+                Pre-generated negative text embeddings.
+            max_sequence_length (`int`, defaults to 256): Maximum sequence length to use for the prompt.
         """
         if device is None:
             device = self._execution_device
