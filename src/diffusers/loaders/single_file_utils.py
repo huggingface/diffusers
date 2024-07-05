@@ -1808,4 +1808,17 @@ def create_diffusers_t5_model_from_checkpoint(
 
     else:
         model.load_state_dict(diffusers_format_checkpoint)
+
+    use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (torch_dtype == torch.float16)
+    if use_keep_in_fp32_modules:
+        keep_in_fp32_modules = model._keep_in_fp32_modules
+    else:
+        keep_in_fp32_modules = []
+
+    if keep_in_fp32_modules is not None:
+        for name, param in model.named_parameters():
+            if any(module_to_keep_in_fp32 in name.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules):
+                # param = param.to(torch.float32) does not work here as only in the local scope.
+                param.data = param.data.to(torch.float32)
+
     return model

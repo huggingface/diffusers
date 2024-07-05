@@ -201,6 +201,20 @@ class SDSingleFileTesterMixin:
 
         self._compare_component_configs(pipe, single_file_pipe)
 
+    def test_single_file_setting_pipeline_dtype_to_fp16(
+        self,
+        single_file_pipe=None,
+    ):
+        single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
+            self.ckpt_path, torch_dtype=torch.float16
+        )
+
+        for component_name, component in single_file_pipe.components.items():
+            if not isinstance(component, torch.nn.Module):
+                continue
+
+            assert component.dtype == torch.float16
+
 
 class SDXLSingleFileTesterMixin:
     def _compare_component_configs(self, pipe, single_file_pipe):
@@ -378,3 +392,17 @@ class SDXLSingleFileTesterMixin:
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
         assert max_diff < expected_max_diff
+
+    def test_single_file_setting_pipeline_dtype_to_fp16(
+        self,
+        single_file_pipe=None,
+    ):
+        single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
+            self.ckpt_path, torch_dtype=torch.float16
+        )
+
+        for component_name, component in single_file_pipe.components.items():
+            if not isinstance(component, torch.nn.Module):
+                continue
+
+            assert component.dtype == torch.float16
