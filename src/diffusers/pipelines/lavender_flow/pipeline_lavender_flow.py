@@ -14,10 +14,9 @@
 import inspect
 from typing import Callable, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
-
-import numpy as np
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, LavenderFlowTransformer2DModel
@@ -431,14 +430,13 @@ class LavenderFlowPipeline(DiffusionPipeline):
 
         # 4. Prepare timesteps
 
-        sigmas = np.linspace(1.0, 1/num_inference_steps,num_inference_steps)
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
-        effective_batch_size = batch_size * num_images_per_prompt
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             latent_channels,
@@ -458,7 +456,9 @@ class LavenderFlowPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = (
-                    torch.tensor([t/1000]).expand(latent_model_input.shape[0]).to(latents.device, dtype=latents.dtype)
+                    torch.tensor([t / 1000])
+                    .expand(latent_model_input.shape[0])
+                    .to(latents.device, dtype=latents.dtype)
                 )
 
                 # predict noise model_output
@@ -473,7 +473,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-     
+
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 

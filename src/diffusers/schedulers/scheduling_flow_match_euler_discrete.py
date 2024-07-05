@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union, List
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -159,10 +159,11 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return sigma * self.config.num_train_timesteps
 
     def set_timesteps(
-            self, 
-            num_inference_steps: int = None, 
-            device: Union[str, torch.device] = None,  
-            sigmas: Optional[List[float]] = None):
+        self,
+        num_inference_steps: int = None,
+        device: Union[str, torch.device] = None,
+        sigmas: Optional[List[float]] = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -181,10 +182,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
             sigmas = timesteps / self.config.num_train_timesteps
             sigmas = self.config.shift * sigmas / (1 + (self.config.shift - 1) * sigmas)
-        
+
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
         timesteps = sigmas * self.config.num_train_timesteps
-        
+
         self.timesteps = timesteps.to(device=device)
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
 
