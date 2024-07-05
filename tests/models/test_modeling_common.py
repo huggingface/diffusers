@@ -887,7 +887,6 @@ class ModelTesterMixin:
     def test_sharded_checkpoints(self):
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        print(f"{inputs_dict['sample'][0, :3, :3, 3].flatten()=}")
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
 
@@ -910,8 +909,8 @@ class ModelTesterMixin:
             new_model = new_model.to(torch_device)
 
             torch.manual_seed(0)
-            _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-            print(f"{inputs_dict['sample'][0, :3, :3, 3].flatten()=}")
+            if "generator" in inputs_dict:
+                _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
