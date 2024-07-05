@@ -561,7 +561,7 @@ def parse_args(input_args=None):
         "--prodigy_beta3",
         type=float,
         default=None,
-        help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
+        help="coefficients for computing the Prodigy stepsize using running averages. If set to None, "
         "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
@@ -880,7 +880,7 @@ class DreamBoothDataset(Dataset):
             else:
                 example["instance_prompt"] = self.instance_prompt
 
-        else:  # costum prompts were provided, but length does not match size of image dataset
+        else:  # custom prompts were provided, but length does not match size of image dataset
             example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
@@ -1363,8 +1363,8 @@ def main(args):
             models = [unet_]
             if args.train_text_encoder:
                 models.extend([text_encoder_one_, text_encoder_two_])
-                # only upcast trainable parameters (LoRA) into fp32
-                cast_training_params(models)
+            # only upcast trainable parameters (LoRA) into fp32
+            cast_training_params(models)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1561,7 +1561,7 @@ def main(args):
             if args.with_prior_preservation:
                 prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
                 unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
-        # if we're optmizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
+        # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
         # batch prompts on all training steps
         else:
             tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt)

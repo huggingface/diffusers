@@ -45,12 +45,12 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
+    is_torch_compile,
     load_image,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
-    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     require_torch_multi_gpu,
@@ -1013,7 +1013,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", torch_dtype=torch.float16, safety_checker=None
+            model_id, variant="fp16", torch_dtype=torch.float16, safety_checker=None
         )
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -1135,7 +1135,6 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
 
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
@@ -1283,7 +1282,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 8e-1
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     def test_stable_diffusion_compile(self):
         seed = 0
