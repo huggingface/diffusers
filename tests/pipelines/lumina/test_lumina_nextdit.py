@@ -34,16 +34,20 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = LuminaNextDiT2DModel(
-            sample_size=32,
-            patch_size=1,
+            sample_size=128,
+            patch_size=2, 
             in_channels=4,
-            num_layers=1,
-            hidden_size=32,
-            num_attention_heads=4,
-            multiple_of=32,
-            caption_dim=2048,
-            qk_norm=True,
+            hidden_size=2304,
+            num_layers=24,
+            num_attention_heads=32,
+            num_kv_heads=8,
+            multiple_of=256,
+            ffn_dim_multiplier=None,
+            norm_eps=1e-5,
             learn_sigma=True,
+            qk_norm=True,
+            cross_attention_dim=2048,
+            scaling_factor=1.0,
         )
         torch.manual_seed(0)
         vae = AutoencoderKL()

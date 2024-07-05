@@ -85,7 +85,8 @@ def main(args):
 
     # Lumina-Next-SFT 2B
     transformer = LuminaNextDiT2DModel(
-        patch_size=2,
+        sample_size=128,
+        patch_size=2, 
         in_channels=4,
         hidden_size=2304,
         num_layers=24,
@@ -96,8 +97,8 @@ def main(args):
         norm_eps=1e-5,
         learn_sigma=True,
         qk_norm=True,
-        caption_dim=2048,
-        scale_factor=1.0,
+        cross_attention_dim=2048,
+        scaling_factor=1.0,
     )
     transformer.load_state_dict(converted_state_dict, strict=True)
 
