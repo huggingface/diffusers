@@ -48,6 +48,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pag import (
     StableDiffusionControlNetPAGPipeline,
+    StableDiffusionControlNetPAGInpaintPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGPipeline,
     StableDiffusionXLPAGImg2ImgPipeline,
@@ -121,6 +122,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyInpaintCombinedPipeline),
         ("kandinsky22", KandinskyV22InpaintCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
+        ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
     ]

@@ -27,6 +27,9 @@ The abstract from the paper is:
 
 ## StableDiffusionControlNetPAGPipeline
 [[autodoc]] StableDiffusionControlNetPAGPipeline
+
+## StableDiffusionControlNetPAGInpaintPipeline
+[[autodoc]] StableDiffusionControlNetPAGInpaintPipeline
 	- all
 	- __call__
 
