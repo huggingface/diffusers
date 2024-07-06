@@ -456,7 +456,7 @@ def _get_checkpoint_shard_files(
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
     allow_patterns = original_shard_filenames
     if subfolder is not None:
-        allow_patterns = [subfolder + "/" + p for p in allow_patterns]
+        allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
 
     ignore_patterns = ["*.json", "*.md"]
     if not local_files_only:
@@ -485,7 +485,7 @@ def _get_checkpoint_shard_files(
             user_agent=user_agent,
         )
         if subfolder is not None:
-            cached_folder = cached_folder + "/" + subfolder
+            cached_folder = os.path.join(cached_folder, subfolder)
 
     # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
     # we don't have to catch them here. We have also dealt with EntryNotFoundError.
