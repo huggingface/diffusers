@@ -53,7 +53,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> # !pip install transformers accelerate
         >>> import cv2
-        >>> from diffusers import StableDiffusionControlNetPAGInpaintPipeline, ControlNetModel, DDIMScheduler
+        >>> from diffusers import AutoPipelineForInpainting, ControlNetModel, DDIMScheduler
         >>> from diffusers.utils import load_image
         >>> import numpy as np
         >>> from PIL import Image
@@ -86,7 +86,7 @@ EXAMPLE_DOC_STRING = """
         >>> controlnet = ControlNetModel.from_pretrained(
         ...     "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16
         ... )
-        >>> pipe = StableDiffusionControlNetPAGInpaintPipeline.from_pretrained(
+        >>> pipe = AutoPipelineForInpainting.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, enable_pag=True
         ... )
 
@@ -129,7 +129,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
     LoraLoaderMixin,
     IPAdapterMixin,
     FromSingleFileMixin,
-    PAGMixin
+    PAGMixin,
 ):
     r"""
     Pipeline for image inpainting using Stable Diffusion with ControlNet guidance.
