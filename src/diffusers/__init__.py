@@ -76,6 +76,7 @@ else:
     _import_structure["models"].extend(
         [
             "AsymmetricAutoencoderKL",
+            "AuraFlowTransformer2DModel",
             "AutoencoderKL",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderTiny",
@@ -88,7 +89,6 @@ else:
             "HunyuanDiT2DMultiControlNetModel",
             "I2VGenXLUNet",
             "Kandinsky3UNet",
-            "LavenderFlowTransformer2DModel",
             "ModelMixin",
             "MotionAdapter",
             "MultiAdapter",
@@ -233,6 +233,7 @@ else:
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
             "AudioLDMPipeline",
+            "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
             "CLIPImageProjection",
@@ -268,7 +269,6 @@ else:
             "KandinskyV22PriorPipeline",
             "LatentConsistencyModelImg2ImgPipeline",
             "LatentConsistencyModelPipeline",
-            "LavenderFlowPipeline",
             "LDMTextToImagePipeline",
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
@@ -499,6 +499,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .models import (
             AsymmetricAutoencoderKL,
+            AuraFlowTransformer2DModel,
             AutoencoderKL,
             AutoencoderKLTemporalDecoder,
             AutoencoderTiny,
@@ -511,7 +512,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DMultiControlNetModel,
             I2VGenXLUNet,
             Kandinsky3UNet,
-            LavenderFlowTransformer2DModel,
             ModelMixin,
             MotionAdapter,
             MultiAdapter,
@@ -636,6 +636,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
+            AuraFlowPipeline,
             CLIPImageProjection,
             CycleDiffusionPipeline,
             HunyuanDiTControlNetPipeline,
@@ -669,7 +670,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22PriorPipeline,
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
-            LavenderFlowPipeline,
             LDMTextToImagePipeline,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,

@@ -22,7 +22,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_lavender_flow"] = ["LavenderFlowPipeline"]
+    _import_structure["pipeline_aura_flow"] = ["AuraFlowPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -32,7 +32,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_lavender_flow import LavenderFlowPipeline
+        from .pipeline_aura_flow import AuraFlowPipeline
 
 else:
     import sys
