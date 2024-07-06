@@ -221,7 +221,7 @@ def _fetch_index_file(
                 local_files_only=local_files_only,
                 token=token,
                 revision=revision,
-                subfolder=subfolder,
+                subfolder=None,
                 user_agent=user_agent,
                 commit_hash=commit_hash,
             )
