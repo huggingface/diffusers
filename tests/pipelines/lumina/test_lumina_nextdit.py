@@ -3,7 +3,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoTokenizer, GemmaConfig, GemmaForCausalLM
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, LuminaNextDiT2DModel, LuminaText2ImgPipeline
 from diffusers.utils.testing_utils import (
@@ -34,33 +34,43 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = LuminaNextDiT2DModel(
-            sample_size=128,
+            sample_size=16,
             patch_size=2,
             in_channels=4,
-            hidden_size=2304,
-            num_layers=24,
-            num_attention_heads=32,
-            num_kv_heads=8,
-            multiple_of=256,
+            hidden_size=24,
+            num_layers=2,
+            num_attention_heads=3,
+            num_kv_heads=1,
+            multiple_of=16,
             ffn_dim_multiplier=None,
             norm_eps=1e-5,
             learn_sigma=True,
             qk_norm=True,
-            cross_attention_dim=2048,
+            cross_attention_dim=32,
             scaling_factor=1.0,
         )
         torch.manual_seed(0)
         vae = AutoencoderKL()
 
         scheduler = FlowMatchEulerDiscreteScheduler()
-        text_encoder = AutoModel.from_pretrained("hf-internal-testing/dummy-gemma")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/dummy-gemma")
+
+        torch.manual_seed(0)
+        config = GemmaConfig(
+            head_dim=4,
+            hidden_size=32,
+            intermediate_size=37,
+            num_attention_heads=4,
+            num_hidden_layers=2,
+            num_key_value_heads=4,
+        )
+        text_encoder = GemmaForCausalLM(config)
 
         components = {
             "transformer": transformer.eval(),
             "vae": vae.eval(),
             "scheduler": scheduler,
-            "text_encoder": text_encoder,
+            "text_encoder": text_encoder.eval(),
             "tokenizer": tokenizer,
         }
         return components
@@ -167,7 +177,3 @@ class LuminaText2ImgPipelineSlowTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4
-
-
-if __name__ == "__main__":
-    unittest.main()
