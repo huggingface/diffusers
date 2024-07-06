@@ -249,6 +249,8 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             The length of the clip text embedding.
         text_len_t5 (`int`, *optional*):
             The length of the T5 text embedding.
+        use_style_cond_and_image_meta_size (`bool`,  *optional*):
+            Whether or not to use style condition and image meta size. True for version <=1.1, False for version >= 1.2
     """
 
     @register_to_config
@@ -270,6 +272,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         pooled_projection_dim: int = 1024,
         text_len: int = 77,
         text_len_t5: int = 256,
+        use_style_cond_and_image_meta_size: bool = True,
     ):
         super().__init__()
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
@@ -301,6 +304,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             pooled_projection_dim=pooled_projection_dim,
             seq_len=text_len_t5,
             cross_attention_dim=cross_attention_dim_t5,
+            use_style_cond_and_image_meta_size=use_style_cond_and_image_meta_size,
         )
 
         # HunyuanDiT Blocks
