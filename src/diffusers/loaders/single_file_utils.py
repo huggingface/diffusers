@@ -1268,8 +1268,6 @@ def convert_open_clip_checkpoint(
     else:
         text_proj_dim = LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
 
-    text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
-
     keys = list(checkpoint.keys())
     keys_to_ignore = SD_2_TEXT_ENCODER_KEYS_TO_IGNORE
 
@@ -1317,9 +1315,6 @@ def convert_open_clip_checkpoint(
             text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :].clone().detach()
         else:
             text_model_dict[diffusers_key] = checkpoint.get(key)
-
-    if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
-        text_model_dict.pop("text_model.embeddings.position_ids", None)
 
     return text_model_dict
 
@@ -1414,17 +1409,17 @@ def create_diffusers_clip_model_from_ldm(
 
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        if model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
     else:
-        model.load_state_dict(diffusers_format_checkpoint)
+        _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
+
+    if model._keys_to_ignore_on_load_unexpected is not None:
+        for pat in model._keys_to_ignore_on_load_unexpected:
+            unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+    if len(unexpected_keys) > 0:
+        logger.warning(
+            f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+        )
 
     if torch_dtype is not None:
         model.to(torch_dtype)
@@ -1813,3 +1808,17 @@ def create_diffusers_t5_model_from_checkpoint(
 
     else:
         model.load_state_dict(diffusers_format_checkpoint)
+
+    use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (torch_dtype == torch.float16)
+    if use_keep_in_fp32_modules:
+        keep_in_fp32_modules = model._keep_in_fp32_modules
+    else:
+        keep_in_fp32_modules = []
+
+    if keep_in_fp32_modules is not None:
+        for name, param in model.named_parameters():
+            if any(module_to_keep_in_fp32 in name.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules):
+                # param = param.to(torch.float32) does not work here as only in the local scope.
+                param.data = param.data.to(torch.float32)
+
+    return model

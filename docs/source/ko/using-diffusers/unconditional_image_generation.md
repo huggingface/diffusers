@@ -54,7 +54,7 @@ Unconditional 이미지 생성은 비교적 간단한 작업입니다. 모델이
 ```python
  >>> image.save("generated_image.png")
 ```
-	
+
 아래 스페이스(데모 링크)를 이용해 보고, 추론 단계의 매개변수를 자유롭게 조절하여 이미지 품질에 어떤 영향을 미치는지 확인해 보세요!
 
 <iframe src="https://stevhliu-ddpm-butterflies-128.hf.space" frameborder="0" width="850" height="500"></iframe>

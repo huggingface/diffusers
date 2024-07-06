@@ -462,7 +462,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
-                same device.
+                same device. Defaults to `None`, meaning that the model will be loaded on CPU.
 
                 Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
                 more information about each option see [designing a device
@@ -774,7 +774,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
+                    force_hook = True
                     device_map = _determine_device_map(model, device_map, max_memory, torch_dtype)
+                    if device_map is None and is_sharded:
+                        # we load the parameters on the cpu
+                        device_map = {"": "cpu"}
+                        force_hook = False
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
@@ -784,7 +789,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             offload_folder=offload_folder,
                             offload_state_dict=offload_state_dict,
                             dtype=torch_dtype,
-                            force_hooks=True,
+                            force_hooks=force_hook,
                             strict=True,
                         )
                     except AttributeError as e:
@@ -808,12 +813,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             model._temp_convert_self_to_deprecated_attention_blocks()
                             accelerate.load_checkpoint_and_dispatch(
                                 model,
-                                model_file,
+                                model_file if not is_sharded else sharded_ckpt_cached_folder,
                                 device_map,
                                 max_memory=max_memory,
                                 offload_folder=offload_folder,
                                 offload_state_dict=offload_state_dict,
                                 dtype=torch_dtype,
+                                force_hooks=force_hook,
+                                strict=True,
                             )
                             model._undo_temp_convert_self_to_deprecated_attention_blocks()
                         else:
@@ -1162,7 +1169,7 @@ class LegacyModelMixin(ModelMixin):
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
-        # To prevent depedency import problem.
+        # To prevent dependency import problem.
         from .model_loading_utils import _fetch_remapped_cls_from_config
 
         # Create a copy of the kwargs so that we don't mess with the keyword arguments in the downstream calls.
