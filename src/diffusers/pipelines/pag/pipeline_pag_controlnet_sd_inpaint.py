@@ -52,9 +52,11 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> # !pip install transformers accelerate
+        >>> import cv2
         >>> from diffusers import StableDiffusionControlNetPAGInpaintPipeline, ControlNetModel, DDIMScheduler
         >>> from diffusers.utils import load_image
         >>> import numpy as np
+        >>> from PIL import Image
         >>> import torch
 
         >>> init_image = load_image(
@@ -84,7 +86,7 @@ EXAMPLE_DOC_STRING = """
         >>> controlnet = ControlNetModel.from_pretrained(
         ...     "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16
         ... )
-        >>> pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
+        >>> pipe = StableDiffusionControlNetPAGInpaintPipeline.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, enable_pag=True
         ... )
 
@@ -1383,6 +1385,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
             controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
         # 7.3 Optionally get Guidance Scale Embedding
+        timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
             guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
             timestep_cond = self.get_guidance_scale_embedding(
