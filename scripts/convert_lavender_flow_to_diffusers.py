@@ -119,7 +119,7 @@ def populate_state_dict(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--original_state_dict_repo_id", default="AuraDiffusion/auradiffusion-v0.1a0", type=str)
-    parser.add_argument("--dump_path", default="lavender-flow", type=str)
+    parser.add_argument("--dump_path", default="aura-flow", type=str)
     parser.add_argument("--hub_id", default=None, type=str)
     args = parser.parse_args()
 

@@ -1151,7 +1151,7 @@ class FusedJointAttnProcessor2_0:
 
 
 class AuraFlowAttnProcessor2_0:
-    """Attention processor used typically in processing Lavender Flow."""
+    """Attention processor used typically in processing Aura Flow."""
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention") and is_torch_version("<", "2.1"):
