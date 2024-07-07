@@ -1,4 +1,4 @@
-# Copyright 2024 Lavender-Flow Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 AuraFlow Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
 
 from ...image_processor import VaeImageProcessor
-from ...models import AutoencoderKL, LavenderFlowTransformer2DModel
+from ...models import AuraFlowTransformer2DModel, AutoencoderKL
 from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
@@ -89,7 +89,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class LavenderFlowPipeline(DiffusionPipeline):
+class AuraFlowPipeline(DiffusionPipeline):
     _optional_components = ["tokenizer", "text_encoder"]
     model_cpu_offload_seq = "text_encoder->transformer->vae"
 
@@ -98,7 +98,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
         tokenizer: T5Tokenizer,
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKL,
-        transformer: LavenderFlowTransformer2DModel,
+        transformer: AuraFlowTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
@@ -107,7 +107,9 @@ class LavenderFlowPipeline(DiffusionPipeline):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+        )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.check_inputs

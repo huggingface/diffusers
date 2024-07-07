@@ -208,7 +208,7 @@ class AdaLayerNormContinuous(nn.Module):
         # convert back to the original dtype in case `conditioning_embedding` is upcasted to float32 (needed for hunyuanDiT)
         emb = self.linear(self.silu(conditioning_embedding).to(x.dtype))
         scale, shift = torch.chunk(emb, 2, dim=1)
-        # lavender flow doesn't have a norm at one place here
+        # aura flow doesn't have a norm at one place here
         if self.norm is not None:
             x = self.norm(x)
         x = x * (1 + scale)[:, None, :] + shift[:, None, :]

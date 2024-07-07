@@ -3,7 +3,7 @@ import argparse
 import torch
 from huggingface_hub import hf_hub_download
 
-from diffusers.models.transformers.lavender_transformer_2d import LavenderFlowTransformer2DModel
+from diffusers.models.transformers.auraflow_transformer_2d import AuraFlowTransformer2DModel
 
 
 def load_original_state_dict(args):
@@ -108,7 +108,7 @@ def populate_state_dict(args):
     single_dit_layers = calculate_layers(state_dict_keys, key_prefix="single_layers")
 
     converted_state_dict = convert_transformer(original_state_dict)
-    model_diffusers = LavenderFlowTransformer2DModel(
+    model_diffusers = AuraFlowTransformer2DModel(
         num_mmdit_layers=mmdit_layers, num_single_dit_layers=single_dit_layers
     )
     model_diffusers.load_state_dict(converted_state_dict, strict=True)
@@ -119,7 +119,7 @@ def populate_state_dict(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--original_state_dict_repo_id", default="AuraDiffusion/auradiffusion-v0.1a0", type=str)
-    parser.add_argument("--dump_path", default="lavender-flow", type=str)
+    parser.add_argument("--dump_path", default="aura-flow", type=str)
     parser.add_argument("--hub_id", default=None, type=str)
     args = parser.parse_args()
 

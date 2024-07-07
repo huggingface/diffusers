@@ -103,7 +103,7 @@ class Attention(nn.Module):
         cross_attention_norm_num_groups: int = 32,
         qk_norm: Optional[str] = None,
         added_kv_proj_dim: Optional[int] = None,
-        added_proj_bias: Optional[bool] = None,
+        added_proj_bias: Optional[bool] = True,
         norm_num_groups: Optional[int] = None,
         spatial_norm_dim: Optional[int] = None,
         out_bias: bool = True,
@@ -1150,13 +1150,13 @@ class FusedJointAttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
-class LavenderFlowAttnProcessor2_0:
-    """Attention processor used typically in processing Lavender Flow."""
+class AuraFlowAttnProcessor2_0:
+    """Attention processor used typically in processing Aura Flow."""
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention") and is_torch_version("<", "2.1"):
             raise ImportError(
-                "LavenderFlowAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
+                "AuraFlowAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
             )
 
     def __call__(

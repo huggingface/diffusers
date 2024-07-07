@@ -1,4 +1,4 @@
-# Copyright 2024 Stability AI, Lavender Flow, The HuggingFace Team. All rights reserved.
+# Copyright 2024 AuraFlow Authors, The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention_processor import Attention, LavenderFlowAttnProcessor2_0
+from ..attention_processor import Attention, AuraFlowAttnProcessor2_0
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -32,16 +32,16 @@ from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, FP32LayerN
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Taken from the original lavender flow inference code.
+# Taken from the original aura flow inference code.
 def find_multiple(n: int, k: int) -> int:
     if n % k == 0:
         return n
     return n + k - (n % k)
 
 
-# Lavender Flow patch embed doesn't use convs for projections.
+# Aura Flow patch embed doesn't use convs for projections.
 # Additionally, it uses learned positional embeddings.
-class LavenderFlowPatchEmbed(nn.Module):
+class AuraFlowPatchEmbed(nn.Module):
     def __init__(
         self,
         height=224,
@@ -78,9 +78,9 @@ class LavenderFlowPatchEmbed(nn.Module):
         return latent + self.pos_embed
 
 
-# Taken from the original lavender flow inference code.
-# Our feedforward only has GELU but lavender uses SiLU.
-class LavenderFlowFeedForward(nn.Module):
+# Taken from the original Aura flow inference code.
+# Our feedforward only has GELU but Aura uses SiLU.
+class AuraFlowFeedForward(nn.Module):
     def __init__(self, dim, hidden_dim=None) -> None:
         super().__init__()
         if hidden_dim is None:
@@ -100,15 +100,15 @@ class LavenderFlowFeedForward(nn.Module):
 
 
 @maybe_allow_in_graph
-class LavenderFlowDiTTransformerBlock(nn.Module):
-    """Similar `LavenderFlowTransformerBlock with a single DiT instead of an MMDiT."""
+class AuraFlowDiTTransformerBlock(nn.Module):
+    """Similar `AuraFlowTransformerBlock with a single DiT instead of an MMDiT."""
 
     def __init__(self, dim, num_attention_heads, attention_head_dim):
         super().__init__()
 
         self.norm1 = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
 
-        processor = LavenderFlowAttnProcessor2_0()
+        processor = AuraFlowAttnProcessor2_0()
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
@@ -122,7 +122,7 @@ class LavenderFlowDiTTransformerBlock(nn.Module):
         )
 
         self.norm2 = FP32LayerNorm(dim, elementwise_affine=False, bias=False)
-        self.ff = LavenderFlowFeedForward(dim, dim * 4)
+        self.ff = AuraFlowFeedForward(dim, dim * 4)
 
     def forward(self, hidden_states: torch.FloatTensor, temb: torch.FloatTensor, i=9999):
         residual = hidden_states
@@ -144,9 +144,9 @@ class LavenderFlowDiTTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-class LavenderFlowTransformerBlock(nn.Module):
+class AuraFlowTransformerBlock(nn.Module):
     r"""
-    Transformer block for Lavender Flow. Similar to SD3 MMDiT. Differences (non-exhaustive):
+    Transformer block for Aura Flow. Similar to SD3 MMDiT. Differences (non-exhaustive):
 
         * QK Norm in the attention blocks
         * No bias in the attention blocks
@@ -173,7 +173,7 @@ class LavenderFlowTransformerBlock(nn.Module):
         elif context_norm_type == "ada_norm_zero":
             self.norm1_context = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
 
-        processor = LavenderFlowAttnProcessor2_0()
+        processor = AuraFlowAttnProcessor2_0()
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
@@ -190,10 +190,10 @@ class LavenderFlowTransformerBlock(nn.Module):
         )
 
         self.norm2 = FP32LayerNorm(dim, elementwise_affine=False, bias=False)
-        self.ff = LavenderFlowFeedForward(dim, dim * 4)
+        self.ff = AuraFlowFeedForward(dim, dim * 4)
         self.norm2_context = FP32LayerNorm(dim, elementwise_affine=False, bias=False)
         if not is_last:
-            self.ff_context = LavenderFlowFeedForward(dim, dim * 4)
+            self.ff_context = AuraFlowFeedForward(dim, dim * 4)
         else:
             self.ff_context = None
 
@@ -229,7 +229,7 @@ class LavenderFlowTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
+class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -252,7 +252,7 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
         self.out_channels = out_channels if out_channels is not None else default_out_channels
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
-        self.pos_embed = LavenderFlowPatchEmbed(
+        self.pos_embed = AuraFlowPatchEmbed(
             height=self.config.sample_size,
             width=self.config.sample_size,
             patch_size=self.config.patch_size,
@@ -269,7 +269,7 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
 
         self.joint_transformer_blocks = nn.ModuleList(
             [
-                LavenderFlowTransformerBlock(
+                AuraFlowTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
@@ -279,7 +279,7 @@ class LavenderFlowTransformer2DModel(ModelMixin, ConfigMixin):
         )
         self.single_transformer_blocks = nn.ModuleList(
             [
-                LavenderFlowDiTTransformerBlock(
+                AuraFlowDiTTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
