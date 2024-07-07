@@ -14,7 +14,6 @@
 import inspect
 from typing import Callable, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
 
@@ -430,7 +429,7 @@ class LavenderFlowPipeline(DiffusionPipeline):
 
         # 4. Prepare timesteps
 
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        # sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
@@ -454,12 +453,11 @@ class LavenderFlowPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+
+                # aura use timestep value between 0 and 1, with t=1 as noise and t=0 as the image
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = (
-                    torch.tensor([t / 1000])
-                    .expand(latent_model_input.shape[0])
-                    .to(latents.device, dtype=latents.dtype)
-                )
+                timestep = torch.tensor([t / 1000]).expand(latent_model_input.shape[0])
+                timestep = timestep.to(latents.device, dtype=latents.dtype)
 
                 # predict noise model_output
                 noise_pred = self.transformer(
