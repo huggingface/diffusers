@@ -63,8 +63,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             can be fine-tuned / trained to a lower range without loosing too much precision in which case
             `force_upcast` can be set to `False` - see: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix
         mid_block_add_attention (`bool`, *optional*, default to `True`):
-            If enabled, the mid_block of the Encoder and Decoder will have attention blocks. If set to false, the mid_block
-            will only have resnet blocks
+            If enabled, the mid_block of the Encoder and Decoder will have attention blocks. If set to false, the
+            mid_block will only have resnet blocks
     """
 
     _supports_gradient_checkpointing = True
