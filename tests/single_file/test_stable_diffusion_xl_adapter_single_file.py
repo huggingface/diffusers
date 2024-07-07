@@ -200,3 +200,11 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
                 local_files_only=True,
             )
         self._compare_component_configs(pipe, pipe_single_file)
+
+    def test_single_file_setting_pipeline_dtype_to_fp16(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
+
+        single_file_pipe = self.pipeline_class.from_single_file(
+            self.ckpt_path, adapter=adapter, torch_dtype=torch.float16
+        )
+        super().test_single_file_setting_pipeline_dtype_to_fp16(single_file_pipe)
