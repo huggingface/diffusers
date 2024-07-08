@@ -382,6 +382,10 @@ class ModelTesterMixin:
             # If not has `set_attn_processor`, skip test
             return
 
+        if not hasattr(model, "set_default_attn_processor"):
+            # If not has `set_attn_processor`, skip test
+            return
+
         model.set_default_attn_processor()
         assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
@@ -901,11 +905,13 @@ class ModelTesterMixin:
             actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(".safetensors")])
             self.assertTrue(actual_num_shards == expected_num_shards)
 
-            new_model = self.model_class.from_pretrained(tmp_dir)
+            new_model = self.model_class.from_pretrained(tmp_dir).eval()
             new_model = new_model.to(torch_device)
 
             torch.manual_seed(0)
+            _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
+
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
     @require_torch_gpu
@@ -936,6 +942,7 @@ class ModelTesterMixin:
             new_model = new_model.to(torch_device)
 
             torch.manual_seed(0)
+            _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 

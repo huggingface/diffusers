@@ -20,6 +20,7 @@ from ..utils import (
 _dummy_objects = {}
 _import_structure = {
     "controlnet": [],
+    "controlnet_hunyuandit": [],
     "controlnet_sd3": [],
     "controlnet_xs": [],
     "deprecated": [],
@@ -140,6 +141,7 @@ else:
     )
     _import_structure["pag"].extend(
         [
+            "StableDiffusionPAGPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGPipeline",
@@ -150,6 +152,11 @@ else:
         [
             "StableDiffusionControlNetXSPipeline",
             "StableDiffusionXLControlNetXSPipeline",
+        ]
+    )
+    _import_structure["controlnet_hunyuandit"].extend(
+        [
+            "HunyuanDiTControlNetPipeline",
         ]
     )
     _import_structure["controlnet_sd3"].extend(
@@ -202,6 +209,7 @@ else:
             "LEditsPPPipelineStableDiffusionXL",
         ]
     )
+    _import_structure["lumina"] = ["LuminaText2ImgPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -413,6 +421,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
         )
+        from .controlnet_hunyuandit import (
+            HunyuanDiTControlNetPipeline,
+        )
         from .controlnet_sd3 import (
             StableDiffusion3ControlNetPipeline,
         )
@@ -480,12 +491,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
+        from .lumina import LuminaText2ImgPipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldNormalsPipeline,
         )
         from .musicldm import MusicLDMPipeline
         from .pag import (
+            StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGPipeline,
             StableDiffusionXLPAGImg2ImgPipeline,
             StableDiffusionXLPAGInpaintPipeline,

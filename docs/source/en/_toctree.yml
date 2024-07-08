@@ -249,6 +249,8 @@
       title: DiTTransformer2DModel
     - local: api/models/hunyuan_transformer2d
       title: HunyuanDiT2DModel
+    - local: api/models/lumina_nextdit2d
+      title: LuminaNextDiT2DModel
     - local: api/models/transformer_temporal
       title: TransformerTemporalModel
     - local: api/models/sd3_transformer2d
@@ -257,6 +259,8 @@
       title: PriorTransformer
     - local: api/models/controlnet
       title: ControlNetModel
+    - local: api/models/controlnet_hunyuandit
+      title: HunyuanDiT2DControlNetModel
     - local: api/models/controlnet_sd3
       title: SD3ControlNetModel
     title: Models
@@ -282,6 +286,8 @@
       title: Consistency Models
     - local: api/pipelines/controlnet
       title: ControlNet
+    - local: api/pipelines/controlnet_hunyuandit
+      title: ControlNet with Hunyuan-DiT
     - local: api/pipelines/controlnet_sd3
       title: ControlNet with Stable Diffusion 3
     - local: api/pipelines/controlnet_sdxl
@@ -320,6 +326,8 @@
       title: Latent Diffusion
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/lumina
+      title: Lumina-T2X
     - local: api/pipelines/marigold
       title: Marigold
     - local: api/pipelines/panorama
@@ -431,6 +439,8 @@
       title: EulerDiscreteScheduler
     - local: api/schedulers/flow_match_euler_discrete
       title: FlowMatchEulerDiscreteScheduler
+    - local: api/schedulers/flow_match_heun_discrete
+      title: FlowMatchHeunDiscreteScheduler
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
