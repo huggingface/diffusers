@@ -19,7 +19,7 @@ from torch import nn
 
 from ..utils import deprecate, logging
 from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import GEGLU, GELU, ApproximateGELU
+from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU
 from .attention_processor import Attention, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm
@@ -128,9 +128,9 @@ class JointTransformerBlock(nn.Module):
             query_dim=dim,
             cross_attention_dim=None,
             added_kv_proj_dim=dim,
-            dim_head=attention_head_dim // num_attention_heads,
+            dim_head=attention_head_dim,
             heads=num_attention_heads,
-            out_dim=attention_head_dim,
+            out_dim=dim,
             context_pre_only=context_pre_only,
             bias=True,
             processor=processor,
@@ -525,6 +525,56 @@ class BasicTransformerBlock(nn.Module):
             hidden_states = hidden_states.squeeze(1)
 
         return hidden_states
+
+
+class LuminaFeedForward(nn.Module):
+    r"""
+    A feed-forward layer.
+
+    Parameters:
+        hidden_size (`int`):
+            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's
+            hidden representations.
+        intermediate_size (`int`): The intermediate dimension of the feedforward layer.
+        multiple_of (`int`, *optional*): Value to ensure hidden dimension is a multiple
+            of this value.
+        ffn_dim_multiplier (float, *optional*): Custom multiplier for hidden
+            dimension. Defaults to None.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        inner_dim: int,
+        multiple_of: Optional[int] = 256,
+        ffn_dim_multiplier: Optional[float] = None,
+    ):
+        super().__init__()
+        inner_dim = int(2 * inner_dim / 3)
+        # custom hidden_size factor multiplier
+        if ffn_dim_multiplier is not None:
+            inner_dim = int(ffn_dim_multiplier * inner_dim)
+        inner_dim = multiple_of * ((inner_dim + multiple_of - 1) // multiple_of)
+
+        self.linear_1 = nn.Linear(
+            dim,
+            inner_dim,
+            bias=False,
+        )
+        self.linear_2 = nn.Linear(
+            inner_dim,
+            dim,
+            bias=False,
+        )
+        self.linear_3 = nn.Linear(
+            dim,
+            inner_dim,
+            bias=False,
+        )
+        self.silu = FP32SiLU()
+
+    def forward(self, x):
+        return self.linear_2(self.silu(self.linear_1(x)) * self.linear_3(x))
 
 
 @maybe_allow_in_graph
