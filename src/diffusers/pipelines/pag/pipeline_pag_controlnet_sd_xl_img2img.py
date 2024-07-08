@@ -1300,7 +1300,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
             pag_adaptive_scale (`float`, *optional*, defaults to 0.0):
                 The adaptive scale factor for the perturbed attention guidance. If it is set to 0.0, `pag_scale` is
                 used.
-                
+
 
         Examples:
 
@@ -1309,3 +1309,43 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
             [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a `tuple`
             containing the output images.
         """
+
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs 
+
+        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet 
+
+        # align format for control guidance 
+        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
+            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
+        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
+            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
+
+        # 1. Check inputs. Raise error if not correct 
+        self.check_inputs(
+            prompt,
+            prompt_2,
+            control_image,
+            strength,
+            num_inference_steps,
+            None,
+            negative_prompt,
+            negative_prompt_2,
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+            ip_adapter_image,
+            ip_adapter_image_embeds,
+            controlnet_conditioning_scale,
+            control_guidance_start,
+            control_guidance_end,
+            callback_on_step_end_tensor_inputs,
+            
+        )
