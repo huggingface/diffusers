@@ -255,7 +255,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                 )
 
             if enable_temporal_attentions:
-                # (b f) t d -> (b t) f d
+                # (batch_size * num_frame) num_patches hidden_size -> (batch_size * num_patches) num_frame hidden_size
                 hidden_states = hidden_states.reshape(batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
                 hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
@@ -285,7 +285,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                         None, # class_labels
                     )
 
-                # (b f) t d -> (b t) f d
+                # (batch_size * num_frame) num_patches hidden_size -> (batch_size * num_patches) num_frame hidden_size
                 hidden_states = hidden_states.reshape(batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
                 hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
