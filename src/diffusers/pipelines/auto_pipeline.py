@@ -952,7 +952,8 @@ class AutoPipelineForInpainting(ConfigMixin):
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
                 if "controlnet" in kwargs:
-                    orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPAGPipeline")
+                    # TODO: Replace ControlNetPAGInpaintPipeline to ControlNetPipeline when available
+                    orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPAGInpaintPipeline")
                 else:
                     orig_class_name = config["_class_name"].replace("Pipeline", "PAGPipeline")
 
