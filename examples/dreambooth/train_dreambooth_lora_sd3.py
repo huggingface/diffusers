@@ -101,19 +101,37 @@ def save_model_card(
 
 ## Model description
 
-These are {repo_id} DreamBooth weights for {base_model}.
+These are {repo_id} DreamBooth LoRA weights for {base_model}.
 
-The weights were trained  using [DreamBooth](https://dreambooth.github.io/).
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [SD3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sd3.md).
 
-LoRA for the text encoder was enabled: {train_text_encoder}.
+Was LoRA for the text encoder enabled? {train_text_encoder}.
 
 ## Trigger words
 
-You should use {instance_prompt} to trigger the image generation.
+You should use `{instance_prompt}` to trigger the image generation.
 
 ## Download model
 
-[Download]({repo_id}/tree/main) them in the Files & versions tab.
+[Download the *.safetensors LoRA]({repo_id}/tree/main) in the Files & versions tab.
+
+## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
+
+```py
+from diffusers import AutoPipelineForText2Image
+import torch
+pipeline = AutoPipelineForText2Image.from_pretrained('stabilityai/stable-diffusion-3-medium-diffusers', torch_dtype=torch.float16).to('cuda')
+pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
+image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
+```
+
+### Use it with UIs such as AUTOMATIC1111, Comfy UI, SD.Next, Invoke
+
+- **LoRA**: download **[`diffusers_lora_weights.safetensors` here 💾](/{repo_id}/blob/main/diffusers_lora_weights.safetensors)**.
+    - Rename it and place it on your `models/Lora` folder.
+    - On AUTOMATIC1111, load the LoRA by adding `<lora:your_new_name:1>` to your prompt. On ComfyUI just [load it as a regular LoRA](https://comfyanonymous.github.io/ComfyUI_examples/lora/).
+
+For more details, including weighting, merging and fusing LoRAs, check the [documentation on loading LoRAs in diffusers](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters)
 
 ## License
 
@@ -962,7 +980,7 @@ def encode_prompt(
             prompt=prompt,
             device=device if device is not None else text_encoder.device,
             num_images_per_prompt=num_images_per_prompt,
-            text_input_ids=text_input_ids_list[i],
+            text_input_ids=text_input_ids_list[i] if text_input_ids_list else None,
         )
         clip_prompt_embeds_list.append(prompt_embeds)
         clip_pooled_prompt_embeds_list.append(pooled_prompt_embeds)
@@ -976,7 +994,7 @@ def encode_prompt(
         max_sequence_length,
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
-        text_input_ids=text_input_ids_list[:-1],
+        text_input_ids=text_input_ids_list[-1] if text_input_ids_list else None,
         device=device if device is not None else text_encoders[-1].device,
     )
 
@@ -1491,6 +1509,9 @@ def main(args):
         ) = accelerator.prepare(
             transformer, text_encoder_one, text_encoder_two, optimizer, train_dataloader, lr_scheduler
         )
+        assert text_encoder_one is not None
+        assert text_encoder_two is not None
+        assert text_encoder_three is not None
     else:
         transformer, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
             transformer, optimizer, train_dataloader, lr_scheduler
@@ -1598,7 +1619,7 @@ def main(args):
                         tokens_three = tokenize_prompt(tokenizer_three, prompts)
                         prompt_embeds, pooled_prompt_embeds = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two, text_encoder_three],
-                            tokenizers=[None, None, tokenizer_three],
+                            tokenizers=[None, None, None],
                             prompt=prompts,
                             max_sequence_length=args.max_sequence_length,
                             text_input_ids_list=[tokens_one, tokens_two, tokens_three],
@@ -1608,7 +1629,7 @@ def main(args):
                         prompt_embeds, pooled_prompt_embeds = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two, text_encoder_three],
                             tokenizers=[None, None, tokenizer_three],
-                            prompt=prompts,
+                            prompt=args.instance_prompt,
                             max_sequence_length=args.max_sequence_length,
                             text_input_ids_list=[tokens_one, tokens_two, tokens_three],
                         )
@@ -1685,10 +1706,12 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = itertools.chain(
-                        transformer_lora_parameters,
-                        text_lora_parameters_one,
-                        text_lora_parameters_two if args.train_text_encoder else transformer_lora_parameters,
+                    params_to_clip = (
+                        itertools.chain(
+                            transformer_lora_parameters, text_lora_parameters_one, text_lora_parameters_two
+                        )
+                        if args.train_text_encoder
+                        else transformer_lora_parameters
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
@@ -1741,13 +1764,6 @@ def main(args):
                     text_encoder_one, text_encoder_two, text_encoder_three = load_text_encoders(
                         text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three
                     )
-                else:
-                    text_encoder_three = text_encoder_cls_three.from_pretrained(
-                        args.pretrained_model_name_or_path,
-                        subfolder="text_encoder_3",
-                        revision=args.revision,
-                        variant=args.variant,
-                    )
                 pipeline = StableDiffusion3Pipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -1767,7 +1783,9 @@ def main(args):
                     pipeline_args=pipeline_args,
                     epoch=epoch,
                 )
-                del text_encoder_one, text_encoder_two, text_encoder_three
+                if not args.train_text_encoder:
+                    del text_encoder_one, text_encoder_two, text_encoder_three
+
                 torch.cuda.empty_cache()
                 gc.collect()
 
