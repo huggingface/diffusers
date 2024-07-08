@@ -260,7 +260,7 @@ diffuser_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="speech_to_image_diffusion",
     speech_model=model,
     speech_processor=processor,
-    
+
     torch_dtype=torch.float16,
 )
 

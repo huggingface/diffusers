@@ -30,6 +30,7 @@ from ..utils import (
     _get_model_file,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
+    convert_unet_state_dict_to_peft,
     delete_adapter_layers,
     get_adapter_name,
     get_peft_kwargs,
@@ -42,7 +43,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from .lora_conversion_utils import _convert_kohya_lora_to_diffusers, _maybe_map_sgm_blocks_to_diffusers
+from .lora_conversion_utils import _convert_non_diffusers_lora_to_diffusers, _maybe_map_sgm_blocks_to_diffusers
 
 
 if is_transformers_available():
@@ -287,7 +288,7 @@ class LoraLoaderMixin:
             if unet_config is not None:
                 # use unet config to remap block numbers
                 state_dict = _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
-            state_dict, network_alphas = _convert_kohya_lora_to_diffusers(state_dict)
+            state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
 
@@ -395,8 +396,7 @@ class LoraLoaderMixin:
         # their prefixes.
         keys = list(state_dict.keys())
         only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
-
-        if any(key.startswith(cls.unet_name) for key in keys) and not only_text_encoder:
+        if not only_text_encoder:
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
             unet.load_attn_procs(
@@ -1543,6 +1543,11 @@ class SD3LoraLoaderMixin:
         }
 
         if len(state_dict.keys()) > 0:
+            # check with first key if is not in peft format
+            first_key = next(iter(state_dict.keys()))
+            if "lora_A" not in first_key:
+                state_dict = convert_unet_state_dict_to_peft(state_dict)
+
             if adapter_name in getattr(transformer, "peft_config", {}):
                 raise ValueError(
                     f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
@@ -1595,6 +1600,8 @@ class SD3LoraLoaderMixin:
         cls,
         save_directory: Union[str, os.PathLike],
         transformer_lora_layers: Dict[str, torch.nn.Module] = None,
+        text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -1626,11 +1633,19 @@ class SD3LoraLoaderMixin:
             layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
             return layers_state_dict
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if not (transformer_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
+            raise ValueError(
+                "You must pass at least one of `transformer_lora_layers`, `text_encoder_lora_layers`, `text_encoder_2_lora_layers`."
+            )
 
         if transformer_lora_layers:
             state_dict.update(pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if text_encoder_lora_layers:
+            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+
+        if text_encoder_2_lora_layers:
+            state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
         # Save the model
         cls.write_lora_layers(
