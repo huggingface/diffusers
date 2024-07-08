@@ -478,9 +478,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                                 create_custom_forward(block), x, r_embed, use_reentrant=False
                             )
                         else:
-                            x = x = torch.utils.checkpoint.checkpoint(
-                                create_custom_forward(block), use_reentrant=False
-                            )
+                            x = torch.utils.checkpoint.checkpoint(create_custom_forward(block), use_reentrant=False)
                     if i < len(repmap):
                         x = repmap[i](x)
                 level_outputs.insert(0, x)
