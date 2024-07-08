@@ -39,25 +39,26 @@ def get_timestep_embedding(
         timesteps (torch.Tensor):
             a 1-D Tensor of N indices, one per batch element. These may be fractional.
         embedding_dim (int):
-            the dimension of the output. 
+            the dimension of the output.
+        flip_sin_to_cos (bool):
+            Whether the embedding order should be `cos, sin` (if True) or `sin, cos` (if False)
+        downscale_freq_shift (float):
+            Controls the delta between frequencies between dimensions
+        scale (float):
+            The minimum frequency of the embeddings.
         max_period (int):
-            controls the minimum frequency of the embeddings.
+            Controls the maximum frequency of the embeddings
     Returns
         torch.Tensor: an [N x dim] Tensor of positional embeddings.
     """
     assert len(timesteps.shape) == 1, "Timesteps should be a 1d-array"
 
     half_dim = embedding_dim // 2
-    exponent = -math.log(max_period) * torch.arange(
-        start=0, end=half_dim, dtype=torch.float32, device=timesteps.device
-    )
-    exponent = exponent / (half_dim - downscale_freq_shift)
+    steps = torch.arange(start=0, end=half_dim, dtype=torch.float32, device=timesteps.device)
+    steps = steps / (half_dim - downscale_freq_shift)
 
-    emb = torch.exp(exponent)
+    emb = scale * torch.pow(max_period, -steps)
     emb = timesteps[:, None].float() * emb[None, :]
-
-    # scale embeddings
-    emb = scale * emb
 
     # concat sine and cosine embeddings
     emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
