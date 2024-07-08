@@ -6,6 +6,7 @@ if is_torch_available():
     from .dual_transformer_2d import DualTransformer2DModel
     from .hunyuan_transformer_2d import HunyuanDiT2DModel
     from .latte_transformer_3d import LatteTransformer3DModel
+    from .lumina_nextdit2d import LuminaNextDiT2DModel
     from .pixart_transformer_2d import PixArtTransformer2DModel
     from .prior_transformer import PriorTransformer
     from .t5_film_transformer import T5FilmDecoder

@@ -28,7 +28,7 @@ from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
-from .transformer_2d import Transformer2DModelOutput
+from ..modeling_outputs import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -97,7 +97,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 JointTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
-                    attention_head_dim=self.inner_dim,
+                    attention_head_dim=self.config.attention_head_dim,
                     context_pre_only=i == num_layers - 1,
                 )
                 for i in range(self.config.num_layers)
@@ -152,7 +152,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
