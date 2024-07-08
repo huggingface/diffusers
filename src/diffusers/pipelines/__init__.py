@@ -145,6 +145,7 @@ else:
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGPipeline",
+            "StableDiffusionControlNetPAGImg2ImgPipeline",
             "StableDiffusionXLPAGImg2ImgPipeline",
         ]
     )
@@ -497,6 +498,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGImg2ImgPipeline,
             StableDiffusionXLPAGInpaintPipeline,
             StableDiffusionXLPAGPipeline,
+            StableDiffusionControlNetPAGImg2ImgPipeline,
         )
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline

@@ -44,3 +44,8 @@ The abstract from the paper is:
 [[autodoc]] StableDiffusionXLControlNetPAGPipeline
 	- all
 	- __call__
+
+## StableDiffusionControlNetPAGImg2ImgPipeline
+[[autodoc]] StableDiffusionControlNetPAGImg2ImgPipeline
+	- all
+	- __call__
