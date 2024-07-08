@@ -457,6 +457,15 @@ class UNet2DConditionLoadersMixin:
         )
         if is_custom_diffusion:
             state_dict = self._get_custom_diffusion_state_dict()
+            if save_function is None and safe_serialization:
+                # safetensors does not support saving dicts with non-tensor values
+                empty_state_dict = {k: v for k, v in state_dict.items() if not isinstance(v, torch.Tensor)}
+                if len(empty_state_dict) > 0:
+                    logger.warning(
+                        f"Safetensors does not support saving dicts with non-tensor values. "
+                        f"The following keys will be ignored: {empty_state_dict.keys()}"
+                    )
+                state_dict = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
         else:
             if not USE_PEFT_BACKEND:
                 raise ValueError("PEFT backend is required for saving LoRAs using the `save_attn_procs()` method.")
@@ -922,8 +931,6 @@ class UNet2DConditionLoadersMixin:
 
     def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
         from ..models.attention_processor import (
-            AttnProcessor,
-            AttnProcessor2_0,
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
         )
@@ -963,9 +970,7 @@ class UNet2DConditionLoadersMixin:
                 hidden_size = self.config.block_out_channels[block_id]
 
             if cross_attention_dim is None or "motion_modules" in name:
-                attn_processor_class = (
-                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                )
+                attn_processor_class = self.attn_processors[name].__class__
                 attn_procs[name] = attn_processor_class()
 
             else:
