@@ -987,7 +987,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline):
                 f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
                 f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
             )
-        latent_timestep = timesteps[:1].repeat(batch_size * num_inference_steps)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
         is_strength_max = strength == 1.0
