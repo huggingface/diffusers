@@ -177,7 +177,12 @@ def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool
     def get_model(pipeline_class_name):
         for task_mapping in SUPPORTED_TASKS_MAPPINGS:
             for model_name, pipeline in task_mapping.items():
+                print(f"model_name {model_name}")
+                print(f"pipeline {pipeline}")
                 if pipeline.__name__ == pipeline_class_name:
+                    print("Inside if pipeline.__name__ == pipeline_class_name:")
+                    print(f"pipeline.__name__ {pipeline.__name__}")
+                    print(f"pipeline_class_name {pipeline_class_name}")
                     return model_name
 
     model_name = get_model(pipeline_class_name)
