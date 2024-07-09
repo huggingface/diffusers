@@ -758,8 +758,8 @@ class LattePipeline(DiffusionPipeline):
 
                 # use learned sigma?
                 if not (
-                hasattr(self.scheduler.config, "variance_type")
-                and self.scheduler.config.variance_type in ["learned", "learned_range"]
+                    hasattr(self.scheduler.config, "variance_type")
+                    and self.scheduler.config.variance_type in ["learned", "learned_range"]
                 ):
                     noise_pred = noise_pred.chunk(2, dim=1)[0]
 
