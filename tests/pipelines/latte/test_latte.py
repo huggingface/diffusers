@@ -41,8 +41,7 @@ from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 enable_full_determinism()
 
-
-class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = LattePipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
