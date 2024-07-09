@@ -142,7 +142,8 @@ else:
     _import_structure["pag"].extend(
         [
             "StableDiffusionPAGPipeline",
-            "StableDiffusionControlNetPAGPipeline" "StableDiffusionXLPAGPipeline",
+            "StableDiffusionControlNetPAGPipeline",
+            "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGPipeline",
             "StableDiffusionXLPAGImg2ImgPipeline",
