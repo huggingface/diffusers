@@ -159,21 +159,11 @@ class AuraFlowTransformerBlock(nn.Module):
         is_last (`bool`): Boolean to determine if this is the last block in the model.
     """
 
-    def __init__(self, dim, num_attention_heads, attention_head_dim, context_norm_type="ada_norm_zero"):
+    def __init__(self, dim, num_attention_heads, attention_head_dim):
         super().__init__()
 
         self.norm1 = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
-
-        if context_norm_type == "ada_norm_continous":
-            self.norm1_context = AdaLayerNormContinuous(
-                dim, dim, elementwise_affine=False, bias=False, norm_type="fp32_layer_norm"
-            )
-        elif context_norm_type == "ada_norm_zero":
-            self.norm1_context = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
-        else:
-            raise ValueError(
-                "Invalid norm type provided for `context_norm_type`. Valid values are are: 'ada_norm_continous' and 'ada_norm_zero'."
-            )
+        self.norm1_context = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
 
         processor = AuraFlowAttnProcessor2_0()
         self.attn = Attention(
