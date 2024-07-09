@@ -274,7 +274,7 @@ def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
         return emb
 
 
-def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float = 10000.0, use_real=False):
+def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float = 10000.0, use_real=False, repeat_interleave_real=True):
     """
     Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
 
@@ -289,6 +289,8 @@ def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float 
             Scaling factor for frequency computation. Defaults to 10000.0.
         use_real (`bool`, *optional*):
             If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+        repeat_interleave_real (`bool`, *optional*, defaults to `True`):
+            If `True` and `use_real`, real part and imaginary part are each interleaved with themselves to reach `dim`. Otherwise, they are concateanted with themselves..
 
     Returns:
         `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
@@ -298,14 +300,50 @@ def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float 
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))  # [D/2]
     t = torch.from_numpy(pos).to(freqs.device)  # type: ignore  # [S]
     freqs = torch.outer(t, freqs).float()  # type: ignore   # [S, D/2]
-    if use_real:
+    if use_real and repeat_interleave_real:
         freqs_cos = freqs.cos().repeat_interleave(2, dim=1)  # [S, D]
         freqs_sin = freqs.sin().repeat_interleave(2, dim=1)  # [S, D]
         return freqs_cos, freqs_sin
+    elif use_real:
+        freqs_cos = torch.cat([freqs.cos(), freqs.cos()], dim = -1) # [S, D]
+        freqs_sin = torch.cat([freqs.sin(), freqs.sin()], dim = -1) # [S, D]
+        return freqs_cos, freqs_sin 
     else:
         freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
         return freqs_cis
 
+def apply_partial_rotary_emb(
+    x: torch.Tensor,
+    freqs_cis: Tuple[torch.Tensor],
+) -> torch.Tensor:
+    """
+    Apply partial rotary embeddings (Wang et al. GPT-J) to input tensors using the given frequency tensor. This function applies rotary embeddings
+    to the given query or key 'x' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
+    reshaped as complex numbers, and the frequency tensor is reshaped for broadcasting compatibility. The resulting
+    tensors contain rotary embeddings and are returned as real tensors.
+
+    Args:
+        x (`torch.Tensor`):
+            Query or key tensor to apply rotary embeddings. [B, H, S, D] xk (torch.Tensor): Key tensor to apply
+        freqs_cis (`Tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D // 2], [S, D // 2],)
+
+    Returns:
+        torch.Tensor: Modified query or key tensor with rotary embeddings.
+    """
+    cos, sin = freqs_cis  # [S, D // 2]
+    cos = cos[None, None]
+    sin = sin[None, None]
+    cos, sin = cos.to(x.device), sin.to(x.device)
+      
+    rot_dim = cos.shape[-1]
+
+    x_to_rotate, x_unrotated = x[..., :rot_dim], x[..., rot_dim:]
+    x_real, x_imag = x_to_rotate.reshape(*x_to_rotate.shape[:-1], 2, -1).unbind(dim=-2)  # [B, S, H, D//4]
+    x_rotated = torch.cat([-x_imag, x_real], dim=-1)
+    out = (x_to_rotate * cos) + (x_rotated * sin)
+
+    out = torch.cat((out, x_unrotated), dim = -1)
+    return out
 
 def apply_rotary_emb(
     x: torch.Tensor,
