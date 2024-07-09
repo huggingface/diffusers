@@ -1448,6 +1448,9 @@ class StableDiffusionControlNetPAGInpaintPipeline(
 
                 # predict the noise residual
                 if num_channels_unet == 9:
+                    print("latent_model_input shape:", latent_model_input.shape)
+                    print("mask shape:", mask.shape)
+                    print("masked_image_latents shape:", masked_image_latents.shape)
                     latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 noise_pred = self.unet(
