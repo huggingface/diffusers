@@ -23,14 +23,7 @@ from ...loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMi
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unets.unet_motion_model import MotionAdapter
-from ...schedulers import (
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-)
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
     logging,
@@ -52,15 +45,33 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+        >>> from diffusers import AnimateDiffPAGPipeline, MotionAdapter, DDIMScheduler
         >>> from diffusers.utils import export_to_gif
 
-        >>> adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
-        >>> pipe = AnimateDiffPipeline.from_pretrained("frankjoshua/toonyou_beta6", motion_adapter=adapter)
-        >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False)
-        >>> output = pipe(prompt="A corgi walking in the park")
-        >>> frames = output.frames[0]
-        >>> export_to_gif(frames, "animation.gif")
+        >>> model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+        >>> motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-2"
+        >>> motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id)
+        >>> scheduler = DDIMScheduler.from_pretrained(
+        ...     model_id, subfolder="scheduler", beta_schedule="linear", steps_offset=1, clip_sample=False
+        ... )
+        >>> pipe = AnimateDiffPAGPipeline.from_pretrained(
+        ...     model_id,
+        ...     motion_adapter=motion_adapter,
+        ...     scheduler=scheduler,
+        ...     pag_applied_layers=["mid"],
+        ...     torch_dtype=torch.float16,
+        ... ).to("cuda")
+
+        >>> video = pipe(
+        ...     prompt="car, futuristic cityscape with neon lights, street, no human",
+        ...     negative_prompt="low quality, bad quality",
+        ...     num_inference_steps=25,
+        ...     guidance_scale=6.0,
+        ...     pag_scale=3.0,
+        ...     generator=torch.Generator().manual_seed(42),
+        ... ).frames[0]
+
+        >>> export_to_gif(video, "animatediff_pag.gif")
         ```
 """
 
@@ -75,7 +86,9 @@ class AnimateDiffPAGPipeline(
     PAGMixin,
 ):
     r"""
-    Pipeline for text-to-video generation.
+    Pipeline for text-to-video generation using
+    [AnimateDiff](https://huggingface.co/docs/diffusers/en/api/pipelines/animatediff) and [Perturbed Attention
+    Guidance](https://huggingface.co/docs/diffusers/en/using-diffusers/pag).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -113,14 +126,7 @@ class AnimateDiffPAGPipeline(
         tokenizer: CLIPTokenizer,
         unet: Union[UNet2DConditionModel, UNetMotionModel],
         motion_adapter: MotionAdapter,
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
+        scheduler: KarrasDiffusionSchedulers,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
         pag_applied_layers: Union[str, List[str]] = "mid",  # ["mid"], ["down.block_1"], ["up.block_0.attentions_0"]
@@ -429,6 +435,7 @@ class AnimateDiffPAGPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.pia.pipeline_pia.PIAPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -712,7 +719,7 @@ class AnimateDiffPAGPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(
+            ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
                 device,
