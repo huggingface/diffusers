@@ -90,7 +90,7 @@ def retrieve_timesteps(
 
 
 class AuraFlowPipeline(DiffusionPipeline):
-    _optional_components = ["tokenizer", "text_encoder"]
+    _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
 
     def __init__(
@@ -183,8 +183,8 @@ class AuraFlowPipeline(DiffusionPipeline):
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
+        negative_prompt: Union[str, List[str]] = None,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: str = "This is watermark, jpeg image white background, web image",
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -269,6 +269,7 @@ class AuraFlowPipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
+            negative_prompt = negative_prompt or ""
             uncond_tokens = [negative_prompt] * batch_size if isinstance(negative_prompt, str) else negative_prompt
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -357,7 +358,7 @@ class AuraFlowPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        negative_prompt: str = "This is watermark, jpeg image white background, web image",
+        negative_prompt: Union[str, List[str]] = None,
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
         sigmas: List[float] = None,
@@ -415,9 +416,9 @@ class AuraFlowPipeline(DiffusionPipeline):
             negative_prompt_embeds,
             negative_prompt_attention_mask,
         ) = self.encode_prompt(
-            prompt,
-            do_classifier_free_guidance,
+            prompt=prompt,
             negative_prompt=negative_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
             device=device,
             prompt_embeds=prompt_embeds,
