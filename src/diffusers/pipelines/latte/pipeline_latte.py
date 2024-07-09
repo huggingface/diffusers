@@ -63,6 +63,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+# Copied from diffusers/pipelines/stable_video_diffusion/pipeline_stable_video_diffusion.py
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -797,7 +798,6 @@ class LattePipeline(DiffusionPipeline):
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents
-            return LattePipelineOutput(frames=video)
 
         # Offload all models
         self.maybe_free_model_hooks()
