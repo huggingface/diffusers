@@ -1448,6 +1448,9 @@ class StableDiffusionControlNetPAGInpaintPipeline(
 
                 # predict the noise residual
                 if num_channels_unet == 9:
+                    first_dim_size = latent_model_input.shape[0]
+                    mask = mask.expand(first_dim_size, -1, -1, -1)
+                    masked_image_latents = masked_image_latents.expand(first_dim_size, -1, -1, -1)
                     print("latent_model_input shape:", latent_model_input.shape)
                     print("mask shape:", mask.shape)
                     print("masked_image_latents shape:", masked_image_latents.shape)
