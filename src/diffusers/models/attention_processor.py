@@ -23,7 +23,6 @@ from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, logging
 from ..utils.import_utils import is_torch_npu_available, is_xformers_available
 from ..utils.torch_utils import is_torch_version, maybe_allow_in_graph
-from .normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -120,6 +119,9 @@ class Attention(nn.Module):
         context_pre_only=None,
     ):
         super().__init__()
+
+        # To prevent circular import.
+        from .normalization import FP32LayerNorm
 
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.inner_kv_dim = self.inner_dim if kv_heads is None else dim_head * kv_heads
