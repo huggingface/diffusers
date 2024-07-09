@@ -97,7 +97,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/sdxl-turbo-img2img.png" alt="Image-to-image generation sample using SDXL Turbo"/>
 </div>
 
-## TODO SDXL Turbo 속도 훨씬 더 빠르게 하기
+## SDXL Turbo 속도 훨씬 더 빠르게 하기
 
 - PyTorch 버전 2 이상을 사용하는 경우 UNet을 컴파일합니다. 첫 번째 추론 실행은 매우 느리지만 이후 실행은 훨씬 빨라집니다.
 

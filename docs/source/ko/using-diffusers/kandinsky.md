@@ -522,7 +522,6 @@ images_texts = ["a cat", img_1, img_2]
 weights = [0.3, 0.3, 0.4]
 ```
 
-Call the `interpolate` function to generate the embeddings, and then pass them to the pipeline to generate the image:
 `interpolate` 함수를 호출하여 임베딩을 생성한 다음, 파이프라인으로 전달하여 이미지를 생성합니다:
 
 <hfoptions id="interpolate">

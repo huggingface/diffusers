@@ -52,7 +52,7 @@ images = pipe(
 ).images
 ```
 
-
+Now use the [`~utils.export_to_gif`] function to turn the list of image frames into a gif of the 3D object.
 
 ```py
 from diffusers.utils import export_to_gif
