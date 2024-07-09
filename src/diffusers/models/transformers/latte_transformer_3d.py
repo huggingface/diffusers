@@ -221,6 +221,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
             timestep, added_cond_kwargs=added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype)
 
         # Prepare text embeddings for spatial block
+        # batch_size num_tokens hidden_size -> (batch_size * num_frame) num_tokens hidden_size
         encoder_hidden_states = self.caption_projection(encoder_hidden_states) # 3 120 1152
         encoder_hidden_states_spatial = encoder_hidden_states.repeat_interleave(num_frame, dim=0).view(-1, encoder_hidden_states.shape[-2], encoder_hidden_states.shape[-1])
 
