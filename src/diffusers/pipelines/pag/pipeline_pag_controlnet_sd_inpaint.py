@@ -915,7 +915,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
 
         return image_latents
 
-        # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
+    # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
         self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
     ) -> torch.Tensor:
@@ -1229,7 +1229,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
                 self.do_classifier_free_guidance,
             )
 
-        # 4. Prepare image
+        # 4. Prepare control image
         if isinstance(controlnet, ControlNetModel):
             control_image = self.prepare_control_image(
                 image=control_image,
@@ -1331,10 +1331,29 @@ class StableDiffusionControlNetPAGInpaintPipeline(
             self.do_classifier_free_guidance,
         )
 
-        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 7.1 Check that sizes of mask, masked image and latents match
+        # Copied from diffusers.pipelines.pag.pipeline_pag_sd_xl_inpaint.StableDiffusionXLPAGInpaintPipeline.__call__
+        if num_channels_unet == 9:
+            # default case for runwayml/stable-diffusion-inpainting
+            num_channels_mask = mask.shape[1]
+            num_channels_masked_image = masked_image_latents.shape[1]
+            if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
+                raise ValueError(
+                    f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
+                    f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
+                    f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
+                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    " `pipeline.unet` or your `mask_image` or `image` input."
+                )
+        elif num_channels_unet != 4:
+            raise ValueError(
+                f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}."
+            )
+
+        # 7.2 Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7.1 Prepare embeddings
+        # 7.3 Prepare embeddings
         # ip-adapter
         if ip_adapter_image_embeds is not None:
             for i, image_embeds in enumerate(ip_adapter_image_embeds):
