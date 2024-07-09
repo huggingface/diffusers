@@ -52,7 +52,7 @@ images = pipe(
 ).images
 ```
 
-Now use the [`~utils.export_to_gif`] function to turn the list of image frames into a gif of the 3D object.
+이제 [`~utils.export_to_gif`] 함수를 사용하여 이미지 프레임 리스트를 3D 객체의 gif로 변환합니다.
 
 ```py
 from diffusers.utils import export_to_gif
@@ -130,7 +130,7 @@ gif_path = export_to_gif(images[0], "burger_3d.gif")
 
 ## 메시 생성하기
 
-Shap-E는 다운스트림 애플리케이션에 렌더링할 textured 메시 출력을 생성할 수도 있는 유연한 모델입니다. 이 예제에서는 🤗 Datasets 라이브러리에서 [Dataset viewer](https://huggingface.co/docs/hub/datasets-viewer#dataset-preview)로 메시 시각화를 지원하는 `glb` 파일로 변환할 것입니다.
+Shap-E는 다운스트림 애플리케이션에 렌더링할 textured 메시 출력을 생성할 수도 있는 유연한 모델입니다. 이 예제에서는 🤗 Datasets 라이브러리에서 [Dataset viewer](https://huggingface.co/docs/hub/datasets-viewer#dataset-preview)를 사용해 메시 시각화를 지원하는 `glb` 파일로 변환합니다.
 
 `output_type` 매개변수를 `"mesh"`로 지정함으로써 [`ShapEPipeline`]과 [`ShapEImg2ImgPipeline`] 모두에 대한 메시 출력을 생성할 수 있습니다:
 

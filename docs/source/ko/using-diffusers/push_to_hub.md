@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-🤗 Diffusers는 모델, 스케줄러 또는 파이프라인을 Hub에 업로드할 수 있는 [`~diffusers.utils.PushToHubMixin`]을 제공합니다. 이는 Hub에 당신의 파일을 저장하는 쉬운 방법이며, 다른 사람들과 작업을 공유할 수도 있습니다. 실제적으로 [`~diffusers.utils.PushToHubMixin`]가 동작하는 방식은:
+🤗 Diffusers는 모델, 스케줄러 또는 파이프라인을 Hub에 업로드할 수 있는 [`~diffusers.utils.PushToHubMixin`]을 제공합니다. 이는 Hub에 당신의 파일을 저장하는 쉬운 방법이며, 다른 사람들과 작업을 공유할 수도 있습니다. 실제적으로 [`~diffusers.utils.PushToHubMixin`]가 동작하는 방식은 다음과 같습니다:
 
 1. Hub에 리포지토리를 생성합니다.
 2. 나중에 다시 불러올 수 있도록 모델, 스케줄러 또는 파이프라인 파일을 저장합니다.
@@ -48,7 +48,7 @@ controlnet = ControlNetModel(
 controlnet.push_to_hub("my-controlnet-model")
 ```
 
-모델의 경우 Hub에 푸시할 가중치의 [*변형*](loading#checkpoint-variants)을 지정할 수도 있습니다. 예를 들어, `fp16` 가중치를 푸시하려면:
+모델의 경우 Hub에 푸시할 가중치의 [*변형*](loading#checkpoint-variants)을 지정할 수도 있습니다. 예를 들어, `fp16` 가중치를 푸시하려면 다음과 같이 하세요:
 
 ```py
 controlnet.push_to_hub("my-controlnet-model", variant="fp16")
@@ -160,7 +160,7 @@ pipeline = StableDiffusionPipeline(**components)
 pipeline.push_to_hub("my-pipeline")
 ```
 
-[`~diffusers.utils.PushToHubMixin.push_to_hub`] 함수는 각 컴포넌트를 리포지토리의 하위 폴더에 저장합니다. 이제 허브의 리포지토리에서 파이프라인을 다시 불러올 수 있습니다:
+[`~diffusers.utils.PushToHubMixin.push_to_hub`] 함수는 각 컴포넌트를 리포지토리의 하위 폴더에 저장합니다. 이제 Hub의 리포지토리에서 파이프라인을 다시 불러올 수 있습니다:
 
 ```py
 pipeline = StableDiffusionPipeline.from_pretrained("your-namespace/my-pipeline")

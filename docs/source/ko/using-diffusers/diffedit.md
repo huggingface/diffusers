@@ -29,7 +29,7 @@ specific language governing permissions and limitations under the License.
 #!pip install -q diffusers transformers accelerate
 ```
 
-[`StableDiffusionDiffEditPipeline`]에는 이미지 마스크와 부분적으로 반전된 latents 집합이 필요합니다. 이미지 마스크는 [`~StableDiffusionDiffEditPipeline.generate_mask`] 함수에서 생성되며, 두 개의 파라미터인 `source_prompt`와 `target_prompt`가 포함됩니다. 이 매개변수는 이미지에서 무엇을 편집할지 결정합니다. 예를 들어, *과일* 한 그릇을 *배* 한 그릇으로 변경하려는 경우:
+[`StableDiffusionDiffEditPipeline`]에는 이미지 마스크와 부분적으로 반전된 latents 집합이 필요합니다. 이미지 마스크는 [`~StableDiffusionDiffEditPipeline.generate_mask`] 함수에서 생성되며, 두 개의 파라미터인 `source_prompt`와 `target_prompt`가 포함됩니다. 이 매개변수는 이미지에서 무엇을 편집할지 결정합니다. 예를 들어, *과일* 한 그릇을 *배* 한 그릇으로 변경하려면 다음과 같이 하세요:
 
 ```py
 source_prompt = "a bowl of fruits"
