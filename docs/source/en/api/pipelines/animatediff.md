@@ -570,7 +570,7 @@ from diffusers import MotionAdapter
 ckpt_path = "https://huggingface.co/Lightricks/LongAnimateDiff/blob/main/lt_long_mm_32_frames.ckpt"
 
 adapter = MotionAdapter.from_single_file(ckpt_path, torch_dtype=torch.float16)
-pipe = AnimateDiffPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", motion_adapter=adapter)
+pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter)
 
 ```
 
