@@ -7,7 +7,7 @@ from diffusers.models.transformers.auraflow_transformer_2d import AuraFlowTransf
 
 
 def load_original_state_dict(args):
-    model_pt = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename="model.bin")
+    model_pt = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename="aura_diffusion_pytorch_model.bin")
     state_dict = torch.load(model_pt, map_location="cpu")
     return state_dict
 
@@ -51,9 +51,10 @@ def convert_transformer(state_dict):
     for i in range(mmdit_layers):
         # feed-forward
         path_mapping = {"mlpX": "ff", "mlpC": "ff_context"}
+        weight_mapping = {"c_fc1": "linear_1", "c_fc2": "linear_2", "c_proj": "out_projection"}
         for orig_k, diffuser_k in path_mapping.items():
-            for k in ["linear_1", "linear_2", "out_projection"]:
-                converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_k}.{k}.weight"] = state_dict.pop(
+            for k, v in weight_mapping.items():
+                converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_k}.{v}.weight"] = state_dict.pop(
                     f"model.double_layers.{i}.{orig_k}.{k}.weight"
                 )
 
@@ -76,8 +77,9 @@ def convert_transformer(state_dict):
     # Single-DiT blocks.
     for i in range(single_dit_layers):
         # feed-forward
-        for k in ["linear_1", "linear_2", "out_projection"]:
-            converted_state_dict[f"single_transformer_blocks.{i}.ff.{k}.weight"] = state_dict.pop(
+        mapping = {"c_fc1": "linear_1", "c_fc2": "linear_2", "c_proj": "out_projection"}
+        for k, v in mapping.items():
+            converted_state_dict[f"single_transformer_blocks.{i}.ff.{v}.weight"] = state_dict.pop(
                 f"model.single_layers.{i}.mlp.{k}.weight"
             )
 
