@@ -10,11 +10,11 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# LatteTransformer3DModel
+## LatteTransformer3DModel
 
 A Diffusion Transformer model for 3D data from [Latte](https://github.com/Vchitect/Latte).
 
 ## LatteTransformer3DModel
 
-[[autodoc]] HunyuanDiT2DModel
+[[autodoc]] LatteTransformer3DModel
 
