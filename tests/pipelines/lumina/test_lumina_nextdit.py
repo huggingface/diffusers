@@ -16,7 +16,7 @@ from diffusers.utils.testing_utils import (
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
-class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class LuminaText2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = LuminaText2ImgPipeline
     params = frozenset(
         [
