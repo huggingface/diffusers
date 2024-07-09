@@ -1626,7 +1626,7 @@ class StableAudioAttnProcessor2_0:
         temb: Optional[torch.Tensor] = None,
         rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        from .embeddings import apply_rotary_emb
+        from .embeddings import apply_partial_rotary_emb
 
         residual = hidden_states
 
@@ -1680,9 +1680,18 @@ class StableAudioAttnProcessor2_0:
 
         # Apply RoPE if needed
         if rotary_emb is not None:
-            query = apply_rotary_emb(query, rotary_emb)
+
+            query_dtype = query.dtype            
+            key_dtype = key.dtype
+            query = query.to(torch.float32)
+            key = key.to(torch.float32)
+
+            query = apply_partial_rotary_emb(query, rotary_emb)
             if not attn.is_cross_attention:
-                key = apply_rotary_emb(key, rotary_emb)
+                key = apply_partial_rotary_emb(key, rotary_emb)
+                
+            query = query.to(query_dtype)
+            key = key.to(key_dtype)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
