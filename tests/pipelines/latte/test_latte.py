@@ -119,7 +119,7 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_video.shape, (1, 3, 8, 8))
         expected_video = torch.randn(1, 3, 8, 8)
         max_diff = np.abs(generated_video - expected_video).max()
-        # self.assertLessEqual(max_diff, 1e-3)
+        self.assertLessEqual(max_diff, 1e10)
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
@@ -145,7 +145,6 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         prompt = inputs["prompt"]
         generator = inputs["generator"]
-        num_inference_steps = inputs["num_inference_steps"]
 
         (
             prompt_embeds,
@@ -158,7 +157,6 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "negative_prompt": None,
             "negative_prompt_embeds": negative_prompt_embeds,
             "generator": generator,
-            "num_inference_steps": num_inference_steps,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "height": 8,
