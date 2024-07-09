@@ -161,6 +161,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
             the sigmas are determined according to a sequence of noise levels {σi}.
+        use_exponential_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use exponential sigmas for step sizes in the noise schedule during the sampling process. If `True`,
+            the sigmas are determined according to a sequence of noise levels {σi}.
         use_lu_lambdas (`bool`, *optional*, defaults to `False`):
             Whether to use the uniform-logSNR for step sizes proposed by Lu's DPM-Solver in the noise schedule during
             the sampling process. If `True`, the sigmas and time steps are determined according to a sequence of
@@ -206,6 +209,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
         euler_at_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
+        use_exponential_sigmas: Optional[bool] = False,
         use_lu_lambdas: Optional[bool] = False,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
         lambda_min_clipped: float = -float("inf"),
@@ -330,6 +334,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("Cannot use `timesteps` with `config.use_karras_sigmas = True`")
         if timesteps is not None and self.config.use_lu_lambdas:
             raise ValueError("Cannot use `timesteps` with `config.use_lu_lambdas = True`")
+        if timesteps is not None and self.config.use_exponential_sigmas:
+            raise ValueError("Cannot use `timesteps` with `config.use_exponential_sigmas = True`")
 
         if timesteps is not None:
             timesteps = np.array(timesteps).astype(np.int64)
@@ -378,6 +384,10 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             lambdas = self._convert_to_lu(in_lambdas=lambdas, num_inference_steps=num_inference_steps)
             sigmas = np.exp(lambdas)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
+        elif self.config.use_exponential_sigmas:
+            sigmas = np.flip(sigmas).copy()
+            sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
+            timesteps = np.arctan(sigmas) / math.pi * 2
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
 
@@ -393,7 +403,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.float32) # TODO: YL - I removed int64 here #, dtype=torch.int64)
 
         self.num_inference_steps = len(timesteps)
 
@@ -496,6 +506,33 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
+    
+    # Copied from https://github.com/crowsonkb/k-diffusion/blob/6ab5146d4a5ef63901326489f31f1d8e7dd36b48/k_diffusion/sampling.py#L26
+    def _convert_to_exponential(self, in_sigmas: torch.Tensor, num_inference_steps) -> torch.Tensor:
+        """
+        Implementation closely follows k-diffusion.
+        """
+
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
+
+        ramp = np.linspace(0, 1, num_inference_steps)
+        sigmas = np.linspace(math.log(sigma_min), math.log(sigma_max), len(ramp))
+        sigmas = np.flip(np.exp(sigmas))
+        return sigmas
+
 
     def _convert_to_lu(self, in_lambdas: torch.Tensor, num_inference_steps) -> torch.Tensor:
         """Constructs the noise schedule of Lu et al. (2022)."""
