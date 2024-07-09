@@ -122,7 +122,7 @@ class LattPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # self.assertLessEqual(max_diff, 1e-3)
 
     def test_inference_batch_single_identical(self):
-        pass
+        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
 
     def test_attention_slicing_forward_pass(self):
         pass
