@@ -63,7 +63,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-# Copied from diffusers/pipelines/stable_video_diffusion/pipeline_stable_video_diffusion.py
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -807,7 +807,7 @@ class LattePipeline(DiffusionPipeline):
 
         return LattePipelineOutput(frames=video)
     
-    # Copied from diffusers/pipelines/stable_video_diffusion/pipeline_stable_video_diffusion.py
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.decode_latents
     def decode_latents(self, latents, video_length, decode_chunk_size=1):
         # [batch, channels, frames, height, width] -> [batch*frames, channels, height, width]
         latents = latents.permute(0, 2, 1, 3, 4).flatten(0, 1)
