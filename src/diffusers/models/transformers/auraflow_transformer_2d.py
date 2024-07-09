@@ -159,10 +159,8 @@ class AuraFlowTransformerBlock(nn.Module):
         is_last (`bool`): Boolean to determine if this is the last block in the model.
     """
 
-    def __init__(self, dim, num_attention_heads, attention_head_dim, is_last=False):
+    def __init__(self, dim, num_attention_heads, attention_head_dim, context_norm_type="ada_norm_zero"):
         super().__init__()
-        self.is_last = is_last
-        context_norm_type = "ada_norm_continous" if is_last else "ada_norm_zero"
 
         self.norm1 = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
 
@@ -172,6 +170,10 @@ class AuraFlowTransformerBlock(nn.Module):
             )
         elif context_norm_type == "ada_norm_zero":
             self.norm1_context = AdaLayerNormZero(dim, bias=False, norm_type="fp32_layer_norm")
+        else:
+            raise ValueError(
+                "Invalid norm type provided for `context_norm_type`. Valid values are are: 'ada_norm_continous' and 'ada_norm_zero'."
+            )
 
         processor = AuraFlowAttnProcessor2_0()
         self.attn = Attention(
@@ -192,10 +194,7 @@ class AuraFlowTransformerBlock(nn.Module):
         self.norm2 = FP32LayerNorm(dim, elementwise_affine=False, bias=False)
         self.ff = AuraFlowFeedForward(dim, dim * 4)
         self.norm2_context = FP32LayerNorm(dim, elementwise_affine=False, bias=False)
-        if not is_last:
-            self.ff_context = AuraFlowFeedForward(dim, dim * 4)
-        else:
-            self.ff_context = None
+        self.ff_context = AuraFlowFeedForward(dim, dim * 4)
 
     def forward(
         self, hidden_states: torch.FloatTensor, encoder_hidden_states: torch.FloatTensor, temb: torch.FloatTensor, i=0
