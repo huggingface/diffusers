@@ -54,11 +54,16 @@ def get_timestep_embedding(
     assert len(timesteps.shape) == 1, "Timesteps should be a 1d-array"
 
     half_dim = embedding_dim // 2
-    steps = torch.arange(start=0, end=half_dim, dtype=torch.float32, device=timesteps.device)
-    steps = steps / (half_dim - downscale_freq_shift)
+    exponent = -math.log(max_period) * torch.arange(
+        start=0, end=half_dim, dtype=torch.float32, device=timesteps.device
+    )
+    exponent = exponent / (half_dim - downscale_freq_shift)
 
-    emb = scale * torch.pow(max_period, -steps)
+    emb = torch.exp(exponent)
     emb = timesteps[:, None].float() * emb[None, :]
+
+    # scale embeddings
+    emb = scale * emb
 
     # concat sine and cosine embeddings
     emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
