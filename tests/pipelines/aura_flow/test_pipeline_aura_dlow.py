@@ -42,6 +42,7 @@ class AuraFlowPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             out_channels=4,
             pos_embed_max_size=256,
         )
+        
         text_encoder = UMT5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-umt5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
