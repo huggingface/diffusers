@@ -86,16 +86,16 @@ class AuraFlowFeedForward(nn.Module):
         if hidden_dim is None:
             hidden_dim = 4 * dim
 
-        n_hidden = int(2 * hidden_dim / 3)
-        n_hidden = find_multiple(n_hidden, 256)
+        final_hidden_dim = int(2 * hidden_dim / 3)
+        final_hidden_dim = find_multiple(final_hidden_dim, 256)
 
-        self.c_fc1 = nn.Linear(dim, n_hidden, bias=False)
-        self.c_fc2 = nn.Linear(dim, n_hidden, bias=False)
-        self.c_proj = nn.Linear(n_hidden, dim, bias=False)
+        self.linear_1 = nn.Linear(dim, final_hidden_dim, bias=False)
+        self.linear_2 = nn.Linear(dim, final_hidden_dim, bias=False)
+        self.out_projection = nn.Linear(final_hidden_dim, dim, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.silu(self.c_fc1(x)) * self.c_fc2(x)
-        x = self.c_proj(x)
+        x = F.silu(self.linear_1(x)) * self.linear_2(x)
+        x = self.out_projection(x)
         return x
 
 

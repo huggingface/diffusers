@@ -23,6 +23,7 @@ from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, logging
 from ..utils.import_utils import is_torch_npu_available, is_xformers_available
 from ..utils.torch_utils import is_torch_version, maybe_allow_in_graph
+from .normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -119,7 +120,6 @@ class Attention(nn.Module):
         context_pre_only=None,
     ):
         super().__init__()
-        from .normalization import FP32LayerNorm
 
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.inner_kv_dim = self.inner_dim if kv_heads is None else dim_head * kv_heads
@@ -230,10 +230,7 @@ class Attention(nn.Module):
             self.to_add_out = nn.Linear(self.inner_dim, self.out_dim, bias=out_bias)
 
         if qk_norm is not None and added_kv_proj_dim is not None:
-            if qk_norm == "layer_norm":
-                self.norm_added_q = nn.LayerNorm(dim_head, eps=eps)
-                self.norm_added_k = nn.LayerNorm(dim_head, eps=eps)
-            elif qk_norm == "fp32_layer_norm":
+            if qk_norm == "fp32_layer_norm":
                 self.norm_added_q = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
                 self.norm_added_k = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
         else:

@@ -52,7 +52,7 @@ def convert_transformer(state_dict):
         # feed-forward
         path_mapping = {"mlpX": "ff", "mlpC": "ff_context"}
         for orig_k, diffuser_k in path_mapping.items():
-            for k in ["c_fc1", "c_fc2", "c_proj"]:
+            for k in ["linear_1", "linear_2", "out_projection"]:
                 converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_k}.{k}.weight"] = state_dict.pop(
                     f"model.double_layers.{i}.{orig_k}.{k}.weight"
                 )
@@ -76,7 +76,7 @@ def convert_transformer(state_dict):
     # Single-DiT blocks.
     for i in range(single_dit_layers):
         # feed-forward
-        for k in ["c_fc1", "c_fc2", "c_proj"]:
+        for k in ["linear_1", "linear_2", "out_projection"]:
             converted_state_dict[f"single_transformer_blocks.{i}.ff.{k}.weight"] = state_dict.pop(
                 f"model.single_layers.{i}.mlp.{k}.weight"
             )
