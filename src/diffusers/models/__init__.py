@@ -86,6 +86,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .transformers import (
             DiTTransformer2DModel,
             DualTransformer2DModel,
+            HunyuanDiT2DModel,
             LatteTransformer3DModel,
             LuminaNextDiT2DModel,
             PixArtTransformer2DModel,

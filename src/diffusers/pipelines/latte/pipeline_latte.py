@@ -158,8 +158,6 @@ class LattePipeline(DiffusionPipeline):
         "latents",
         "prompt_embeds",
         "negative_prompt_embeds",
-        "prompt_embeds_2",
-        "negative_prompt_embeds_2",
     ]
 
     def __init__(
@@ -785,10 +783,6 @@ class LattePipeline(DiffusionPipeline):
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-                    prompt_embeds_2 = callback_outputs.pop("prompt_embeds_2", prompt_embeds_2)
-                    negative_prompt_embeds_2 = callback_outputs.pop(
-                        "negative_prompt_embeds_2", negative_prompt_embeds_2
-                    )
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
