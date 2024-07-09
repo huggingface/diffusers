@@ -334,7 +334,6 @@ class StableAudioDiTBlock(nn.Module):
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=encoder_attention_mask,
-            rotary_emb=rotary_embedding,
             **cross_attention_kwargs,
         )
         hidden_states = attn_output + hidden_states
@@ -362,6 +361,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
     Reference: https://github.com/Stability-AI/stable-audio-tools
 
     Parameters:
+        sample_size ( `int`, *optional*, defaults to 1024): The size of the input sample.
         in_channels (`int`, *optional*, defaults to 64): The number of channels in the input.
         num_layers (`int`, *optional*, defaults to 24): The number of layers of Transformer blocks to use.
         attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
@@ -379,6 +379,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
     @register_to_config
     def __init__(
         self,
+        sample_size: int = 1024,
         in_channels: int = 64,
         num_layers: int = 24,
         attention_head_dim: int = 64,
@@ -391,6 +392,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
         cross_attention_input_dim: int = 768,
     ):
         super().__init__()
+        self.sample_size = sample_size
         self.out_channels = out_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
@@ -640,9 +642,9 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
                 
         cross_attention_hidden_states = self.cross_attention_proj(encoder_hidden_states)
         global_hidden_states = self.global_proj(global_hidden_states)
-        time_hidden_states = self.timestep_proj(self.timestep_features(timestep))
+        time_hidden_states = self.timestep_proj(self.timestep_features(timestep.to(self.dtype)))
         
-        global_hidden_states = global_hidden_states + time_hidden_states
+        global_hidden_states = global_hidden_states + time_hidden_states.unsqueeze(1)
         
         
         hidden_states = self.preprocess_conv(hidden_states) + hidden_states
@@ -652,9 +654,9 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
         hidden_states = self.proj_in(hidden_states)
 
         # prepend global states to hidden states
-        prepend_mask = torch.ones((hidden_states.shape[0], 1), device=hidden_states.device, dtype=torch.bool)
-        hidden_states = torch.cat([global_hidden_states.unsqueeze(1), hidden_states], dim=-2)
+        hidden_states = torch.cat([global_hidden_states, hidden_states], dim=-2)
         if attention_mask is not None:
+            prepend_mask = torch.ones((hidden_states.shape[0], 1), device=hidden_states.device, dtype=torch.bool)
             attention_mask = torch.cat([prepend_mask, attention_mask], dim=-1)
 
 
