@@ -23,7 +23,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 from ...callbacks import PipelineCallback, MultiPipelineCallbacks
 from ...video_processor import VideoProcessor
 from ...models import AutoencoderKL, LatteTransformer3DModel
-from ...schedulers import DDIMScheduler
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BACKENDS_MAPPING,
     is_bs4_available,
@@ -166,7 +166,7 @@ class LattePipeline(DiffusionPipeline):
         text_encoder: T5EncoderModel,
         vae: AutoencoderKL,
         transformer: LatteTransformer3DModel,
-        scheduler: DDIMScheduler,
+        scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
 
