@@ -29,6 +29,7 @@ from ..attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
     AttnProcessor2_0,
+    FusedAttnProcessor2_0,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
 )
@@ -925,9 +926,16 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         self.original_attn_processors = self.attn_processors
 
-        for module in self.modules():
-            if isinstance(module, Attention):
-                module.fuse_projections(fuse=True)
+        def fuse_recursively(module):
+            for submodule in module.children():
+                if isinstance(submodule, Attention):
+                    submodule.fuse_projections(fuse=True)
+                # Recursively call this function on the submodule to handle nesting
+                fuse_recursively(submodule)
+
+        fuse_recursively(self)
+
+        self.set_attn_processor(FusedAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
