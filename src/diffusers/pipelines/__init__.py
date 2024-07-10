@@ -486,7 +486,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
         )
-        from .kolors import ChatGLMModel, ChatGLMTokenizer, KolorsImg2ImgPipeline, KolorsPipeline
+        from .kolors import (
+            ChatGLMModel,
+            ChatGLMTokenizer,
+            KolorsImg2ImgPipeline,
+            KolorsPipeline,
+        )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
