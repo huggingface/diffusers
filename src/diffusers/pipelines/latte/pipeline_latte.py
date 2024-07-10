@@ -583,10 +583,10 @@ class LattePipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         negative_prompt: str = "",
         num_inference_steps: int = 50,
-        timesteps: List[int] = None,
+        timesteps: Optional[List[int]] = None,
         guidance_scale: float = 7.5,
-        num_images_per_prompt: Optional[int] = 1,
-        num_frames: int = 16,
+        num_images_per_prompt: int = 1,
+        video_length: int = 16,
         height: int = 512,
         width: int = 512,
         eta: float = 0.0,
@@ -594,7 +594,7 @@ class LattePipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
@@ -628,6 +628,8 @@ class LattePipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate videos that are closely linked to the text `prompt`,
                 usually at the expense of lower video quality.
+            video_length (`int`, *optional*, defaults to 16):
+                The number of video frames that are generated. Defaults to 16 frames which at 8 frames per seconds
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             height (`int`, *optional*, defaults to self.unet.config.sample_size):
@@ -679,7 +681,7 @@ class LattePipeline(DiffusionPipeline):
                 otherwise a `tuple` is returned where the first element is a list with the generated images
         """
         # 0. Default
-        decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else num_frames
+        decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else video_length
 
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
@@ -732,7 +734,7 @@ class LattePipeline(DiffusionPipeline):
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             latent_channels,
-            num_frames,
+            video_length,
             height,
             width,
             prompt_embeds.dtype,
@@ -806,7 +808,7 @@ class LattePipeline(DiffusionPipeline):
                     progress_bar.update()
 
         if not output_type == "latents":
-            video = self.decode_latents(latents, num_frames, decode_chunk_size=14)
+            video = self.decode_latents(latents, video_length, decode_chunk_size=14)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents
@@ -820,7 +822,7 @@ class LattePipeline(DiffusionPipeline):
         return LattePipelineOutput(frames=video)
 
     # Similar to diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.decode_latents
-    def decode_latents(self, latents: torch.Tensor, num_frames: int, decode_chunk_size: int = 14):
+    def decode_latents(self, latents: torch.Tensor, video_length: int, decode_chunk_size: int = 14):
         # [batch, channels, frames, height, width] -> [batch*frames, channels, height, width]
         latents = latents.permute(0, 2, 1, 3, 4).flatten(0, 1)
 
@@ -843,7 +845,7 @@ class LattePipeline(DiffusionPipeline):
         frames = torch.cat(frames, dim=0)
 
         # [batch*frames, channels, height, width] -> [batch, channels, frames, height, width]
-        frames = frames.reshape(-1, num_frames, *frames.shape[1:]).permute(0, 2, 1, 3, 4)
+        frames = frames.reshape(-1, video_length, *frames.shape[1:]).permute(0, 2, 1, 3, 4)
 
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
         frames = frames.float()
