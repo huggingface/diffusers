@@ -1,4 +1,4 @@
-# Copyright 2024 HunyuanDiT Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 HunyuanDiT Authors, Qixun Wang and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -249,6 +249,8 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             The length of the clip text embedding.
         text_len_t5 (`int`, *optional*):
             The length of the T5 text embedding.
+        use_style_cond_and_image_meta_size (`bool`,  *optional*):
+            Whether or not to use style condition and image meta size. True for version <=1.1, False for version >= 1.2
     """
 
     @register_to_config
@@ -270,6 +272,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         pooled_projection_dim: int = 1024,
         text_len: int = 77,
         text_len_t5: int = 256,
+        use_style_cond_and_image_meta_size: bool = True,
     ):
         super().__init__()
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
@@ -301,6 +304,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             pooled_projection_dim=pooled_projection_dim,
             seq_len=text_len_t5,
             cross_attention_dim=cross_attention_dim_t5,
+            use_style_cond_and_image_meta_size=use_style_cond_and_image_meta_size,
         )
 
         # HunyuanDiT Blocks
@@ -373,7 +377,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -437,6 +441,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         image_meta_size=None,
         style=None,
         image_rotary_emb=None,
+        controlnet_block_samples=None,
         return_dict=True,
     ):
         """
@@ -491,7 +496,10 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         skips = []
         for layer, block in enumerate(self.blocks):
             if layer > self.config.num_layers // 2:
-                skip = skips.pop()
+                if controlnet_block_samples is not None:
+                    skip = skips.pop() + controlnet_block_samples.pop()
+                else:
+                    skip = skips.pop()
                 hidden_states = block(
                     hidden_states,
                     temb=temb,
@@ -509,6 +517,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
 
             if layer < (self.config.num_layers // 2 - 1):
                 skips.append(hidden_states)
+
+        if controlnet_block_samples is not None and len(controlnet_block_samples) != 0:
+            raise ValueError("The number of controls is not equal to the number of skip connections.")
 
         # final layer
         hidden_states = self.norm_out(hidden_states, temb.to(torch.float32))

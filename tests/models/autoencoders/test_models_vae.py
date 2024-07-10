@@ -361,9 +361,10 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
     forward_requires_fresh_args = True
 
     def inputs_dict(self, seed=None):
-        generator = torch.Generator("cpu")
-        if seed is not None:
-            generator.manual_seed(0)
+        if seed is None:
+            generator = torch.Generator("cpu").manual_seed(0)
+        else:
+            generator = torch.Generator("cpu").manual_seed(seed)
         image = randn_tensor((4, 3, 32, 32), generator=generator, device=torch.device(torch_device))
 
         return {"sample": image, "generator": generator}

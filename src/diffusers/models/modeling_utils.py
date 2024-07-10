@@ -819,7 +819,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                                 offload_folder=offload_folder,
                                 offload_state_dict=offload_state_dict,
                                 dtype=torch_dtype,
-                                force_hook=force_hook,
+                                force_hooks=force_hook,
                                 strict=True,
                             )
                             model._undo_temp_convert_self_to_deprecated_attention_blocks()
@@ -1169,7 +1169,7 @@ class LegacyModelMixin(ModelMixin):
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
-        # To prevent depedency import problem.
+        # To prevent dependency import problem.
         from .model_loading_utils import _fetch_remapped_cls_from_config
 
         # Create a copy of the kwargs so that we don't mess with the keyword arguments in the downstream calls.
