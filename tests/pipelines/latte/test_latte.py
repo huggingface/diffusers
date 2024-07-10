@@ -41,6 +41,7 @@ from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 enable_full_determinism()
 
+
 class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = LattePipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
@@ -127,10 +128,9 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pass
 
     def test_save_load_optional_components(self):
-
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
-        
+
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
 
@@ -192,6 +192,7 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, 1.0)
 
+
 @slow
 @require_torch_gpu
 class LattePipelineIntegrationTests(unittest.TestCase):
@@ -215,7 +216,11 @@ class LattePipelineIntegrationTests(unittest.TestCase):
         prompt = self.prompt
 
         videos = pipe(
-            prompt=prompt, height=512, width=512, generator=generator, num_inference_steps=2,
+            prompt=prompt,
+            height=512,
+            width=512,
+            generator=generator,
+            num_inference_steps=2,
         ).video
 
         videe = videos[0]

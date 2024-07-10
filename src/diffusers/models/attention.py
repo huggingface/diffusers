@@ -359,9 +359,9 @@ class BasicTransformerBlock(nn.Module):
                 out_bias=attention_out_bias,
             )  # is self-attn if encoder_hidden_states is none
         else:
-            if norm_type == "ada_norm_single": # For Latte
+            if norm_type == "ada_norm_single":  # For Latte
                 self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
-            else: 
+            else:
                 self.norm2 = None
             self.attn2 = None
 

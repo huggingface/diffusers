@@ -11,28 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Optional
+
 import torch
 from torch import nn
 
-from typing import Any, Dict, Optional
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...models.embeddings import PixArtAlphaTextProjection, get_1d_sincos_pos_embed_from_grid
 from ..attention import BasicTransformerBlock
 from ..embeddings import PatchEmbed
+from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
-from ...models.embeddings import (
-    get_1d_sincos_pos_embed_from_grid, 
-    PixArtAlphaTextProjection)
-from ..modeling_outputs import Transformer2DModelOutput
 
 
 class LatteTransformer3DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
 
     """
-    A 3D Transformer model for video-like data,
-    paper: https://arxiv.org/abs/2401.03048,
-    offical code: https://github.com/Vchitect/Latte
+    A 3D Transformer model for video-like data, paper: https://arxiv.org/abs/2401.03048, offical code:
+    https://github.com/Vchitect/Latte
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
@@ -54,8 +52,8 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         num_embeds_ada_norm ( `int`, *optional*):
             The number of diffusion steps used during training. Pass if at least one of the norm_layers is
             `AdaLayerNorm`. This is fixed during training since it is used to learn a number of embeddings that are
-            added to the hidden states.
-            During inference, you can denoise for up to but not more steps than `num_embeds_ada_norm`.
+            added to the hidden states. During inference, you can denoise for up to but not more steps than
+            `num_embeds_ada_norm`.
         norm_type (`str`, *optional*, defaults to `"layer_norm"`):
             The type of normalization to use. Options are `"layer_norm"` or `"ada_layer_norm"`.
         norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
@@ -129,7 +127,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         # 3. Define temporal transformers blocks
         self.temporal_transformer_blocks = nn.ModuleList(
             [
-                BasicTransformerBlock( 
+                BasicTransformerBlock(
                     inner_dim,
                     num_attention_heads,
                     attention_head_dim,
@@ -157,15 +155,15 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
 
         # define temporal positional embedding
-        temp_pos_embed = get_1d_sincos_pos_embed_from_grid(inner_dim, torch.arange(0, video_length).unsqueeze(1)) # 1152 hidden size
+        temp_pos_embed = get_1d_sincos_pos_embed_from_grid(
+            inner_dim, torch.arange(0, video_length).unsqueeze(1)
+        )  # 1152 hidden size
         self.register_buffer("temp_pos_embed", torch.from_numpy(temp_pos_embed).float().unsqueeze(0), persistent=False)
 
         self.gradient_checkpointing = False
 
-
     def _set_gradient_checkpointing(self, module, value=False):
         self.gradient_checkpointing = value
-
 
     def forward(
         self,
@@ -195,7 +193,8 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
 
                 If `ndim == 2`: will be interpreted as a mask, then converted into a bias consistent with the format
                 above. This bias will be added to the cross-attention scores.
-            enable_temporal_attentions: (`bool`, *optional*, defaults to `True`): Whether to enable temporal attentions.
+            enable_temporal_attentions:
+                (`bool`, *optional*, defaults to `True`): Whether to enable temporal attentions.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
                 tuple.
@@ -211,83 +210,94 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(-1, channels, height, width)
 
         # Input
-        height, width = hidden_states.shape[-2] // self.config.patch_size, hidden_states.shape[-1] // self.config.patch_size
+        height, width = (
+            hidden_states.shape[-2] // self.config.patch_size,
+            hidden_states.shape[-1] // self.config.patch_size,
+        )
         num_patches = height * width
 
-        hidden_states = self.pos_embed(hidden_states) # alrady add positional embeddings
+        hidden_states = self.pos_embed(hidden_states)  # alrady add positional embeddings
 
-        added_cond_kwargs = {'resolution': None, 'aspect_ratio': None}
+        added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
         timestep, embedded_timestep = self.adaln_single(
-            timestep, added_cond_kwargs=added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype)
+            timestep, added_cond_kwargs=added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
+        )
 
         # Prepare text embeddings for spatial block
         # batch_size num_tokens hidden_size -> (batch_size * num_frame) num_tokens hidden_size
-        encoder_hidden_states = self.caption_projection(encoder_hidden_states) # 3 120 1152
-        encoder_hidden_states_spatial = encoder_hidden_states.repeat_interleave(num_frame, dim=0).view(-1, encoder_hidden_states.shape[-2], encoder_hidden_states.shape[-1])
+        encoder_hidden_states = self.caption_projection(encoder_hidden_states)  # 3 120 1152
+        encoder_hidden_states_spatial = encoder_hidden_states.repeat_interleave(num_frame, dim=0).view(
+            -1, encoder_hidden_states.shape[-2], encoder_hidden_states.shape[-1]
+        )
 
         # Prepare timesteps for spatial and temporal block
         timestep_spatial = timestep.repeat_interleave(num_frame, dim=0).view(-1, timestep.shape[-1])
         timestep_temp = timestep.repeat_interleave(num_patches, dim=0).view(-1, timestep.shape[-1])
 
         # Spatial and temporal transformer blocks
-        for i, (spatial_block, temp_block) in enumerate(zip(self.transformer_blocks, self.temporal_transformer_blocks)):
-
+        for i, (spatial_block, temp_block) in enumerate(
+            zip(self.transformer_blocks, self.temporal_transformer_blocks)
+        ):
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     spatial_block,
                     hidden_states,
-                    None, # attention_mask
+                    None,  # attention_mask
                     encoder_hidden_states_spatial,
                     encoder_attention_mask,
                     timestep_spatial,
-                    None, # cross_attention_kwargs
-                    None, # class_labels
+                    None,  # cross_attention_kwargs
+                    None,  # class_labels
                     use_reentrant=False,
                 )
             else:
                 hidden_states = spatial_block(
                     hidden_states,
-                    None, # attention_mask
+                    None,  # attention_mask
                     encoder_hidden_states_spatial,
                     encoder_attention_mask,
                     timestep_spatial,
-                    None, # cross_attention_kwargs
-                    None, # class_labels
+                    None,  # cross_attention_kwargs
+                    None,  # class_labels
                 )
 
             if enable_temporal_attentions:
                 # (batch_size * num_frame) num_tokens hidden_size -> (batch_size * num_tokens) num_frame hidden_size
-                hidden_states = hidden_states.reshape(batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
+                hidden_states = hidden_states.reshape(
+                    batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]
+                ).permute(0, 2, 1, 3)
                 hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
                 if i == 0:
                     hidden_states = hidden_states + self.temp_pos_embed
-                
+
                 if self.training and self.gradient_checkpointing:
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         temp_block,
                         hidden_states,
-                        None, # attention_mask
-                        None, # encoder_hidden_states
-                        None, # encoder_attention_mask
+                        None,  # attention_mask
+                        None,  # encoder_hidden_states
+                        None,  # encoder_attention_mask
                         timestep_temp,
-                        None, # cross_attention_kwargs
-                        None, # class_labels
+                        None,  # cross_attention_kwargs
+                        None,  # class_labels
                         use_reentrant=False,
                     )
                 else:
                     hidden_states = temp_block(
                         hidden_states,
-                        None, # attention_mask
-                        None, # encoder_hidden_states
-                        None, # encoder_attention_mask
+                        None,  # attention_mask
+                        None,  # encoder_hidden_states
+                        None,  # encoder_attention_mask
                         timestep_temp,
-                        None, # cross_attention_kwargs
-                        None, # class_labels
+                        None,  # cross_attention_kwargs
+                        None,  # class_labels
                     )
 
                 # (batch_size * num_frame) num_tokens hidden_size -> (batch_size * num_tokens) num_frame hidden_size
-                hidden_states = hidden_states.reshape(batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]).permute(0, 2, 1, 3)
+                hidden_states = hidden_states.reshape(
+                    batch_size, -1, hidden_states.shape[-2], hidden_states.shape[-1]
+                ).permute(0, 2, 1, 3)
                 hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
         embedded_timestep = embedded_timestep.repeat_interleave(num_frame, dim=0).view(-1, embedded_timestep.shape[-1])
@@ -307,7 +317,9 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         output = hidden_states.reshape(
             shape=(-1, self.out_channels, height * self.config.patch_size, width * self.config.patch_size)
         )
-        output = output.reshape(batch_size, -1, output.shape[-3], output.shape[-2], output.shape[-1]).permute(0, 2, 1, 3, 4)
+        output = output.reshape(batch_size, -1, output.shape[-3], output.shape[-2], output.shape[-1]).permute(
+            0, 2, 1, 3, 4
+        )
 
         if not return_dict:
             return (output,)
