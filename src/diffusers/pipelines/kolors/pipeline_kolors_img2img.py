@@ -53,7 +53,9 @@ EXAMPLE_DOC_STRING = """
         ...     "Kwai-Kolors/Kolors-diffusers", variant="fp16", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
-        >>> url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/kolors/bunny_source.png"
+        >>> url = (
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/kolors/bunny_source.png"
+        ... )
 
 
         >>> init_image = load_image(url)
@@ -683,13 +685,13 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
                 Anything below 512 pixels won't work well for
-                [Kwai-Kolors/Kolors-diffusers](https://huggingface.co/Kwai-Kolors/Kolors-diffusers)
-                and checkpoints that are not specifically fine-tuned on low resolutions.
+                [Kwai-Kolors/Kolors-diffusers](https://huggingface.co/Kwai-Kolors/Kolors-diffusers) and checkpoints
+                that are not specifically fine-tuned on low resolutions.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
                 Anything below 512 pixels won't work well for
-                [Kwai-Kolors/Kolors-diffusers](https://huggingface.co/Kwai-Kolors/Kolors-diffusers)
-                and checkpoints that are not specifically fine-tuned on low resolutions.
+                [Kwai-Kolors/Kolors-diffusers](https://huggingface.co/Kwai-Kolors/Kolors-diffusers) and checkpoints
+                that are not specifically fine-tuned on low resolutions.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -748,8 +750,7 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.kolors.KolorsPipelineOutput`] instead
-                of a plain tuple.
+                Whether or not to return a [`~pipelines.kolors.KolorsPipelineOutput`] instead of a plain tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -796,9 +797,9 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
         Examples:
 
         Returns:
-            [`~pipelines.kolors.KolorsPipelineOutput`] or `tuple`:
-            [`~pipelines.kolors.KolorsPipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.kolors.KolorsPipelineOutput`] or `tuple`: [`~pipelines.kolors.KolorsPipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
+            generated images.
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
