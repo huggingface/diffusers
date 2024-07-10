@@ -97,18 +97,15 @@ class AuraFlowFeedForward(nn.Module):
         x = F.silu(self.linear_1(x)) * self.linear_2(x)
         x = self.out_projection(x)
         return x
-    
+
+
 class AuraFlowPreFinalBlock(nn.Module):
-    def __init__(
-        self,
-        embedding_dim: int,
-        conditioning_embedding_dim: int
-    ):
+    def __init__(self, embedding_dim: int, conditioning_embedding_dim: int):
         super().__init__()
 
         self.silu = nn.SiLU()
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=False)
-        
+
     def forward(self, x: torch.Tensor, conditioning_embedding: torch.Tensor) -> torch.Tensor:
         emb = self.linear(self.silu(conditioning_embedding).to(x.dtype))
         scale, shift = torch.chunk(emb, 2, dim=1)
@@ -117,8 +114,8 @@ class AuraFlowPreFinalBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-class AuraFlowDiTTransformerBlock(nn.Module):
-    """Similar `AuraFlowTransformerBlock with a single DiT instead of an MMDiT."""
+class AuraFlowSingleTransformerBlock(nn.Module):
+    """Similar to `AuraFlowJointTransformerBlock` with a single DiT instead of an MMDiT."""
 
     def __init__(self, dim, num_attention_heads, attention_head_dim):
         super().__init__()
@@ -161,7 +158,7 @@ class AuraFlowDiTTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-class AuraFlowTransformerBlock(nn.Module):
+class AuraFlowJointTransformerBlock(nn.Module):
     r"""
     Transformer block for Aura Flow. Similar to SD3 MMDiT. Differences (non-exhaustive):
 
@@ -275,7 +272,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
 
         self.joint_transformer_blocks = nn.ModuleList(
             [
-                AuraFlowTransformerBlock(
+                AuraFlowJointTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
@@ -285,7 +282,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         )
         self.single_transformer_blocks = nn.ModuleList(
             [
-                AuraFlowDiTTransformerBlock(
+                AuraFlowSingleTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,

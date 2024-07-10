@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
-from typing import Callable, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
@@ -112,14 +112,12 @@ class AuraFlowPipeline(DiffusionPipeline):
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
         height,
         width,
         negative_prompt,
-        callback_steps,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         prompt_attention_mask=None,
@@ -127,14 +125,6 @@ class AuraFlowPipeline(DiffusionPipeline):
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -372,11 +362,9 @@ class AuraFlowPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        max_sequence_length: int = 256,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: int = 1,
-        max_sequence_length: int = 256,
     ) -> Union[ImagePipelineOutput, Tuple]:
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
@@ -387,7 +375,6 @@ class AuraFlowPipeline(DiffusionPipeline):
             height,
             width,
             negative_prompt,
-            callback_steps,
             prompt_embeds,
             negative_prompt_embeds,
             prompt_attention_mask,
@@ -481,9 +468,6 @@ class AuraFlowPipeline(DiffusionPipeline):
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         if output_type == "latent":
             image = latents
