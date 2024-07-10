@@ -130,7 +130,6 @@ class GLU(nn.Module):
     Parameters:
         dim_in (`int`): The number of channels in the input.
         dim_out (`int`): The number of channels in the output.
-        act_fn (str): Name of activation function used.
         bias (`bool`, defaults to True): Whether to use a bias in the linear layer.
     """
 
@@ -139,10 +138,7 @@ class GLU(nn.Module):
         self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
         self.activation = nn.SiLU()
 
-    def forward(self, hidden_states, *args, **kwargs):
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
+    def forward(self, hidden_states):
         hidden_states = self.proj(hidden_states)
         hidden_states, gate = hidden_states.chunk(2, dim=-1)
         return hidden_states * self.activation(gate)
