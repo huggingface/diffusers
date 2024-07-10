@@ -1456,6 +1456,13 @@ class StableDiffusionControlNetPAGInpaintPipeline(
                     if masked_image_latents.shape[0] < first_dim_size:
                         repeat_factor = (first_dim_size + masked_image_latents.shape[0] - 1) // masked_image_latents.shape[0]
                         masked_image_latents = masked_image_latents.repeat(repeat_factor, 1, 1, 1)[:first_dim_size]
+                    # Verify shapes before concatenation
+                    print("latent_model_input shape:", latent_model_input.shape)
+                    print("mask shape:", mask.shape)
+                    print("masked_image_latents shape:", masked_image_latents.shape)
+
+                    # Perform the concatenation
+                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 noise_pred = self.unet(
                     latent_model_input,
