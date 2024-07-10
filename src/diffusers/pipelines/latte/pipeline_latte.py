@@ -53,7 +53,6 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import LattePipeline
-        >>> from diffusers.utils import export_to_gif
 
         >>> # You can replace the checkpoint id with "maxin-cn/Latte-1" too.
         >>> pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16)
