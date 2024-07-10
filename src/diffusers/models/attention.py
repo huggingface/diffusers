@@ -103,6 +103,13 @@ class JointTransformerBlock(nn.Module):
     def __init__(self, dim, num_attention_heads, attention_head_dim, context_pre_only=False):
         super().__init__()
 
+        if hasattr(F, "scaled_dot_product_attention"):
+            processor = JointAttnProcessor2_0()
+        else:
+            raise ValueError(
+                "The current PyTorch version does not support the `scaled_dot_product_attention` function."
+            )
+
         self.context_pre_only = context_pre_only
         context_norm_type = "ada_norm_continous" if context_pre_only else "ada_norm_zero"
 
@@ -114,16 +121,7 @@ class JointTransformerBlock(nn.Module):
             )
         elif context_norm_type == "ada_norm_zero":
             self.norm1_context = AdaLayerNormZero(dim)
-        else:
-            raise ValueError(
-                f"Unknown context_norm_type: {context_norm_type}, currently only support `ada_norm_continous`, `ada_norm_zero`"
-            )
-        if hasattr(F, "scaled_dot_product_attention"):
-            processor = JointAttnProcessor2_0()
-        else:
-            raise ValueError(
-                "The current PyTorch version does not support the `scaled_dot_product_attention` function."
-            )
+
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
