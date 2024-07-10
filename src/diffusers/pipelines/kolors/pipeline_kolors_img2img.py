@@ -46,15 +46,19 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionXLPipeline
+        >>> from diffusers import KolorsImg2ImgPipeline
+        >>> from diffusers.utils import load_image
 
-        >>> pipe = StableDiffusionXLPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        >>> pipe = KolorsImg2ImgPipeline.from_pretrained(
+        ...     "Kwai-Kolors/Kolors-diffusers", variant="fp16", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
+        >>> url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/kolors/bunny_source.png"
 
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
+
+        >>> init_image = load_image(url)
+        >>> prompt = "high quality image of a capybara wearing sunglasses. In the background of the image there are trees, poles, grass and other objects. At the bottom of the object there is the road., 8k, highly detailed."
+        >>> image = pipe(prompt, image=init_image).images[0]
         ```
 """
 
@@ -158,7 +162,7 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         force_zeros_for_empty_prompt (`bool`, *optional*, defaults to `"False"`):
             Whether the negative prompt embeddings shall be forced to always be set to 0. Also see the config of
-            `stabilityai/stable-diffusion-xl-base-1-0`.
+            `Kwai-Kolors/Kolors-diffusers`.
     """
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
@@ -679,12 +683,12 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
                 Anything below 512 pixels won't work well for
-                [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
+                [Kwai-Kolors/Kolors-diffusers](https://huggingface.co/Kwai-Kolors/Kolors-diffusers)
                 and checkpoints that are not specifically fine-tuned on low resolutions.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
                 Anything below 512 pixels won't work well for
-                [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
+                [Kwai-Kolors/Kolors-diffusers](https://huggingface.co/Kwai-Kolors/Kolors-diffusers)
                 and checkpoints that are not specifically fine-tuned on low resolutions.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -744,7 +748,7 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
+                Whether or not to return a [`~pipelines.kolors.KolorsPipelineOutput`] instead
                 of a plain tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
@@ -792,8 +796,8 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
+            [`~pipelines.kolors.KolorsPipelineOutput`] or `tuple`:
+            [`~pipelines.kolors.KolorsPipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
