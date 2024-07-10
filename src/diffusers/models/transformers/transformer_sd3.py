@@ -23,7 +23,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention import JointTransformerBlock
-from ...models.attention_processor import Attention, AttentionProcessor
+from ...models.attention_processor import Attention, AttentionProcessor, FusedJointAttnProcessor2_0
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
@@ -211,6 +211,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         </Tip>
         """
+        print("I am here.")
         self.original_attn_processors = None
 
         for _, attn_processor in self.attn_processors.items():
@@ -221,7 +222,13 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         for module in self.modules():
             if isinstance(module, Attention):
+                print(module.__class__.__name__)
                 module.fuse_projections(fuse=True)
+
+        self.set_attn_processor(FusedJointAttnProcessor2_0())
+        for key, value in self.attn_processors.items():
+            print(key, value)
+
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):

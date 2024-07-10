@@ -192,6 +192,7 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         original_image_slice = image[0, -3:, -3:, -1]
 
         pipe.transformer.fuse_qkv_projections()
+        assert pipe.transformer is None
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
         image_slice_fused = image[0, -3:, -3:, -1]
