@@ -47,9 +47,8 @@ if is_ftfy_available():
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        ```py
+        ```
         >>> import torch
-        >>> import imageio
         >>> from diffusers import LattePipeline
 
         >>> # You can replace the checkpoint id with "maxin-cn/Latte-1" too.
@@ -58,8 +57,8 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "A small cactus with a happy face in the Sahara desert."
-        >>> videos = pipe(prompt).video
-        >>> imageio.mimwrite('./test_pipeline.mp4', videos[0], fps=8, quality=5) # highest quality is 10, lowest is 0
+        >>> videos = pipe(prompt).frames
+        >>> export_to_gif(videos, "latte.gif")
         ```
 """
 
@@ -582,7 +581,7 @@ class LattePipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pt",
+        output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
