@@ -53,6 +53,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import LattePipeline
+        >>> from diffusers.utils import export_to_gif
 
         >>> # You can replace the checkpoint id with "maxin-cn/Latte-1" too.
         >>> pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16)
@@ -575,6 +576,25 @@ class LattePipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
+    
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # corresponds to doing no classifier free guidance.
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    @property
+    def interrupt(self):
+        return self._interrupt
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -680,6 +700,9 @@ class LattePipeline(DiffusionPipeline):
                 If `return_dict` is `True`, [`~pipelines.latte.pipeline_latte.LattePipelineOutput`] is returned,
                 otherwise a `tuple` is returned where the first element is a list with the generated images
         """
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+
         # 0. Default
         decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else video_length
 
@@ -695,6 +718,8 @@ class LattePipeline(DiffusionPipeline):
             prompt_embeds,
             negative_prompt_embeds,
         )
+        self._guidance_scale = guidance_scale
+        self._interrupt = False
 
         # 2. Default height and width to transformer
         if prompt is not None and isinstance(prompt, str):
@@ -728,6 +753,7 @@ class LattePipeline(DiffusionPipeline):
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        self._num_timesteps = len(timesteps)
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
@@ -751,6 +777,9 @@ class LattePipeline(DiffusionPipeline):
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
+
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
