@@ -1172,20 +1172,19 @@ class StableDiffusionControlNetPAGPipeline(
                 batch_size * num_images_per_prompt,
                 self.do_classifier_free_guidance,
             )
-            if ip_adapter_image_embeds is not None:
-                for i, image_embeds in enumerate(ip_adapter_image_embeds):
-                    negative_image_embeds = None
-                    if self.do_classifier_free_guidance:
-                        negative_image_embeds, image_embeds = image_embeds.chunk(2)
+            for i, image_embeds in enumerate(ip_adapter_image_embeds):
+                negative_image_embeds = None
+                if self.do_classifier_free_guidance:
+                    negative_image_embeds, image_embeds = image_embeds.chunk(2)
 
-                    if self.do_perturbed_attention_guidance:
-                        image_embeds = self._prepare_perturbed_attention_guidance(
-                            image_embeds, negative_image_embeds, self.do_classifier_free_guidance
-                        )
-                    elif self.do_classifier_free_guidance:
-                        image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
-                    image_embeds = image_embeds.to(device)
-                    ip_adapter_image_embeds[i] = image_embeds
+                if self.do_perturbed_attention_guidance:
+                    image_embeds = self._prepare_perturbed_attention_guidance(
+                        image_embeds, negative_image_embeds, self.do_classifier_free_guidance
+                    )
+                elif self.do_classifier_free_guidance:
+                    image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
+                image_embeds = image_embeds.to(device)
+                ip_adapter_image_embeds[i] = image_embeds
 
         added_cond_kwargs = (
             {"image_embeds": ip_adapter_image_embeds}
