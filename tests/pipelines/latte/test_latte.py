@@ -223,8 +223,8 @@ class LattePipelineIntegrationTests(unittest.TestCase):
             num_inference_steps=2,
         ).video
 
-        videe = videos[0]
+        video = videos[0]
         expected_video = torch.randn(1, 512, 512, 3).numpy()
 
-        max_diff = numpy_cosine_similarity_distance(videe.flatten(), expected_video)
-        assert max_diff < 1e-3, f"Max diff is too high. got {videe.flatten()}"
+        max_diff = numpy_cosine_similarity_distance(video.flatten(), expected_video)
+        assert max_diff < 1e-3, f"Max diff is too high. got {video.flatten()}"
