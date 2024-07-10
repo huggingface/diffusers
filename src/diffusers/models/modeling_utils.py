@@ -734,13 +734,31 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     commit_hash=commit_hash,
                 )
 
-            if low_cpu_mem_usage:
-                # Instantiate model with empty weights
-                with accelerate.init_empty_weights():
-                    model = cls.from_config(config, **unused_kwargs)
+            # Instantiate model with empty weights for faster init
+            with accelerate.init_empty_weights():
+                model = cls.from_config(config, **unused_kwargs)
+            # If the device_map is None, we load everything on the CPU lazily
+            if device_map is None:
+                state_dict = load_state_dict(model_file, variant=variant)
+                model._convert_deprecated_attention_blocks(state_dict)
 
-                # if device_map is None, load the state dict and move the params from meta device to the cpu
-                if device_map is None and not is_sharded:
+                model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
+                    model,
+                    state_dict,
+                    model_file,
+                    pretrained_model_name_or_path,
+                    ignore_mismatched_sizes=ignore_mismatched_sizes,
+                )
+
+                loading_info = {
+                    "missing_keys": missing_keys,
+                    "unexpected_keys": unexpected_keys,
+                    "mismatched_keys": mismatched_keys,
+                    "error_msgs": error_msgs,
+                }
+
+            else:
+                if not is_sharded:
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)
@@ -832,26 +850,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "mismatched_keys": [],
                     "error_msgs": [],
                 }
-            else:
-                model = cls.from_config(config, **unused_kwargs)
-
-                state_dict = load_state_dict(model_file, variant=variant)
-                model._convert_deprecated_attention_blocks(state_dict)
-
-                model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
-                    model,
-                    state_dict,
-                    model_file,
-                    pretrained_model_name_or_path,
-                    ignore_mismatched_sizes=ignore_mismatched_sizes,
-                )
-
-                loading_info = {
-                    "missing_keys": missing_keys,
-                    "unexpected_keys": unexpected_keys,
-                    "mismatched_keys": mismatched_keys,
-                    "error_msgs": error_msgs,
-                }
+                
 
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             raise ValueError(

@@ -165,20 +165,10 @@ def load_model_dict_into_meta(
 def _load_state_dict_into_model(model_to_load, state_dict: OrderedDict) -> List[str]:
     # Convert old format to new format if needed from a PyTorch state_dict
     # copy state_dict so _load_from_state_dict can modify it
-    state_dict = state_dict.copy()
+    # state_dict = state_dict.copy()
     error_msgs = []
 
-    # PyTorch's `_load_from_state_dict` does not copy parameters in a module's descendants
-    # so we need to apply the function recursively.
-    def load(module: torch.nn.Module, prefix: str = ""):
-        args = (state_dict, prefix, {}, True, [], [], error_msgs)
-        module._load_from_state_dict(*args)
-
-        for name, child in module._modules.items():
-            if child is not None:
-                load(child, prefix + name + ".")
-
-    load(model_to_load)
+    model_to_load.load_state_dict(state_dict, assign=True, strict=False)
 
     return error_msgs
 
