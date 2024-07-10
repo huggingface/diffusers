@@ -196,6 +196,7 @@ class Kandinsky3UNet(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
 
+
 class LatteTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -209,6 +210,7 @@ class LatteTransformer3DModel(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
+
 
 class LuminaNextDiT2DModel(metaclass=DummyObject):
     _backends = ["torch"]

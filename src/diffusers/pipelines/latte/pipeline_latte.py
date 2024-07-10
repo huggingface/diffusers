@@ -17,25 +17,27 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, List, Optional, Tuple, Union, Dict
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
-from ...callbacks import PipelineCallback, MultiPipelineCallbacks
-from ...video_processor import VideoProcessor
+
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKL, LatteTransformer3DModel
+from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BACKENDS_MAPPING,
+    BaseOutput,
     is_bs4_available,
     is_ftfy_available,
     logging,
     replace_example_docstring,
-    BaseOutput,
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
-from ...pipelines.pipeline_utils import DiffusionPipeline
-from dataclasses import dataclass
+from ...video_processor import VideoProcessor
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -48,7 +50,7 @@ if is_ftfy_available():
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        ```
+        ```py
         >>> import torch
         >>> from diffusers import LattePipeline
 
@@ -62,6 +64,7 @@ EXAMPLE_DOC_STRING = """
         >>> export_to_gif(videos, "latte.gif")
         ```
 """
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -122,6 +125,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
+
 @dataclass
 class LattePipelineOutput(BaseOutput):
     frames: torch.Tensor
@@ -149,6 +153,7 @@ class LattePipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
     """
+
     bad_punct_regex = re.compile(r"[#®•©™&@·º½¾¿¡§~\)\(\]\[\}\{\|\\/\\*]{1,}")
 
     _optional_components = ["tokenizer", "text_encoder"]
@@ -181,9 +186,9 @@ class LattePipeline(DiffusionPipeline):
     def mask_text_embeddings(self, emb, mask):
         if emb.shape[0] == 1:
             keep_index = mask.sum().item()
-            return emb[:, :, :keep_index, :], keep_index # 1, 120, 4096 -> 1 7 4096
+            return emb[:, :, :keep_index, :], keep_index  # 1, 120, 4096 -> 1 7 4096
         else:
-            masked_feature = emb * mask[:, None, :, None] # 1 120 4096
+            masked_feature = emb * mask[:, None, :, None]  # 1 120 4096
             return masked_feature, emb.shape[2]
 
     # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
@@ -198,7 +203,7 @@ class LattePipeline(DiffusionPipeline):
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
         mask_feature: bool = True,
-        dtype = None,
+        dtype=None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -220,8 +225,7 @@ class LattePipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. For Latte, it's should be the embeddings of the ""
-                string.
+                Pre-generated negative text embeddings. For Latte, it's should be the embeddings of the "" string.
             clean_caption (bool, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
             mask_feature: (bool, defaults to `True`):
@@ -334,7 +338,7 @@ class LattePipeline(DiffusionPipeline):
             )
 
             return masked_prompt_embeds, masked_negative_prompt_embeds
-        
+
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -409,13 +413,13 @@ class LattePipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
         if clean_caption and not is_bs4_available():
-            logger.warn(BACKENDS_MAPPING["bs4"][-1].format("Setting `clean_caption=True`"))
-            logger.warn("Setting `clean_caption` to False...")
+            logger.warning(BACKENDS_MAPPING["bs4"][-1].format("Setting `clean_caption=True`"))
+            logger.warning("Setting `clean_caption` to False...")
             clean_caption = False
 
         if clean_caption and not is_ftfy_available():
-            logger.warn(BACKENDS_MAPPING["ftfy"][-1].format("Setting `clean_caption=True`"))
-            logger.warn("Setting `clean_caption` to False...")
+            logger.warning(BACKENDS_MAPPING["ftfy"][-1].format("Setting `clean_caption=True`"))
+            logger.warning("Setting `clean_caption` to False...")
             clean_caption = False
 
         if not isinstance(text, (tuple, list)):
@@ -546,9 +550,17 @@ class LattePipeline(DiffusionPipeline):
 
         return caption.strip()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, video_length, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, video_length, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
+    def prepare_latents(
+        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            num_frames,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -571,9 +583,9 @@ class LattePipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         negative_prompt: str = "",
         num_inference_steps: int = 50,
-        timesteps: List[int] = None,
+        timesteps: Optional[List[int]] = None,
         guidance_scale: float = 7.5,
-        num_images_per_prompt: Optional[int] = 1,
+        num_images_per_prompt: int = 1,
         video_length: int = 16,
         height: int = 512,
         width: int = 512,
@@ -582,7 +594,7 @@ class LattePipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
@@ -616,6 +628,8 @@ class LattePipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate videos that are closely linked to the text `prompt`,
                 usually at the expense of lower video quality.
+            video_length (`int`, *optional*, defaults to 16):
+                The number of video frames that are generated. Defaults to 16 frames which at 8 frames per seconds
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             height (`int`, *optional*, defaults to self.unet.config.sample_size):
@@ -636,8 +650,8 @@ class LattePipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. For Latte this negative prompt should be "". If not
-                provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
+                Pre-generated negative text embeddings. For Latte this negative prompt should be "". If not provided,
+                negative_prompt_embeds will be generated from `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate video. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -663,8 +677,8 @@ class LattePipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.latte.pipeline_latte.LattePipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.latte.pipeline_latte.LattePipelineOutput`] is returned, otherwise a `tuple` is
-                returned where the first element is a list with the generated images
+                If `return_dict` is `True`, [`~pipelines.latte.pipeline_latte.LattePipelineOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is a list with the generated images
         """
         # 0. Default
         decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else video_length
@@ -673,7 +687,13 @@ class LattePipeline(DiffusionPipeline):
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
         self.check_inputs(
-            prompt, height, width, negative_prompt, callback_on_step_end_tensor_inputs, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            negative_prompt,
+            callback_on_step_end_tensor_inputs,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Default height and width to transformer
@@ -787,7 +807,7 @@ class LattePipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        if not output_type == 'latents':
+        if not output_type == "latents":
             video = self.decode_latents(latents, video_length, decode_chunk_size=14)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
@@ -800,7 +820,7 @@ class LattePipeline(DiffusionPipeline):
             return (video,)
 
         return LattePipelineOutput(frames=video)
-    
+
     # Similar to diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.decode_latents
     def decode_latents(self, latents: torch.Tensor, video_length: int, decode_chunk_size: int = 14):
         # [batch, channels, frames, height, width] -> [batch*frames, channels, height, width]
@@ -826,7 +846,7 @@ class LattePipeline(DiffusionPipeline):
 
         # [batch*frames, channels, height, width] -> [batch, channels, frames, height, width]
         frames = frames.reshape(-1, video_length, *frames.shape[1:]).permute(0, 2, 1, 3, 4)
- 
+
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
         frames = frames.float()
         return frames
