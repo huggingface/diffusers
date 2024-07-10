@@ -220,10 +220,14 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         self.original_attn_processors = self.attn_processors
 
-        for module in self.modules():
-            if isinstance(module, Attention):
-                print(module.__class__.__name__)
-                module.fuse_projections(fuse=True)
+        def fuse_recursively(module):
+            for submodule in module.children():
+                if isinstance(submodule, Attention):
+                    submodule.fuse_projections(fuse=True)
+                # Recursively call this function on the submodule to handle nesting
+                fuse_recursively(submodule)
+        
+        fuse_recursively(self)
 
         self.set_attn_processor(FusedJointAttnProcessor2_0())
         for key, value in self.attn_processors.items():
