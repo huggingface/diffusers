@@ -224,28 +224,20 @@ class AdaLayerNormContinuous(nn.Module):
         norm_type="layer_norm",
     ):
         super().__init__()
-
         self.silu = nn.SiLU()
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=bias)
         if norm_type == "layer_norm":
             self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
-        elif norm_type == "fp32_layer_norm":
-            self.norm = FP32LayerNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
         elif norm_type == "rms_norm":
             self.norm = RMSNorm(embedding_dim, eps, elementwise_affine)
-        elif norm_type == "no_norm":
-            self.norm = None
         else:
             raise ValueError(f"unknown norm_type {norm_type}")
 
     def forward(self, x: torch.Tensor, conditioning_embedding: torch.Tensor) -> torch.Tensor:
-        # convert back to the original dtype in case `conditioning_embedding` is upcasted to float32 (needed for hunyuanDiT)
+        # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
         emb = self.linear(self.silu(conditioning_embedding).to(x.dtype))
         scale, shift = torch.chunk(emb, 2, dim=1)
-        # aura flow doesn't have a norm at one place here
-        if self.norm is not None:
-            x = self.norm(x)
-        x = x * (1 + scale)[:, None, :] + shift[:, None, :]
+        x = self.norm(x) * (1 + scale)[:, None, :] + shift[:, None, :]
         return x
 
 

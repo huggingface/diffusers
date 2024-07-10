@@ -26,7 +26,7 @@ from ..attention_processor import Attention, AuraFlowAttnProcessor2_0
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, FP32LayerNorm
+from ..normalization import AdaLayerNormZero, FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -96,6 +96,23 @@ class AuraFlowFeedForward(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.silu(self.linear_1(x)) * self.linear_2(x)
         x = self.out_projection(x)
+        return x
+    
+class AuraFlowPreFinalBlock(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        conditioning_embedding_dim: int
+    ):
+        super().__init__()
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=False)
+        
+    def forward(self, x: torch.Tensor, conditioning_embedding: torch.Tensor) -> torch.Tensor:
+        emb = self.linear(self.silu(conditioning_embedding).to(x.dtype))
+        scale, shift = torch.chunk(emb, 2, dim=1)
+        x = x * (1 + scale)[:, None, :] + shift[:, None, :]
         return x
 
 
@@ -277,7 +294,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
             ]
         )
 
-        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, norm_type="no_norm", bias=False)
+        self.norm_out = AuraFlowPreFinalBlock(self.inner_dim, self.inner_dim)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=False)
 
         # https://arxiv.org/abs/2309.16588
