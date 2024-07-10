@@ -445,6 +445,7 @@ class Attention(nn.Module):
         # The `Attention` class can call different attention processors / attention functions
         # here we simply pass along all tensors to the selected processor class
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
+
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
         quiet_attn_parameters = {"ip_adapter_masks"}
         unused_kwargs = [
@@ -648,6 +649,7 @@ class Attention(nn.Module):
             if self.use_bias:
                 concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
                 self.to_qkv.bias.copy_(concatenated_bias)
+
         else:
             concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
             in_features = concatenated_weights.shape[1]
@@ -659,7 +661,7 @@ class Attention(nn.Module):
                 concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
                 self.to_kv.bias.copy_(concatenated_bias)
 
-        print(f"{hasattr(self, 'add_q_proj')=}, {hasattr(self, 'add_k_proj')=}, {hasattr(self, 'add_v_proj')=}")
+        # handle added projections for SD3 and others.
         if hasattr(self, "add_q_proj") and hasattr(self, "add_k_proj") and hasattr(self, "add_v_proj"):
             concatenated_weights = torch.cat(
                 [self.add_q_proj.weight.data, self.add_k_proj.weight.data, self.add_v_proj.weight.data]
@@ -673,15 +675,6 @@ class Attention(nn.Module):
                 [self.add_q_proj.bias.data, self.add_k_proj.bias.data, self.add_v_proj.bias.data]
             )
             self.to_added_qkv.bias.copy_(concatenated_bias)
-        # elif hasattr(self, "add_k_proj") and hasattr(self, "add_v_proj"):
-        #     concatenated_weights = torch.cat([self.add_k_proj.weight.data, self.add_v_proj.weight.data])
-        #     in_features = concatenated_weights.shape[1]
-        #     out_features = concatenated_weights.shape[0]
-
-        #     self.to_added_kv = nn.Linear(in_features, out_features, bias=True, device=device, dtype=dtype)
-        #     self.to_added_kv.weight.copy_(concatenated_weights)
-        #     concatenated_bias = torch.cat([self.add_k_proj.bias.data, self.add_v_proj.bias.data])
-        #     self.to_added_kv.bias.copy_(concatenated_bias)
 
         self.fused_projections = fuse
 
@@ -1115,7 +1108,6 @@ class FusedJointAttnProcessor2_0:
         query, key, value = torch.split(qkv, split_size, dim=-1)
 
         # `context` projections.
-        print(f"{hasattr(attn, 'to_added_qkv')=}")
         encoder_qkv = attn.to_added_qkv(encoder_hidden_states)
         split_size = encoder_qkv.shape[-1] // 3
         (
