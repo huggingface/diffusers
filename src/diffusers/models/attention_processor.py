@@ -1646,9 +1646,6 @@ class StableAudioAttnProcessor2_0:
             # (batch, heads, source_length, target_length)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
