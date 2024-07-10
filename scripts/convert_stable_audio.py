@@ -13,6 +13,7 @@ from transformers import (
 from diffusers import (
     AutoencoderOobleck,
     DPMSolverMultistepScheduler,
+    EDMDPMSolverMultistepScheduler,
     StableAudioPipeline,
     StableAudioDiTModel,
     StableAudioProjectionModel,
@@ -153,7 +154,9 @@ tokenizer = AutoTokenizer.from_pretrained(t5_model_config["t5_model_name"], trun
 
 
 # scheduler
-scheduler = DPMSolverMultistepScheduler(solver_order=2, algorithm_type="sde-dpmsolver++", use_exponential_sigmas=True)
+# TODO (YL): chose the right diffusers
+# scheduler = DPMSolverMultistepScheduler(solver_order=2, algorithm_type="sde-dpmsolver++", use_exponential_sigmas=True)
+scheduler = EDMDPMSolverMultistepScheduler(solver_order=2, prediction_type="v_prediction", noise_preconditioning_strategy="atan", sigma_data=1.0, algorithm_type="sde-dpmsolver++", sigma_schedule="exponential")
 scheduler.config["sigma_min"] = 0.3
 scheduler.config["sigma_max"] = 500
 ctx = init_empty_weights if is_accelerate_available() else nullcontext

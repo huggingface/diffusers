@@ -83,6 +83,9 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         final_sigmas_type (`str`, defaults to `"zero"`):
             The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final
             sigma is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
+        noise_preconditioning_strategy (`str`, defaults to `"log"`):
+            The strategy used to convert sigmas to timestamps. If `"log"`, will use the default strategy, i.e use logarithm to convert sigmas. If `atan`,
+            sigmas will be normalized using arctan.
     """
 
     _compatibles = []
@@ -107,6 +110,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
         euler_at_final: bool = False,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
+        noise_preconditioning_strategy: str = "log",
     ):
         # settings for DPM-Solver
         if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"]:
@@ -125,6 +129,12 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithm_type` {algorithm_type}. Please choose `sigma_min` instead."
             )
+        
+        if noise_preconditioning_strategy not in ["log", "atan"]:
+                raise NotImplementedError(f"{noise_preconditioning_strategy} is not implemented for {self.__class__}")
+        else:
+            self.noise_preconditioning_strategy = noise_preconditioning_strategy
+
 
         ramp = torch.linspace(0, 1, num_train_timesteps)
         if sigma_schedule == "karras":
@@ -134,7 +144,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = self.precondition_noise(sigmas)
 
-        self.sigmas = self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
+        self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
 
         # setable values
         self.num_inference_steps = None
@@ -185,8 +195,10 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if not isinstance(sigma, torch.Tensor):
             sigma = torch.tensor([sigma])
 
-        c_noise = 0.25 * torch.log(sigma)
+        if self.noise_preconditioning_strategy == "atan":
+            return sigma.atan() / math.pi * 2
 
+        c_noise = 0.25 * torch.log(sigma)
         return c_noise
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_outputs
