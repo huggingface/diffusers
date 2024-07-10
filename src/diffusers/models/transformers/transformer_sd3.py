@@ -211,7 +211,6 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         </Tip>
         """
-        print("I am here.")
         self.original_attn_processors = None
 
         for _, attn_processor in self.attn_processors.items():
@@ -230,9 +229,6 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         fuse_recursively(self)
 
         self.set_attn_processor(FusedJointAttnProcessor2_0())
-        for key, value in self.attn_processors.items():
-            print(key, value)
-
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
