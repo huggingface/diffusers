@@ -154,8 +154,6 @@ tokenizer = AutoTokenizer.from_pretrained(t5_model_config["t5_model_name"], trun
 
 
 # scheduler
-# TODO (YL): chose the right diffusers
-# scheduler = DPMSolverMultistepScheduler(solver_order=2, algorithm_type="sde-dpmsolver++", use_exponential_sigmas=True)
 scheduler = EDMDPMSolverMultistepScheduler(solver_order=2, prediction_type="v_prediction", noise_preconditioning_strategy="atan", sigma_data=1.0, algorithm_type="sde-dpmsolver++", sigma_schedule="exponential")
 scheduler.config["sigma_min"] = 0.3
 scheduler.config["sigma_max"] = 500
@@ -238,10 +236,4 @@ pipeline = StableAudioPipeline(
 )
 pipeline.to(dtype).save_pretrained(
     args.save_directory, repo_id=args.repo_id, push_to_hub=args.push_to_hub, variant=args.variant
-)
-
-
-# TODO (YL): remove
-pipeline.to(dtype).save_pretrained(
-    args.save_directory, push_to_hub=False, variant=args.variant
 )
