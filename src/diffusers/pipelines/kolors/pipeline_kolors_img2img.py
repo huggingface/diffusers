@@ -26,8 +26,9 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from . import ChatGLMModel, ChatGLMTokenizer
 from .pipeline_output import KolorsPipelineOutput
+from .text_encoder import ChatGLMModel
+from .tokenizer import ChatGLMTokenizer
 
 
 if is_torch_xla_available():
