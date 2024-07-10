@@ -1,0 +1,124 @@
+name: Fast tests on main
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/diffusers/**.py"
+      - "examples/**.py"
+      - "tests/**.py"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  DIFFUSERS_IS_CI: yes
+  HF_HOME: /mnt/cache
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8
+  PYTEST_TIMEOUT: 600
+  RUN_SLOW: no
+
+jobs:
+  run_fast_tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Fast PyTorch CPU tests on Ubuntu
+            framework: pytorch
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu
+          - name: Fast Flax CPU tests on Ubuntu
+            framework: flax
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-flax-cpu
+            report: flax_cpu
+          - name: Fast ONNXRuntime CPU tests on Ubuntu
+            framework: onnxruntime
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-onnxruntime-cpu
+            report: onnx_cpu
+          - name: PyTorch Example CPU tests on Ubuntu
+            framework: pytorch_examples
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_example_cpu
+
+    name: ${{ matrix.config.name }}
+
+    runs-on: ${{ matrix.config.runner }}
+
+    container:
+      image: ${{ matrix.config.image }}
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+
+    - name: Environment
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python utils/print_env.py
+
+    - name: Run fast PyTorch CPU tests
+      if: ${{ matrix.config.framework == 'pytorch' }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "not Flax and not Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
+
+    - name: Run fast Flax TPU tests
+      if: ${{ matrix.config.framework == 'flax' }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Flax" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
+
+    - name: Run fast ONNXRuntime CPU tests
+      if: ${{ matrix.config.framework == 'onnxruntime' }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
+
+    - name: Run example PyTorch CPU tests
+      if: ${{ matrix.config.framework == 'pytorch_examples' }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install peft timm
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          --make-reports=tests_${{ matrix.config.report }} \
+          examples
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_${{ matrix.config.report }}_test_reports
+        path: reports

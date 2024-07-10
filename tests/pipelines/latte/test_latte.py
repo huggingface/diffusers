@@ -258,7 +258,7 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @slow
 @require_torch_gpu
 class LattePipelineIntegrationTests(unittest.TestCase):
-    prompt = "A painting of a squirrel eating a burger"
+    prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
         super().setUp()

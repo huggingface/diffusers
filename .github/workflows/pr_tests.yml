@@ -1,0 +1,233 @@
+name: Fast tests for PRs
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/diffusers/**.py"
+      - "benchmarks/**.py"
+      - "examples/**.py"
+      - "scripts/**.py"
+      - "tests/**.py"
+      - ".github/**.yml"
+      - "utils/**.py"
+  push:
+    branches:
+      - ci-*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  DIFFUSERS_IS_CI: yes
+  OMP_NUM_THREADS: 4
+  MKL_NUM_THREADS: 4
+  PYTEST_TIMEOUT: 60
+
+jobs:
+  check_code_quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[quality]
+      - name: Check quality
+        run: make quality
+      - name: Check if failure
+        if: ${{ failure() }}
+        run: |
+          echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
+
+  check_repository_consistency:
+    needs: check_code_quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[quality]
+      - name: Check repo consistency
+        run: |
+          python utils/check_copies.py
+          python utils/check_dummies.py
+          make deps_table_check_updated
+      - name: Check if failure
+        if: ${{ failure() }}
+        run: |
+          echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
+
+  run_fast_tests:
+    needs: [check_code_quality, check_repository_consistency]
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Fast PyTorch Pipeline CPU tests
+            framework: pytorch_pipelines
+            runner: [ self-hosted, intel-cpu, 32-cpu, 256-ram, ci ]
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu_pipelines
+          - name: Fast PyTorch Models & Schedulers CPU tests
+            framework: pytorch_models
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu_models_schedulers
+          - name: Fast Flax CPU tests
+            framework: flax
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-flax-cpu
+            report: flax_cpu
+          - name: PyTorch Example CPU tests
+            framework: pytorch_examples
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_example_cpu
+
+    name: ${{ matrix.config.name }}
+
+    runs-on: ${{ matrix.config.runner }}
+
+    container:
+      image: ${{ matrix.config.image }}
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+        python -m uv pip install accelerate
+
+    - name: Environment
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python utils/print_env.py
+
+    - name: Run fast PyTorch Pipeline CPU tests
+      if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m pytest -n 8 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "not Flax and not Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/pipelines
+
+    - name: Run fast PyTorch Model Scheduler CPU tests
+      if: ${{ matrix.config.framework == 'pytorch_models' }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "not Flax and not Onnx and not Dependency" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/models tests/schedulers tests/others
+
+    - name: Run fast Flax TPU tests
+      if: ${{ matrix.config.framework == 'flax' }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Flax" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests
+
+    - name: Run example PyTorch CPU tests
+      if: ${{ matrix.config.framework == 'pytorch_examples' }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install peft timm
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          --make-reports=tests_${{ matrix.config.report }} \
+          examples
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_${{ matrix.config.report }}_test_reports
+        path: reports
+
+  run_staging_tests:
+    needs: [check_code_quality, check_repository_consistency]
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Hub tests for models, schedulers, and pipelines
+            framework: hub_tests_pytorch
+            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_hub
+
+    name: ${{ matrix.config.name }}
+
+    runs-on: ${{ matrix.config.runner }}
+
+    container:
+      image: ${{ matrix.config.image }}
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+
+    - name: Environment
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python utils/print_env.py
+
+    - name: Run Hub tests for models, schedulers, and pipelines on a staging env
+      if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        HUGGINGFACE_CO_STAGING=true python -m pytest \
+          -m "is_staging_test" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_${{ matrix.config.report }}_test_reports
+        path: reports

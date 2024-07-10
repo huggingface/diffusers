@@ -1,0 +1,110 @@
+name: "\U0001F41B Bug Report"
+description: Report a bug on Diffusers
+labels: [ "bug" ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks a lot for taking the time to file this issue 🤗.
+        Issues do not only help to improve the library, but also publicly document common problems, questions, workflows for the whole community!
+        Thus, issues are of the same importance as pull requests when contributing to this library ❤️.
+        In order to make your issue as **useful for the community as possible**, let's try to stick to some simple guidelines:
+        - 1. Please try to be as precise and concise as possible.
+             *Give your issue a fitting title. Assume that someone which very limited knowledge of Diffusers can understand your issue. Add links to the source code, documentation other issues, pull requests etc...*
+        - 2. If your issue is about something not working, **always** provide a reproducible code snippet. The reader should be able to reproduce your issue by **only copy-pasting your code snippet into a Python shell**.
+             *The community cannot solve your issue if it cannot reproduce it. If your bug is related to training, add your training script and make everything needed to train public. Otherwise, just add a simple Python code snippet.*
+        - 3. Add the **minimum** amount of code / context that is needed to understand, reproduce your issue.
+             *Make the life of maintainers easy. `diffusers` is getting many issues every day. Make sure your issue is about one bug and one bug only. Make sure you add only the context, code needed to understand your issues - nothing more. Generally, every issue is a way of documenting this library, try to make it a good documentation entry.*
+        - 4. For issues related to community pipelines (i.e., the pipelines located in the `examples/community` folder), please tag the author of the pipeline in your issue thread as those pipelines are not maintained.
+  - type: markdown
+    attributes:
+      value: |
+        For more in-detail information on how to write good issues you can have a look [here](https://huggingface.co/course/chapter8/5?fw=pt).
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is. If you intend to submit a pull request for this issue, tell us in the description. Thanks!
+      placeholder: Bug description
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Please provide a minimal reproducible code which we can copy/paste and reproduce the issue.
+      placeholder: Reproduction
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "Please include the Python logs if you can."
+      render: shell
+  - type: textarea
+    id: system-info
+    attributes:
+      label: System Info
+      description: Please share your system info with us. You can run the command `diffusers-cli env` and copy-paste its output below.
+      placeholder: Diffusers version, platform, Python version, ...
+    validations:
+      required: true
+  - type: textarea
+    id: who-can-help
+    attributes:
+      label: Who can help?
+      description: |
+        Your issue will be replied to more quickly if you can figure out the right person to tag with @.
+        If you know how to use git blame, that is the easiest way, otherwise, here is a rough guide of **who to tag**.
+
+        All issues are read by one of the core maintainers, so if you don't know who to tag, just leave this blank and
+        a core maintainer will ping the right person.
+
+        Please tag a maximum of 2 people.
+
+        Questions on DiffusionPipeline (Saving, Loading, From pretrained, ...): @sayakpaul @DN6
+
+        Questions on pipelines:
+        - Stable Diffusion @yiyixuxu @asomoza
+        - Stable Diffusion XL @yiyixuxu @sayakpaul @DN6
+        - Stable Diffusion 3: @yiyixuxu @sayakpaul @DN6 @asomoza
+        - Kandinsky @yiyixuxu
+        - ControlNet @sayakpaul @yiyixuxu @DN6
+        - T2I Adapter @sayakpaul @yiyixuxu @DN6
+        - IF @DN6
+        - Text-to-Video / Video-to-Video @DN6 @sayakpaul
+        - Wuerstchen @DN6
+        - Other: @yiyixuxu @DN6
+        - Improving generation quality: @asomoza
+
+        Questions on models:
+        - UNet @DN6 @yiyixuxu @sayakpaul
+        - VAE @sayakpaul @DN6 @yiyixuxu
+        - Transformers/Attention @DN6 @yiyixuxu @sayakpaul
+
+        Questions on single file checkpoints: @DN6
+
+        Questions on Schedulers: @yiyixuxu
+
+        Questions on LoRA: @sayakpaul
+
+        Questions on Textual Inversion: @sayakpaul
+
+        Questions on Training:
+        - DreamBooth @sayakpaul
+        - Text-to-Image Fine-tuning @sayakpaul
+        - Textual Inversion @sayakpaul
+        - ControlNet @sayakpaul
+
+        Questions on Tests: @DN6 @sayakpaul @yiyixuxu
+
+        Questions on Documentation: @stevhliu
+
+        Questions on JAX- and MPS-related things: @pcuenca
+
+        Questions on audio pipelines: @sanchit-gandhi
+
+
+
+      placeholder: "@Username ..."

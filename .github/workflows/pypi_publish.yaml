@@ -1,0 +1,81 @@
+# Adapted from https://blog.deepjyoti30.dev/pypi-release-github-action
+
+name: PyPI release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  find-and-checkout-latest-branch:
+    runs-on: ubuntu-latest
+    outputs:
+      latest_branch: ${{ steps.set_latest_branch.outputs.latest_branch }}
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+
+      - name: Fetch latest branch
+        id: fetch_latest_branch
+        run: |
+          pip install -U requests packaging
+          LATEST_BRANCH=$(python utils/fetch_latest_release_branch.py)
+          echo "Latest branch: $LATEST_BRANCH"
+          echo "latest_branch=$LATEST_BRANCH" >> $GITHUB_ENV
+
+      - name: Set latest branch output
+        id: set_latest_branch
+        run: echo "::set-output name=latest_branch::${{ env.latest_branch }}"
+
+  release:
+    needs: find-and-checkout-latest-branch
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.find-and-checkout-latest-branch.outputs.latest_branch }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -U setuptools wheel twine
+          pip install -U torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -U transformers
+
+      - name: Build the dist files
+        run: python setup.py bdist_wheel && python setup.py sdist
+
+      - name: Publish to the test PyPI
+        env:
+          TWINE_USERNAME: ${{ secrets.TEST_PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_PASSWORD }}
+        run: twine upload dist/* -r pypitest --repository-url=https://test.pypi.org/legacy/
+
+      - name: Test installing diffusers and importing
+        run: |
+          pip install diffusers && pip uninstall diffusers -y
+          pip install -i https://testpypi.python.org/pypi diffusers
+          python -c "from diffusers import __version__; print(__version__)"
+          python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('fusing/unet-ldm-dummy-update'); pipe()"
+          python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('hf-internal-testing/tiny-stable-diffusion-pipe', safety_checker=None); pipe('ah suh du')"
+          python -c "from diffusers import *"
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        run: twine upload dist/* -r pypi
