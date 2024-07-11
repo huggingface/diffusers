@@ -72,33 +72,46 @@ class PAGMixin:
 
         def get_block_type(module_name):
             r"""
-            Get the block type from the module name. can be "down", "mid", "up".
+            Get the block type from the module name. Can be "down", "mid", "up".
             """
             # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "down"
+            # down_blocks.1.motion_modules.0.transformer_blocks.0.attn1 -> "down"
             return module_name.split(".")[0].split("_")[0]
 
         def get_block_index(module_name):
             r"""
-            Get the block index from the module name. can be "block_0", "block_1", ... If there is only one block (e.g.
+            Get the block index from the module name. Can be "block_0", "block_1", ... If there is only one block (e.g.
             mid_block) and index is ommited from the name, it will be "block_0".
             """
             # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "block_1"
             # mid_block.attentions.0.transformer_blocks.0.attn1 -> "block_0"
-            if "attentions" in module_name.split(".")[1]:
+            module_name_splits = module_name.split(".")
+            block_index = module_name_splits[1]
+            if "attentions" in block_index or "motion_modules" in block_index:
                 return "block_0"
             else:
-                return f"block_{module_name.split('.')[1]}"
+                return f"block_{block_index}"
 
         def get_attn_index(module_name):
             r"""
-            Get the attention index from the module name. can be "attentions_0", "attentions_1", ...
+            Get the attention index from the module name. Can be "attentions_0", "attentions_1", "motion_modules_0",
+            "motion_modules_1", ...
             """
             # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "attentions_0"
             # mid_block.attentions.0.transformer_blocks.0.attn1 -> "attentions_0"
-            if "attentions" in module_name.split(".")[2]:
-                return f"attentions_{module_name.split('.')[3]}"
-            elif "attentions" in module_name.split(".")[1]:
-                return f"attentions_{module_name.split('.')[2]}"
+            # down_blocks.1.motion_modules.0.transformer_blocks.0.attn1 -> "motion_modules_0"
+            # mid_block.motion_modules.0.transformer_blocks.0.attn1 -> "motion_modules_0"
+            module_name_split = module_name.split(".")
+            mid_name = module_name_split[1]
+            down_name = module_name_split[2]
+            if "motion_modules" in down_name:
+                return f"motion_modules_{module_name_split[3]}"
+            if "motion_modules" in mid_name:
+                return f"motion_modules_{module_name_split[2]}"
+            if "attentions" in down_name:
+                return f"attentions_{module_name_split[3]}"
+            if "attentions" in mid_name:
+                return f"attentions_{module_name_split[2]}"
 
         for pag_layer_input in pag_applied_layers:
             # for each PAG layer input, we find corresponding self-attention layers in the unet model

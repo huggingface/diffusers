@@ -763,7 +763,7 @@ class AnimateDiffPAGPipeline(
 
         # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = (
-            {"image_embeds": image_embeds}
+            {"image_embeds": ip_adapter_image_embeds}
             if ip_adapter_image is not None or ip_adapter_image_embeds is not None
             else None
         )
@@ -789,11 +789,7 @@ class AnimateDiffPAGPipeline(
             with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = (
-                        torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
-                        if self.do_classifier_free_guidance
-                        else latents
-                    )
+                    latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                     # predict the noise residual
