@@ -249,6 +249,8 @@
       title: DiTTransformer2DModel
     - local: api/models/hunyuan_transformer2d
       title: HunyuanDiT2DModel
+    - local: api/models/latte_transformer3d
+      title: LatteTransformer3DModel
     - local: api/models/lumina_nextdit2d
       title: LuminaNextDiT2DModel
     - local: api/models/transformer_temporal
@@ -320,6 +322,8 @@
       title: Kandinsky 2.2
     - local: api/pipelines/kandinsky3
       title: Kandinsky 3
+    - local: api/pipelines/kolors
+      title: Kolors      
     - local: api/pipelines/latent_consistency_models
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
