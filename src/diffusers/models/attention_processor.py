@@ -2177,7 +2177,7 @@ class SlicedAttnAddedKVProcessor:
             (batch_size_attention, query_tokens, dim // attn.heads), device=query.device, dtype=query.dtype
         )
 
-        for i in range(batch_size_attention // self.slice_size):
+        for i in range((batch_size_attention - 1) // self.slice_size + 1):
             start_idx = i * self.slice_size
             end_idx = (i + 1) * self.slice_size
 
