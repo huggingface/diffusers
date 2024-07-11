@@ -209,7 +209,9 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
         do_classifier_free_guidance: bool = True,
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        pooled_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -230,14 +232,14 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            pooled_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
+                If not provided, pooled text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
-                If not provided, pooled text embeddings will be generated from `prompt` input argument.
-            negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
@@ -265,7 +267,7 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
                     max_length=256,
                     truncation=True,
                     return_tensors="pt",
-                ).to("cuda")
+                ).to(device)
                 output = text_encoder(
                     input_ids=text_inputs["input_ids"],
                     attention_mask=text_inputs["attention_mask"],
@@ -273,7 +275,7 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
                     output_hidden_states=True,
                 )
                 prompt_embeds = output.hidden_states[-2].permute(1, 0, 2).clone()  # [batch_size, 77, 4096]
-                text_proj = output.hidden_states[-1][-1, :, :].clone()  # [batch_size, 4096]
+                pooled_prompt_embeds = output.hidden_states[-1][-1, :, :].clone()  # [batch_size, 4096]
                 bs_embed, seq_len, _ = prompt_embeds.shape
                 prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
                 prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
@@ -284,6 +286,7 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
 
         # get unconditional embeddings for classifier free guidance
         zero_out_negative_prompt = negative_prompt is None and self.config.force_zeros_for_empty_prompt
+
         if do_classifier_free_guidance and negative_prompt_embeds is None and zero_out_negative_prompt:
             negative_prompt_embeds = torch.zeros_like(prompt_embeds)
         elif do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -307,6 +310,7 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
                 uncond_tokens = negative_prompt
 
             negative_prompt_embeds_list = []
+
             for tokenizer, text_encoder in zip(tokenizers, text_encoders):
                 max_length = prompt_embeds.shape[1]
                 uncond_input = tokenizer(
@@ -315,7 +319,7 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
                     max_length=max_length,
                     truncation=True,
                     return_tensors="pt",
-                ).to("cuda")
+                ).to(device)
                 output = text_encoder(
                     input_ids=uncond_input["input_ids"],
                     attention_mask=uncond_input["attention_mask"],
@@ -323,7 +327,7 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
                     output_hidden_states=True,
                 )
                 negative_prompt_embeds = output.hidden_states[-2].permute(1, 0, 2).clone()  # [batch_size, 77, 4096]
-                negative_text_proj = output.hidden_states[-1][-1, :, :].clone()  # [batch_size, 4096]
+                negative_pooled_prompt_embeds = output.hidden_states[-1][-1, :, :].clone()  # [batch_size, 4096]
 
                 if do_classifier_free_guidance:
                     # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -340,13 +344,17 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
 
             negative_prompt_embeds = negative_prompt_embeds_list[0]
 
-        bs_embed = text_proj.shape[0]
-        text_proj = text_proj.repeat(1, num_images_per_prompt).view(bs_embed * num_images_per_prompt, -1)
-        negative_text_proj = negative_text_proj.repeat(1, num_images_per_prompt).view(
+        bs_embed = pooled_prompt_embeds.shape[0]
+        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
             bs_embed * num_images_per_prompt, -1
         )
 
-        return prompt_embeds, negative_prompt_embeds, text_proj, negative_text_proj
+        if do_classifier_free_guidance:
+            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+                bs_embed * num_images_per_prompt, -1
+            )
+
+        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -374,7 +382,9 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
         width,
         negative_prompt=None,
         prompt_embeds=None,
+        pooled_prompt_embeds=None,
         negative_prompt_embeds=None,
+        negative_pooled_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if strength < 0 or strength > 1:
@@ -415,6 +425,16 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
+        if prompt_embeds is not None and pooled_prompt_embeds is None:
+            raise ValueError(
+                "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
+            )
+
+        if negative_prompt_embeds is not None and negative_pooled_prompt_embeds is None:
+            raise ValueError(
+                "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
+            )
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device, denoising_start=None):
@@ -654,7 +674,9 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
+        pooled_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -745,10 +767,17 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            pooled_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
+                If not provided, pooled text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            negative_pooled_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
+                input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -823,7 +852,9 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
             width,
             negative_prompt,
             prompt_embeds,
+            pooled_prompt_embeds,
             negative_prompt_embeds,
+            negative_pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs,
         )
 
