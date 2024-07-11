@@ -424,8 +424,6 @@ class LattePipeline(DiffusionPipeline):
             clean_caption = False
 
         if not isinstance(text, (tuple, list)):
-            # print("+" * 100)
-            # print(text)
             text = [text]
 
         def process(text: str):
@@ -434,9 +432,6 @@ class LattePipeline(DiffusionPipeline):
             else:
                 text = text.lower().strip()
             return text
-        
-        # print("#" * 100)
-        # print(text)
 
         return [process(t) for t in text]
 
