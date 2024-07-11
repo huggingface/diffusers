@@ -17,4 +17,3 @@ A Diffusion Transformer model for 3D data from [Latte](https://github.com/Vchite
 ## LatteTransformer3DModel
 
 [[autodoc]] LatteTransformer3DModel
-

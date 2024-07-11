@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import inspect
 import tempfile
 import unittest
 
@@ -38,7 +39,6 @@ from diffusers.utils.testing_utils import (
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
-import inspect
 
 enable_full_determinism()
 
