@@ -182,7 +182,6 @@ class AudioLDMPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-
 class AuraFlowPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
