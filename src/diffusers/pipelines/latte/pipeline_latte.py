@@ -294,7 +294,7 @@ class LattePipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens = [negative_prompt] * batch_size
+            uncond_tokens = [negative_prompt] * batch_size if isinstance(negative_prompt, str) else negative_prompt
             uncond_tokens = self._text_preprocessing(uncond_tokens, clean_caption=clean_caption)
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -424,15 +424,19 @@ class LattePipeline(DiffusionPipeline):
             clean_caption = False
 
         if not isinstance(text, (tuple, list)):
+            # print("+" * 100)
+            # print(text)
             text = [text]
 
         def process(text: str):
             if clean_caption:
                 text = self._clean_caption(text)
-                text = self._clean_caption(text)
             else:
                 text = text.lower().strip()
             return text
+        
+        # print("#" * 100)
+        # print(text)
 
         return [process(t) for t in text]
 

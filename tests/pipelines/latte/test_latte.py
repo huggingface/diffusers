@@ -101,8 +101,9 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "guidance_scale": 5.0,
             "height": 8,
             "width": 8,
-            "video_length": 2,
+            "video_length": 16,
             "output_type": "pt",
+            "clean_caption": False,
         }
         return inputs
 
@@ -118,8 +119,8 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (2, 3, 8, 8))
-        expected_video = torch.randn(2, 3, 8, 8)
+        self.assertEqual(generated_video.shape, (16, 3, 8, 8))
+        expected_video = torch.randn(16, 3, 8, 8)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
@@ -221,9 +222,10 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "guidance_scale": 5.0,
             "height": 8,
             "width": 8,
-            "video_length": 2,
+            "video_length": 16,
             "mask_feature": False,
             "output_type": "pt",
+            "clean_caption": False,
         }
 
         # set all optional components to None
@@ -283,11 +285,11 @@ class LattePipelineIntegrationTests(unittest.TestCase):
             width=512,
             generator=generator,
             num_inference_steps=2,
-            video_length=2,
+            clean_caption=False,
         ).frames
 
         video = videos[0]
-        expected_video = torch.randn(2, 512, 512, 3).numpy()
+        expected_video = torch.randn(1, 512, 512, 3).numpy()
 
         max_diff = numpy_cosine_similarity_distance(video.flatten(), expected_video)
         assert max_diff < 1e-3, f"Max diff is too high. got {video.flatten()}"
