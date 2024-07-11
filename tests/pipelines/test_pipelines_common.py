@@ -1371,7 +1371,7 @@ class PipelineTesterMixin:
             assert_mean_pixel_difference(np.mean(np.abs(to_np(output_with_slicing1))), np.mean(np.abs(to_np(output_without_slicing))))
             assert_mean_pixel_difference(np.mean(np.abs(to_np(output_with_slicing2))), np.mean(np.abs(to_np(output_without_slicing))))
             assert_mean_pixel_difference(np.mean(np.abs(to_np(output_with_slicing3))), np.mean(np.abs(to_np(output_without_slicing))))
-    
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
         reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
