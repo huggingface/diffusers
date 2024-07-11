@@ -267,3 +267,215 @@ pipeline.save_pretrained()
 ```
 
 Lastly, there are also Spaces, such as [SD To Diffusers](https://hf.co/spaces/diffusers/sd-to-diffusers) and [SD-XL To Diffusers](https://hf.co/spaces/diffusers/sdxl-to-diffusers), that provide a more user-friendly interface for converting models to Diffusers-multifolder layout. This is the easiest and most convenient option for converting layouts, and it'll open a PR on your model repository with the converted files. However, this option is not as reliable as running a script, and the Space may fail for more complicated models.
+
+## Single-file layout usage
+
+Now that you're familiar with the differences between the Diffusers-multifolder and single-file layout, this section shows you how to load models and pipeline components, customize configuration options for loading, and load local files with the [`~loaders.FromSingleFileMixin.from_single_file`] method.
+
+### Load a pipeline or model
+
+Pass the file path of the pipeline or model to the [`~loaders.FromSingleFileMixin.from_single_file`] method to load it.
+
+<hfoptions id="pipeline-model">
+<hfoption id="pipeline">
+
+```py
+from diffusers import StableDiffusionXLPipeline
+
+ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
+pipeline = StableDiffusionXLPipeline.from_single_file(ckpt_path)
+```
+
+</hfoption>
+<hfoption id="model">
+
+```py
+from diffusers import StableCascadeUNet
+
+ckpt_path = "https://huggingface.co/stabilityai/stable-cascade/blob/main/stage_b_lite.safetensors"
+model = StableCascadeUNet.from_single_file(ckpt_path)
+```
+
+</hfoption>
+</hfoptions>
+
+Customize components in the pipeline by passing them directly to the [`~loaders.FromSingleFileMixin.from_single_file`] method. For example, you can use a different scheduler in a pipeline.
+
+```py
+from diffusers import StableDiffusionXLPipeline, DDIMScheduler
+
+ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
+scheduler = DDIMScheduler()
+pipeline = StableDiffusionXLPipeline.from_single_file(ckpt_path, scheduler=scheduler)
+```
+
+Or you could use a ControlNet model in the pipeline.
+
+```py
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
+
+ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
+controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
+pipeline = StableDiffusionControlNetPipeline.from_single_file(ckpt_path, controlnet=controlnet)
+```
+
+### Customize configuration options
+
+Models have a configuration file that define their attributes like the number of inputs in a UNet. Pipelines configuration options are available in the pipeline's class. For example, if you look at the [`StableDiffusionXLInstructPix2PixPipeline`] class, there is an option to scale the image latents with the `is_cosxl_edit` parameter.
+
+These configuration files can be found in the models Hub repository or another location from which the configuration file originated (for example, a GitHub repository or locally on your device).
+
+<hfoptions id="config-file">
+<hfoption id="Hub configuration file">
+
+> [!TIP]
+> The [`~loaders.FromSingleFileMixin.from_single_file`] method automatically maps the checkpoint to the appropriate model repository, but there are cases where it is useful to use the `config` parameter. For example, if the model components in the checkpoint are different from the original checkpoint or if a checkpoint doesn't have the necessary metadata to correctly determine the configuration to use for the pipeline.
+
+The [`~loaders.FromSingleFileMixin.from_single_file`] method automatically determines the configuration to use from the configuration file in the model repository. You could also explicitly specify the configuration to use by providing the repository id to the `config` parameter.
+
+```py
+from diffusers import StableDiffusionXLPipeline
+
+ckpt_path = "https://huggingface.co/segmind/SSD-1B/blob/main/SSD-1B.safetensors"
+repo_id = "segmind/SSD-1B"
+
+pipeline = StableDiffusionXLPipeline.from_single_file(ckpt_path, config=repo_id)
+```
+
+The model loads the configuration file for the [UNet](https://huggingface.co/segmind/SSD-1B/blob/main/unet/config.json), [VAE](https://huggingface.co/segmind/SSD-1B/blob/main/vae/config.json), and [text encoder](https://huggingface.co/segmind/SSD-1B/blob/main/text_encoder/config.json) from their respective subfolders in the repository.
+
+</hfoption>
+<hfoption id="original configuration file">
+
+The [`~loaders.FromSingleFileMixin.from_single_file`] method can also load the original configuration file of a pipeline that is stored elsewhere. Pass a local path or URL of the original configuration file to the `original_config` parameter.
+
+```py
+from diffusers import StableDiffusionXLPipeline
+
+ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
+original_config = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
+
+pipeline = StableDiffusionXLPipeline.from_single_file(ckpt_path, original_config=original_config)
+```
+
+> [!TIP]
+> Diffusers attempts to infer the pipeline components based on the type signatures of the pipeline class when you use `original_config` with `local_files_only=True`, instead of fetching the configuration files from the model repository on the Hub. This prevents backward breaking changes in code that can't connect to the internet to fetch the necessary configuration files.
+>
+> This is not as reliable as providing a path to a local model repository with the `config` parameter, and might lead to errors during pipeline configuration. To avoid errors, run the pipeline with `local_files_only=False` once to download the appropriate pipeline configuration files to the local cache.
+
+</hfoption>
+</hfoptions>
+
+While the configuration files specify the pipeline or models default parameters, you can override them by providing the parameters directly to the [`~loaders.FromSingleFileMixin.from_single_file`] method. Any parameter supported by the model or pipeline class can be configured in this way.
+
+<hfoptions id="override">
+<hfoption id="pipeline">
+
+For example, to scale the image latents in [`StableDiffusionXLInstructPix2PixPipeline`] pass the `is_cosxl_edit` parameter.
+
+```python
+from diffusers import StableDiffusionXLInstructPix2PixPipeline
+
+ckpt_path = "https://huggingface.co/stabilityai/cosxl/blob/main/cosxl_edit.safetensors"
+pipeline = StableDiffusionXLInstructPix2PixPipeline.from_single_file(ckpt_path, config="diffusers/sdxl-instructpix2pix-768", is_cosxl_edit=True)
+```
+
+</hfoption>
+<hfoption id="model">
+
+For example, to upcast the attention dimensions in a [`UNet2DConditionModel`] pass the `upcast_attention` parameter.
+
+```python
+from diffusers import UNet2DConditionModel
+
+ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
+model = UNet2DConditionModel.from_single_file(ckpt_path, upcast_attention=True)
+```
+
+</hfoption>
+</hfoptions>
+
+### Local files
+
+In Diffusers>=v0.28.0, the [`~loaders.FromSingleFileMixin.from_single_file`] method attempts to configure a pipeline or model by inferring the model type from the keys in the checkpoint file. The inferred model type is used to determine the appropriate model repository on the Hugging Face Hub to configure the model or pipeline.
+
+For example, any single file checkpoint based on the Stable Diffusion XL base model will use the [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) model repository to configure the pipeline.
+
+But if you're working in an environment with restricted internet access, you should download the configuration files with the [`~huggingface_hub.snapshot_download`] function, and the model checkpoint with the [`~huggingface_hub.hf_hub_download`] function. By default, these files are downloaded to the Hugging Face Hub [cache directory](https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache), but you can specify a preferred directory to download the files to with the `local_dir` parameter.
+
+Pass the configuration and checkpoint paths to the [`~loaders.FromSingleFileMixin.from_single_file`] method to load locally.
+
+<hfoptions id="local">
+<hfoption id="Hub cache directory">
+
+```python
+from huggingface_hub import hf_hub_download, snapshot_download
+
+my_local_checkpoint_path = hf_hub_download(
+    repo_id="segmind/SSD-1B",
+    filename="SSD-1B.safetensors"
+)
+
+my_local_config_path = snapshot_download(
+    repo_id="segmind/SSD-1B",
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+)
+
+pipeline = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, config=my_local_config_path, local_files_only=True)
+```
+
+</hfoption>
+<hfoption id="specific local directory">
+
+```python
+from huggingface_hub import hf_hub_download, snapshot_download
+
+my_local_checkpoint_path = hf_hub_download(
+    repo_id="segmind/SSD-1B",
+    filename="SSD-1B.safetensors"
+    local_dir="my_local_checkpoints"
+)
+
+my_local_config_path = snapshot_download(
+    repo_id="segmind/SSD-1B",
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+    local_dir="my_local_config"
+)
+
+pipeline = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, config=my_local_config_path, local_files_only=True)
+```
+
+</hfoption>
+</hfoptions>
+
+#### Local files without symlink
+
+> [!TIP]
+> In huggingface_hub>=v0.23.0, the `local_dir_use_symlinks` argument isn't necessary for the [`~huggingface_hub.hf_hub_download`] and [`~huggingface_hub.snapshot_download`] functions.
+
+The [`~loaders.FromSingleFileMixin.from_single_file`] method relies on the [huggingface_hub](https://hf.co/docs/huggingface_hub/index) caching mechanism to fetch and store checkpoints and configuration files for models and pipelines. If you're working with a file system that does not support symlinking, you should download the checkpoint file to a local directory first, and disable symlinking with the `local_dir_use_symlink=False` parameter in the [`~huggingface_hub.hf_hub_download`] function and [`~huggingface_hub.snapshot_download`] functions.
+
+```python
+from huggingface_hub import hf_hub_download, snapshot_download
+
+my_local_checkpoint_path = hf_hub_download(
+    repo_id="segmind/SSD-1B",
+    filename="SSD-1B.safetensors"
+    local_dir="my_local_checkpoints",
+    local_dir_use_symlinks=False
+)
+print("My local checkpoint: ", my_local_checkpoint_path)
+
+my_local_config_path = snapshot_download(
+    repo_id="segmind/SSD-1B",
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+    local_dir_use_symlinks=False,
+)
+print("My local config: ", my_local_config_path)
+```
+
+Then you can pass the local paths to the `pretrained_model_link_or_path` and `config` parameters.
+
+```python
+pipeline = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, config=my_local_config_path, local_files_only=True)
+```

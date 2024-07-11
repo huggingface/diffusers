@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# ControlNet
+# ControlNetModel
 
 The ControlNet model was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang, Anyi Rao, Maneesh Agrawala. It provides a greater degree of control over text-to-image generation by conditioning the model on additional inputs such as edge maps, depth maps, segmentation maps, and keypoints for pose detection.
 
@@ -21,7 +21,7 @@ The abstract from the paper is:
 ## Loading from the original format
 
 By default the [`ControlNetModel`] should be loaded with [`~ModelMixin.from_pretrained`], but it can also be loaded
-from the original format using [`FromOriginalControlnetMixin.from_single_file`] as follows:
+from the original format using [`FromOriginalModelMixin.from_single_file`] as follows:
 
 ```py
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel

@@ -59,7 +59,7 @@ image
 
 먼저 `compel` 라이브러리를 설치해야합니다:
 
-```
+```sh
 pip install compel
 ```
 

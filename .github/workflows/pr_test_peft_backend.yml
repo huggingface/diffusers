@@ -111,3 +111,21 @@ jobs:
           -s -v \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/lora/
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v \
+          --make-reports=tests_models_lora_${{ matrix.config.report }} \
+          tests/models/ -k "lora"
+
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+        cat reports/tests_models_lora_${{ matrix.config.report }}_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_${{ matrix.config.report }}_test_reports
+        path: reports

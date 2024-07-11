@@ -21,6 +21,7 @@ import unittest
 from collections import OrderedDict
 
 import torch
+from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from pytest import mark
 
@@ -37,7 +38,9 @@ from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
+    is_peft_available,
     load_hf_numpy,
+    require_peft_backend,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
     require_torch_accelerator_with_training,
@@ -51,9 +54,36 @@ from diffusers.utils.testing_utils import (
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
+if is_peft_available():
+    from peft import LoraConfig
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+
 logger = logging.get_logger(__name__)
 
 enable_full_determinism()
+
+
+def get_unet_lora_config():
+    rank = 4
+    unet_lora_config = LoraConfig(
+        r=rank,
+        lora_alpha=rank,
+        target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+        init_lora_weights=False,
+        use_dora=False,
+    )
+    return unet_lora_config
+
+
+def check_if_lora_correctly_set(model) -> bool:
+    """
+    Checks if the LoRA layers are correctly set with peft
+    """
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            return True
+    return False
 
 
 def create_ip_adapter_state_dict(model):
@@ -1004,6 +1034,117 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert sample2.allclose(sample4, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
+
+    @require_torch_gpu
+    def test_load_sharded_checkpoint_from_hub(self):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained("hf-internal-testing/unet2d-sharded-dummy")
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    def test_load_sharded_checkpoint_from_hub_subfolder(self):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained(
+            "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet"
+        )
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    def test_load_sharded_checkpoint_from_hub_local(self):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
+        loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True)
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    def test_load_sharded_checkpoint_device_map_from_hub(self):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained("hf-internal-testing/unet2d-sharded-dummy", device_map="auto")
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    def test_load_sharded_checkpoint_device_map_from_hub_local(self):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
+        loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True, device_map="auto")
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_peft_backend
+    def test_lora(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        # forward pass without LoRA
+        with torch.no_grad():
+            non_lora_sample = model(**inputs_dict).sample
+
+        unet_lora_config = get_unet_lora_config()
+        model.add_adapter(unet_lora_config)
+
+        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+        # forward pass with LoRA
+        with torch.no_grad():
+            lora_sample = model(**inputs_dict).sample
+
+        assert not torch.allclose(
+            non_lora_sample, lora_sample, atol=1e-4, rtol=1e-4
+        ), "LoRA injected UNet should produce different results."
+
+    @require_peft_backend
+    def test_lora_serialization(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        # forward pass without LoRA
+        with torch.no_grad():
+            non_lora_sample = model(**inputs_dict).sample
+
+        unet_lora_config = get_unet_lora_config()
+        model.add_adapter(unet_lora_config)
+
+        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+        # forward pass with LoRA
+        with torch.no_grad():
+            lora_sample_1 = model(**inputs_dict).sample
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_attn_procs(tmpdirname)
+            model.unload_lora()
+            model.load_attn_procs(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+            assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+            with torch.no_grad():
+                lora_sample_2 = model(**inputs_dict).sample
+
+        assert not torch.allclose(
+            non_lora_sample, lora_sample_1, atol=1e-4, rtol=1e-4
+        ), "LoRA injected UNet should produce different results."
+        assert torch.allclose(
+            lora_sample_1, lora_sample_2, atol=1e-4, rtol=1e-4
+        ), "Loading from a saved checkpoint should produce identical results."
 
 
 @slow

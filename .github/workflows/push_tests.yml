@@ -62,7 +62,7 @@ jobs:
     runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0 --privileged
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
@@ -71,12 +71,6 @@ jobs:
       - name: NVIDIA-SMI
         run: |
           nvidia-smi
-      - name: Tailscale
-        uses: huggingface/tailscale-action@v1
-        with:
-          authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
-          slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
-          slackToken: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
       - name: Install dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
@@ -95,18 +89,11 @@ jobs:
             -s -v -k "not Flax and not Onnx" \
             --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
             tests/pipelines/${{ matrix.module }}
-      - name: Tailscale Wait
-        if: ${{ failure() || runner.debug == '1' }}
-        uses: huggingface/tailscale-action@v1
-        with:
-           waitForSSH: true
-           authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
       - name: Failure short reports
         if: ${{ failure() }}
         run: |
           cat reports/tests_pipeline_${{ matrix.module }}_cuda_stats.txt
           cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
-
       - name: Test suite reports artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
@@ -202,12 +189,17 @@ jobs:
           -s -v -k "not Flax and not Onnx and not PEFTLoRALoading" \
           --make-reports=tests_peft_cuda \
           tests/lora/
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "lora and not Flax and not Onnx and not PEFTLoRALoading" \
+          --make-reports=tests_peft_cuda_models_lora \
+          tests/models/
 
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
         cat reports/tests_peft_cuda_stats.txt
         cat reports/tests_peft_cuda_failures_short.txt
+        cat reports/tests_peft_cuda_models_lora_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
@@ -338,6 +330,7 @@ jobs:
     - name: Run example tests on GPU
       env:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        RUN_COMPILE: yes
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
