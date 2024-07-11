@@ -113,7 +113,6 @@ class AnimateDiffPAGPipelineFastTests(
             "tokenizer": tokenizer,
             "feature_extractor": None,
             "image_encoder": None,
-            # "pag_applied_layers": ["mid", "up", "down"],
         }
         return components
 
