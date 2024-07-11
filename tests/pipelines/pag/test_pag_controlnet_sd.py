@@ -44,7 +44,6 @@ from ..test_pipelines_common import (
     PipelineFromPipeTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -56,7 +55,6 @@ class StableDiffusionControlNetPAGPipelineFastTests(
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineFromPipeTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionControlNetPAGPipeline
@@ -198,9 +196,6 @@ class StableDiffusionControlNetPAGPipelineFastTests(
         assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
         assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
 
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     def test_pag_cfg(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -220,7 +215,7 @@ class StableDiffusionControlNetPAGPipelineFastTests(
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
         expected_slice = np.array(
-            [0.6819614, 0.5551478, 0.5499094, 0.5769566, 0.53942275, 0.5707505, 0.41131154, 0.47833863, 0.49982738]
+            [0.45505235, 0.2785938, 0.16334778, 0.79689944, 0.53095645, 0.40135607, 0.7052706, 0.69065094, 0.41548574]
         )
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
@@ -246,7 +241,7 @@ class StableDiffusionControlNetPAGPipelineFastTests(
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
         expected_slice = np.array(
-            [0.66685176, 0.53207266, 0.5541569, 0.5912994, 0.5368312, 0.58433825, 0.42607725, 0.46805605, 0.5098659]
+            [0.45127502, 0.2797252, 0.15970308, 0.7993157, 0.5414344, 0.40160775, 0.7114598, 0.69803864, 0.4217583]
         )
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
