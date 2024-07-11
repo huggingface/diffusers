@@ -576,7 +576,7 @@ class LattePipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-    
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
