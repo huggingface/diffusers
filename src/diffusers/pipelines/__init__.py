@@ -198,6 +198,12 @@ else:
         "Kandinsky3Img2ImgPipeline",
         "Kandinsky3Pipeline",
     ]
+    _import_structure["kolors"] = [
+        "KolorsPipeline",
+        "KolorsImg2ImgPipeline",
+        "ChatGLMModel",
+        "ChatGLMTokenizer",
+    ]
     _import_structure["latent_consistency_models"] = [
         "LatentConsistencyModelImg2ImgPipeline",
         "LatentConsistencyModelPipeline",
@@ -480,6 +486,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .kandinsky3 import (
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
+        )
+        from .kolors import (
+            ChatGLMModel,
+            ChatGLMTokenizer,
+            KolorsImg2ImgPipeline,
+            KolorsPipeline,
         )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
