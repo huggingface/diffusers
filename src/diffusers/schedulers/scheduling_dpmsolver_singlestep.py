@@ -109,11 +109,11 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             The threshold value for dynamic thresholding. Valid only when `thresholding=True` and
             `algorithm_type="dpmsolver++"`.
         algorithm_type (`str`, defaults to `dpmsolver++`):
-            Algorithm type for the solver; can be `dpmsolver` or `dpmsolver++` or `sde-dpmsolver` or `sde-dpmsolver++`.
-            The `dpmsolver` type implements the algorithms in the [DPMSolver](https://huggingface.co/papers/2206.00927)
-            paper, and the `dpmsolver++` type implements the algorithms in the
-            [DPMSolver++](https://huggingface.co/papers/2211.01095) paper. It is recommended to use `dpmsolver++` or
-            `sde-dpmsolver++` with `solver_order=2` for guided sampling like in Stable Diffusion.
+            Algorithm type for the solver; can be `dpmsolver` or `dpmsolver++` or `sde-dpmsolver++`. The `dpmsolver`
+            type implements the algorithms in the [DPMSolver](https://huggingface.co/papers/2206.00927) paper, and the
+            `dpmsolver++` type implements the algorithms in the [DPMSolver++](https://huggingface.co/papers/2211.01095)
+            paper. It is recommended to use `dpmsolver++` or `sde-dpmsolver++` with `solver_order=2` for guided
+            sampling like in Stable Diffusion.
         solver_type (`str`, defaults to `midpoint`):
             Solver type for the second-order solver; can be `midpoint` or `heun`. The solver type slightly affects the
             sample quality, especially for a small number of steps. It is recommended to use `midpoint` solvers.
@@ -158,9 +158,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
     ):
-        if algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
+        if algorithm_type == "dpmsolver":
             deprecation_message = f"algorithm_type {algorithm_type} is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
-            deprecate("algorithm_types dpmsolver and sde-dpmsolver", "1.0.0", deprecation_message)
+            deprecate("algorithm_types dpmsolver", "1.0.0", deprecation_message)
 
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -187,7 +187,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         # settings for DPM-Solver
-        if algorithm_type not in ["dpmsolver", "dpmsolver++", "sde-dpmsolver", "sde-dpmsolver++"]:
+        if algorithm_type not in ["dpmsolver", "dpmsolver++", "sde-dpmsolver++"]:
             if algorithm_type == "deis":
                 self.register_to_config(algorithm_type="dpmsolver++")
             else:
@@ -520,7 +520,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             return x0_pred
 
         # DPM-Solver needs to solve an integral of the noise prediction model.
-        elif self.config.algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
+        elif self.config.algorithm_type == "dpmsolver":
             if self.config.prediction_type == "epsilon":
                 # DPM-Solver and DPM-Solver++ only need the "mean" output.
                 if self.config.variance_type in ["learned", "learned_range"]:
@@ -610,13 +610,6 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 (sigma_t / sigma_s * torch.exp(-h)) * sample
                 + (alpha_t * (1 - torch.exp(-2.0 * h))) * model_output
                 + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-            )
-        elif self.config.algorithm_type == "sde-dpmsolver":
-            assert noise is not None
-            x_t = (
-                (alpha_t / alpha_s) * sample
-                - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * model_output
-                + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
             )
         return x_t
 
@@ -728,22 +721,6 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                     + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
                     + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
                     + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-                )
-        elif self.config.algorithm_type == "sde-dpmsolver":
-            assert noise is not None
-            if self.config.solver_type == "midpoint":
-                x_t = (
-                    (alpha_t / alpha_s1) * sample
-                    - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * D0
-                    - (sigma_t * (torch.exp(h) - 1.0)) * D1
-                    + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
-                )
-            elif self.config.solver_type == "heun":
-                x_t = (
-                    (alpha_t / alpha_s1) * sample
-                    - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * D0
-                    - 2.0 * (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
-                    + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
                 )
         return x_t
 
@@ -988,7 +965,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
 
-        if self.config.algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
+        if self.config.algorithm_type == "sde-dpmsolver++":
             noise = randn_tensor(
                 model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
             )
