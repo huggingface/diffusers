@@ -5,15 +5,14 @@ from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
-    is_flax_available,
     is_torch_available,
     is_transformers_available,
 )
 
 
 _dummy_objects = {}
-_additional_imports = {}
-_import_structure = {"pipeline_output": ["StableDiffusion3PipelineOutput"]}
+_import_structure = {}
+
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -23,20 +22,17 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_stable_diffusion_3"] = ["StableDiffusion3Pipeline"]
-    _import_structure["pipeline_stable_diffusion_3_img2img"] = ["StableDiffusion3Img2ImgPipeline"]
-    _import_structure["pipeline_stable_diffusion_3_inpaint"] = ["StableDiffusion3InpaintPipeline"]
+    _import_structure["pipeline_latte"] = ["LattePipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
+
     except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
+        from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_stable_diffusion_3 import StableDiffusion3Pipeline
-        from .pipeline_stable_diffusion_3_img2img import StableDiffusion3Img2ImgPipeline
-        from .pipeline_stable_diffusion_3_inpaint import StableDiffusion3InpaintPipeline
+        from .pipeline_latte import LattePipeline
 
 else:
     import sys
@@ -49,6 +45,4 @@ else:
     )
 
     for name, value in _dummy_objects.items():
-        setattr(sys.modules[__name__], name, value)
-    for name, value in _additional_imports.items():
         setattr(sys.modules[__name__], name, value)
