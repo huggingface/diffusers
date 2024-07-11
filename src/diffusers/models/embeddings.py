@@ -45,7 +45,7 @@ def get_timestep_embedding(
         downscale_freq_shift (float):
             Controls the delta between frequencies between dimensions
         scale (float):
-            The minimum frequency of the embeddings.
+            Scaling factor applied to the embeddings.
         max_period (int):
             Controls the maximum frequency of the embeddings
     Returns
