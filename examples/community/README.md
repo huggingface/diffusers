@@ -4102,7 +4102,7 @@ output_frames[0].save(output_video_path, save_all=True,
 
 ### AnimateDiff on IPEX
 
-This diffusion pipeline aims to accelarate the inference of AnimateDiff on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+This diffusion pipeline aims to accelerate the inference of AnimateDiff on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
 
 To use this pipeline, you need to:
 1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
@@ -4161,7 +4161,7 @@ ckpt = f"animatediff_lightning_{step}step_diffusers.safetensors"
 base = "emilianJR/epiCRealism"  # Choose to your favorite base model.
 
 adapter = MotionAdapter().to(device, dtype)
-adapter.load_state_dict(load_file(hf_hub_download(repo ,ckpt), device=device))
+adapter.load_state_dict(load_file(hf_hub_download(repo, ckpt), device=device))
 
 # Helper function for time evaluation
 def elapsed_time(pipeline, nb_pass=3, num_inference_steps=1):
