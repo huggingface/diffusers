@@ -42,6 +42,11 @@ from ..test_pipelines_common import PipelineTesterMixin, to_np
 enable_full_determinism()
 
 
+def check_qkv_fusion_matches_attn_procs_length(model, original_attn_processors):
+    current_attn_processors = model.attn_processors
+    return len(current_attn_processors) == len(original_attn_processors)
+
+
 class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = HunyuanDiTPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
@@ -261,6 +266,13 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         original_image_slice = image[0, -3:, -3:, -1]
 
         pipe.transformer.fuse_qkv_projections()
+        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
+        # to the pipeline level.
+        pipe.transformer.fuse_qkv_projections()
+        assert check_qkv_fusion_matches_attn_procs_length(
+            pipe.transformer, pipe.transformer.original_attn_processors
+        ), "Something wrong with the attention processors concerning the fused QKV projections."
+
         inputs = self.get_dummy_inputs(device)
         inputs["return_dict"] = False
         image_fused = pipe(**inputs)[0]

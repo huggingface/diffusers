@@ -16,6 +16,11 @@ from diffusers.utils.testing_utils import (
 from ..test_pipelines_common import PipelineTesterMixin
 
 
+def check_qkv_fusion_matches_attn_procs_length(model, original_attn_processors):
+    current_attn_processors = model.attn_processors
+    return len(current_attn_processors) == len(original_attn_processors)
+
+
 class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = StableDiffusion3Pipeline
     params = frozenset(
@@ -191,7 +196,13 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         image = pipe(**inputs).images
         original_image_slice = image[0, -3:, -3:, -1]
 
+        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
+        # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
+        assert check_qkv_fusion_matches_attn_procs_length(
+            pipe.transformer, pipe.transformer.original_attn_processors
+        ), "Something wrong with the attention processors concerning the fused QKV projections."
+
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
         image_slice_fused = image[0, -3:, -3:, -1]
