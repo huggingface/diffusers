@@ -56,12 +56,12 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_gif
 
         >>> # You can replace the checkpoint id with "maxin-cn/Latte-1" too.
-        >>> pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16)
+        >>> pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16).to("cuda")
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "A small cactus with a happy face in the Sahara desert."
-        >>> videos = pipe(prompt).frames
+        >>> videos = pipe(prompt).frames[0]
         >>> export_to_gif(videos, "latte.gif")
         ```
 """
