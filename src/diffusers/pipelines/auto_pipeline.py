@@ -47,12 +47,12 @@ from .kandinsky2_2 import (
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pag import (
+    StableDiffusionControlNetPAGImg2ImgPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGPipeline,
     StableDiffusionXLPAGImg2ImgPipeline,
     StableDiffusionXLPAGInpaintPipeline,
     StableDiffusionXLPAGPipeline,
-    StableDiffusionControlNetPAGImg2ImgPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline

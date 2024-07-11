@@ -37,12 +37,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
+        from .pipeline_pag_controlnet_sd_img2img import StableDiffusionControlNetPAGImg2ImgPipeline
         from .pipeline_pag_controlnet_sd_xl import StableDiffusionXLControlNetPAGPipeline
         from .pipeline_pag_sd import StableDiffusionPAGPipeline
         from .pipeline_pag_sd_xl import StableDiffusionXLPAGPipeline
         from .pipeline_pag_sd_xl_img2img import StableDiffusionXLPAGImg2ImgPipeline
         from .pipeline_pag_sd_xl_inpaint import StableDiffusionXLPAGInpaintPipeline
-        from .pipeline_pag_controlnet_sd_img2img import StableDiffusionControlNetPAGImg2ImgPipeline
 
 else:
     import sys
