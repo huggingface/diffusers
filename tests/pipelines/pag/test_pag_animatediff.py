@@ -189,11 +189,6 @@ class AnimateDiffPAGPipelineFastTests(
             expected_slice = np.array([0.4051, 0.4495, 0.4480, 0.5845, 0.4172, 0.6066, 0.4205, 0.3786, 0.5323])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
-    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-4):
-        # TODO(aryan): Not entirely sure what's causing this test to break. The amount of time I've spent on
-        # fixing this is not justifiable so for my sanity, let's skip this for now.
-        pass
-
     @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
     def test_to_device(self):
         components = self.get_dummy_components()
