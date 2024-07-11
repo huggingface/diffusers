@@ -172,7 +172,9 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
 
         self.register_modules(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+        )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
         self.default_sample_size = self.unet.config.sample_size
@@ -188,6 +190,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
         pooled_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        max_sequence_length: int = 256,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -219,6 +222,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
+            max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
         """
         # from IPython import embed; embed(); exit()
         device = device or self._execution_device
@@ -240,7 +244,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
                 text_inputs = tokenizer(
                     prompt,
                     padding="max_length",
-                    max_length=256,
+                    max_length=max_sequence_length,
                     truncation=True,
                     return_tensors="pt",
                 ).to(device)
@@ -250,8 +254,12 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
                     position_ids=text_inputs["position_ids"],
                     output_hidden_states=True,
                 )
-                prompt_embeds = output.hidden_states[-2].permute(1, 0, 2).clone()  # [batch_size, 77, 4096]
-                pooled_prompt_embeds = output.hidden_states[-1][-1, :, :].clone()  # [batch_size, 4096]
+
+                # [max_sequence_length, batch, hidden_size] -> [batch, max_sequence_length, hidden_size]
+                # clone to have a contiguous tensor
+                prompt_embeds = output.hidden_states[-2].permute(1, 0, 2).clone()
+                # [max_sequence_length, batch, hidden_size] -> [batch, hidden_size]
+                pooled_prompt_embeds = output.hidden_states[-1][-1, :, :].clone()
                 bs_embed, seq_len, _ = prompt_embeds.shape
                 prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
                 prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
@@ -288,11 +296,10 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
             negative_prompt_embeds_list = []
 
             for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-                max_length = prompt_embeds.shape[1]
                 uncond_input = tokenizer(
                     uncond_tokens,
                     padding="max_length",
-                    max_length=max_length,
+                    max_length=max_sequence_length,
                     truncation=True,
                     return_tensors="pt",
                 ).to(device)
@@ -302,8 +309,12 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
                     position_ids=uncond_input["position_ids"],
                     output_hidden_states=True,
                 )
-                negative_prompt_embeds = output.hidden_states[-2].permute(1, 0, 2).clone()  # [batch_size, 77, 4096]
-                negative_pooled_prompt_embeds = output.hidden_states[-1][-1, :, :].clone()  # [batch_size, 4096]
+
+                # [max_sequence_length, batch, hidden_size] -> [batch, max_sequence_length, hidden_size]
+                # clone to have a contiguous tensor
+                negative_prompt_embeds = output.hidden_states[-2].permute(1, 0, 2).clone()
+                # [max_sequence_length, batch, hidden_size] -> [batch, hidden_size]
+                negative_pooled_prompt_embeds = output.hidden_states[-1][-1, :, :].clone()
 
                 if do_classifier_free_guidance:
                     # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -361,6 +372,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
         negative_prompt_embeds=None,
         negative_pooled_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
+        max_sequence_length=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -407,6 +419,9 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
             raise ValueError(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
+
+        if max_sequence_length is not None and max_sequence_length > 256:
+            raise ValueError(f"`max_sequence_length` cannot be greater than 256 but is {max_sequence_length}")
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -561,6 +576,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        max_sequence_length: int = 256,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -680,6 +696,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
 
         Examples:
 
@@ -710,6 +727,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
             negative_prompt_embeds,
             negative_pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs,
+            max_sequence_length=max_sequence_length,
         )
 
         self._guidance_scale = guidance_scale
