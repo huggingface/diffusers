@@ -159,8 +159,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         variance_type: Optional[str] = None,
     ):
         if algorithm_type == "dpmsolver":
-            deprecation_message = f"algorithm_type {algorithm_type} is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
-            deprecate("algorithm_types dpmsolver", "1.0.0", deprecation_message)
+            deprecation_message = "algorithm_type `dpmsolver` is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
+            deprecate("algorithm_types=dpmsolver", "1.0.0", deprecation_message)
 
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
