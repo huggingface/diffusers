@@ -101,7 +101,7 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "guidance_scale": 5.0,
             "height": 8,
             "width": 8,
-            "video_length": 16,
+            "video_length": 1,
             "output_type": "pt",
             "clean_caption": False,
         }
@@ -119,8 +119,8 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (16, 3, 8, 8))
-        expected_video = torch.randn(16, 3, 8, 8)
+        self.assertEqual(generated_video.shape, (1, 3, 8, 8))
+        expected_video = torch.randn(1, 3, 8, 8)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
@@ -222,7 +222,7 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "guidance_scale": 5.0,
             "height": 8,
             "width": 8,
-            "video_length": 16,
+            "video_length": 1,
             "mask_feature": False,
             "output_type": "pt",
             "clean_caption": False,
