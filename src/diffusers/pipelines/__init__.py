@@ -198,6 +198,12 @@ else:
         "Kandinsky3Img2ImgPipeline",
         "Kandinsky3Pipeline",
     ]
+    _import_structure["kolors"] = [
+        "KolorsPipeline",
+        "KolorsImg2ImgPipeline",
+        "ChatGLMModel",
+        "ChatGLMTokenizer",
+    ]
     _import_structure["latent_consistency_models"] = [
         "LatentConsistencyModelImg2ImgPipeline",
         "LatentConsistencyModelPipeline",
@@ -209,6 +215,7 @@ else:
             "LEditsPPPipelineStableDiffusionXL",
         ]
     )
+    _import_structure["latte"] = ["LattePipeline"]
     _import_structure["lumina"] = ["LuminaText2ImgPipeline"]
     _import_structure["marigold"].extend(
         [
@@ -482,11 +489,18 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
         )
+        from .kolors import (
+            ChatGLMModel,
+            ChatGLMTokenizer,
+            KolorsImg2ImgPipeline,
+            KolorsPipeline,
+        )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
         )
         from .latent_diffusion import LDMTextToImagePipeline
+        from .latte import LattePipeline
         from .ledits_pp import (
             LEditsPPDiffusionPipelineOutput,
             LEditsPPInversionPipelineOutput,
