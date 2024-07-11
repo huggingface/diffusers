@@ -35,7 +35,7 @@ def get_timestep_embedding(
     """
     This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal timestep embeddings.
 
-    Args
+    Args:
         timesteps (torch.Tensor):
             a 1-D Tensor of N indices, one per batch element. These may be fractional.
         embedding_dim (int):
