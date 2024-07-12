@@ -359,7 +359,10 @@ class BasicTransformerBlock(nn.Module):
                 out_bias=attention_out_bias,
             )  # is self-attn if encoder_hidden_states is none
         else:
-            self.norm2 = None
+            if norm_type == "ada_norm_single":  # For Latte
+                self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+            else:
+                self.norm2 = None
             self.attn2 = None
 
         # 3. Feed-forward
@@ -439,7 +442,6 @@ class BasicTransformerBlock(nn.Module):
             ).chunk(6, dim=1)
             norm_hidden_states = self.norm1(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
-            norm_hidden_states = norm_hidden_states.squeeze(1)
         else:
             raise ValueError("Incorrect norm used")
 
@@ -456,6 +458,7 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
+
         if self.norm_type == "ada_norm_zero":
             attn_output = gate_msa.unsqueeze(1) * attn_output
         elif self.norm_type == "ada_norm_single":
