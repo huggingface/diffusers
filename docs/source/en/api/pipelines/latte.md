@@ -55,10 +55,17 @@ pipeline.vae.to(memory_format=torch.channels_last)
 Finally, compile the components and run inference:
 
 ```python
-pipeline.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
-pipeline.vae.decode = torch.compile(pipeline.vae.decode, mode="max-autotune", fullgraph=True)
+pipeline.transformer = torch.compile(pipeline.transformer)
+pipeline.vae.decode = torch.compile(pipeline.vae.decode)
 
 video = pipeline(prompt="A dog wearing sunglasses floating in space, surreal, nebulae in background").frames[0]
+```
+
+The [benchmark](https://gist.github.com/a-r-r-o-w/4e1694ca46374793c0361d740a99ff19) results on an 80GB A100 machine are:
+
+```
+Without torch.compile(): Average inference time: 16.246 seconds.
+With torch.compile(): Average inference time: 14.573 seconds.
 ```
 
 ## LattePipeline
