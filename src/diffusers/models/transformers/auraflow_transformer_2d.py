@@ -253,6 +253,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         pos_embed_max_size (`int`, defaults to 4096): Maximum positions to embed from the image latents.
     """
 
+    _no_split_modules = ["AuraFlowJointTransformerBlock", "AuraFlowSingleTransformerBlock", "AuraFlowPatchEmbed"]
     _supports_gradient_checkpointing = True
 
     @register_to_config
