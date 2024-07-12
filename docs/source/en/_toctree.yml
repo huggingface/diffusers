@@ -280,6 +280,8 @@
       title: AudioLDM
     - local: api/pipelines/audioldm2
       title: AudioLDM 2
+    - local: api/pipelines/aura_flow
+      title: AuraFlow
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
     - local: api/pipelines/blip_diffusion
@@ -323,7 +325,7 @@
     - local: api/pipelines/kandinsky3
       title: Kandinsky 3
     - local: api/pipelines/kolors
-      title: Kolors      
+      title: Kolors
     - local: api/pipelines/latent_consistency_models
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion

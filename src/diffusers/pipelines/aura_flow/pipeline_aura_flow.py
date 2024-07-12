@@ -35,9 +35,8 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import AuraFlowPipeline
 
-        >>> pipe = AuraFlowPipeline.from_pretrained(
-        ...     "fal/AuraFlow", torch_dtype=torch.float16
-        ... ).to("cuda)
+        >>> pipe = AuraFlowPipeline.from_pretrained("fal/AuraFlow", torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> image = pipe(prompt).images[0]
         >>> image.save("aura_flow.png")
@@ -122,6 +121,7 @@ class AuraFlowPipeline(DiffusionPipeline):
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
+
     _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
 
@@ -233,7 +233,7 @@ class AuraFlowPipeline(DiffusionPipeline):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            prompt_attention_mask (`torch.Tensor`, *optional*): 
+            prompt_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask for text embeddings.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings.
@@ -446,7 +446,7 @@ class AuraFlowPipeline(DiffusionPipeline):
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            prompt_attention_mask (`torch.Tensor`, *optional*): 
+            prompt_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask for text embeddings.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
@@ -464,10 +464,9 @@ class AuraFlowPipeline(DiffusionPipeline):
 
         Examples:
 
-        Returns:
-        [`~pipelines.ImagePipelineOutput`] or `tuple`:
-            If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
-            returned where the first element is a list with the generated images.
+        Returns: [`~pipelines.ImagePipelineOutput`] or `tuple`:
+            If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is returned
+            where the first element is a list with the generated images.
         """
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
