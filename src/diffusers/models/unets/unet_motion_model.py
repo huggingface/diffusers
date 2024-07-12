@@ -19,7 +19,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, FrozenDict, register_to_config
-from ...loaders import UNet2DConditionLoadersMixin
+from ...loaders import FromOriginalModelMixin, UNet2DConditionLoadersMixin
 from ...utils import logging
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -93,7 +93,7 @@ class MotionModules(nn.Module):
             )
 
 
-class MotionAdapter(ModelMixin, ConfigMixin):
+class MotionAdapter(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @register_to_config
     def __init__(
         self,
