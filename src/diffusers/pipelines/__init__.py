@@ -23,6 +23,7 @@ _import_structure = {
     "controlnet_hunyuandit": [],
     "controlnet_sd3": [],
     "controlnet_xs": [],
+    "controlnet_pixart": [],
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
@@ -153,6 +154,12 @@ else:
         [
             "StableDiffusionControlNetXSPipeline",
             "StableDiffusionXLControlNetXSPipeline",
+        ]
+    )
+    _import_structure["controlnet_pixart"].extend(
+        [
+            "PixArtAlphaControlnetPipeline",
+            "get_closest_hw",
         ]
     )
     _import_structure["controlnet_hunyuandit"].extend(
@@ -440,6 +447,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .controlnet_xs import (
             StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
+        )
+        from .controlnet_pixart import (
+            PixArtAlphaControlnetPipeline,
+            get_closest_hw
         )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
