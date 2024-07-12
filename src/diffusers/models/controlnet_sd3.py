@@ -308,8 +308,6 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        height, width = hidden_states.shape[-2:]
-
         hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
         temb = self.time_text_embed(timestep, pooled_projections)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
