@@ -21,12 +21,28 @@ from ...image_processor import VaeImageProcessor
 from ...models import AuraFlowTransformer2DModel, AutoencoderKL
 from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import logging
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import AuraFlowPipeline
+
+        >>> pipe = AuraFlowPipeline.from_pretrained(
+        ...     "fal/AuraFlow", torch_dtype=torch.float16
+        ... ).to("cuda)
+        >>> prompt = "A cat holding a sign that says hello world"
+        >>> image = pipe(prompt).images[0]
+        >>> image.save("aura_flow.png")
+        ```
+"""
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -90,6 +106,22 @@ def retrieve_timesteps(
 
 
 class AuraFlowPipeline(DiffusionPipeline):
+    r"""
+    Args:
+        tokenizer (`T5TokenizerFast`):
+            Tokenizer of class
+            [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
+        text_encoder ([`T5EncoderModel`]):
+            Frozen text-encoder. AuraFlow uses
+            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
+            [EleutherAI/pile-t5-xl](https://huggingface.co/EleutherAI/pile-t5-xl) variant.
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        transformer ([`AuraFlowTransformer2DModel`]):
+            Conditional Transformer (MMDiT and DiT) architecture to denoise the encoded image latents.
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+    """
     _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
 
@@ -201,8 +233,12 @@ class AuraFlowPipeline(DiffusionPipeline):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            prompt_attention_mask (`torch.Tensor`, *optional*): 
+                Pre-generated attention mask for text embeddings.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Pre-generated attention mask for negative text embeddings.
             max_sequence_length (`int`, defaults to 256): Maximum sequence length to use for the prompt.
         """
         if device is None:
@@ -345,6 +381,7 @@ class AuraFlowPipeline(DiffusionPipeline):
             self.vae.decoder.mid_block.to(dtype)
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -366,6 +403,72 @@ class AuraFlowPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                instead.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            height (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
+                The height in pixels of the generated image. This is set to 512 by default.
+            width (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
+                The width in pixels of the generated image. This is set to 512 by default.
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+                `num_inference_steps` and `timesteps` must be `None`.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
+            guidance_scale (`float`, *optional*, defaults to 5.0):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                usually at the expense of lower image quality.
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            prompt_attention_mask (`torch.Tensor`, *optional*): 
+                Pre-generated attention mask for text embeddings.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Pre-generated attention mask for negative text embeddings.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
+                of a plain tuple.
+            max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+
+        Examples:
+
+        Returns:
+        [`~pipelines.ImagePipelineOutput`] or `tuple`:
+            If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+            returned where the first element is a list with the generated images.
+        """
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
