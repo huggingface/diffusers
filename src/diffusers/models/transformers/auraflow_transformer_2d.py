@@ -233,6 +233,26 @@ class AuraFlowJointTransformerBlock(nn.Module):
 
 
 class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
+    r"""
+    A 2D Transformer model as introduced in AuraFlow (https://blog.fal.ai/auraflow/).
+
+    Parameters:
+        sample_size (`int`): The width of the latent images. This is fixed during training since
+            it is used to learn a number of position embeddings.
+        patch_size (`int`): Patch size to turn the input data into small patches.
+        in_channels (`int`, *optional*, defaults to 16): The number of channels in the input.
+        num_mmdit_layers (`int`, *optional*, defaults to 4): The number of layers of MMDiT Transformer blocks to use.
+        num_single_dit_layers (`int`, *optional*, defaults to 4):
+            The number of layers of Transformer blocks to use. These blocks use concatenated image and text
+            representations.
+        attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
+        num_attention_heads (`int`, *optional*, defaults to 18): The number of heads to use for multi-head attention.
+        joint_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
+        caption_projection_dim (`int`): Number of dimensions to use when projecting the `encoder_hidden_states`.
+        out_channels (`int`, defaults to 16): Number of output channels.
+        pos_embed_max_size (`int`, defaults to 4096): Maximum positions to embed from the image latents.
+    """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config
