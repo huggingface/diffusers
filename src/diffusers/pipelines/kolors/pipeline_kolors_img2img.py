@@ -528,6 +528,9 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
                 )
 
             elif isinstance(generator, list):
+                if image.shape[0] < len(generator):
+                    image = image.expand(len(generator), *image.shape[1:])
+
                 init_latents = [
                     retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                     for i in range(batch_size)
