@@ -74,6 +74,9 @@ CHECKPOINT_KEY_NAMES = {
     "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
     "sd3": "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
+    "animatediff": "down_blocks.0.motion_modules.0.temporal_transformer.transformer_blocks.0.attention_blocks.1.pos_encoder.pe",
+    "animatediff_v2": "mid_block.motion_modules.0.temporal_transformer.norm.bias",
+    "animatediff_sdxl_beta": "up_blocks.2.motion_modules.0.temporal_transformer.norm.weight",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -103,6 +106,10 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "sd3": {
         "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3-medium-diffusers",
     },
+    "animatediff_v1": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5"},
+    "animatediff_v2": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-2"},
+    "animatediff_v3": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-3"},
+    "animatediff_sdxl_beta": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-sdxl-beta"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -484,6 +491,19 @@ def infer_diffusers_model_type(checkpoint):
 
     elif CHECKPOINT_KEY_NAMES["sd3"] in checkpoint:
         model_type = "sd3"
+
+    elif CHECKPOINT_KEY_NAMES["animatediff"] in checkpoint:
+        if CHECKPOINT_KEY_NAMES["animatediff_v2"] in checkpoint:
+            model_type = "animatediff_v2"
+
+        elif checkpoint[CHECKPOINT_KEY_NAMES["animatediff_sdxl_beta"]].shape[-1] == 320:
+            model_type = "animatediff_sdxl_beta"
+
+        elif checkpoint[CHECKPOINT_KEY_NAMES["animatediff"]].shape[1] == 24:
+            model_type = "animatediff_v1"
+
+        else:
+            model_type = "animatediff_v3"
 
     else:
         model_type = "v1"
@@ -1822,3 +1842,22 @@ def create_diffusers_t5_model_from_checkpoint(
                 param.data = param.data.to(torch.float32)
 
     return model
+
+
+def convert_animatediff_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {}
+    for k, v in checkpoint.items():
+        if "pos_encoder" in k:
+            continue
+
+        else:
+            converted_state_dict[
+                k.replace(".norms.0", ".norm1")
+                .replace(".norms.1", ".norm2")
+                .replace(".ff_norm", ".norm3")
+                .replace(".attention_blocks.0", ".attn1")
+                .replace(".attention_blocks.1", ".attn2")
+                .replace(".temporal_transformer", "")
+            ] = v
+
+    return converted_state_dict

@@ -560,6 +560,20 @@ export_to_gif(frames, "animatelcm-motion-lora.gif")
 </table>
 
 
+## Using `from_single_file` with the MotionAdapter
+
+`diffusers>=0.30.0` supports loading the AnimateDiff checkpoints into the `MotionAdapter` in their original format via `from_single_file`
+
+```python
+from diffusers import MotionAdapter
+
+ckpt_path = "https://huggingface.co/Lightricks/LongAnimateDiff/blob/main/lt_long_mm_32_frames.ckpt"
+
+adapter = MotionAdapter.from_single_file(ckpt_path, torch_dtype=torch.float16)
+pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter)
+
+```
+
 ## AnimateDiffPipeline
 
 [[autodoc]] AnimateDiffPipeline
