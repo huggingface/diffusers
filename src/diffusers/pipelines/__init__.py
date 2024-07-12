@@ -142,6 +142,7 @@ else:
     _import_structure["pag"].extend(
         [
             "StableDiffusionPAGPipeline",
+            "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGPipeline",
@@ -250,6 +251,7 @@ else:
             "StableDiffusionLDM3DPipeline",
         ]
     )
+    _import_structure["aura_flow"] = ["AuraFlowPipeline"]
     _import_structure["stable_diffusion_3"] = [
         "StableDiffusion3Pipeline",
         "StableDiffusion3Img2ImgPipeline",
@@ -418,6 +420,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
         )
+        from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
@@ -512,6 +515,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .musicldm import MusicLDMPipeline
         from .pag import (
+            StableDiffusionControlNetPAGPipeline,
             StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGPipeline,
             StableDiffusionXLPAGImg2ImgPipeline,

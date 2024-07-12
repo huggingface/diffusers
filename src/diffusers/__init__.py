@@ -76,6 +76,7 @@ else:
     _import_structure["models"].extend(
         [
             "AsymmetricAutoencoderKL",
+            "AuraFlowTransformer2DModel",
             "AutoencoderKL",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderTiny",
@@ -235,6 +236,7 @@ else:
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
             "AudioLDMPipeline",
+            "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
             "ChatGLMModel",
@@ -300,6 +302,7 @@ else:
             "StableDiffusionAttendAndExcitePipeline",
             "StableDiffusionControlNetImg2ImgPipeline",
             "StableDiffusionControlNetInpaintPipeline",
+            "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionControlNetPipeline",
             "StableDiffusionControlNetXSPipeline",
             "StableDiffusionDepth2ImgPipeline",
@@ -507,6 +510,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .models import (
             AsymmetricAutoencoderKL,
+            AuraFlowTransformer2DModel,
             AutoencoderKL,
             AutoencoderKLTemporalDecoder,
             AutoencoderTiny,
@@ -646,6 +650,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
+            AuraFlowPipeline,
             ChatGLMModel,
             ChatGLMTokenizer,
             CLIPImageProjection,
@@ -709,6 +714,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionControlNetImg2ImgPipeline,
             StableDiffusionControlNetInpaintPipeline,
+            StableDiffusionControlNetPAGPipeline,
             StableDiffusionControlNetPipeline,
             StableDiffusionControlNetXSPipeline,
             StableDiffusionDepth2ImgPipeline,
