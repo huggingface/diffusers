@@ -249,6 +249,8 @@
       title: DiTTransformer2DModel
     - local: api/models/hunyuan_transformer2d
       title: HunyuanDiT2DModel
+    - local: api/models/aura_flow_transformer2d
+      title: AuraFlowTransformer2DModel
     - local: api/models/latte_transformer3d
       title: LatteTransformer3DModel
     - local: api/models/lumina_nextdit2d
