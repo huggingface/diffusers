@@ -35,7 +35,8 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import StableDiffusion3PipelineOutput
+from ..stable_diffusion_3.pipeline_output import StableDiffusion3PipelineOutput
+from .pag_utils import PAGMixin
 
 
 if is_torch_xla_available():
@@ -125,7 +126,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
+class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, PAGMixin):
     r"""
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -174,8 +175,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         tokenizer_2: CLIPTokenizer,
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
+        pag_applied_layers: Union[str, List[str]] = "11",  # ["11"]
     ):
-        super().__init__()
 
         self.register_modules(
             vae=vae,
@@ -200,6 +201,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             if hasattr(self, "transformer") and self.transformer is not None
             else 128
         )
+        
+        self.set_pag_applied_layers_sd3(pag_applied_layers)
+
 
     def _get_t5_prompt_embeds(
         self,
@@ -658,6 +662,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
+        pag_scale: float = 3.0,
+        pag_adaptive_scale: float = 0.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -776,7 +782,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         self._clip_skip = clip_skip
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
-
+        self._pag_scale = pag_scale
+        self._pag_adaptive_scale = pag_adaptive_scale # 
+        
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -810,7 +818,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             max_sequence_length=max_sequence_length,
         )
 
-        if self.do_classifier_free_guidance:
+        if self.do_perturbed_attention_guidance:
+            prompt_embeds = self._prepare_perturbed_attention_guidance(
+                prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
+            )
+            pooled_prompt_embeds = self._prepare_perturbed_attention_guidance(
+                pooled_prompt_embeds, negative_pooled_prompt_embeds, self.do_classifier_free_guidance
+            )
+        elif self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
@@ -832,14 +847,21 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             latents,
         )
 
+        if self.do_perturbed_attention_guidance:
+            original_attn_proc = self.transformer.attn_processors
+            self._set_pag_attn_processor_sd3(
+                pag_applied_layers=self.pag_applied_layers,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+            )
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                # expand the latents if we are doing classifier free guidance, perturbed-attention guidance, or both
+                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
@@ -853,7 +875,12 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 )[0]
 
                 # perform guidance
-                if self.do_classifier_free_guidance:
+                if self.do_perturbed_attention_guidance:
+                    noise_pred = self._apply_perturbed_attention_guidance(
+                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
+                    )
+                    
+                elif self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
@@ -898,6 +925,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         # Offload all models
         self.maybe_free_model_hooks()
 
+        if self.do_perturbed_attention_guidance:
+            self.transformer.set_attn_processor(original_attn_proc)
+            
         if not return_dict:
             return (image,)
 

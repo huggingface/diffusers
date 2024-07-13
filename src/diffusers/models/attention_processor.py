@@ -1058,6 +1058,300 @@ class JointAttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
+class PAGJointAttnProcessor2_0:
+    """Attention processor used typically in processing the SD3-like self-attention projections."""
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        *args,
+        **kwargs,
+    ) -> torch.FloatTensor:
+        residual = hidden_states
+
+        input_ndim = hidden_states.ndim
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+        context_input_ndim = encoder_hidden_states.ndim
+        if context_input_ndim == 4:
+            batch_size, channel, height, width = encoder_hidden_states.shape
+            encoder_hidden_states = encoder_hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        identity_block_size = hidden_states.shape[1] # patch embeddings width * height (correspond to self-attention map width or height)
+
+        # chunk
+        hidden_states_org, hidden_states_ptb = hidden_states.chunk(2)
+        encoder_hidden_states_org, encoder_hidden_states_ptb = encoder_hidden_states.chunk(2)
+
+        ################## original path ##################
+        batch_size = encoder_hidden_states_org.shape[0]
+
+        # `sample` projections.
+        query = attn.to_q(hidden_states_org)
+        key = attn.to_k(hidden_states_org)
+        value = attn.to_v(hidden_states_org)
+
+        # `context` projections.
+        encoder_hidden_states_org_query_proj = attn.add_q_proj(encoder_hidden_states_org)
+        encoder_hidden_states_org_key_proj = attn.add_k_proj(encoder_hidden_states_org)
+        encoder_hidden_states_org_value_proj = attn.add_v_proj(encoder_hidden_states_org)
+
+        # attention
+        query = torch.cat([query, encoder_hidden_states_org_query_proj], dim=1)
+        key = torch.cat([key, encoder_hidden_states_org_key_proj], dim=1)
+        value = torch.cat([value, encoder_hidden_states_org_value_proj], dim=1)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        hidden_states_org = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states_org = hidden_states_org.to(query.dtype)
+
+        # Split the attention outputs.
+        hidden_states_org, encoder_hidden_states_org = (
+            hidden_states_org[:, : residual.shape[1]],
+            hidden_states_org[:, residual.shape[1] :],
+        )
+
+        # linear proj
+        hidden_states_org = attn.to_out[0](hidden_states_org)
+        # dropout
+        hidden_states_org = attn.to_out[1](hidden_states_org)
+        if not attn.context_pre_only:
+            encoder_hidden_states_org = attn.to_add_out(encoder_hidden_states_org)
+
+        if input_ndim == 4:
+            hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
+        if context_input_ndim == 4:
+            encoder_hidden_states_org = encoder_hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        ################## perturbed path ##################
+        
+        batch_size = encoder_hidden_states_ptb.shape[0]
+
+        # `sample` projections.
+        query = attn.to_q(hidden_states_ptb)
+        key = attn.to_k(hidden_states_ptb)
+        value = attn.to_v(hidden_states_ptb)
+
+        # `context` projections.
+        encoder_hidden_states_org_query_proj = attn.add_q_proj(encoder_hidden_states_ptb)
+        encoder_hidden_states_org_key_proj = attn.add_k_proj(encoder_hidden_states_ptb)
+        encoder_hidden_states_ptb_value_proj = attn.add_v_proj(encoder_hidden_states_ptb)
+
+        # attention
+        query = torch.cat([query, encoder_hidden_states_org_query_proj], dim=1)
+        key = torch.cat([key, encoder_hidden_states_org_key_proj], dim=1)
+        value = torch.cat([value, encoder_hidden_states_ptb_value_proj], dim=1)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # create a full mask with all entries set to 0
+        seq_len = query.size(2)
+        full_mask = torch.zeros((seq_len, seq_len), device=query.device, dtype=query.dtype)
+
+        # set the attention value between image patches to -inf
+        full_mask[:identity_block_size, :identity_block_size] = float('-inf')
+
+        # set the diagonal of the attention value between image patches to 0
+        full_mask[:identity_block_size, :identity_block_size].fill_diagonal_(0)
+
+        # expand the mask to match the attention weights shape
+        full_mask = full_mask.unsqueeze(0).unsqueeze(0)  # Add batch and num_heads dimensions
+
+        hidden_states_ptb = F.scaled_dot_product_attention(query, key, value, attn_mask=full_mask, dropout_p=0.0, is_causal=False)
+        hidden_states_ptb = hidden_states_ptb.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states_ptb = hidden_states_ptb.to(query.dtype)
+
+        # split the attention outputs.
+        hidden_states_ptb, encoder_hidden_states_ptb = (
+            hidden_states_ptb[:, : residual.shape[1]],
+            hidden_states_ptb[:, residual.shape[1] :],
+        )
+
+        # linear proj
+        hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
+        # dropout
+        hidden_states_ptb = attn.to_out[1](hidden_states_ptb)
+        if not attn.context_pre_only:
+            encoder_hidden_states_ptb = attn.to_add_out(encoder_hidden_states_ptb)
+
+        if input_ndim == 4:
+            hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
+        if context_input_ndim == 4:
+            encoder_hidden_states_ptb = encoder_hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        ################ concat ###############
+        hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
+        encoder_hidden_states = torch.cat([encoder_hidden_states_org, encoder_hidden_states_ptb])
+
+        return hidden_states, encoder_hidden_states
+
+
+class PAGCFGJointAttnProcessor2_0:
+    """Attention processor used typically in processing the SD3-like self-attention projections."""
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        *args,
+        **kwargs,
+    ) -> torch.FloatTensor:
+        residual = hidden_states
+
+        input_ndim = hidden_states.ndim
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+        context_input_ndim = encoder_hidden_states.ndim
+        if context_input_ndim == 4:
+            batch_size, channel, height, width = encoder_hidden_states.shape
+            encoder_hidden_states = encoder_hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        identity_block_size = hidden_states.shape[1] # patch embeddings width * height (correspond to self-attention map width or height)
+
+        # chunk
+        hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
+        hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
+        
+        encoder_hidden_states_uncond, encoder_hidden_states_org, encoder_hidden_states_ptb =encoder_hidden_states.chunk(3)
+        encoder_hidden_states_org = torch.cat([encoder_hidden_states_uncond, encoder_hidden_states_org])
+
+        ################## original path ##################
+        batch_size = encoder_hidden_states_org.shape[0]
+
+        # `sample` projections.
+        query = attn.to_q(hidden_states_org)
+        key = attn.to_k(hidden_states_org)
+        value = attn.to_v(hidden_states_org)
+
+        # `context` projections.
+        encoder_hidden_states_org_query_proj = attn.add_q_proj(encoder_hidden_states_org)
+        encoder_hidden_states_org_key_proj = attn.add_k_proj(encoder_hidden_states_org)
+        encoder_hidden_states_org_value_proj = attn.add_v_proj(encoder_hidden_states_org)
+
+        # attention
+        query = torch.cat([query, encoder_hidden_states_org_query_proj], dim=1)
+        key = torch.cat([key, encoder_hidden_states_org_key_proj], dim=1)
+        value = torch.cat([value, encoder_hidden_states_org_value_proj], dim=1)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        hidden_states_org = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states_org = hidden_states_org.to(query.dtype)
+
+        # Split the attention outputs.
+        hidden_states_org, encoder_hidden_states_org = (
+            hidden_states_org[:, : residual.shape[1]],
+            hidden_states_org[:, residual.shape[1] :],
+        )
+
+        # linear proj
+        hidden_states_org = attn.to_out[0](hidden_states_org)
+        # dropout
+        hidden_states_org = attn.to_out[1](hidden_states_org)
+        if not attn.context_pre_only:
+            encoder_hidden_states_org = attn.to_add_out(encoder_hidden_states_org)
+
+        if input_ndim == 4:
+            hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
+        if context_input_ndim == 4:
+            encoder_hidden_states_org = encoder_hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        ################## perturbed path ##################
+        
+        batch_size = encoder_hidden_states_ptb.shape[0]
+
+        # `sample` projections.
+        query = attn.to_q(hidden_states_ptb)
+        key = attn.to_k(hidden_states_ptb)
+        value = attn.to_v(hidden_states_ptb)
+
+        # `context` projections.
+        encoder_hidden_states_org_query_proj = attn.add_q_proj(encoder_hidden_states_ptb)
+        encoder_hidden_states_org_key_proj = attn.add_k_proj(encoder_hidden_states_ptb)
+        encoder_hidden_states_ptb_value_proj = attn.add_v_proj(encoder_hidden_states_ptb)
+
+        # attention
+        query = torch.cat([query, encoder_hidden_states_org_query_proj], dim=1)
+        key = torch.cat([key, encoder_hidden_states_org_key_proj], dim=1)
+        value = torch.cat([value, encoder_hidden_states_ptb_value_proj], dim=1)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # create a full mask with all entries set to 0
+        seq_len = query.size(2)
+        full_mask = torch.zeros((seq_len, seq_len), device=query.device, dtype=query.dtype)
+
+        # set the attention value between image patches to -inf
+        full_mask[:identity_block_size, :identity_block_size] = float('-inf')
+
+        # set the diagonal of the attention value between image patches to 0
+        full_mask[:identity_block_size, :identity_block_size].fill_diagonal_(0)
+
+        # expand the mask to match the attention weights shape
+        full_mask = full_mask.unsqueeze(0).unsqueeze(0)  # Add batch and num_heads dimensions
+
+        hidden_states_ptb = F.scaled_dot_product_attention(query, key, value, attn_mask=full_mask, dropout_p=0.0, is_causal=False)
+        hidden_states_ptb = hidden_states_ptb.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states_ptb = hidden_states_ptb.to(query.dtype)
+
+        # split the attention outputs.
+        hidden_states_ptb, encoder_hidden_states_ptb = (
+            hidden_states_ptb[:, : residual.shape[1]],
+            hidden_states_ptb[:, residual.shape[1] :],
+        )
+
+        # linear proj
+        hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
+        # dropout
+        hidden_states_ptb = attn.to_out[1](hidden_states_ptb)
+        if not attn.context_pre_only:
+            encoder_hidden_states_ptb = attn.to_add_out(encoder_hidden_states_ptb)
+
+        if input_ndim == 4:
+            hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
+        if context_input_ndim == 4:
+            encoder_hidden_states_ptb = encoder_hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        ################ concat ###############
+        hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
+        encoder_hidden_states = torch.cat([encoder_hidden_states_org, encoder_hidden_states_ptb])
+
+        return hidden_states, encoder_hidden_states
+
+
 class FusedJointAttnProcessor2_0:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
