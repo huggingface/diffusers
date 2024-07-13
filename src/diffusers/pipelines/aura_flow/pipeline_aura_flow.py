@@ -23,6 +23,7 @@ from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
+from ...loaders.lora import AuraFlowLoraLoaderMixin
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
