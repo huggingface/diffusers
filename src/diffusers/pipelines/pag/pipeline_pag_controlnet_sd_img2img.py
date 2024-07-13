@@ -107,6 +107,7 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
+
 # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_img2img.prepare_image
 def prepare_image(image):
     if isinstance(image, torch.Tensor):
@@ -536,7 +537,7 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_img2img.StableDiffusionControlNetImg2ImgPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -1188,7 +1189,11 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
         with self.progress_bar(total=num_inference_steps):
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0])) if self.do_classifier_free_guidance else latents
+                latent_model_input = (
+                    torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
+                    if self.do_classifier_free_guidance
+                    else latents
+                )
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # controlnet(s) inference
