@@ -12,15 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-from typing import Any, Dict, Union
+import inspect
+from functools import partial
+from typing import Any, Dict, Union, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version, logging
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...loaders import PeftAdapterMixin, FromOriginalModelMixin
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_processor import Attention, AuraFlowAttnProcessor2_0
 from ..embeddings import TimestepEmbedding, Timesteps
@@ -98,7 +100,6 @@ class AuraFlowFeedForward(nn.Module):
         x = self.out_projection(x)
         return x
 
-
 class AuraFlowPreFinalBlock(nn.Module):
     def __init__(self, embedding_dim: int, conditioning_embedding_dim: int):
         super().__init__()
@@ -111,7 +112,6 @@ class AuraFlowPreFinalBlock(nn.Module):
         scale, shift = torch.chunk(emb, 2, dim=1)
         x = x * (1 + scale)[:, None, :] + shift[:, None, :]
         return x
-
 
 @maybe_allow_in_graph
 class AuraFlowSingleTransformerBlock(nn.Module):
@@ -311,7 +311,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
             ]
         )
 
-        self.norm_out = AuraFlowPreFinalBlock(self.inner_dim, self.inner_dim)
+        self.norm_out = AuraFlowPreFinalBlock(self.inner_dim, self.inner_dim, norm_type="no_norm", bias=False)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=False)
 
         # https://arxiv.org/abs/2309.16588
@@ -324,13 +324,70 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `fuse_lora()`.")
+
+        self.lora_scale = lora_scale
+        self._safe_fusing = safe_fusing
+        self.apply(partial(self._fuse_lora_apply, adapter_names=adapter_names))
+
+    def _fuse_lora_apply(self, module, adapter_names=None):
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        merge_kwargs = {"safe_merge": self._safe_fusing}
+
+        if isinstance(module, BaseTunerLayer):
+            if self.lora_scale != 1.0:
+                module.scale_layer(self.lora_scale)
+
+            # For BC with prevous PEFT versions, we need to check the signature
+            # of the `merge` method to see if it supports the `adapter_names` argument.
+            supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+            if "adapter_names" in supported_merge_kwargs:
+                merge_kwargs["adapter_names"] = adapter_names
+            elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                raise ValueError(
+                    "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
+                    " to the latest version of PEFT. `pip install -U peft`"
+                )
+
+            module.merge(**merge_kwargs)
+
+    def unfuse_lora(self):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `unfuse_lora()`.")
+        self.apply(self._unfuse_lora_apply)
+
+    def _unfuse_lora_apply(self, module):
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        if isinstance(module, BaseTunerLayer):
+            module.unmerge()
+
     def forward(
         self,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
+        if joint_attention_kwargs is not None:
+            joint_attention_kwargs = joint_attention_kwargs.copy()
+            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
         height, width = hidden_states.shape[-2:]
 
         # Apply patch embedding, timestep embedding, and project the caption embeddings.
@@ -415,6 +472,10 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         output = hidden_states.reshape(
             shape=(hidden_states.shape[0], out_channels, height * patch_size, width * patch_size)
         )
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

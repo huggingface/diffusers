@@ -104,7 +104,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class AuraFlowPipeline(DiffusionPipeline):
+class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
     r"""
     Args:
         tokenizer (`T5TokenizerFast`):
