@@ -467,8 +467,6 @@ def make_emblist(self, prompts):
 
 
 def split_dims(xs, height, width):
-    xs = xs
-
     def repeat_div(x, y):
         while y > 0:
             x = math.ceil(x / 2)
