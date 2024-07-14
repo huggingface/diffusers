@@ -1,16 +1,14 @@
 import torch
 from flash_attn import flash_attn_func
 
-class XFormersAttnProcessor:
+class FA3AttnProcessor:
     r"""
-    Processor for implementing memory efficient attention using xFormers.
+    Processor for using Flash Attention 3 (FA3) via `flash-attn`.
 
-    Args:
-        attention_op (`Callable`, *optional*, defaults to `None`):
-            The base
-            [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
-            use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
-            operator.
+    To install `flash-attn` that supports FA3, follow: 
+    https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#flashattention-3-beta-release
+
+    Reference: https://tridao.me/blog/2024/flash3/
     """
     def __call__(
         self,
