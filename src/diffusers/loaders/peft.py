@@ -42,8 +42,8 @@ class PeftAdapterMixin:
 
     _hf_peft_config_loaded = False
 
-    def set_adapters(self, **kwargs):
-        raise NotImplementedError("`set_adapters()` is not implemented.")
+    # def set_adapters(self, *args, **kwargs):
+    #     raise NotImplementedError("`set_adapters()` is not implemented.")
 
     def add_adapter(self, adapter_config, adapter_name: str = "default") -> None:
         r"""
