@@ -546,59 +546,43 @@ class LoraBaseMixin:
             for adapter in all_adapters
         }  # eg {"adapter1": ["unet"], "adapter2": ["unet", "text_encoder"]}
 
-        # Determine denoiser name (`unet`, `transformer`, etc.).
-        denoiser_name = None
-        for component in self._lora_loadable_modules:
-            denoiser = getattr(self, component, None)
-            if denoiser is not None and issubclass(denoiser.__class__, ModelMixin):
-                denoiser_name = component
-                break
-
-        for adapter_name, weights in zip(adapter_names, adapter_weights):
-            if isinstance(weights, dict):
-                denoiser_lora_weight = weights.pop(denoiser_name, None)
-                text_encoder_lora_weight = weights.pop("text_encoder", None)
-                text_encoder_2_lora_weight = weights.pop("text_encoder_2", None)
-
-                if len(weights) > 0:
-                    raise ValueError(
-                        f"Got invalid key '{weights.keys()}' in lora weight dict for adapter {adapter_name}."
-                    )
-
-                if text_encoder_2_lora_weight is not None and not hasattr(self, "text_encoder_2"):
-                    logger.warning(
-                        "Lora weight dict contains text_encoder_2 weights but will be ignored because pipeline does not have text_encoder_2."
-                    )
-
-                # warn if adapter doesn't have parts specified by adapter_weights
-                for part_weight, part_name in zip(
-                    [denoiser_lora_weight, text_encoder_lora_weight, text_encoder_2_lora_weight],
-                    [denoiser_name, "text_encoder", "text_encoder_2"],
-                ):
-                    if part_weight is not None and part_name not in invert_list_adapters[adapter_name]:
-                        logger.warning(
-                            f"Lora weight dict for adapter '{adapter_name}' contains {part_name}, but this will be ignored because {adapter_name} does not contain weights for {part_name}. Valid parts for {adapter_name} are: {invert_list_adapters[adapter_name]}."
-                        )
-
-            else:
-                denoiser_lora_weight = weights
-                text_encoder_lora_weight = weights
-                text_encoder_2_lora_weight = weights
-
-            denoiser_lora_weights.append(denoiser_lora_weight)
-            text_encoder_lora_weights.append(text_encoder_lora_weight)
-            text_encoder_2_lora_weights.append(text_encoder_2_lora_weight)
-
+        _component_adapter_weights = {}
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
-            if model is not None:
-                if issubclass(model.__class__, ModelMixin):
-                    model.set_adapters(adapter_names, denoiser_lora_weights)
-                elif issubclass(model.__class__, PreTrainedModel):
-                    if component == "text_encoder":
-                        set_adapters_for_text_encoder(adapter_names, model, text_encoder_lora_weights)
-                    elif component == "text_encoder_2":
-                        set_adapters_for_text_encoder(adapter_names, model, text_encoder_2_lora_weight)
+
+            # Check is actually redundant here since self._lora_loadable_modules should always be attributes
+            # of the pipeline
+            if model is None:
+                continue
+
+            for adapter_name, weights in zip(adapter_names, adapter_weights):
+                if isinstance(weights, dict):
+                    component_adapter_weights = weights.pop(component, None)
+
+                    if component_adapter_weights is not None and not hasattr(self, component):
+                        logger.warning(
+                            f"Lora weight dict contains {component} weights but will be ignored because pipeline does not have {component}."
+                        )
+
+                    if component_adapter_weights is not None and component not in invert_list_adapters[adapter_name]:
+                        logger.warning(
+                            (
+                                f"Lora weight dict for adapter '{adapter_name}' contains {component},"
+                                f"but this will be ignored because {adapter_name} does not contain weights for {component}."
+                                f"Valid parts for {adapter_name} are: {invert_list_adapters[adapter_name]}."
+                            )
+                        )
+
+                else:
+                    component_adapter_weights = weights
+
+                _component_adapter_weights.setdefault(component, [])
+                _component_adapter_weights[component].append(component_adapter_weights)
+
+            if issubclass(model.__class__, ModelMixin):
+                model.set_adapters(adapter_names, _component_adapter_weights[component])
+            elif issubclass(model.__class__, PreTrainedModel):
+                set_adapters_for_text_encoder(adapter_names, model, _component_adapter_weights[component])
 
     def disable_lora(self):
         if not USE_PEFT_BACKEND:
