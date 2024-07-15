@@ -1,6 +1,6 @@
 import torch 
 from fa3_processor import FA3AttnProcessor
-from diffusers import DiffusionPipeline, AutoencoderKL
+from diffusers import DiffusionPipeline
 import argparse
 import torch.utils.benchmark as benchmark
 import gc
@@ -24,12 +24,11 @@ def benchmark_fn(f, *args, **kwargs):
     return f"{(t0.blocked_autorange().mean):.3f}"
 
 def load_pipeline(args):
-    vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
     pipeline = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", vae=vae, torch_dtype=torch.float16
+        "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS", torch_dtype=torch.float16
     ).to("cuda")
     if args.fa3:
-        pipeline.unet.set_attn_processor(FA3AttnProcessor())
+        pipeline.transformer.set_attn_processor(FA3AttnProcessor())
         pipeline.vae.set_attn_processor(FA3AttnProcessor())
 
     pipeline.set_progress_bar_config(disable=True)
@@ -39,7 +38,6 @@ def run_pipeline(pipeline, args):
     _ = pipeline(
         prompt="a cat with tiger-like looks", 
         num_images_per_prompt=args.batch_size, 
-        num_inference_steps=25, 
         guidance_scale=7.5
     )
 
