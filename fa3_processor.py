@@ -66,8 +66,7 @@ class FA3AttnProcessor:
         key = key.view(batch_size, -1, attn.heads, head_dim).contiguous()
         value = value.view(batch_size, -1, attn.heads, head_dim).contiguous()
 
-        print(f"{query.shape=}, {key.shape=}, {value.shape=}")
-        if head_dim == 512:
+        if attn.heads ==1 and head_dim == 512:
             factor = 8
             new_head_dim = head_dim // factor
             query = query.view(batch_size, -1, factor, new_head_dim)

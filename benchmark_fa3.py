@@ -59,6 +59,7 @@ if __name__ == "__main__":
     time = benchmark_fn(run_pipeline, pipeline, args)
     memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated()) 
     data_dict = dict(time=time, memory=memory)
+    print(f"FA3: {bool(args.fa3)} Time: {time} seconds Memory: {memory} GB")
 
     filename_prefix = f"fa3@{args.fa3}-bs@{args.batch_size}"
     with open(f"{filename_prefix}.json", "w") as f:
