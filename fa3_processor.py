@@ -64,7 +64,7 @@ class FA3AttnProcessor:
         value = attn.head_to_batch_dim(value).contiguous()
 
         hidden_states = flash_attn_func(
-            query, key, value, softmax_scale=attn.scale, is_causal=False
+            query, key, value, softmax_scale=attn.scale, causal=False
         )
         hidden_states = hidden_states.to(query.dtype)
         hidden_states = attn.batch_to_head_dim(hidden_states)
