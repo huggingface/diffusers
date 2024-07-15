@@ -1,5 +1,5 @@
 import torch
-from flash_attn import flash_attn_func
+from flash_attn_interface import flash_attn_func
 
 class FA3AttnProcessor:
     r"""
