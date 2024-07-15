@@ -1,4 +1,4 @@
-# Copyright 2024 CVSSP, ByteDance and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Stability AI and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import torch
 from transformers import (
-    RobertaTokenizer,
-    RobertaTokenizerFast,
     T5EncoderModel,
     T5Tokenizer,
     T5TokenizerFast,
@@ -27,7 +25,7 @@ from transformers import (
 
 from ...models import AutoencoderOobleck
 from ...models.embeddings import get_1d_rotary_pos_embed
-from ...schedulers import KarrasDiffusionSchedulers
+from ...schedulers import EDMDPMSolverMultistepScheduler
 from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
@@ -52,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import StableAudioPipeline
 
-        >>> repo_id = "cvssp/audioldm2"
+        >>> repo_id = "cvssp/audioldm2" # TODO (YL): change once set
         >>> pipe = StableAudioPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
@@ -79,23 +77,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def prepare_inputs_for_generation(
-    inputs_embeds,
-    attention_mask=None,
-    past_key_values=None,
-    **kwargs,
-):
-    if past_key_values is not None:
-        # only last token for inputs_embeds if past is defined in kwargs
-        inputs_embeds = inputs_embeds[:, -1:]
-
-    return {
-        "inputs_embeds": inputs_embeds,
-        "attention_mask": attention_mask,
-        "past_key_values": past_key_values,
-        "use_cache": kwargs.get("use_cache"),
-    }
-
 
 class StableAudioPipeline(DiffusionPipeline):
     r"""
@@ -108,21 +89,19 @@ class StableAudioPipeline(DiffusionPipeline):
         vae ([`AutoencoderOobleck`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         text_encoder ([`~transformers.T5EncoderModel`]):
-            First frozen text-encoder. StableAudio uses the encoder of
+            Frozen text-encoder. StableAudio uses the encoder of
             [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
-            [google/flan-t5-large](https://huggingface.co/google/flan-t5-large) variant.
+            [google-t5/t5-base](https://huggingface.co/google-t5/t5-base) variant.
         projection_model ([`StableAudioProjectionModel`]):
-            A trained model used to linearly project the hidden-states from the first and second text encoder models
-            and insert learned SOS and EOS token embeddings. The projected hidden-states from the two text encoders are
-            concatenated to give the input to the language model. A Learned Position Embedding for the Vits
-            hidden-states
+            A trained model used to linearly project the hidden-states from the text encoder model
+            and the start and end seconds. The projected hidden-states from the encoder and the conditional seconds are
+            concatenated to give the input to the transformer model.
         tokenizer ([`~transformers.T5Tokenizer`]):
             Tokenizer to tokenize text for the frozen text-encoder.
-        transformer ([`UNet2DConditionModel`]): #TODO(YL): change type
-            A `UNet2DConditionModel` to denoise the encoded audio latents.
-        scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `transformer` to denoise the encoded audio latents. Can be one of
-            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        transformer ([`StableAudioDiTModel`]):
+            A `StableAudioDiTModel` to denoise the encoded audio latents.
+        scheduler ([`EDMDPMSolverMultistepScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded audio latents.
     """
 
     def __init__(
@@ -132,7 +111,7 @@ class StableAudioPipeline(DiffusionPipeline):
         projection_model: StableAudioProjectionModel,
         tokenizer: Union[T5Tokenizer, T5TokenizerFast],
         transformer: StableAudioDiTModel,
-        scheduler: KarrasDiffusionSchedulers,
+        scheduler: EDMDPMSolverMultistepScheduler,
     ):
         super().__init__()
 
