@@ -66,7 +66,7 @@ class FA3AttnProcessor:
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2).contiguous()
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2).contiguous()
 
-
+        print(f"{query.shape=}, {key.shape=}, {value.shape=}")
         hidden_states, _ = flash_attn_func(
             query, key, value, softmax_scale=attn.scale, causal=False
         )
