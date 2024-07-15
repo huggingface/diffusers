@@ -852,7 +852,7 @@ class PipelineKarrasSchedulerTesterMixin:
         assert check_same_shape(outputs)
 
 
-class OficialCallbacksTesterMixin:
+class OfficialCallbacksTesterMixin:
     """
     This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
     It provides a set of common tests for pipelines that support official callbacks.

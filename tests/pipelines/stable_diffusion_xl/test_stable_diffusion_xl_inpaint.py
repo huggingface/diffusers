@@ -50,7 +50,7 @@ from ..pipeline_params import (
 )
 from ..test_pipelines_common import (
     IPAdapterTesterMixin,
-    OficialCallbacksTesterMixin,
+    OfficialCallbacksTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
 )
@@ -64,7 +64,7 @@ class StableDiffusionXLInpaintPipelineFastTests(
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
     unittest.TestCase,
-    OficialCallbacksTesterMixin,
+    OfficialCallbacksTesterMixin,
 ):
     pipeline_class = StableDiffusionXLInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS

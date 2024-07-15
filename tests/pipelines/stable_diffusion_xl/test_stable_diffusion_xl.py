@@ -51,7 +51,7 @@ from ..pipeline_params import (
 )
 from ..test_pipelines_common import (
     IPAdapterTesterMixin,
-    OficialCallbacksTesterMixin,
+    OfficialCallbacksTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
     SDFunctionTesterMixin,
@@ -64,7 +64,7 @@ enable_full_determinism()
 
 class StableDiffusionXLPipelineFastTests(
     SDFunctionTesterMixin,
-    OficialCallbacksTesterMixin,
+    OfficialCallbacksTesterMixin,
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
