@@ -62,9 +62,9 @@ class FA3AttnProcessor:
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2).contiguous()
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2).contiguous()
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2).contiguous()
 
 
         hidden_states = flash_attn_func(
