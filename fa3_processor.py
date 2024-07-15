@@ -70,8 +70,8 @@ class FA3AttnProcessor:
         hidden_states, _ = flash_attn_func(
             query, key, value, softmax_scale=attn.scale, causal=False
         )
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
