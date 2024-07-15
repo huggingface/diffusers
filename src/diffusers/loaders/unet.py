@@ -48,7 +48,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from .lora import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
+from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
 from .unet_loader_utils import _maybe_expand_lora_scales
 from .utils import AttnProcsLayers
 

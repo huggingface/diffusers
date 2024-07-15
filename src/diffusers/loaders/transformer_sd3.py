@@ -12,7 +12,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from .lora import TEXT_ENCODER_NAME, TRANSFORMER_NAME
+from .lora_pipeline import TEXT_ENCODER_NAME, TRANSFORMER_NAME
 
 
 if is_accelerate_available():
