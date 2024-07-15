@@ -55,7 +55,7 @@ _import_structure = {}
 
 if is_torch_available():
     _import_structure["single_file_model"] = ["FromOriginalModelMixin"]
-    _import_structure["transformer_sd3"] = ["SD3TransformerLoadersMixin"]
+    _import_structure["transformer_sd3"] = ["SD3TransformerLoRALoadersMixin"]
 
     _import_structure["unet"] = ["UNet2DConditionLoadersMixin"]
     _import_structure["utils"] = ["AttnProcsLayers"]
@@ -76,7 +76,7 @@ _import_structure["peft"] = ["PeftAdapterMixin"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
         from .single_file_model import FromOriginalModelMixin
-        from .transformer_sd3 import SD3TransformerLoadersMixin
+        from .transformer_sd3 import SD3TransformerLoRALoadersMixin
         from .unet import UNet2DConditionLoadersMixin
         from .utils import AttnProcsLayers
 

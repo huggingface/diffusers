@@ -21,7 +21,7 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)
 
 
-class SD3TransformerLoadersMixin:
+class SD3TransformerLoRALoadersMixin:
     """
     Load LoRA layers into a [`SD3Transformer2DModel`].
     """
