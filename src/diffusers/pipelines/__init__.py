@@ -534,8 +534,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import (
             StableAudioDiTModel,
-            StableAudioProjectionModel,
             StableAudioPipeline,
+            StableAudioProjectionModel,
         )
         from .stable_cascade import (
             StableCascadeCombinedPipeline,

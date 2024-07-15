@@ -330,6 +330,7 @@ def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
         emb = torch.cat([emb_h, emb_w], dim=1)  # (H*W, D/2)
         return emb
 
+
 def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, ntk_factor=1.0):
     assert embed_dim % 4 == 0
 
@@ -345,8 +346,15 @@ def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, n
     emb = torch.cat([emb_h, emb_w], dim=-1).flatten(2)  # (H, W, D/2)
     return emb
 
+
 def get_1d_rotary_pos_embed(
-    dim: int, pos: Union[np.ndarray, int], theta: float = 10000.0, use_real=False, linear_factor=1.0, ntk_factor=1.0, repeat_interleave_real=True
+    dim: int,
+    pos: Union[np.ndarray, int],
+    theta: float = 10000.0,
+    use_real=False,
+    linear_factor=1.0,
+    ntk_factor=1.0,
+    repeat_interleave_real=True,
 ):
     """
     Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
@@ -367,7 +375,8 @@ def get_1d_rotary_pos_embed(
         ntk_factor (`float`, *optional*, defaults to 1.0):
             Scaling factor for the NTK-Aware RoPE. Defaults to 1.0.
         repeat_interleave_real (`bool`, *optional*, defaults to `True`):
-            If `True` and `use_real`, real part and imaginary part are each interleaved with themselves to reach `dim`. Otherwise, they are concateanted with themselves.
+            If `True` and `use_real`, real part and imaginary part are each interleaved with themselves to reach `dim`.
+            Otherwise, they are concateanted with themselves.
     Returns:
         `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
     """
@@ -382,27 +391,29 @@ def get_1d_rotary_pos_embed(
         freqs_sin = freqs.sin().repeat_interleave(2, dim=1)  # [S, D]
         return freqs_cos, freqs_sin
     elif use_real:
-        freqs_cos = torch.cat([freqs.cos(), freqs.cos()], dim = -1) # [S, D]
-        freqs_sin = torch.cat([freqs.sin(), freqs.sin()], dim = -1) # [S, D]
-        return freqs_cos, freqs_sin 
+        freqs_cos = torch.cat([freqs.cos(), freqs.cos()], dim=-1)  # [S, D]
+        freqs_sin = torch.cat([freqs.sin(), freqs.sin()], dim=-1)  # [S, D]
+        return freqs_cos, freqs_sin
     else:
         freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
         return freqs_cis
+
 
 def apply_partial_rotary_emb(
     x: torch.Tensor,
     freqs_cis: Tuple[torch.Tensor],
 ) -> torch.Tensor:
     """
-    Apply partial rotary embeddings (Wang et al. GPT-J) to input tensors using the given frequency tensor. This function applies rotary embeddings
-    to the given query or key 'x' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
-    reshaped as complex numbers, and the frequency tensor is reshaped for broadcasting compatibility. The resulting
-    tensors contain rotary embeddings and are returned as real tensors.
+    Apply partial rotary embeddings (Wang et al. GPT-J) to input tensors using the given frequency tensor. This
+    function applies rotary embeddings to the given query or key 'x' tensors using the provided frequency tensor
+    'freqs_cis'. The input tensors are reshaped as complex numbers, and the frequency tensor is reshaped for
+    broadcasting compatibility. The resulting tensors contain rotary embeddings and are returned as real tensors.
 
     Args:
         x (`torch.Tensor`):
             Query or key tensor to apply rotary embeddings. [B, H, S, D] xk (torch.Tensor): Key tensor to apply
-        freqs_cis (`Tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D // 2], [S, D // 2],)
+        freqs_cis (`Tuple[torch.Tensor]`):
+            Precomputed frequency tensor for complex exponentials. ([S, D // 2], [S, D // 2],)
 
     Returns:
         torch.Tensor: Modified query or key tensor with rotary embeddings.
@@ -411,7 +422,7 @@ def apply_partial_rotary_emb(
     cos = cos[None, None]
     sin = sin[None, None]
     cos, sin = cos.to(x.device), sin.to(x.device)
-      
+
     rot_dim = cos.shape[-1]
 
     x_to_rotate, x_unrotated = x[..., :rot_dim], x[..., rot_dim:]
@@ -419,8 +430,9 @@ def apply_partial_rotary_emb(
     x_rotated = torch.cat([-x_imag, x_real], dim=-1)
     out = (x_to_rotate * cos) + (x_rotated * sin)
 
-    out = torch.cat((out, x_unrotated), dim = -1)
+    out = torch.cat((out, x_unrotated), dim=-1)
     return out
+
 
 def apply_rotary_emb(
     x: torch.Tensor,
@@ -531,7 +543,13 @@ class GaussianFourierProjection(nn.Module):
     """Gaussian Fourier embeddings for noise levels."""
 
     def __init__(
-        self, embedding_size: int = 256, scale: float = 1.0, set_W_to_weight=True, log=True, flip_sin_to_cos=False, use_stable_audio_implementation=False,
+        self,
+        embedding_size: int = 256,
+        scale: float = 1.0,
+        set_W_to_weight=True,
+        log=True,
+        flip_sin_to_cos=False,
+        use_stable_audio_implementation=False,
     ):
         super().__init__()
         self.weight = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)

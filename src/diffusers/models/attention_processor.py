@@ -50,9 +50,9 @@ class Attention(nn.Module):
         heads (`int`,  *optional*, defaults to 8):
             The number of heads to use for multi-head attention.
         kv_heads (`int`,  *optional*, defaults to `None`):
-            The number of key and value heads to use for multi-head attention. Defaults to `heads`.
-            If `kv_heads=heads`, the model will use Multi Head Attention (MHA), if `kv_heads=1` the model will use 
-            Multi Query Attention (MQA) otherwise GQA is used.
+            The number of key and value heads to use for multi-head attention. Defaults to `heads`. If
+            `kv_heads=heads`, the model will use Multi Head Attention (MHA), if `kv_heads=1` the model will use Multi
+            Query Attention (MQA) otherwise GQA is used.
         dim_head (`int`,  *optional*, defaults to 64):
             The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0):
@@ -1614,6 +1614,7 @@ class AttnProcessor2_0:
 
         return hidden_states
 
+
 class StableAudioAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
@@ -1670,7 +1671,7 @@ class StableAudioAttnProcessor2_0:
 
         key = key.view(batch_size, -1, attn.kv_heads, kv_head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.kv_heads, kv_head_dim).transpose(1, 2)
-        
+
         if attn.kv_heads != attn.heads:
             # if GQA or MQA, repeat the key/value heads to reach the number of query heads.
             heads_per_kv_head = attn.heads // attn.kv_heads
@@ -1684,8 +1685,7 @@ class StableAudioAttnProcessor2_0:
 
         # Apply RoPE if needed
         if rotary_emb is not None:
-
-            query_dtype = query.dtype            
+            query_dtype = query.dtype
             key_dtype = key.dtype
             query = query.to(torch.float32)
             key = key.to(torch.float32)
@@ -1693,7 +1693,7 @@ class StableAudioAttnProcessor2_0:
             query = apply_partial_rotary_emb(query, rotary_emb)
             if not attn.is_cross_attention:
                 key = apply_partial_rotary_emb(key, rotary_emb)
-                
+
             query = query.to(query_dtype)
             key = key.to(key_dtype)
 

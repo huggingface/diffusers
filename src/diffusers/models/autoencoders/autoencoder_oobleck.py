@@ -11,23 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Dict, Optional, Tuple, Union
-from dataclasses import dataclass
 import math
-import numpy as np
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.utils import weight_norm
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders.single_file_model import FromOriginalModelMixin
-from ...utils.accelerate_utils import apply_forward_hook
-from ..modeling_utils import ModelMixin
 from ...utils import BaseOutput
+from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.torch_utils import randn_tensor
+from ..modeling_utils import ModelMixin
 
-from transformers import DacConfig
 
 class Snake1d(nn.Module):
     """
@@ -38,17 +36,17 @@ class Snake1d(nn.Module):
         super().__init__()
         self.alpha = nn.Parameter(torch.zeros(1, hidden_dim, 1))
         self.beta = nn.Parameter(torch.zeros(1, hidden_dim, 1))
-        
+
         self.alpha.requires_grad = True
         self.beta.requires_grad = True
         self.logscale = logscale
 
     def forward(self, hidden_states):
         shape = hidden_states.shape
-        
+
         alpha = self.alpha if not self.logscale else torch.exp(self.alpha)
         beta = self.beta if not self.logscale else torch.exp(self.beta)
-        
+
         hidden_states = hidden_states.reshape(shape[0], shape[1], -1)
         hidden_states = hidden_states + (beta + 1e-9).reciprocal() * torch.sin(alpha * hidden_states).pow(2)
         hidden_states = hidden_states.reshape(shape)
@@ -144,6 +142,7 @@ class OobleckDecoderBlock(nn.Module):
 
         return hidden_state
 
+
 class OobleckDiagonalGaussianDistribution(object):
     def __init__(self, parameters: torch.Tensor, deterministic: bool = False):
         self.parameters = parameters
@@ -169,12 +168,23 @@ class OobleckDiagonalGaussianDistribution(object):
             return torch.Tensor([0.0])
         else:
             if other is None:
-                return (self.mean * self.mean + self.var - self.logvar - 1.).sum(1).mean()
+                return (self.mean * self.mean + self.var - self.logvar - 1.0).sum(1).mean()
             else:
-                return (torch.pow(self.mean - other.mean, 2) / other.var + self.var / other.var - self.logvar + other.logvar - 1. ).sum(1).mean()
+                return (
+                    (
+                        torch.pow(self.mean - other.mean, 2) / other.var
+                        + self.var / other.var
+                        - self.logvar
+                        + other.logvar
+                        - 1.0
+                    )
+                    .sum(1)
+                    .mean()
+                )
 
     def mode(self) -> torch.Tensor:
         return self.mean
+
 
 @dataclass
 class AutoencoderOobleckOutput(BaseOutput):
@@ -183,8 +193,9 @@ class AutoencoderOobleckOutput(BaseOutput):
 
     Args:
         latent_dist (`OobleckDiagonalGaussianDistribution`):
-            Encoded outputs of `Encoder` represented as the mean and standard deviation of `OobleckDiagonalGaussianDistribution`.
-            `OobleckDiagonalGaussianDistribution` allows for sampling latents from the distribution.
+            Encoded outputs of `Encoder` represented as the mean and standard deviation of
+            `OobleckDiagonalGaussianDistribution`. `OobleckDiagonalGaussianDistribution` allows for sampling latents
+            from the distribution.
     """
 
     latent_dist: "OobleckDiagonalGaussianDistribution"  # noqa: F821
@@ -201,7 +212,7 @@ class OobleckDecoderOutput(BaseOutput):
     """
 
     sample: torch.Tensor
-    
+
 
 class OobleckEncoder(nn.Module):
     """Oobleck Encoder"""
@@ -211,20 +222,23 @@ class OobleckEncoder(nn.Module):
 
         strides = downsampling_ratios
         channel_multiples = [1] + channel_multiples
-    
+
         # Create first convolution
         self.conv1 = weight_norm(nn.Conv1d(audio_channels, encoder_hidden_size, kernel_size=7, padding=3))
 
         self.block = []
         # Create EncoderBlocks that double channels as they downsample by `stride`
         for stride_index, stride in enumerate(strides):
-            self.block += [OobleckEncoderBlock(
-                    input_dim = encoder_hidden_size*channel_multiples[stride_index],
-                    output_dim = encoder_hidden_size*channel_multiples[stride_index + 1],
-                    stride=stride)]
+            self.block += [
+                OobleckEncoderBlock(
+                    input_dim=encoder_hidden_size * channel_multiples[stride_index],
+                    output_dim=encoder_hidden_size * channel_multiples[stride_index + 1],
+                    stride=stride,
+                )
+            ]
 
         self.block = nn.ModuleList(self.block)
-        d_model = encoder_hidden_size*channel_multiples[-1]
+        d_model = encoder_hidden_size * channel_multiples[-1]
         self.snake1 = Snake1d(d_model)
         self.conv2 = weight_norm(nn.Conv1d(d_model, encoder_hidden_size, kernel_size=3, padding=1))
 
@@ -238,6 +252,7 @@ class OobleckEncoder(nn.Module):
         hidden_state = self.conv2(hidden_state)
 
         return hidden_state
+
 
 class OobleckDecoder(nn.Module):
     """Oobleck Decoder"""
@@ -254,7 +269,13 @@ class OobleckDecoder(nn.Module):
         # Add upsampling + MRF blocks
         block = []
         for stride_index, stride in enumerate(strides):
-            block += [OobleckDecoderBlock(input_dim=channels*channel_multiples[len(strides)-stride_index], output_dim=channels*channel_multiples[len(strides)-stride_index-1], stride=stride)]
+            block += [
+                OobleckDecoderBlock(
+                    input_dim=channels * channel_multiples[len(strides) - stride_index],
+                    output_dim=channels * channel_multiples[len(strides) - stride_index - 1],
+                    stride=stride,
+                )
+            ]
 
         self.block = nn.ModuleList(block)
         output_dim = channels
@@ -312,7 +333,7 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
         sampling_rate=44100,
     ):
         super().__init__()
-        
+
         self.encoder_hidden_size = encoder_hidden_size
         self.downsampling_ratios = downsampling_ratios
         self.decoder_channels = decoder_channels
@@ -320,20 +341,20 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
         self.hop_length = int(np.prod(downsampling_ratios))
         self.sampling_rate = sampling_rate
 
-
         self.encoder = OobleckEncoder(
-            encoder_hidden_size=encoder_hidden_size, 
+            encoder_hidden_size=encoder_hidden_size,
             audio_channels=audio_channels,
             downsampling_ratios=downsampling_ratios,
-            channel_multiples=channel_multiples
-            )
+            channel_multiples=channel_multiples,
+        )
 
-        self.decoder = OobleckDecoder(channels=decoder_channels, 
-            input_channels=decoder_input_channels, 
+        self.decoder = OobleckDecoder(
+            channels=decoder_channels,
+            input_channels=decoder_input_channels,
             audio_channels=audio_channels,
             upsampling_ratios=self.upsampling_ratios,
-            channel_multiples=channel_multiples
-            )
+            channel_multiples=channel_multiples,
+        )
 
         self.use_slicing = False
 
@@ -350,7 +371,6 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
         decoding in one step.
         """
         self.use_slicing = False
-
 
     @apply_forward_hook
     def encode(
@@ -403,8 +423,8 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
 
         Returns:
             [`~models.vae.OobleckDecoderOutput`] or `tuple`:
-                If return_dict is True, a [`~models.vae.OobleckDecoderOutput`] is returned, otherwise a plain `tuple` is
-                returned.
+                If return_dict is True, a [`~models.vae.OobleckDecoderOutput`] is returned, otherwise a plain `tuple`
+                is returned.
 
         """
         if self.use_slicing and z.shape[0] > 1:

@@ -13,51 +13,26 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
 from math import pi
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import UNet2DConditionLoadersMixin
-from ...models.activations import get_activation
+from ...models.attention import FeedForward, _chunked_feed_forward
 from ...models.attention_processor import (
-    ADDED_KV_ATTENTION_PROCESSORS,
-    CROSS_ATTENTION_PROCESSORS,
+    Attention,
     AttentionProcessor,
-    AttnAddedKVProcessor,
-    AttnProcessor,
+    StableAudioAttnProcessor2_0,
 )
 from ...models.embeddings import (
-    TimestepEmbedding,
-    Timesteps,
+    GaussianFourierProjection,
 )
 from ...models.modeling_utils import ModelMixin
-from ...models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from ...models.transformers.transformer_2d import Transformer2DModel, Transformer2DModelOutput
-from ...models.unets.unet_2d_blocks import DownBlock2D, UpBlock2D
-from ...models.unets.unet_2d_condition import UNet2DConditionOutput
+from ...models.transformers.transformer_2d import Transformer2DModelOutput
 from ...utils import BaseOutput, is_torch_version, logging
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...models.attention import BasicTransformerBlock, FeedForward, _chunked_feed_forward
-from ...models.attention_processor import Attention, AttentionProcessor, StableAudioAttnProcessor2_0
-from ...models.modeling_utils import ModelMixin
-from ...models.normalization import AdaLayerNormContinuous
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from ...utils.torch_utils import maybe_allow_in_graph
-
-
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...models.attention import BasicTransformerBlock, FeedForward, _chunked_feed_forward
-from ...models.attention_processor import Attention, AttentionProcessor, StableAudioAttnProcessor2_0
-from ...models.modeling_utils import ModelMixin
-from ...models.normalization import AdaLayerNormContinuous
-from ...models.embeddings import GaussianFourierProjection
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 
 
@@ -79,6 +54,7 @@ class StableAudioPositionalEmbedding(nn.Module):
         fouriered = torch.cat((freqs.sin(), freqs.cos()), dim=-1)
         fouriered = torch.cat((times, fouriered), dim=-1)
         return fouriered
+
 
 @dataclass
 class StableAudioProjectionModelOutput(BaseOutput):
@@ -121,23 +97,22 @@ class StableAudioNumberConditioner(nn.Module):
         number_embedding_dim,
         min_value,
         max_value,
-        internal_dim: Optional[int]=256,
+        internal_dim: Optional[int] = 256,
     ):
         super().__init__()
         self.time_positional_embedding = nn.Sequential(
-        StableAudioPositionalEmbedding(internal_dim),
-        nn.Linear(in_features=internal_dim + 1, out_features=number_embedding_dim),
+            StableAudioPositionalEmbedding(internal_dim),
+            nn.Linear(in_features=internal_dim + 1, out_features=number_embedding_dim),
         )
-        
-        self.number_embedding_dim = number_embedding_dim 
+
+        self.number_embedding_dim = number_embedding_dim
         self.min_value = min_value
         self.max_value = max_value
-
 
     def forward(
         self,
         floats: List[float],
-    ):    
+    ):
         # Cast the inputs to floats
         floats = [float(x) for x in floats]
         floats = torch.tensor(floats).to(self.time_positional_embedding[1].weight.device)
@@ -172,15 +147,11 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
     """
 
     @register_to_config
-    def __init__(
-        self,
-        text_encoder_dim,
-        conditioning_dim,
-        min_value,
-        max_value
-    ):
+    def __init__(self, text_encoder_dim, conditioning_dim, min_value, max_value):
         super().__init__()
-        self.text_projection = nn.Identity() if conditioning_dim == text_encoder_dim else nn.Linear(text_encoder_dim, conditioning_dim)
+        self.text_projection = (
+            nn.Identity() if conditioning_dim == text_encoder_dim else nn.Linear(text_encoder_dim, conditioning_dim)
+        )
         self.start_number_conditioner = StableAudioNumberConditioner(conditioning_dim, min_value, max_value)
         self.end_number_conditioner = StableAudioNumberConditioner(conditioning_dim, min_value, max_value)
 
@@ -195,7 +166,6 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
         seconds_start_hidden_states = self.start_number_conditioner(start_seconds)
         seconds_end_hidden_states = self.end_number_conditioner(end_seconds)
 
-
         return StableAudioProjectionModelOutput(
             text_hidden_states=text_hidden_states,
             attention_mask=attention_mask,
@@ -203,11 +173,12 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
             seconds_end_hidden_states=seconds_end_hidden_states,
         )
 
+
 @maybe_allow_in_graph
 class StableAudioDiTBlock(nn.Module):
     r"""
-    Transformer block used in Stable Audio model (https://github.com/Stability-AI/stable-audio-tools). Allow skip connection and
-    QKNorm
+    Transformer block used in Stable Audio model (https://github.com/Stability-AI/stable-audio-tools). Allow skip
+    connection and QKNorm
 
     Parameters:
         dim (`int`): The number of channels in the input and output.
@@ -365,12 +336,15 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         num_layers (`int`, *optional*, defaults to 24): The number of layers of Transformer blocks to use.
         attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
         num_attention_heads (`int`, *optional*, defaults to 24): The number of heads to use for the query states.
-        num_key_value_attention_heads (`int`, *optional*, defaults to 12): The number of heads to use for the key and value states.
+        num_key_value_attention_heads (`int`, *optional*, defaults to 12):
+            The number of heads to use for the key and value states.
         out_channels (`int`, defaults to 64): Number of output channels.
         cross_attention_dim ( `int`, *optional*, defaults to 768): Dimension of the cross-attention projection.
         timestep_features_dim ( `int`, *optional*, defaults to 256): Dimension of the timestep inner projection.
-        global_states_input_dim ( `int`, *optional*, defaults to 1536): Input dimension of the global hidden states projection. 
-        cross_attention_input_dim ( `int`, *optional*, defaults to 768): Input dimension of the cross-attention projection
+        global_states_input_dim ( `int`, *optional*, defaults to 1536):
+            Input dimension of the global hidden states projection.
+        cross_attention_input_dim ( `int`, *optional*, defaults to 768):
+            Input dimension of the cross-attention projection
     """
 
     _supports_gradient_checkpointing = True
@@ -395,7 +369,13 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         self.out_channels = out_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.timestep_features = GaussianFourierProjection(embedding_size=timestep_features_dim//2, flip_sin_to_cos=True, log=False, set_W_to_weight=False, use_stable_audio_implementation=True)
+        self.timestep_features = GaussianFourierProjection(
+            embedding_size=timestep_features_dim // 2,
+            flip_sin_to_cos=True,
+            log=False,
+            set_W_to_weight=False,
+            use_stable_audio_implementation=True,
+        )
 
         self.timestep_proj = nn.Sequential(
             nn.Linear(timestep_features_dim, self.inner_dim, bias=True),
@@ -404,18 +384,18 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         )
 
         self.global_proj = nn.Sequential(
-                nn.Linear(global_states_input_dim, self.inner_dim, bias=False),
-                nn.SiLU(),
-                nn.Linear(self.inner_dim, self.inner_dim, bias=False)
-            )
+            nn.Linear(global_states_input_dim, self.inner_dim, bias=False),
+            nn.SiLU(),
+            nn.Linear(self.inner_dim, self.inner_dim, bias=False),
+        )
 
         self.cross_attention_proj = nn.Sequential(
-                nn.Linear(cross_attention_input_dim, cross_attention_dim, bias=False),
-                nn.SiLU(),
-                nn.Linear(cross_attention_dim, cross_attention_dim, bias=False)
-            )
-        
-        self.preprocess_conv = nn.Conv1d(in_channels, in_channels, 1, bias=False) 
+            nn.Linear(cross_attention_input_dim, cross_attention_dim, bias=False),
+            nn.SiLU(),
+            nn.Linear(cross_attention_dim, cross_attention_dim, bias=False),
+        )
+
+        self.preprocess_conv = nn.Conv1d(in_channels, in_channels, 1, bias=False)
         self.proj_in = nn.Linear(in_channels, self.inner_dim, bias=False)
 
         self.transformer_blocks = nn.ModuleList(
@@ -525,7 +505,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
 
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
-            
+
     # Copied from diffusers.models.transformers.hunyuan_transformer_2d.set_default_attn_processor
     def set_default_attn_processor(self):
         """
@@ -609,13 +589,15 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
             attention_mask (`torch.Tensor` of shape `(batch_size, sequence_len)`, *optional*):
-                Mask to avoid performing attention on padding token indices, formed by concatenating the attention masks
+                Mask to avoid performing attention on padding token indices, formed by concatenating the attention
+                masks
                     for the two text encoders together. Mask values selected in `[0, 1]`:
 
                 - 1 for tokens that are **not masked**,
                 - 0 for tokens that are **masked**.
             encoder_attention_mask (`torch.Tensor` of shape `(batch_size, sequence_len)`, *optional*):
-                Mask to avoid performing attention on padding token cross-attention indices, formed by concatenating the attention masks
+                Mask to avoid performing attention on padding token cross-attention indices, formed by concatenating
+                the attention masks
                     for the two text encoders together. Mask values selected in `[0, 1]`:
 
                 - 1 for tokens that are **not masked**,
@@ -623,18 +605,17 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         Returns:
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
-        """                
+        """
         cross_attention_hidden_states = self.cross_attention_proj(encoder_hidden_states)
         global_hidden_states = self.global_proj(global_hidden_states)
         time_hidden_states = self.timestep_proj(self.timestep_features(timestep.to(self.dtype)))
-        
+
         global_hidden_states = global_hidden_states + time_hidden_states.unsqueeze(1)
-        
-        
+
         hidden_states = self.preprocess_conv(hidden_states) + hidden_states
         # (batch_size, dim, sequence_length) -> (batch_size, sequence_length, dim)
-        hidden_states = hidden_states.transpose(1,2)
-        
+        hidden_states = hidden_states.transpose(1, 2)
+
         hidden_states = self.proj_in(hidden_states)
 
         # prepend global states to hidden states
@@ -642,7 +623,6 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         if attention_mask is not None:
             prepend_mask = torch.ones((hidden_states.shape[0], 1), device=hidden_states.device, dtype=torch.bool)
             attention_mask = torch.cat([prepend_mask, attention_mask], dim=-1)
-
 
         for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
@@ -670,21 +650,20 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
 
             else:
                 hidden_states = block(
-                    hidden_states = hidden_states,
-                    attention_mask = attention_mask,
-                    encoder_hidden_states = cross_attention_hidden_states,
-                    encoder_attention_mask = encoder_attention_mask,
-                    rotary_embedding = rotary_embedding,
-                    cross_attention_kwargs = joint_attention_kwargs,
+                    hidden_states=hidden_states,
+                    attention_mask=attention_mask,
+                    encoder_hidden_states=cross_attention_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask,
+                    rotary_embedding=rotary_embedding,
+                    cross_attention_kwargs=joint_attention_kwargs,
                 )
 
         hidden_states = self.proj_out(hidden_states)
-        
+
         # (batch_size, sequence_length, dim) -> (batch_size, dim, sequence_length)
         # remove prepend length that has been added by global hidden states
-        hidden_states = hidden_states.transpose(1,2)[:, :, 1:]
+        hidden_states = hidden_states.transpose(1, 2)[:, :, 1:]
         hidden_states = self.postprocess_conv(hidden_states) + hidden_states
-        
 
         if not return_dict:
             return (hidden_states,)

@@ -84,8 +84,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final
             sigma is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
         noise_preconditioning_strategy (`str`, defaults to `"log"`):
-            The strategy used to convert sigmas to timestamps. If `"log"`, will use the default strategy, i.e use logarithm to convert sigmas. If `atan`,
-            sigmas will be normalized using arctan.
+            The strategy used to convert sigmas to timestamps. If `"log"`, will use the default strategy, i.e use
+            logarithm to convert sigmas. If `atan`, sigmas will be normalized using arctan.
     """
 
     _compatibles = []
@@ -129,12 +129,11 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithm_type` {algorithm_type}. Please choose `sigma_min` instead."
             )
-        
+
         if noise_preconditioning_strategy not in ["log", "atan"]:
-                raise NotImplementedError(f"{noise_preconditioning_strategy} is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{noise_preconditioning_strategy} is not implemented for {self.__class__}")
         else:
             self.noise_preconditioning_strategy = noise_preconditioning_strategy
-
 
         ramp = torch.linspace(0, 1, num_train_timesteps)
         if sigma_schedule == "karras":

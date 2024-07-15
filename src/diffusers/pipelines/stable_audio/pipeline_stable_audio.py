@@ -15,7 +15,6 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import (
     T5EncoderModel,
@@ -27,19 +26,17 @@ from ...models import AutoencoderOobleck
 from ...models.embeddings import get_1d_rotary_pos_embed
 from ...schedulers import EDMDPMSolverMultistepScheduler
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     is_librosa_available,
     logging,
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from .modeling_stable_audio import StableAudioProjectionModel, StableAudioDiTModel
+from .modeling_stable_audio import StableAudioDiTModel, StableAudioProjectionModel
 
 
 if is_librosa_available():
-    import librosa
+    pass
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -50,7 +47,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import StableAudioPipeline
 
-        >>> repo_id = "cvssp/audioldm2" # TODO (YL): change once set
+        >>> repo_id = "cvssp/audioldm2"  # TODO (YL): change once set
         >>> pipe = StableAudioPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
@@ -77,7 +74,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-
 class StableAudioPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-audio generation using StableAudio.
@@ -93,9 +89,9 @@ class StableAudioPipeline(DiffusionPipeline):
             [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
             [google-t5/t5-base](https://huggingface.co/google-t5/t5-base) variant.
         projection_model ([`StableAudioProjectionModel`]):
-            A trained model used to linearly project the hidden-states from the text encoder model
-            and the start and end seconds. The projected hidden-states from the encoder and the conditional seconds are
-            concatenated to give the input to the transformer model.
+            A trained model used to linearly project the hidden-states from the text encoder model and the start and
+            end seconds. The projected hidden-states from the encoder and the conditional seconds are concatenated to
+            give the input to the transformer model.
         tokenizer ([`~transformers.T5Tokenizer`]):
             Tokenizer to tokenize text for the frozen text-encoder.
         transformer ([`StableAudioDiTModel`]):
@@ -105,7 +101,6 @@ class StableAudioPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->projection_model->transformer->vae"
-
 
     def __init__(
         self,
@@ -126,7 +121,7 @@ class StableAudioPipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.rotary_embed_dim =  max(self.transformer.config.attention_head_dim // 2, 32)
+        self.rotary_embed_dim = max(self.transformer.config.attention_head_dim // 2, 32)
 
     # Copied from diffusers.pipelines.pipeline_utils.StableDiffusionMixin.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -177,24 +172,27 @@ class StableAudioPipeline(DiffusionPipeline):
                 Whether to use classifier free guidance.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the audio generation. If not defined, one has to pass
-                `negative_cross_attention_hidden_states` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
+                `negative_cross_attention_hidden_states` instead. Ignored when not using guidance (i.e., ignored if
+                `guidance_scale` is less than `1`).
             cross_attention_hidden_states (`torch.Tensor`, *optional*):
-                Pre-computed cross-attention hidden states from the T5 model and the projection model. Can be used to easily tweak text inputs, *e.g.*
-                prompt weighting. If not provided, will be computed from `prompt`, `audio_start_in_s` and `audio_end_in_s` input arguments.
+                Pre-computed cross-attention hidden states from the T5 model and the projection model. Can be used to
+                easily tweak text inputs, *e.g.* prompt weighting. If not provided, will be computed from `prompt`,
+                `audio_start_in_s` and `audio_end_in_s` input arguments.
             negative_cross_attention_hidden_states (`torch.Tensor`, *optional*):
-                Pre-computed negative cross-attention hidden states from the T5 model and the projection model. Can be used to easily tweak text inputs,
-                *e.g.* prompt weighting. If not provided, negative_cross_attention_hidden_states will be computed from
-                `negative_prompt`, `audio_start_in_s` and `audio_end_in_s` input arguments.
+                Pre-computed negative cross-attention hidden states from the T5 model and the projection model. Can be
+                used to easily tweak text inputs, *e.g.* prompt weighting. If not provided,
+                negative_cross_attention_hidden_states will be computed from `negative_prompt`, `audio_start_in_s` and
+                `audio_end_in_s` input arguments.
             global_hidden_states (`torch.Tensor`, *optional*):
-                Pre-computed global hidden states from conditioning seconds. Can be used to easily tweak text inputs, *e.g.*
-                prompt weighting. If not provided, will be computed from `audio_start_in_s` and `audio_end_in_s` input arguments.
+                Pre-computed global hidden states from conditioning seconds. Can be used to easily tweak text inputs,
+                *e.g.* prompt weighting. If not provided, will be computed from `audio_start_in_s` and `audio_end_in_s`
+                input arguments.
             attention_mask (`torch.LongTensor`, *optional*):
                 Pre-computed attention mask to be applied to the the text model. If not provided, attention mask will
                 be computed from `prompt` input argument.
             negative_attention_mask (`torch.LongTensor`, *optional*):
-                Pre-computed attention mask to be applied to the text model. If not provided, attention
-                mask will be computed from `negative_prompt` input argument.
+                Pre-computed attention mask to be applied to the text model. If not provided, attention mask will be
+                computed from `negative_prompt` input argument.
         Returns:
             cross_attention_hidden_states (`torch.Tensor`):
                 Cross attention hidden states.
@@ -228,12 +226,14 @@ class StableAudioPipeline(DiffusionPipeline):
         ...     num_inference_steps=200,
         ...     audio_end_in_s=10.0,
         ... ).audios[0]
-        
+
         >>> # Peak normalize, clip, convert to int16
-        >>> audio = audio.to(torch.float32).div(torch.max(torch.abs(audio))).clamp(-1, 1).mul(32767).to(torch.int16).cpu()
+        >>> audio = (
+        ...     audio.to(torch.float32).div(torch.max(torch.abs(audio))).clamp(-1, 1).mul(32767).to(torch.int16).cpu()
+        ... )
 
         >>> # save generated audio sample
-        >>> torchaudio.save("techno.wav", audio, pipe.vae.config.sampling_rate    
+        >>> torchaudio.save("techno.wav", audio, pipe.vae.config.sampling_rate)
         ```"""
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -243,7 +243,7 @@ class StableAudioPipeline(DiffusionPipeline):
             batch_size = cross_attention_hidden_states.shape[0]
 
         audio_start_in_s = audio_start_in_s if isinstance(audio_start_in_s, list) else [audio_start_in_s]
-        audio_end_in_s = audio_end_in_s if isinstance(audio_end_in_s, list) else [audio_end_in_s]        
+        audio_end_in_s = audio_end_in_s if isinstance(audio_end_in_s, list) else [audio_end_in_s]
 
         if cross_attention_hidden_states is None:
             # 1. Tokenize text
@@ -261,7 +261,9 @@ class StableAudioPipeline(DiffusionPipeline):
             if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
                 text_input_ids, untruncated_ids
             ):
-                removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
+                removed_text = self.tokenizer.batch_decode(
+                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
+                )
                 logger.warning(
                     f"The following part of your input was truncated because {self.text_encoder.config.model_type} can "
                     f"only handle sequences up to {self.tokenizer.model_max_length} tokens: {removed_text}"
@@ -269,7 +271,7 @@ class StableAudioPipeline(DiffusionPipeline):
 
             text_input_ids = text_input_ids.to(device)
             attention_mask = attention_mask.to(device)
-            
+
             # 2. Text encoder forward
             self.text_encoder.eval()
             # TODO: (YL) forward is done in fp16 in the original code, whatever the precision is
@@ -279,7 +281,7 @@ class StableAudioPipeline(DiffusionPipeline):
                     attention_mask=attention_mask,
                 )
             prompt_embeds = prompt_embeds[0].to(self.transformer.dtype)
-            
+
             # 3. Project text and seconds
             projection_output = self.projection_model(
                 text_hidden_states=prompt_embeds,
@@ -292,23 +294,28 @@ class StableAudioPipeline(DiffusionPipeline):
 
             seconds_start_hidden_states = projection_output.seconds_start_hidden_states
             seconds_end_hidden_states = projection_output.seconds_end_hidden_states
-            
+
             # 4. Create cross-attention and global hidden states from projected vectors
-            cross_attention_hidden_states = torch.cat([prompt_embeds,seconds_start_hidden_states, seconds_end_hidden_states], dim=1)
+            cross_attention_hidden_states = torch.cat(
+                [prompt_embeds, seconds_start_hidden_states, seconds_end_hidden_states], dim=1
+            )
 
             global_hidden_states = torch.cat([seconds_start_hidden_states, seconds_end_hidden_states], dim=2)
 
         cross_attention_hidden_states = cross_attention_hidden_states.to(dtype=self.transformer.dtype, device=device)
         global_hidden_states = global_hidden_states.to(dtype=self.transformer.dtype, device=device)
 
-
         bs_embed, seq_len, hidden_size = cross_attention_hidden_states.shape
         # duplicate cross attention and global hidden states for each generation per prompt, using mps friendly method
         cross_attention_hidden_states = cross_attention_hidden_states.repeat(1, num_waveforms_per_prompt, 1)
-        cross_attention_hidden_states = cross_attention_hidden_states.view(bs_embed * num_waveforms_per_prompt, seq_len, hidden_size)
+        cross_attention_hidden_states = cross_attention_hidden_states.view(
+            bs_embed * num_waveforms_per_prompt, seq_len, hidden_size
+        )
 
         global_hidden_states = global_hidden_states.repeat(1, num_waveforms_per_prompt, 1)
-        global_hidden_states = global_hidden_states.view(bs_embed * num_waveforms_per_prompt, -1, global_hidden_states.shape[-1])
+        global_hidden_states = global_hidden_states.view(
+            bs_embed * num_waveforms_per_prompt, -1, global_hidden_states.shape[-1]
+        )
 
         # adapt global hidden states and attention masks to classifier free guidance
         if do_classifier_free_guidance:
@@ -316,19 +323,23 @@ class StableAudioPipeline(DiffusionPipeline):
 
         # get unconditional cross-attention for classifier free guidance
         if do_classifier_free_guidance and negative_prompt is None:
-            
             if negative_cross_attention_hidden_states is None:
-                negative_cross_attention_hidden_states = torch.zeros_like(cross_attention_hidden_states, device=cross_attention_hidden_states.device)
-                
+                negative_cross_attention_hidden_states = torch.zeros_like(
+                    cross_attention_hidden_states, device=cross_attention_hidden_states.device
+                )
+
             if negative_attention_mask is not None:
                 # If there's a negative cross-attention mask, set the masked tokens to the null embed
                 negative_attention_mask = negative_attention_mask.to(torch.bool).unsqueeze(2)
-                negative_cross_attention_hidden_states = torch.where(negative_attention_mask, negative_cross_attention_hidden_states, 0.)
-                
-            cross_attention_hidden_states = torch.cat([negative_cross_attention_hidden_states, cross_attention_hidden_states], dim=0)
+                negative_cross_attention_hidden_states = torch.where(
+                    negative_attention_mask, negative_cross_attention_hidden_states, 0.0
+                )
+
+            cross_attention_hidden_states = torch.cat(
+                [negative_cross_attention_hidden_states, cross_attention_hidden_states], dim=0
+            )
 
         elif do_classifier_free_guidance:
-            
             uncond_tokens: List[str]
             if type(prompt) is not type(negative_prompt):
                 raise TypeError(
@@ -371,31 +382,43 @@ class StableAudioPipeline(DiffusionPipeline):
             negative_projection_output = self.projection_model(
                 text_hidden_states=negative_prompt_embeds,
                 attention_mask=attention_mask,
-                start_seconds=audio_start_in_s, # TODO: it's computed twice - we can avoid this
+                start_seconds=audio_start_in_s,  # TODO: it's computed twice - we can avoid this
                 end_seconds=audio_end_in_s,
-            )            
+            )
 
             negative_prompt_embeds = negative_projection_output.text_hidden_states
             negative_attention_mask = negative_projection_output.attention_mask
 
             # set the masked tokens to the null embed
-            negative_prompt_embeds = torch.where(negative_attention_mask.to(torch.bool).unsqueeze(2), negative_prompt_embeds, 0.)
-            
+            negative_prompt_embeds = torch.where(
+                negative_attention_mask.to(torch.bool).unsqueeze(2), negative_prompt_embeds, 0.0
+            )
+
             # 4. Create negative cross-attention from projected vectors
-            negative_cross_attention_hidden_states = torch.cat([negative_prompt_embeds, seconds_start_hidden_states, seconds_end_hidden_states], dim=1)
-            
+            negative_cross_attention_hidden_states = torch.cat(
+                [negative_prompt_embeds, seconds_start_hidden_states, seconds_end_hidden_states], dim=1
+            )
+
             seq_len = negative_cross_attention_hidden_states.shape[1]
 
-            negative_cross_attention_hidden_states = negative_cross_attention_hidden_states.to(dtype=self.transformer.dtype, device=device)
+            negative_cross_attention_hidden_states = negative_cross_attention_hidden_states.to(
+                dtype=self.transformer.dtype, device=device
+            )
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            negative_cross_attention_hidden_states = negative_cross_attention_hidden_states.repeat(1, num_waveforms_per_prompt, 1)
-            negative_cross_attention_hidden_states = negative_cross_attention_hidden_states.view(batch_size * num_waveforms_per_prompt, seq_len, -1)
+            negative_cross_attention_hidden_states = negative_cross_attention_hidden_states.repeat(
+                1, num_waveforms_per_prompt, 1
+            )
+            negative_cross_attention_hidden_states = negative_cross_attention_hidden_states.view(
+                batch_size * num_waveforms_per_prompt, seq_len, -1
+            )
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            cross_attention_hidden_states = torch.cat([negative_cross_attention_hidden_states, cross_attention_hidden_states])
+            cross_attention_hidden_states = torch.cat(
+                [negative_cross_attention_hidden_states, cross_attention_hidden_states]
+            )
 
         return cross_attention_hidden_states, global_hidden_states
 
@@ -429,7 +452,7 @@ class StableAudioPipeline(DiffusionPipeline):
         global_hidden_states=None,
         attention_mask=None,
         negative_attention_mask=None,
-        initial_audio_waveforms=None, # TODO (YL), check this
+        initial_audio_waveforms=None,  # TODO (YL), check this
     ):
         # TODO(YL): check here that seconds_start and seconds_end have the right BS (either 1 or prompt BS)
         # TODO (YL): check that global hidden states and cross attention hidden states are both passed
@@ -443,19 +466,25 @@ class StableAudioPipeline(DiffusionPipeline):
                 f"`audio_end_in_s-audio_start_in_s` has to be a positive value greater than or equal to {min_audio_length_in_s}, but "
                 f"is {audio_length_in_s}."
             )
-            
-        if audio_start_in_s < self.projection_model.config.min_value or audio_start_in_s > self.projection_model.config.max_value:
+
+        if (
+            audio_start_in_s < self.projection_model.config.min_value
+            or audio_start_in_s > self.projection_model.config.max_value
+        ):
             raise ValueError(
                 f"`audio_start_in_s` must be greater than or equal to {self.projection_model.config.min_value}, and lower than or equal to {self.projection_model.config.max_value} but "
                 f"is {audio_length_in_s}."
             )
 
-        if audio_end_in_s < self.projection_model.config.min_value or audio_end_in_s > self.projection_model.config.max_value:
+        if (
+            audio_end_in_s < self.projection_model.config.min_value
+            or audio_end_in_s > self.projection_model.config.max_value
+        ):
             raise ValueError(
                 f"`audio_end_in_s` must be greater than or equal to {self.projection_model.config.min_value}, and lower than or equal to {self.projection_model.config.max_value} but "
                 f"is {audio_end_in_s}."
             )
-            
+
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -496,9 +525,19 @@ class StableAudioPipeline(DiffusionPipeline):
                     f"`attention_mask: {attention_mask.shape} != `cross_attention_hidden_states` {cross_attention_hidden_states.shape}"
                 )
 
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with width->self.vocoder.config.model_in_dim
-    def prepare_latents(self, batch_size, num_channels_vae, sample_size, dtype, device, generator, latents=None, initial_audio_waveforms=None, num_waveforms_per_prompt=None):
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_vae,
+        sample_size,
+        dtype,
+        device,
+        generator,
+        latents=None,
+        initial_audio_waveforms=None,
+        num_waveforms_per_prompt=None,
+    ):
         shape = (batch_size, num_channels_vae, sample_size)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -513,11 +552,11 @@ class StableAudioPipeline(DiffusionPipeline):
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
-        
+
         # encode the initial audio for use by the model
         if initial_audio_waveforms is not None:
             encoded_audio = self.vae.encode(initial_audio_waveforms).latents.sample(generator)
-            encoded_audio = torch.repeat(encoded_audio, (num_waveforms_per_prompt*encoded_audio.shape[0], 1, 1))
+            encoded_audio = torch.repeat(encoded_audio, (num_waveforms_per_prompt * encoded_audio.shape[0], 1, 1))
             latents = encoded_audio + latents
         return latents
 
@@ -526,8 +565,8 @@ class StableAudioPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        audio_length_in_s: Optional[float] = None,
-        audio_start_in_s: Optional[float] = 0.,
+        audio_end_in_s: Optional[float] = None,
+        audio_start_in_s: Optional[float] = 0.0,
         num_inference_steps: int = 100,
         guidance_scale: float = 7.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -538,7 +577,7 @@ class StableAudioPipeline(DiffusionPipeline):
         initial_audio_waveforms: Optional[torch.Tensor] = None,
         cross_attention_hidden_states: Optional[torch.Tensor] = None,
         negative_cross_attention_hidden_states: Optional[torch.Tensor] = None,
-        global_hidden_states: Optional[torch.Tensor] = None, # TODO (YL): add to docstrings
+        global_hidden_states: Optional[torch.Tensor] = None,  # TODO (YL): add to docstrings
         attention_mask: Optional[torch.LongTensor] = None,
         negative_attention_mask: Optional[torch.LongTensor] = None,
         return_dict: bool = True,
@@ -552,7 +591,8 @@ class StableAudioPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide audio generation. If not defined, you need to pass `cross_attention_hidden_states`.
+                The prompt or prompts to guide audio generation. If not defined, you need to pass
+                `cross_attention_hidden_states`.
             audio_end_in_s (`float`, *optional*, defaults to 47.55):
                 Audio end index in seconds.
             audio_start_in_s (`float`, *optional*, defaults to 0):
@@ -565,7 +605,8 @@ class StableAudioPipeline(DiffusionPipeline):
                 `prompt` at the expense of lower sound quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide what to not include in audio generation. If not defined, you need to
-                pass `negative_cross_attention_hidden_states` instead. Ignored when not using guidance (`guidance_scale < 1`).
+                pass `negative_cross_attention_hidden_states` instead. Ignored when not using guidance (`guidance_scale
+                < 1`).
             num_waveforms_per_prompt (`int`, *optional*, defaults to 1):
                 The number of waveforms to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -579,20 +620,21 @@ class StableAudioPipeline(DiffusionPipeline):
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
             initial_audio_waveforms (`torch.Tensor`, *optional*):
-                Optional initial audio waveforms to use as the initial audio for generation.
-                TODO: decide format and how to deal with sampling rate and channels.
+                Optional initial audio waveforms to use as the initial audio for generation. TODO: decide format and
+                how to deal with sampling rate and channels.
             cross_attention_hidden_states (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
             negative_cross_attention_hidden_states (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
-                not provided, `negative_cross_attention_hidden_states` are generated from the `negative_prompt` input argument.
+                not provided, `negative_cross_attention_hidden_states` are generated from the `negative_prompt` input
+                argument.
             attention_mask (`torch.LongTensor`, *optional*):
-                Pre-computed attention mask to be applied to the `cross_attention_hidden_states`. If not provided, attention mask will
-                be computed from `prompt` input argument.
+                Pre-computed attention mask to be applied to the `cross_attention_hidden_states`. If not provided,
+                attention mask will be computed from `prompt` input argument.
             negative_attention_mask (`torch.LongTensor`, *optional*):
-                Pre-computed attention mask to be applied to the `negative_cross_attention_hidden_states`. If not provided, attention
-                mask will be computed from `negative_prompt` input argument.
+                Pre-computed attention mask to be applied to the `negative_cross_attention_hidden_states`. If not
+                provided, attention mask will be computed from `negative_prompt` input argument.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -620,16 +662,17 @@ class StableAudioPipeline(DiffusionPipeline):
         # 0. Convert audio input length from seconds to latent length
         downsample_ratio = self.vae.hop_length
 
-
         max_audio_length_in_s = self.transformer.config.sample_size * downsample_ratio / self.vae.config.sampling_rate
         if audio_end_in_s is None:
             audio_end_in_s = max_audio_length_in_s
 
-        if audio_end_in_s-audio_start_in_s>max_audio_length_in_s:
-            raise ValueError(f"The total audio length requested ({audio_end_in_s-audio_start_in_s}s) is longer than the model maximum possible length ({max_audio_length_in_s}). Make sure that 'audio_end_in_s-audio_start_in_s<={max_audio_length_in_s}'.")
-        
-        waveform_start = int(audio_start_in_s *  self.vae.config.sampling_rate)
-        waveform_end = int(audio_end_in_s *  self.vae.config.sampling_rate)
+        if audio_end_in_s - audio_start_in_s > max_audio_length_in_s:
+            raise ValueError(
+                f"The total audio length requested ({audio_end_in_s-audio_start_in_s}s) is longer than the model maximum possible length ({max_audio_length_in_s}). Make sure that 'audio_end_in_s-audio_start_in_s<={max_audio_length_in_s}'."
+            )
+
+        waveform_start = int(audio_start_in_s * self.vae.config.sampling_rate)
+        waveform_end = int(audio_end_in_s * self.vae.config.sampling_rate)
         waveform_length = int(self.transformer.config.sample_size)
 
         # 1. Check inputs. Raise error if not correct
@@ -679,7 +722,7 @@ class StableAudioPipeline(DiffusionPipeline):
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
-        
+
         # 5. Prepare latent variables
         num_channels_vae = self.transformer.config.in_channels
         latents = self.prepare_latents(
@@ -698,8 +741,13 @@ class StableAudioPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Prepare rotary positional embedding
-        rotary_embedding = get_1d_rotary_pos_embed(self.rotary_embed_dim, latents.shape[2] + global_hidden_states.shape[1], use_real=True, repeat_interleave_real=False)
-        
+        rotary_embedding = get_1d_rotary_pos_embed(
+            self.rotary_embed_dim,
+            latents.shape[2] + global_hidden_states.shape[1],
+            use_real=True,
+            repeat_interleave_real=False,
+        )
+
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -741,7 +789,6 @@ class StableAudioPipeline(DiffusionPipeline):
             audio = self.vae.decode(latents).sample
         else:
             return AudioPipelineOutput(audios=latents)
-
 
         # TODO (YL): operation not done in the original code -> should we remove it ?
         audio = audio[:, :, waveform_start:waveform_end]
