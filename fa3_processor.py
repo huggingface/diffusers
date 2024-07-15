@@ -14,9 +14,9 @@ class FA3AttnProcessor:
         self,
         attn,
         hidden_states,
-        encoder_hidden_states,
-        attention_mask,
-        temb,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
