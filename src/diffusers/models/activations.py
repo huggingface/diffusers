@@ -122,7 +122,7 @@ class GEGLU(nn.Module):
             hidden_states, gate = hidden_states.chunk(2, dim=-1)
             return hidden_states * self.gelu(gate)
 
-class GLU(nn.Module):
+class SwiGLU(nn.Module):
     r"""
     A [variant](https://arxiv.org/abs/2002.05202) of the gated linear unit activation function. 
     It's similar to `GEGLU` but uses SiLU / Swish instead of GeLU.

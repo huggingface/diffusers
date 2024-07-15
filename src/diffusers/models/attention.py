@@ -19,7 +19,7 @@ from torch import nn
 
 from ..utils import deprecate, logging
 from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import GEGLU, GELU, ApproximateGELU, GLU
+from .activations import GEGLU, GELU, ApproximateGELU, SwiGLU
 from .attention_processor import Attention, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm
@@ -767,8 +767,8 @@ class FeedForward(nn.Module):
             act_fn = GEGLU(dim, inner_dim, bias=bias)
         elif activation_fn == "geglu-approximate":
             act_fn = ApproximateGELU(dim, inner_dim, bias=bias)
-        elif activation_fn == "glu":
-            act_fn = GLU(dim, inner_dim, bias=bias)
+        elif activation_fn == "swiglu":
+            act_fn = SwiGLU(dim, inner_dim, bias=bias)
 
         self.net = nn.ModuleList([])
         # project in
