@@ -19,7 +19,7 @@ from torch import nn
 
 from ..utils import deprecate, logging
 from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import GEGLU, GELU, ApproximateGELU
+from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU
 from .attention_processor import Attention, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm
@@ -359,7 +359,10 @@ class BasicTransformerBlock(nn.Module):
                 out_bias=attention_out_bias,
             )  # is self-attn if encoder_hidden_states is none
         else:
-            self.norm2 = None
+            if norm_type == "ada_norm_single":  # For Latte
+                self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+            else:
+                self.norm2 = None
             self.attn2 = None
 
         # 3. Feed-forward
@@ -439,7 +442,6 @@ class BasicTransformerBlock(nn.Module):
             ).chunk(6, dim=1)
             norm_hidden_states = self.norm1(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
-            norm_hidden_states = norm_hidden_states.squeeze(1)
         else:
             raise ValueError("Incorrect norm used")
 
@@ -456,6 +458,7 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
+
         if self.norm_type == "ada_norm_zero":
             attn_output = gate_msa.unsqueeze(1) * attn_output
         elif self.norm_type == "ada_norm_single":
@@ -525,6 +528,56 @@ class BasicTransformerBlock(nn.Module):
             hidden_states = hidden_states.squeeze(1)
 
         return hidden_states
+
+
+class LuminaFeedForward(nn.Module):
+    r"""
+    A feed-forward layer.
+
+    Parameters:
+        hidden_size (`int`):
+            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's
+            hidden representations.
+        intermediate_size (`int`): The intermediate dimension of the feedforward layer.
+        multiple_of (`int`, *optional*): Value to ensure hidden dimension is a multiple
+            of this value.
+        ffn_dim_multiplier (float, *optional*): Custom multiplier for hidden
+            dimension. Defaults to None.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        inner_dim: int,
+        multiple_of: Optional[int] = 256,
+        ffn_dim_multiplier: Optional[float] = None,
+    ):
+        super().__init__()
+        inner_dim = int(2 * inner_dim / 3)
+        # custom hidden_size factor multiplier
+        if ffn_dim_multiplier is not None:
+            inner_dim = int(ffn_dim_multiplier * inner_dim)
+        inner_dim = multiple_of * ((inner_dim + multiple_of - 1) // multiple_of)
+
+        self.linear_1 = nn.Linear(
+            dim,
+            inner_dim,
+            bias=False,
+        )
+        self.linear_2 = nn.Linear(
+            inner_dim,
+            dim,
+            bias=False,
+        )
+        self.linear_3 = nn.Linear(
+            dim,
+            inner_dim,
+            bias=False,
+        )
+        self.silu = FP32SiLU()
+
+    def forward(self, x):
+        return self.linear_2(self.silu(self.linear_1(x)) * self.linear_3(x))
 
 
 @maybe_allow_in_graph

@@ -95,17 +95,22 @@ def save_model_card(
 
 These are {repo_id} DreamBooth weights for {base_model}.
 
-The weights were trained  using [DreamBooth](https://dreambooth.github.io/).
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [SD3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sd3.md).
 
-Text encoder was fine-tuned: {train_text_encoder}.
+Was the text encoder fine-tuned? {train_text_encoder}.
 
 ## Trigger words
 
-You should use {instance_prompt} to trigger the image generation.
+You should use `{instance_prompt}` to trigger the image generation.
 
-## Download model
+## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
 
-[Download]({repo_id}/tree/main) them in the Files & versions tab.
+```py
+from diffusers import AutoPipelineForText2Image
+import torch
+pipeline = AutoPipelineForText2Image.from_pretrained('{repo_id}', torch_dtype=torch.float16).to('cuda')
+image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
+```
 
 ## License
 
