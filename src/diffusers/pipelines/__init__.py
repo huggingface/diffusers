@@ -20,11 +20,14 @@ from ..utils import (
 _dummy_objects = {}
 _import_structure = {
     "controlnet": [],
+    "controlnet_hunyuandit": [],
+    "controlnet_sd3": [],
     "controlnet_xs": [],
     "deprecated": [],
     "latent_diffusion": [],
     "ledits_pp": [],
     "marigold": [],
+    "pag": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -136,10 +139,30 @@ else:
             "StableDiffusionXLControlNetPipeline",
         ]
     )
+    _import_structure["pag"].extend(
+        [
+            "StableDiffusionPAGPipeline",
+            "StableDiffusionControlNetPAGPipeline",
+            "StableDiffusionXLPAGPipeline",
+            "StableDiffusionXLPAGInpaintPipeline",
+            "StableDiffusionXLControlNetPAGPipeline",
+            "StableDiffusionXLPAGImg2ImgPipeline",
+        ]
+    )
     _import_structure["controlnet_xs"].extend(
         [
             "StableDiffusionControlNetXSPipeline",
             "StableDiffusionXLControlNetXSPipeline",
+        ]
+    )
+    _import_structure["controlnet_hunyuandit"].extend(
+        [
+            "HunyuanDiTControlNetPipeline",
+        ]
+    )
+    _import_structure["controlnet_sd3"].extend(
+        [
+            "StableDiffusion3ControlNetPipeline",
         ]
     )
     _import_structure["deepfloyd_if"] = [
@@ -176,6 +199,12 @@ else:
         "Kandinsky3Img2ImgPipeline",
         "Kandinsky3Pipeline",
     ]
+    _import_structure["kolors"] = [
+        "KolorsPipeline",
+        "KolorsImg2ImgPipeline",
+        "ChatGLMModel",
+        "ChatGLMTokenizer",
+    ]
     _import_structure["latent_consistency_models"] = [
         "LatentConsistencyModelImg2ImgPipeline",
         "LatentConsistencyModelPipeline",
@@ -187,6 +216,8 @@ else:
             "LEditsPPPipelineStableDiffusionXL",
         ]
     )
+    _import_structure["latte"] = ["LattePipeline"]
+    _import_structure["lumina"] = ["LuminaText2ImgPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -225,7 +256,12 @@ else:
             "StableDiffusionLDM3DPipeline",
         ]
     )
-    _import_structure["stable_diffusion_3"] = ["StableDiffusion3Pipeline", "StableDiffusion3Img2ImgPipeline"]
+    _import_structure["aura_flow"] = ["AuraFlowPipeline"]
+    _import_structure["stable_diffusion_3"] = [
+        "StableDiffusion3Pipeline",
+        "StableDiffusion3Img2ImgPipeline",
+        "StableDiffusion3InpaintPipeline",
+    ]
     _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
     _import_structure["stable_diffusion_sag"] = ["StableDiffusionSAGPipeline"]
@@ -389,6 +425,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
         )
+        from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
@@ -398,6 +435,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+        )
+        from .controlnet_hunyuandit import (
+            HunyuanDiTControlNetPipeline,
+        )
+        from .controlnet_sd3 import (
+            StableDiffusion3ControlNetPipeline,
         )
         from .controlnet_xs import (
             StableDiffusionControlNetXSPipeline,
@@ -452,22 +495,38 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
         )
+        from .kolors import (
+            ChatGLMModel,
+            ChatGLMTokenizer,
+            KolorsImg2ImgPipeline,
+            KolorsPipeline,
+        )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
         )
         from .latent_diffusion import LDMTextToImagePipeline
+        from .latte import LattePipeline
         from .ledits_pp import (
             LEditsPPDiffusionPipelineOutput,
             LEditsPPInversionPipelineOutput,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
+        from .lumina import LuminaText2ImgPipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldNormalsPipeline,
         )
         from .musicldm import MusicLDMPipeline
+        from .pag import (
+            StableDiffusionControlNetPAGPipeline,
+            StableDiffusionPAGPipeline,
+            StableDiffusionXLControlNetPAGPipeline,
+            StableDiffusionXLPAGImg2ImgPipeline,
+            StableDiffusionXLPAGInpaintPipeline,
+            StableDiffusionXLPAGPipeline,
+        )
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
@@ -496,7 +555,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableUnCLIPImg2ImgPipeline,
             StableUnCLIPPipeline,
         )
-        from .stable_diffusion_3 import StableDiffusion3Img2ImgPipeline, StableDiffusion3Pipeline
+        from .stable_diffusion_3 import (
+            StableDiffusion3Img2ImgPipeline,
+            StableDiffusion3InpaintPipeline,
+            StableDiffusion3Pipeline,
+        )
         from .stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
         from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
         from .stable_diffusion_gligen import StableDiffusionGLIGENPipeline, StableDiffusionGLIGENTextImagePipeline

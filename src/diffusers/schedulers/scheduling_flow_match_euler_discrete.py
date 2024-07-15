@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -126,10 +126,31 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 A scaled input sample.
         """
-        if self.step_index is None:
-            self._init_step_index(timestep)
+        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        sigmas = self.sigmas.to(device=sample.device, dtype=sample.dtype)
 
-        sigma = self.sigmas[self.step_index]
+        if sample.device.type == "mps" and torch.is_floating_point(timestep):
+            # mps does not support float64
+            schedule_timesteps = self.timesteps.to(sample.device, dtype=torch.float32)
+            timestep = timestep.to(sample.device, dtype=torch.float32)
+        else:
+            schedule_timesteps = self.timesteps.to(sample.device)
+            timestep = timestep.to(sample.device)
+
+        # self.begin_index is None when scheduler is used for training, or pipeline does not implement set_begin_index
+        if self.begin_index is None:
+            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timestep]
+        elif self.step_index is not None:
+            # add_noise is called after first denoising step (for inpainting)
+            step_indices = [self.step_index] * timestep.shape[0]
+        else:
+            # add noise is called before first denoising step to create initial latent(img2img)
+            step_indices = [self.begin_index] * timestep.shape[0]
+
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < len(sample.shape):
+            sigma = sigma.unsqueeze(-1)
+
         sample = sigma * noise + (1.0 - sigma) * sample
 
         return sample
@@ -137,7 +158,12 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def _sigma_to_t(self, sigma):
         return sigma * self.config.num_train_timesteps
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int = None,
+        device: Union[str, torch.device] = None,
+        sigmas: Optional[List[float]] = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -147,17 +173,19 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
-        self.num_inference_steps = num_inference_steps
 
-        timesteps = np.linspace(
-            self._sigma_to_t(self.sigma_max), self._sigma_to_t(self.sigma_min), num_inference_steps
-        )
+        if sigmas is None:
+            self.num_inference_steps = num_inference_steps
+            timesteps = np.linspace(
+                self._sigma_to_t(self.sigma_max), self._sigma_to_t(self.sigma_min), num_inference_steps
+            )
 
-        sigmas = timesteps / self.config.num_train_timesteps
-        sigmas = self.config.shift * sigmas / (1 + (self.config.shift - 1) * sigmas)
+            sigmas = timesteps / self.config.num_train_timesteps
+            sigmas = self.config.shift * sigmas / (1 + (self.config.shift - 1) * sigmas)
+
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
-
         timesteps = sigmas * self.config.num_train_timesteps
+
         self.timesteps = timesteps.to(device=device)
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
 

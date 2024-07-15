@@ -35,10 +35,21 @@ def get_timestep_embedding(
     """
     This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal timestep embeddings.
 
-    :param timesteps: a 1-D Tensor of N indices, one per batch element.
-                      These may be fractional.
-    :param embedding_dim: the dimension of the output. :param max_period: controls the minimum frequency of the
-    embeddings. :return: an [N x dim] Tensor of positional embeddings.
+    Args
+        timesteps (torch.Tensor):
+            a 1-D Tensor of N indices, one per batch element. These may be fractional.
+        embedding_dim (int):
+            the dimension of the output.
+        flip_sin_to_cos (bool):
+            Whether the embedding order should be `cos, sin` (if True) or `sin, cos` (if False)
+        downscale_freq_shift (float):
+            Controls the delta between frequencies between dimensions
+        scale (float):
+            Scaling factor applied to the embeddings.
+        max_period (int):
+            Controls the maximum frequency of the embeddings
+    Returns
+        torch.Tensor: an [N x dim] Tensor of positional embeddings.
     """
     assert len(timesteps.shape) == 1, "Timesteps should be a 1d-array"
 
@@ -230,6 +241,52 @@ class PatchEmbed(nn.Module):
         return (latent + pos_embed).to(latent.dtype)
 
 
+class LuminaPatchEmbed(nn.Module):
+    """2D Image to Patch Embedding with support for Lumina-T2X"""
+
+    def __init__(self, patch_size=2, in_channels=4, embed_dim=768, bias=True):
+        super().__init__()
+        self.patch_size = patch_size
+        self.proj = nn.Linear(
+            in_features=patch_size * patch_size * in_channels,
+            out_features=embed_dim,
+            bias=bias,
+        )
+
+    def forward(self, x, freqs_cis):
+        """
+        Patchifies and embeds the input tensor(s).
+
+        Args:
+            x (List[torch.Tensor] | torch.Tensor): The input tensor(s) to be patchified and embedded.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, List[Tuple[int, int]], torch.Tensor]: A tuple containing the patchified
+            and embedded tensor(s), the mask indicating the valid patches, the original image size(s), and the
+            frequency tensor(s).
+        """
+        freqs_cis = freqs_cis.to(x[0].device)
+        patch_height = patch_width = self.patch_size
+        batch_size, channel, height, width = x.size()
+        height_tokens, width_tokens = height // patch_height, width // patch_width
+
+        x = x.view(batch_size, channel, height_tokens, patch_height, width_tokens, patch_width).permute(
+            0, 2, 4, 1, 3, 5
+        )
+        x = x.flatten(3)
+        x = self.proj(x)
+        x = x.flatten(1, 2)
+
+        mask = torch.ones(x.shape[0], x.shape[1], dtype=torch.int32, device=x.device)
+
+        return (
+            x,
+            mask,
+            [(height, width)] * batch_size,
+            freqs_cis[:height_tokens, :width_tokens].flatten(0, 1).unsqueeze(0),
+        )
+
+
 def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
     """
     RoPE for image tokens with 2d structure.
@@ -273,8 +330,24 @@ def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
         emb = torch.cat([emb_h, emb_w], dim=1)  # (H*W, D/2)
         return emb
 
+def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, ntk_factor=1.0):
+    assert embed_dim % 4 == 0
 
-def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float = 10000.0, use_real=False, repeat_interleave_real=True):
+    emb_h = get_1d_rotary_pos_embed(
+        embed_dim // 2, len_h, linear_factor=linear_factor, ntk_factor=ntk_factor
+    )  # (H, D/4)
+    emb_w = get_1d_rotary_pos_embed(
+        embed_dim // 2, len_w, linear_factor=linear_factor, ntk_factor=ntk_factor
+    )  # (W, D/4)
+    emb_h = emb_h.view(len_h, 1, embed_dim // 4, 1).repeat(1, len_w, 1, 1)  # (H, W, D/4, 1)
+    emb_w = emb_w.view(1, len_w, embed_dim // 4, 1).repeat(len_h, 1, 1, 1)  # (H, W, D/4, 1)
+
+    emb = torch.cat([emb_h, emb_w], dim=-1).flatten(2)  # (H, W, D/2)
+    return emb
+
+def get_1d_rotary_pos_embed(
+    dim: int, pos: Union[np.ndarray, int], theta: float = 10000.0, use_real=False, linear_factor=1.0, ntk_factor=1.0, repeat_interleave_real=True
+):
     """
     Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
 
@@ -289,15 +362,19 @@ def get_1d_rotary_pos_embed(dim: int, pos: Union[np.ndarray, int], theta: float 
             Scaling factor for frequency computation. Defaults to 10000.0.
         use_real (`bool`, *optional*):
             If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+        linear_factor (`float`, *optional*, defaults to 1.0):
+            Scaling factor for the context extrapolation. Defaults to 1.0.
+        ntk_factor (`float`, *optional*, defaults to 1.0):
+            Scaling factor for the NTK-Aware RoPE. Defaults to 1.0.
         repeat_interleave_real (`bool`, *optional*, defaults to `True`):
-            If `True` and `use_real`, real part and imaginary part are each interleaved with themselves to reach `dim`. Otherwise, they are concateanted with themselves..
-
+            If `True` and `use_real`, real part and imaginary part are each interleaved with themselves to reach `dim`. Otherwise, they are concateanted with themselves.
     Returns:
         `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
     """
     if isinstance(pos, int):
         pos = np.arange(pos)
-    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))  # [D/2]
+    theta = theta * ntk_factor
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim)) / linear_factor  # [D/2]
     t = torch.from_numpy(pos).to(freqs.device)  # type: ignore  # [S]
     freqs = torch.outer(t, freqs).float()  # type: ignore   # [S, D/2]
     if use_real and repeat_interleave_real:
@@ -348,6 +425,7 @@ def apply_partial_rotary_emb(
 def apply_rotary_emb(
     x: torch.Tensor,
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
+    use_real: bool = True,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
@@ -363,16 +441,23 @@ def apply_rotary_emb(
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
     """
-    cos, sin = freqs_cis  # [S, D]
-    cos = cos[None, None]
-    sin = sin[None, None]
-    cos, sin = cos.to(x.device), sin.to(x.device)
+    if use_real:
+        cos, sin = freqs_cis  # [S, D]
+        cos = cos[None, None]
+        sin = sin[None, None]
+        cos, sin = cos.to(x.device), sin.to(x.device)
 
-    x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
-    x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
-    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+        x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+        x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
 
-    return out
+        return out
+    else:
+        x_rotated = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+        freqs_cis = freqs_cis.unsqueeze(2)
+        x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
+
+        return x_out.type_as(x)
 
 
 class TimestepEmbedding(nn.Module):
@@ -424,11 +509,12 @@ class TimestepEmbedding(nn.Module):
 
 
 class Timesteps(nn.Module):
-    def __init__(self, num_channels: int, flip_sin_to_cos: bool, downscale_freq_shift: float):
+    def __init__(self, num_channels: int, flip_sin_to_cos: bool, downscale_freq_shift: float, scale: int = 1):
         super().__init__()
         self.num_channels = num_channels
         self.flip_sin_to_cos = flip_sin_to_cos
         self.downscale_freq_shift = downscale_freq_shift
+        self.scale = scale
 
     def forward(self, timesteps):
         t_emb = get_timestep_embedding(
@@ -436,6 +522,7 @@ class Timesteps(nn.Module):
             self.num_channels,
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.downscale_freq_shift,
+            scale=self.scale,
         )
         return t_emb
 
@@ -454,9 +541,10 @@ class GaussianFourierProjection(nn.Module):
 
         if set_W_to_weight:
             # to delete later
+            del self.weight
             self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
-
             self.weight = self.W
+            del self.W
 
     def forward(self, x):
         if self.log:
@@ -760,18 +848,33 @@ class HunyuanDiTAttentionPool(nn.Module):
 
 
 class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
-    def __init__(self, embedding_dim, pooled_projection_dim=1024, seq_len=256, cross_attention_dim=2048):
+    def __init__(
+        self,
+        embedding_dim,
+        pooled_projection_dim=1024,
+        seq_len=256,
+        cross_attention_dim=2048,
+        use_style_cond_and_image_meta_size=True,
+    ):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
+        self.size_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+
         self.pooler = HunyuanDiTAttentionPool(
             seq_len, cross_attention_dim, num_heads=8, output_dim=pooled_projection_dim
         )
+
         # Here we use a default learned embedder layer for future extension.
-        self.style_embedder = nn.Embedding(1, embedding_dim)
-        extra_in_dim = 256 * 6 + embedding_dim + pooled_projection_dim
+        self.use_style_cond_and_image_meta_size = use_style_cond_and_image_meta_size
+        if use_style_cond_and_image_meta_size:
+            self.style_embedder = nn.Embedding(1, embedding_dim)
+            extra_in_dim = 256 * 6 + embedding_dim + pooled_projection_dim
+        else:
+            extra_in_dim = pooled_projection_dim
+
         self.extra_embedder = PixArtAlphaTextProjection(
             in_features=extra_in_dim,
             hidden_size=embedding_dim * 4,
@@ -786,17 +889,55 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         # extra condition1: text
         pooled_projections = self.pooler(encoder_hidden_states)  # (N, 1024)
 
-        # extra condition2: image meta size embdding
-        image_meta_size = get_timestep_embedding(image_meta_size.view(-1), 256, True, 0)
-        image_meta_size = image_meta_size.to(dtype=hidden_dtype)
-        image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
+        if self.use_style_cond_and_image_meta_size:
+            # extra condition2: image meta size embdding
+            image_meta_size = self.size_proj(image_meta_size.view(-1))
+            image_meta_size = image_meta_size.to(dtype=hidden_dtype)
+            image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)
 
-        # extra condition3: style embedding
-        style_embedding = self.style_embedder(style)  # (N, embedding_dim)
+            # extra condition3: style embedding
+            style_embedding = self.style_embedder(style)  # (N, embedding_dim)
 
-        # Concatenate all extra vectors
-        extra_cond = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
+            # Concatenate all extra vectors
+            extra_cond = torch.cat([pooled_projections, image_meta_size, style_embedding], dim=1)
+        else:
+            extra_cond = torch.cat([pooled_projections], dim=1)
+
         conditioning = timesteps_emb + self.extra_embedder(extra_cond)  # [B, D]
+
+        return conditioning
+
+
+class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
+    def __init__(self, hidden_size=4096, cross_attention_dim=2048, frequency_embedding_size=256):
+        super().__init__()
+        self.time_proj = Timesteps(
+            num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0.0
+        )
+
+        self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
+
+        self.caption_embedder = nn.Sequential(
+            nn.LayerNorm(cross_attention_dim),
+            nn.Linear(
+                cross_attention_dim,
+                hidden_size,
+                bias=True,
+            ),
+        )
+
+    def forward(self, timestep, caption_feat, caption_mask):
+        # timestep embedding:
+        time_freq = self.time_proj(timestep)
+        time_embed = self.timestep_embedder(time_freq.to(dtype=self.timestep_embedder.linear_1.weight.dtype))
+
+        # caption condition embedding:
+        caption_mask_float = caption_mask.float().unsqueeze(-1)
+        caption_feats_pool = (caption_feat * caption_mask_float).sum(dim=1) / caption_mask_float.sum(dim=1)
+        caption_feats_pool = caption_feats_pool.to(caption_feat)
+        caption_embed = self.caption_embedder(caption_feats_pool)
+
+        conditioning = time_embed + caption_embed
 
         return conditioning
 
@@ -1023,7 +1164,7 @@ class GLIGENTextBoundingboxProjection(nn.Module):
 
             objs = self.linears(torch.cat([positive_embeddings, xyxy_embedding], dim=-1))
 
-        # positionet with text and image infomation
+        # positionet with text and image information
         else:
             phrases_masks = phrases_masks.unsqueeze(-1)
             image_masks = image_masks.unsqueeze(-1)
@@ -1295,7 +1436,7 @@ class MultiIPAdapterImageProjection(nn.Module):
         if not isinstance(image_embeds, list):
             deprecation_message = (
                 "You have passed a tensor as `image_embeds`.This is deprecated and will be removed in a future release."
-                " Please make sure to update your script to pass `image_embeds` as a list of tensors to supress this warning."
+                " Please make sure to update your script to pass `image_embeds` as a list of tensors to suppress this warning."
             )
             deprecate("image_embeds not a list", "1.0.0", deprecation_message, standard_warn=False)
             image_embeds = [image_embeds.unsqueeze(1)]
