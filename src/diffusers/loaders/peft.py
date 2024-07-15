@@ -12,15 +12,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
+from functools import partial
 from typing import List, Union
 
-from ..utils import MIN_PEFT_VERSION, check_peft_version, is_peft_available
+from ..utils import (
+    MIN_PEFT_VERSION,
+    USE_PEFT_BACKEND,
+    check_peft_version,
+    delete_adapter_layers,
+    is_peft_available,
+    set_adapter_layers,
+)
 
 
 class PeftAdapterMixin:
     """
     A class containing all functions for loading and using adapters weights that are supported in PEFT library. For
-    more details about adapters and injecting them in a transformer-based model, check out the PEFT
+    more details about adapters and injecting them in a base model, check out the PEFT
     [documentation](https://huggingface.co/docs/peft/index).
 
     Install the latest version of PEFT, and use this mixin to:
@@ -32,6 +41,9 @@ class PeftAdapterMixin:
     """
 
     _hf_peft_config_loaded = False
+
+    def set_adapters(self, **kwargs):
+        raise NotImplementedError("`set_adapters()` is not implemented.")
 
     def add_adapter(self, adapter_config, adapter_name: str = "default") -> None:
         r"""
@@ -185,3 +197,136 @@ class PeftAdapterMixin:
         for _, module in self.named_modules():
             if isinstance(module, BaseTunerLayer):
                 return module.active_adapter
+
+    def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `fuse_lora()`.")
+
+        self.lora_scale = lora_scale
+        self._safe_fusing = safe_fusing
+        self.apply(partial(self._fuse_lora_apply, adapter_names=adapter_names))
+
+    def _fuse_lora_apply(self, module, adapter_names=None):
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        merge_kwargs = {"safe_merge": self._safe_fusing}
+
+        if isinstance(module, BaseTunerLayer):
+            if self.lora_scale != 1.0:
+                module.scale_layer(self.lora_scale)
+
+            # For BC with prevous PEFT versions, we need to check the signature
+            # of the `merge` method to see if it supports the `adapter_names` argument.
+            supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+            if "adapter_names" in supported_merge_kwargs:
+                merge_kwargs["adapter_names"] = adapter_names
+            elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                raise ValueError(
+                    "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
+                    " to the latest version of PEFT. `pip install -U peft`"
+                )
+
+            module.merge(**merge_kwargs)
+
+    def unfuse_lora(self):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `unfuse_lora()`.")
+        self.apply(self._unfuse_lora_apply)
+
+    def _unfuse_lora_apply(self, module):
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        if isinstance(module, BaseTunerLayer):
+            module.unmerge()
+
+    def unload_lora(self):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `unload_lora()`.")
+
+        from ..utils import recurse_remove_peft_layers
+
+        recurse_remove_peft_layers(self)
+        if hasattr(self, "peft_config"):
+            del self.peft_config
+
+    def disable_lora(self):
+        """
+        Disables the active LoRA layers of the underlying model.
+
+        Example:
+
+        ```py
+        from diffusers import AutoPipelineForText2Image
+        import torch
+
+        pipeline = AutoPipelineForText2Image.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights(
+            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
+        )
+        pipeline.disable_lora()
+        ```
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+        set_adapter_layers(self, enabled=False)
+
+    def enable_lora(self):
+        """
+        Enables the active LoRA layers of the underlying model.
+
+        Example:
+
+        ```py
+        from diffusers import AutoPipelineForText2Image
+        import torch
+
+        pipeline = AutoPipelineForText2Image.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights(
+            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
+        )
+        pipeline.enable_lora()
+        ```
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+        set_adapter_layers(self, enabled=True)
+
+    def delete_adapters(self, adapter_names: Union[List[str], str]):
+        """
+        Delete an adapter's LoRA layers from the underlying model.
+
+        Args:
+            adapter_names (`Union[List[str], str]`):
+                The names (single string or list of strings) of the adapter to delete.
+
+        Example:
+
+        ```py
+        from diffusers import AutoPipelineForText2Image
+        import torch
+
+        pipeline = AutoPipelineForText2Image.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights(
+            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_names="cinematic"
+        )
+        pipeline.delete_adapters("cinematic")
+        ```
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        if isinstance(adapter_names, str):
+            adapter_names = [adapter_names]
+
+        for adapter_name in adapter_names:
+            delete_adapter_layers(self, adapter_name)
+
+            # Pop also the corresponding adapter from the config
+            if hasattr(self, "peft_config"):
+                self.peft_config.pop(adapter_name, None)
