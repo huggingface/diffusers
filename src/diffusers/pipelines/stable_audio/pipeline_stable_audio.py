@@ -66,7 +66,7 @@ EXAMPLE_DOC_STRING = """
         ...     prompt,
         ...     negative_prompt=negative_prompt,
         ...     num_inference_steps=200,
-        ...     audio_length_in_s=10.0,
+        ...     audio_end_in_s=10.0,
         ...     num_waveforms_per_prompt=3,
         ...     generator=generator,
         ... ).audios
@@ -226,7 +226,7 @@ class StableAudioPipeline(DiffusionPipeline):
         ...     cross_attention_hidden_states=cross_attention_hidden_states,
         ...     global_hidden_states=global_hidden_states,
         ...     num_inference_steps=200,
-        ...     audio_length_in_s=10.0,
+        ...     audio_end_in_s=10.0,
         ... ).audios[0]
         
         >>> # Peak normalize, clip, convert to int16
@@ -420,26 +420,42 @@ class StableAudioPipeline(DiffusionPipeline):
     def check_inputs(
         self,
         prompt,
-        audio_length_in_s,
+        audio_start_in_s,
+        audio_end_in_s,
         callback_steps,
         negative_prompt=None,
         cross_attention_hidden_states=None,
         negative_cross_attention_hidden_states=None,
+        global_hidden_states=None,
         attention_mask=None,
         negative_attention_mask=None,
         initial_audio_waveforms=None, # TODO (YL), check this
     ):
         # TODO(YL): check here that seconds_start and seconds_end have the right BS (either 1 or prompt BS)
         # TODO (YL): check that global hidden states and cross attention hidden states are both passed
+        # TODO (YL): check that initial audio waveform length no longer
 
         # TODO (YL): is this min audio length a thing?
         min_audio_length_in_s = 2.0
+        audio_length_in_s = audio_end_in_s - audio_start_in_s
         if audio_length_in_s < min_audio_length_in_s:
             raise ValueError(
-                f"`audio_length_in_s` has to be a positive value greater than or equal to {min_audio_length_in_s}, but "
+                f"`audio_end_in_s-audio_start_in_s` has to be a positive value greater than or equal to {min_audio_length_in_s}, but "
+                f"is {audio_length_in_s}."
+            )
+            
+        if audio_start_in_s < self.projection_model.config.min_value or audio_start_in_s > self.projection_model.config.max_value:
+            raise ValueError(
+                f"`audio_start_in_s` must be greater than or equal to {self.projection_model.config.min_value}, and lower than or equal to {self.projection_model.config.max_value} but "
                 f"is {audio_length_in_s}."
             )
 
+        if audio_end_in_s < self.projection_model.config.min_value or audio_end_in_s > self.projection_model.config.max_value:
+            raise ValueError(
+                f"`audio_end_in_s` must be greater than or equal to {self.projection_model.config.min_value}, and lower than or equal to {self.projection_model.config.max_value} but "
+                f"is {audio_end_in_s}."
+            )
+            
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -537,8 +553,8 @@ class StableAudioPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide audio generation. If not defined, you need to pass `cross_attention_hidden_states`.
-            audio_length_in_s (`float`, *optional*, defaults to 47.55):
-                The length of the generated audio sample in seconds.
+            audio_end_in_s (`float`, *optional*, defaults to 47.55):
+                Audio end index in seconds.
             audio_start_in_s (`float`, *optional*, defaults to 0):
                 Audio start index in seconds.
             num_inference_steps (`int`, *optional*, defaults to 100):
@@ -606,24 +622,26 @@ class StableAudioPipeline(DiffusionPipeline):
 
 
         max_audio_length_in_s = self.transformer.config.sample_size * downsample_ratio / self.vae.config.sampling_rate
-        if audio_length_in_s is None:
-            audio_length_in_s = max_audio_length_in_s
+        if audio_end_in_s is None:
+            audio_end_in_s = max_audio_length_in_s
 
-        if audio_length_in_s-audio_start_in_s>max_audio_length_in_s:
-            raise ValueError(f"The total audio length requested ({audio_length_in_s-audio_start_in_s}s) is longer than the model maximum possible length ({max_audio_length_in_s}). Make sure that 'audio_length_in_s-audio_start_in_s<={max_audio_length_in_s}'.")
+        if audio_end_in_s-audio_start_in_s>max_audio_length_in_s:
+            raise ValueError(f"The total audio length requested ({audio_end_in_s-audio_start_in_s}s) is longer than the model maximum possible length ({max_audio_length_in_s}). Make sure that 'audio_end_in_s-audio_start_in_s<={max_audio_length_in_s}'.")
         
-        waveform_start = int(audio_start_in_s *  self.vae.config.sampling_rate / downsample_ratio)
-        waveform_end = int(audio_length_in_s *  self.vae.config.sampling_rate / downsample_ratio)
+        waveform_start = int(audio_start_in_s *  self.vae.config.sampling_rate)
+        waveform_end = int(audio_end_in_s *  self.vae.config.sampling_rate)
         waveform_length = int(self.transformer.config.sample_size)
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            audio_length_in_s,
+            audio_start_in_s,
+            audio_end_in_s,
             callback_steps,
             negative_prompt,
             cross_attention_hidden_states,
             negative_cross_attention_hidden_states,
+            global_hidden_states,
             attention_mask,
             negative_attention_mask,
             initial_audio_waveforms,
@@ -647,7 +665,7 @@ class StableAudioPipeline(DiffusionPipeline):
         cross_attention_hidden_states, global_hidden_states = self.encode_prompt_and_seconds(
             prompt,
             audio_start_in_s,
-            audio_length_in_s,
+            audio_end_in_s,
             device,
             num_waveforms_per_prompt,
             do_classifier_free_guidance,
@@ -658,10 +676,9 @@ class StableAudioPipeline(DiffusionPipeline):
             negative_attention_mask=negative_attention_mask,
         )
 
-        # 4. Prepare timesteps # TODO (YL): remove timesteps
+        # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
-        # timesteps= torch.tensor([0.9987, 0.1855]).to(self.device)
         
         # 5. Prepare latent variables
         num_channels_vae = self.transformer.config.in_channels
@@ -725,8 +742,9 @@ class StableAudioPipeline(DiffusionPipeline):
         else:
             return AudioPipelineOutput(audios=latents)
 
-        # here or after ?
-        audio = audio[:, :, waveform_start*downsample_ratio:waveform_end*downsample_ratio]
+
+        # TODO (YL): operation not done in the original code -> should we remove it ?
+        audio = audio[:, :, waveform_start:waveform_end]
 
         if output_type == "np":
             audio = audio.cpu().float().numpy()

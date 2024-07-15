@@ -153,8 +153,7 @@ class StableAudioNumberConditioner(nn.Module):
         embedding = self.time_positional_embedding(normalized_floats)
         float_embeds = embedding.view(-1, 1, self.number_embedding_dim)
 
-        # TODO(YL): do negative elsewhere
-        return float_embeds #, torch.ones(float_embeds.shape[0], 1).to(self.device)]
+        return float_embeds
 
 
 class StableAudioProjectionModel(ModelMixin, ConfigMixin):
