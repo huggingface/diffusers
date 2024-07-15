@@ -639,6 +639,7 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
             or is_compiled
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
+            print(type(controlnet_conditioning_scale))
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
         elif (
@@ -1171,7 +1172,7 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
 
         # 8.1 Add image embeds for IP-Adapter
         added_cond_kwargs = (
-            {"image_embeds": image_embeds}
+            {"image_embeds": ip_adapter_image_embeds}
             if ip_adapter_image is not None or ip_adapter_image_embeds is not None
             else None
         )
@@ -1186,14 +1187,11 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
             controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
         # 9. Denoising loop
-        with self.progress_bar(total=num_inference_steps):
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
-                    if self.do_classifier_free_guidance
-                    else latents
-                )
+                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # controlnet(s) inference
@@ -1264,6 +1262,10 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+
+                    # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
 
         # If we do sequential model offloading, let's offload unet and controlnet
         # manually for max memory savings
