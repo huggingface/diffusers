@@ -95,6 +95,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin)
     text_encoder_name = "text_encoder"
     model_cpu_offload_seq = "text_encoder->prior"
     _callback_tensor_inputs = ["latents", "text_encoder_hidden_states", "negative_prompt_embeds"]
+    _lora_loadable_modules = ["prior", "text_encoder"]
 
     def __init__(
         self,
