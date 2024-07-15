@@ -1891,9 +1891,8 @@ class PipelineTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["callback_on_step_end"] = test_callback
-        inputs["output_type"] = "latent"
+        inputs["output_type"] = "np"
         inputs["num_inference_steps"] = 2  # because test_stable_diffusion_panorama sets it to 1
-        output = pipe(**inputs)[0]
 
         # create a change tensor callback
         class ChangeTensorCallback(PipelineCallback):
@@ -1931,16 +1930,23 @@ class PipelineTesterMixin:
         # check with cutoff_step_ratio
         callback_change_tensor_ratio = ChangeTensorCallback(cutoff_step_ratio=0.5)
         inputs["callback_on_step_end"] = callback_change_tensor_ratio
-        inputs["output_type"] = "latent"
-        output = pipe(**inputs)[0]
-        assert output.abs().sum() == 0
+        inputs["output_type"] = "np"
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array(
+            [0.95865655, 0.6730725, 0.6728563, 0.14412561, 0.589261, 0.824002, 0.48162833, 0.5256305, 0.5691491]
+        )
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-7)
 
         # check with cutoff_step_index
         callback_change_tensor_step = ChangeTensorCallback(cutoff_step_ratio=None, cutoff_step_index=1)
         inputs["callback_on_step_end"] = callback_change_tensor_step
-        inputs["output_type"] = "latent"
-        output = pipe(**inputs)[0]
-        assert output.abs().sum() == 0
+        inputs["output_type"] = "np"
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-7)
 
     def test_StableDiffusionMixin_component(self):
         """Any pipeline that have LDMFuncMixin should have vae and unet components."""
