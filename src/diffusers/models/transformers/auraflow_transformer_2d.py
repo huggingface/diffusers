@@ -75,7 +75,7 @@ class AuraFlowPatchEmbed(nn.Module):
         )
         latent = latent.permute(0, 2, 4, 1, 3, 5).flatten(-3).flatten(1, 2)
         latent = self.proj(latent)
-        return latent + self.pos_embed[:, : latent.size(1)]
+        return latent + self.pos_embed
 
 
 # Taken from the original Aura flow inference code.
