@@ -28,19 +28,19 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 ## StableDiffusionLoraLoaderMixin
 
-[[autodoc]] loaders.lora.StableDiffusionLoraLoaderMixin
+[[autodoc]] loaders.lora_pipeline.StableDiffusionLoraLoaderMixin
 
 ## StableDiffusionXLLoraLoaderMixin
 
-[[autodoc]] loaders.lora.StableDiffusionXLLoraLoaderMixin
+[[autodoc]] loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin
 
 ## SD3LoraLoaderMixin
 
-[[autodoc]] loaders.lora.SD3LoraLoaderMixin
+[[autodoc]] loaders.lora_pipeline.SD3LoraLoaderMixin
 
 ## AmusedLoraLoaderMixin
 
-[[autodoc]] loaders.lora.AmusedLoraLoaderMixin
+[[autodoc]] loaders.lora_pipeline.AmusedLoraLoaderMixin
 
 ## LoraBaseMixin
 
