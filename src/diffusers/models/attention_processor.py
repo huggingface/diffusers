@@ -114,7 +114,6 @@ class Attention(nn.Module):
         out_bias: bool = True,
         scale_qk: bool = True,
         only_cross_attention: bool = False,
-        kv_heads: Optional[int] = None,
         eps: float = 1e-5,
         rescale_output_factor: float = 1.0,
         residual_connection: bool = False,
