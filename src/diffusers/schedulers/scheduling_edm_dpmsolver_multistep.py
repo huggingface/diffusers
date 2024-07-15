@@ -189,7 +189,6 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         scaled_sample = sample * c_in
         return scaled_sample
 
-    # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_noise
     def precondition_noise(self, sigma):
         if not isinstance(sigma, torch.Tensor):
             sigma = torch.tensor([sigma])
