@@ -353,7 +353,7 @@ class StableAudioDiTBlock(nn.Module):
         return hidden_states
 
 
-class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class StableAudioDiTModel(ModelMixin, ConfigMixin):
     """
     The Diffusion Transformer model introduced in Stable Audio.
 
@@ -623,22 +623,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
         Returns:
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
-        """
-        if joint_attention_kwargs is not None:
-            joint_attention_kwargs = joint_attention_kwargs.copy()
-            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-                
+        """                
         cross_attention_hidden_states = self.cross_attention_proj(encoder_hidden_states)
         global_hidden_states = self.global_proj(global_hidden_states)
         time_hidden_states = self.timestep_proj(self.timestep_features(timestep.to(self.dtype)))
@@ -700,10 +685,6 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
         hidden_states = hidden_states.transpose(1,2)[:, :, 1:]
         hidden_states = self.postprocess_conv(hidden_states) + hidden_states
         
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (hidden_states,)

@@ -273,7 +273,7 @@ class OobleckDecoder(nn.Module):
         return hidden_state
 
 
-class AutoencoderOobleck(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderOobleck(ModelMixin, ConfigMixin):
     r"""
     An autoencoder for encoding waveforms into latents and decoding latent representations into waveforms.
 
