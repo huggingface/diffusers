@@ -592,7 +592,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
-    # Copied from diffusers.loaders.lora.StableDiffusionLoraLoaderMixin.lora_state_dict
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -706,7 +706,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         return state_dict, network_alphas
 
     @classmethod
-    # Copied from diffusers.loaders.lora.StableDiffusionLoraLoaderMixin.load_lora_into_unet
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_unet
     def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
@@ -742,7 +742,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             )
 
     @classmethod
-    # Copied from diffusers.loaders.lora.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
     def load_lora_into_text_encoder(
         cls,
         state_dict,
@@ -1242,7 +1242,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             # Unsafe code />
 
     @classmethod
-    # Copied from diffusers.loaders.lora.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
     def load_lora_into_text_encoder(
         cls,
         state_dict,
@@ -1579,7 +1579,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             # Unsafe code />
 
     @classmethod
-    # Copied from diffusers.loaders.lora.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
     def load_lora_into_text_encoder(
         cls,
         state_dict,
