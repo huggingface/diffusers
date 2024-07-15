@@ -104,6 +104,9 @@ class StableAudioPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `transformer` to denoise the encoded audio latents.
     """
 
+    model_cpu_offload_seq = "text_encoder->projection_model->transformer->vae"
+
+
     def __init__(
         self,
         vae: AutoencoderOobleck,
@@ -141,40 +144,6 @@ class StableAudioPipeline(DiffusionPipeline):
         """
         self.vae.disable_slicing()
 
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `transformer`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        model_sequence = [
-            self.text_encoder.text_model,
-            self.text_encoder.text_projection,
-            self.projection_model,
-            self.transformer,
-            self.vae,
-            self.text_encoder,
-        ]
-
-        hook = None
-        for cpu_offloaded_model in model_sequence:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
-
     def encode_prompt_and_seconds(
         self,
         prompt,
@@ -186,6 +155,7 @@ class StableAudioPipeline(DiffusionPipeline):
         negative_prompt=None,
         cross_attention_hidden_states: Optional[torch.Tensor] = None,
         negative_cross_attention_hidden_states: Optional[torch.Tensor] = None,
+        global_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
         negative_attention_mask: Optional[torch.LongTensor] = None,
     ):
@@ -194,44 +164,47 @@ class StableAudioPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                prompt to be encoded
+                prompt to be encoded.
             audio_start_in_s (`float` or `List[float]`, *optional*):
                 Seconds indicating the start of the audios, to be encoded.
             audio_end_in_s (`float` or `List[float]`, *optional*)
                 Seconds indicating the end of the audios, to be encoded.
             device (`torch.device`):
-                torch device
+                Torch device.
             num_waveforms_per_prompt (`int`):
-                number of waveforms that should be generated per prompt
+                Number of waveforms that should be generated per prompt.
             do_classifier_free_guidance (`bool`):
-                whether to use classifier free guidance or not
+                Whether to use classifier free guidance.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the audio generation. If not defined, one has to pass
                 `negative_cross_attention_hidden_states` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
             cross_attention_hidden_states (`torch.Tensor`, *optional*):
-                Pre-computed text embeddings from the T5 model. Can be used to easily tweak text inputs, *e.g.*
-                prompt weighting. If not provided, text embeddings will be computed from `prompt` input argument.
+                Pre-computed cross-attention hidden states from the T5 model and the projection model. Can be used to easily tweak text inputs, *e.g.*
+                prompt weighting. If not provided, will be computed from `prompt`, `audio_start_in_s` and `audio_end_in_s` input arguments.
             negative_cross_attention_hidden_states (`torch.Tensor`, *optional*):
-                Pre-computed negative text embeddings from the T5 model. Can be used to easily tweak text inputs,
+                Pre-computed negative cross-attention hidden states from the T5 model and the projection model. Can be used to easily tweak text inputs,
                 *e.g.* prompt weighting. If not provided, negative_cross_attention_hidden_states will be computed from
-                `negative_prompt` input argument.
+                `negative_prompt`, `audio_start_in_s` and `audio_end_in_s` input arguments.
+            global_hidden_states (`torch.Tensor`, *optional*):
+                Pre-computed global hidden states from conditioning seconds. Can be used to easily tweak text inputs, *e.g.*
+                prompt weighting. If not provided, will be computed from `audio_start_in_s` and `audio_end_in_s` input arguments.
             attention_mask (`torch.LongTensor`, *optional*):
-                Pre-computed attention mask to be applied to the `cross_attention_hidden_states`. If not provided, attention mask will
+                Pre-computed attention mask to be applied to the the text model. If not provided, attention mask will
                 be computed from `prompt` input argument.
             negative_attention_mask (`torch.LongTensor`, *optional*):
-                Pre-computed attention mask to be applied to the `negative_cross_attention_hidden_states`. If not provided, attention
+                Pre-computed attention mask to be applied to the text model. If not provided, attention
                 mask will be computed from `negative_prompt` input argument.
         Returns:
             cross_attention_hidden_states (`torch.Tensor`):
-                Text embeddings from the T5 model.
-            attention_mask (`torch.LongTensor`):
-                Attention mask to be applied to the `cross_attention_hidden_states`.
+                Cross attention hidden states.
+            global_hidden_states (`torch.Tensor`):
+                Global hidden states.
 
         Example:
 
         ```python
-        >>> import scipy
+        >>> import torchaudio
         >>> import torch
         >>> from diffusers import StableAudioPipeline
 
@@ -239,23 +212,28 @@ class StableAudioPipeline(DiffusionPipeline):
         >>> pipe = StableAudioPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
-        >>> # Get text embedding vectors
-        >>> cross_attention_hidden_states, attention_mask = pipe.encode_prompt(
+        >>> # Get global and cross attention vectors
+        >>> cross_attention_hidden_states, global_hidden_states = pipe.encode_prompt(
         ...     prompt="Techno music with a strong, upbeat tempo and high melodic riffs",
+        ...     audio_start_in_s=0.0,
+        ...     audio_end_in_s=3.0,
         ...     device="cuda",
         ...     do_classifier_free_guidance=True,
         ... )
 
-        >>> # Pass text embeddings to pipeline for text-conditional audio generation
+        >>> # Pass pre-computed vectors to pipeline for text and time-conditional audio generation
         >>> audio = pipe(
         ...     cross_attention_hidden_states=cross_attention_hidden_states,
-        ...     attention_mask=attention_mask,
+        ...     global_hidden_states=global_hidden_states,
         ...     num_inference_steps=200,
         ...     audio_length_in_s=10.0,
         ... ).audios[0]
+        
+        >>> # Peak normalize, clip, convert to int16
+        >>> audio = audio.to(torch.float32).div(torch.max(torch.abs(audio))).clamp(-1, 1).mul(32767).to(torch.int16).cpu()
 
         >>> # save generated audio sample
-        >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio)
+        >>> torchaudio.save("techno.wav", audio, pipe.vae.config.sampling_rate    
         ```"""
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -268,6 +246,7 @@ class StableAudioPipeline(DiffusionPipeline):
         audio_end_in_s = audio_end_in_s if isinstance(audio_end_in_s, list) else [audio_end_in_s]        
 
         if cross_attention_hidden_states is None:
+            # 1. Tokenize text
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -291,40 +270,37 @@ class StableAudioPipeline(DiffusionPipeline):
             text_input_ids = text_input_ids.to(device)
             attention_mask = attention_mask.to(device)
             
+            # 2. Text encoder forward
             self.text_encoder.eval()
-            # TODO: (YL) forward is done in fp16 in original code
+            # TODO: (YL) forward is done in fp16 in the original code, whatever the precision is
             with torch.cuda.amp.autocast(dtype=torch.float16):
                 prompt_embeds = self.text_encoder.to(torch.float16)(
                     text_input_ids,
                     attention_mask=attention_mask,
                 )
             prompt_embeds = prompt_embeds[0].to(self.transformer.dtype)
+            
+            # 3. Project text and seconds
             projection_output = self.projection_model(
                 text_hidden_states=prompt_embeds,
                 attention_mask=attention_mask,
                 start_seconds=audio_start_in_s,
                 end_seconds=audio_end_in_s,
             )
-            
             prompt_embeds = projection_output.text_hidden_states
             prompt_embeds = prompt_embeds * attention_mask.unsqueeze(-1).to(prompt_embeds.dtype)
 
-            attention_mask = projection_output.attention_mask
             seconds_start_hidden_states = projection_output.seconds_start_hidden_states
             seconds_end_hidden_states = projection_output.seconds_end_hidden_states
             
+            # 4. Create cross-attention and global hidden states from projected vectors
             cross_attention_hidden_states = torch.cat([prompt_embeds,seconds_start_hidden_states, seconds_end_hidden_states], dim=1)
-            attention_mask = torch.cat([attention_mask,torch.ones((1,1), device=attention_mask.device), torch.ones((1,1), device=attention_mask.device)], dim=1)
-            
+
             global_hidden_states = torch.cat([seconds_start_hidden_states, seconds_end_hidden_states], dim=2)
 
         cross_attention_hidden_states = cross_attention_hidden_states.to(dtype=self.transformer.dtype, device=device)
         global_hidden_states = global_hidden_states.to(dtype=self.transformer.dtype, device=device)
-        attention_mask = (
-            attention_mask.to(device=device)
-            if attention_mask is not None
-            else torch.ones(cross_attention_hidden_states.shape[:2], dtype=torch.long, device=device)
-        )
+
 
         bs_embed, seq_len, hidden_size = cross_attention_hidden_states.shape
         # duplicate cross attention and global hidden states for each generation per prompt, using mps friendly method
@@ -334,15 +310,9 @@ class StableAudioPipeline(DiffusionPipeline):
         global_hidden_states = global_hidden_states.repeat(1, num_waveforms_per_prompt, 1)
         global_hidden_states = global_hidden_states.view(bs_embed * num_waveforms_per_prompt, -1, global_hidden_states.shape[-1])
 
-        # duplicate attention mask for each generation per prompt
-        attention_mask = attention_mask.repeat(1, num_waveforms_per_prompt)
-        attention_mask = attention_mask.view(bs_embed * num_waveforms_per_prompt, seq_len)
-        
-        # adapt global hidden states to classifier free guidance
+        # adapt global hidden states and attention masks to classifier free guidance
         if do_classifier_free_guidance:
             global_hidden_states = torch.cat([global_hidden_states, global_hidden_states], dim=0)
-            attention_mask = torch.cat([attention_mask, attention_mask], dim=0)
-
 
         # get unconditional cross-attention for classifier free guidance
         if do_classifier_free_guidance and negative_prompt is None:
@@ -376,6 +346,7 @@ class StableAudioPipeline(DiffusionPipeline):
             else:
                 uncond_tokens = negative_prompt
 
+            # 1. Tokenize text
             uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
@@ -387,6 +358,7 @@ class StableAudioPipeline(DiffusionPipeline):
             uncond_input_ids = uncond_input.input_ids.to(device)
             negative_attention_mask = uncond_input.attention_mask.to(device)
 
+            # 2. Text encoder forward
             self.text_encoder.eval()
             with torch.cuda.amp.autocast(dtype=torch.float16) and torch.set_grad_enabled(self.enable_grad):
                 negative_prompt_embeds = self.text_encoder.to(torch.float16)(
@@ -395,6 +367,7 @@ class StableAudioPipeline(DiffusionPipeline):
                 )
             negative_prompt_embeds = negative_prompt_embeds[0].to(self.transformer.dtype)
 
+            # 3. Project text and seconds
             negative_projection_output = self.projection_model(
                 text_hidden_states=negative_prompt_embeds,
                 attention_mask=attention_mask,
@@ -404,13 +377,13 @@ class StableAudioPipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_projection_output.text_hidden_states
             negative_attention_mask = negative_projection_output.attention_mask
-            
+
             # set the masked tokens to the null embed
             negative_prompt_embeds = torch.where(negative_attention_mask.to(torch.bool).unsqueeze(2), negative_prompt_embeds, 0.)
             
+            # 4. Create negative cross-attention from projected vectors
             negative_cross_attention_hidden_states = torch.cat([negative_prompt_embeds, seconds_start_hidden_states, seconds_end_hidden_states], dim=1)
             
-
             seq_len = negative_cross_attention_hidden_states.shape[1]
 
             negative_cross_attention_hidden_states = negative_cross_attention_hidden_states.to(dtype=self.transformer.dtype, device=device)
@@ -424,7 +397,7 @@ class StableAudioPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             cross_attention_hidden_states = torch.cat([negative_cross_attention_hidden_states, cross_attention_hidden_states])
 
-        return cross_attention_hidden_states, attention_mask.to(cross_attention_hidden_states.dtype), global_hidden_states
+        return cross_attention_hidden_states, global_hidden_states
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -549,6 +522,7 @@ class StableAudioPipeline(DiffusionPipeline):
         initial_audio_waveforms: Optional[torch.Tensor] = None,
         cross_attention_hidden_states: Optional[torch.Tensor] = None,
         negative_cross_attention_hidden_states: Optional[torch.Tensor] = None,
+        global_hidden_states: Optional[torch.Tensor] = None, # TODO (YL): add to docstrings
         attention_mask: Optional[torch.LongTensor] = None,
         negative_attention_mask: Optional[torch.LongTensor] = None,
         return_dict: bool = True,
@@ -670,8 +644,7 @@ class StableAudioPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        # TODO: remove attention mask since it's not used.
-        cross_attention_hidden_states, attention_mask, global_hidden_states = self.encode_prompt_and_seconds(
+        cross_attention_hidden_states, global_hidden_states = self.encode_prompt_and_seconds(
             prompt,
             audio_start_in_s,
             audio_length_in_s,
