@@ -440,6 +440,198 @@ Stable Diffusion XL (SDXL) is a powerful text-to-image model that generates high
 
 The SDXL training script is discussed in more detail in the [SDXL training](sdxl) guide.
 
+## DeepFloyd IF
+
+DeepFloyd IF is a cascading pixel diffusion model with three stages. The first stage generates a base image and the second and third stages progressively upscales the base image into a high-resolution 1024x1024 image. Use the [train_dreambooth_lora.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py) or [train_dreambooth.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) scripts to train a DeepFloyd IF model with LoRA or the full model.
+
+DeepFloyd IF uses predicted variance, but the Diffusers training scripts uses predicted error so the trained DeepFloyd IF models are switched to a fixed variance schedule. The training scripts will update the scheduler config of the fully trained model for you. However, when you load the saved LoRA weights you must also update the pipeline's scheduler config.
+
+```py
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", use_safetensors=True)
+
+pipe.load_lora_weights("<lora weights path>")
+
+# Update scheduler config to fixed variance schedule
+pipe.scheduler = pipe.scheduler.__class__.from_config(pipe.scheduler.config, variance_type="fixed_small")
+```
+
+The stage 2 model requires additional validation images to upscale. You can download and use a downsized version of the training images for this.
+
+```py
+from huggingface_hub import snapshot_download
+
+local_dir = "./dog_downsized"
+snapshot_download(
+    "diffusers/dog-example-downsized",
+    local_dir=local_dir,
+    repo_type="dataset",
+    ignore_patterns=".gitattributes",
+)
+```
+
+The code samples below provide a brief overview of how to train a DeepFloyd IF model with a combination of DreamBooth and LoRA. Some important parameters to note are:
+
+* `--resolution=64`, a much smaller resolution is required because DeepFloyd IF is a pixel diffusion model and to work on uncompressed pixels, the input images must be smaller
+* `--pre_compute_text_embeddings`, compute the text embeddings ahead of time to save memory because the [`~transformers.T5Model`] can take up a lot of memory
+* `--tokenizer_max_length=77`, you can use a longer default text length with T5 as the text encoder but the default model encoding procedure uses a shorter text length
+* `--text_encoder_use_attention_mask`, to pass the attention mask to the text encoder
+
+<hfoptions id="IF-DreamBooth">
+<hfoption id="Stage 1 LoRA DreamBooth">
+
+Training stage 1 of DeepFloyd IF with LoRA and DreamBooth requires ~28GB of memory.
+
+```bash
+export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_dog_lora"
+
+accelerate launch train_dreambooth_lora.py \
+  --report_to wandb \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a sks dog" \
+  --resolution=64 \
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=5e-6 \
+  --scale_lr \
+  --max_train_steps=1200 \
+  --validation_prompt="a sks dog" \
+  --validation_epochs=25 \
+  --checkpointing_steps=100 \
+  --pre_compute_text_embeddings \
+  --tokenizer_max_length=77 \
+  --text_encoder_use_attention_mask
+```
+
+</hfoption>
+<hfoption id="Stage 2 LoRA DreamBooth">
+
+For stage 2 of DeepFloyd IF with LoRA and DreamBooth, pay attention to these parameters:
+
+* `--validation_images`, the images to upscale during validation
+* `--class_labels_conditioning=timesteps`, to additionally conditional the UNet as needed in stage 2
+* `--learning_rate=1e-6`, a lower learning rate is used compared to stage 1
+* `--resolution=256`, the expected resolution for the upscaler
+
+```bash
+export MODEL_NAME="DeepFloyd/IF-II-L-v1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_dog_upscale"
+export VALIDATION_IMAGES="dog_downsized/image_1.png dog_downsized/image_2.png dog_downsized/image_3.png dog_downsized/image_4.png"
+
+python train_dreambooth_lora.py \
+    --report_to wandb \
+    --pretrained_model_name_or_path=$MODEL_NAME \
+    --instance_data_dir=$INSTANCE_DIR \
+    --output_dir=$OUTPUT_DIR \
+    --instance_prompt="a sks dog" \
+    --resolution=256 \
+    --train_batch_size=4 \
+    --gradient_accumulation_steps=1 \
+    --learning_rate=1e-6 \
+    --max_train_steps=2000 \
+    --validation_prompt="a sks dog" \
+    --validation_epochs=100 \
+    --checkpointing_steps=500 \
+    --pre_compute_text_embeddings \
+    --tokenizer_max_length=77 \
+    --text_encoder_use_attention_mask \
+    --validation_images $VALIDATION_IMAGES \
+    --class_labels_conditioning=timesteps
+```
+
+</hfoption>
+<hfoption id="Stage 1 DreamBooth">
+
+For stage 1 of DeepFloyd IF with DreamBooth, pay attention to these parameters:
+
+* `--skip_save_text_encoder`, to skip saving the full T5 text encoder with the finetuned model
+* `--use_8bit_adam`, to use 8-bit Adam optimizer to save memory due to the size of the optimizer state when training the full model
+* `--learning_rate=1e-7`, a really low learning rate should be used for full model training otherwise the model quality is degraded (you can use a higher learning rate with a larger batch size)
+
+Training with 8-bit Adam and a batch size of 4, the full model can be trained with ~48GB of memory.
+
+```bash
+export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_if"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=64 \
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=1e-7 \
+  --max_train_steps=150 \
+  --validation_prompt "a photo of sks dog" \
+  --validation_steps 25 \
+  --text_encoder_use_attention_mask \
+  --tokenizer_max_length 77 \
+  --pre_compute_text_embeddings \
+  --use_8bit_adam \
+  --set_grads_to_none \
+  --skip_save_text_encoder \
+  --push_to_hub
+```
+
+</hfoption>
+<hfoption id="Stage 2 DreamBooth">
+
+For stage 2 of DeepFloyd IF with DreamBooth, pay attention to these parameters:
+
+* `--learning_rate=5e-6`, use a lower learning rate with a smaller effective batch size
+* `--resolution=256`, the expected resolution for the upscaler
+* `--train_batch_size=2` and `--gradient_accumulation_steps=6`, to effectively train on images wiht faces requires larger batch sizes
+
+```bash
+export MODEL_NAME="DeepFloyd/IF-II-L-v1.0"
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth_dog_upscale"
+export VALIDATION_IMAGES="dog_downsized/image_1.png dog_downsized/image_2.png dog_downsized/image_3.png dog_downsized/image_4.png"
+
+accelerate launch train_dreambooth.py \
+  --report_to wandb \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a sks dog" \
+  --resolution=256 \
+  --train_batch_size=2 \
+  --gradient_accumulation_steps=6 \
+  --learning_rate=5e-6 \
+  --max_train_steps=2000 \
+  --validation_prompt="a sks dog" \
+  --validation_steps=150 \
+  --checkpointing_steps=500 \
+  --pre_compute_text_embeddings \
+  --tokenizer_max_length=77 \
+  --text_encoder_use_attention_mask \
+  --validation_images $VALIDATION_IMAGES \
+  --class_labels_conditioning timesteps \
+  --push_to_hub
+```
+
+</hfoption>
+</hfoptions>
+
+### Training tips
+
+Training the DeepFloyd IF model can be challenging, but here are some tips that we've found helpful:
+
+- LoRA is sufficient for training the stage 1 model because the model's low resolution makes representing finer details difficult regardless.
+- For common or simple objects, you don't necessarily need to finetune the upscaler. Make sure the prompt passed to the upscaler is adjusted to remove the new token from the instance prompt. For example, if your stage 1 prompt is "a sks dog" then your stage 2 prompt should be "a dog".
+- For finer details like faces, fully training the stage 2 upscaler is better than training the stage 2 model with LoRA. It also helps to use lower learning rates with larger batch sizes.
+- Lower learning rates should be used to train the stage 2 model.
+- The [`DDPMScheduler`] works better than the DPMSolver used in the training scripts.
+
 ## Next steps
 
 Congratulations on training your DreamBooth model! To learn more about how to use your new model, the following guide may be helpful:

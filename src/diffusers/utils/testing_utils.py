@@ -33,6 +33,7 @@ from .import_utils import (
     is_onnx_available,
     is_opencv_available,
     is_peft_available,
+    is_timm_available,
     is_torch_available,
     is_torch_version,
     is_torchsde_available,
@@ -186,6 +187,7 @@ def parse_flag_from_env(key, default=False):
 
 _run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
 _run_nightly_tests = parse_flag_from_env("RUN_NIGHTLY", default=False)
+_run_compile_tests = parse_flag_from_env("RUN_COMPILE", default=False)
 
 
 def floats_tensor(shape, scale=1.0, rng=None, name=None):
@@ -224,6 +226,16 @@ def nightly(test_case):
     return unittest.skipUnless(_run_nightly_tests, "test is nightly")(test_case)
 
 
+def is_torch_compile(test_case):
+    """
+    Decorator marking a test that runs compile tests in the diffusers CI.
+
+    Compile tests are skipped by default. Set the RUN_COMPILE environment variable to a truthy value to run them.
+
+    """
+    return unittest.skipUnless(_run_compile_tests, "test is torch compile")(test_case)
+
+
 def require_torch(test_case):
     """
     Decorator marking a test that requires PyTorch. These tests are skipped when PyTorch isn't installed.
@@ -253,6 +265,20 @@ def require_torch_accelerator(test_case):
     return unittest.skipUnless(is_torch_available() and torch_device != "cpu", "test requires accelerator+PyTorch")(
         test_case
     )
+
+
+def require_torch_multi_gpu(test_case):
+    """
+    Decorator marking a test that requires a multi-GPU setup (in PyTorch). These tests are skipped on a machine without
+    multiple GPUs. To run *only* the multi_gpu tests, assuming all test names contain multi_gpu: $ pytest -sv ./tests
+    -k "multi_gpu"
+    """
+    if not is_torch_available():
+        return unittest.skip("test requires PyTorch")(test_case)
+
+    import torch
+
+    return unittest.skipUnless(torch.cuda.device_count() > 1, "test requires multiple GPUs")(test_case)
 
 
 def require_torch_accelerator_with_fp16(test_case):
@@ -326,6 +352,13 @@ def require_peft_backend(test_case):
     return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
 
 
+def require_timm(test_case):
+    """
+    Decorator marking a test that requires timm. These tests are skipped when timm isn't installed.
+    """
+    return unittest.skipUnless(is_timm_available(), "test requires timm")(test_case)
+
+
 def require_peft_version_greater(peft_version):
     """
     Decorator marking a test that requires PEFT backend with a specific version, this would require some specific
@@ -343,6 +376,18 @@ def require_peft_version_greater(peft_version):
     return decorator
 
 
+def require_accelerate_version_greater(accelerate_version):
+    def decorator(test_case):
+        correct_accelerate_version = is_peft_available() and version.parse(
+            version.parse(importlib.metadata.version("accelerate")).base_version
+        ) > version.parse(accelerate_version)
+        return unittest.skipUnless(
+            correct_accelerate_version, f"Test requires accelerate with the version greater than {accelerate_version}."
+        )(test_case)
+
+    return decorator
+
+
 def deprecate_after_peft_backend(test_case):
     """
     Decorator marking a test that will be skipped after PEFT backend
@@ -354,14 +399,6 @@ def get_python_version():
     sys_info = sys.version_info
     major, minor = sys_info.major, sys_info.minor
     return major, minor
-
-
-def require_python39_or_higher(test_case):
-    def python39_available():
-        major, minor = get_python_version()
-        return major == 3 and minor >= 9
-
-    return unittest.skipUnless(python39_available(), "test requires Python 3.9 or higher")(test_case)
 
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:

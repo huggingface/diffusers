@@ -81,8 +81,8 @@ class I2VGenXLTransformerTemporalEncoder(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-    ) -> torch.FloatTensor:
+        hidden_states: torch.Tensor,
+    ) -> torch.Tensor:
         norm_hidden_states = self.norm1(hidden_states)
         attn_output = self.attn1(norm_hidden_states, encoder_hidden_states=None)
         hidden_states = attn_output + hidden_states
@@ -330,7 +330,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -514,7 +514,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         fps: torch.Tensor,
         image_latents: torch.Tensor,
@@ -523,32 +523,32 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         timestep_cond: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[UNet3DConditionOutput, Tuple[torch.FloatTensor]]:
+    ) -> Union[UNet3DConditionOutput, Tuple[torch.Tensor]]:
         r"""
         The [`I2VGenXLUNet`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The noisy input tensor with the following shape `(batch, num_frames, channel, height, width`.
-            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
+            timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
             fps (`torch.Tensor`): Frames per second for the video being generated. Used as a "micro-condition".
-            image_latents (`torch.FloatTensor`): Image encodings from the VAE.
-            image_embeddings (`torch.FloatTensor`):
+            image_latents (`torch.Tensor`): Image encodings from the VAE.
+            image_embeddings (`torch.Tensor`):
                 Projection embeddings of the conditioning image computed with a vision encoder.
-            encoder_hidden_states (`torch.FloatTensor`):
+            encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_3d_condition.UNet3DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] instead of a plain
                 tuple.
 
         Returns:
-            [`~models.unet_3d_condition.UNet3DConditionOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_3d_condition.UNet3DConditionOutput`] is returned, otherwise
-                a `tuple` is returned where the first element is the sample tensor.
+            [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is the sample tensor.
         """
         batch_size, channels, num_frames, height, width = sample.shape
 

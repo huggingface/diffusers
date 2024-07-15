@@ -30,7 +30,6 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_numpy,
@@ -421,7 +420,6 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipe.scheduler = DDIMScheduler.from_config(
             pipe.scheduler.config, timestep_spacing="trailing", rescale_betas_zero_snr=True
         )
-        pipe.to(torch_device)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
@@ -473,34 +471,10 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         assert image_out.shape == (768, 768, 3)
 
-    def test_download_ckpt_diff_format_is_same(self):
-        single_file_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
-        )
-
-        pipe_single = StableDiffusionPipeline.from_single_file(single_file_path)
-        pipe_single.scheduler = DDIMScheduler.from_config(pipe_single.scheduler.config)
-        pipe_single.unet.set_attn_processor(AttnProcessor())
-        pipe_single.enable_model_cpu_offload()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe_single("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
-
-        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.enable_model_cpu_offload()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
-
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
-        assert max_diff < 1e-3
-
     def test_stable_diffusion_text2img_intermediate_state_v_pred(self):
         number_of_steps = 0
 
-        def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+        def test_callback_fn(step: int, timestep: int, latents: torch.Tensor) -> None:
             test_callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
@@ -563,7 +537,6 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         prompt = "Andromeda galaxy in a bottle"
 
         pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
-        pipeline = pipeline.to(torch_device)
         pipeline.enable_attention_slicing(1)
         pipeline.enable_sequential_cpu_offload()
 

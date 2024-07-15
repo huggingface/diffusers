@@ -34,6 +34,7 @@ from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
 from ..test_pipelines_common import (
     IPAdapterTesterMixin,
@@ -55,9 +56,13 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
 ):
     pipeline_class = StableDiffusionXLControlNetImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+    required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
+        {"add_text_embeds", "add_time_ids", "add_neg_time_ids"}
+    )
 
     def get_dummy_components(self, skip_first_text_encoder=False):
         torch.manual_seed(0)
@@ -317,7 +322,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
-    # copied from test_stable_diffusion_xl.py
+    # Copied from test_stable_diffusion_xl.py
     def test_stable_diffusion_xl_prompt_embeds(self):
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)

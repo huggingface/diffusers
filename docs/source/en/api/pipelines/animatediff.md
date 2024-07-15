@@ -78,7 +78,6 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
-
 ```
 
 Here are some sample outputs:
@@ -101,6 +100,53 @@ AnimateDiff tends to work better with finetuned Stable Diffusion models. If you 
 
 </Tip>
 
+### AnimateDiffSDXLPipeline
+
+AnimateDiff can also be used with SDXL models. This is currently an experimental feature as only a beta release of the motion adapter checkpoint is available.
+
+```python
+import torch
+from diffusers.models import MotionAdapter
+from diffusers import AnimateDiffSDXLPipeline, DDIMScheduler
+from diffusers.utils import export_to_gif
+
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-sdxl-beta", torch_dtype=torch.float16)
+
+model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+scheduler = DDIMScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    beta_schedule="linear",
+    steps_offset=1,
+)
+pipe = AnimateDiffSDXLPipeline.from_pretrained(
+    model_id,
+    motion_adapter=adapter,
+    scheduler=scheduler,
+    torch_dtype=torch.float16,
+    variant="fp16",
+).to("cuda")
+
+# enable memory savings
+pipe.enable_vae_slicing()
+pipe.enable_vae_tiling()
+
+output = pipe(
+    prompt="a panda surfing in the ocean, realistic, high quality",
+    negative_prompt="low quality, worst quality",
+    num_inference_steps=20,
+    guidance_scale=8,
+    width=1024,
+    height=1024,
+    num_frames=16,
+)
+
+frames = output.frames[0]
+export_to_gif(frames, "animation.gif")
+```
+
 ### AnimateDiffVideoToVideoPipeline
 
 AnimateDiff can also be used to generate visually similar videos or enable style/character/background or other edits starting from an initial video, allowing you to seamlessly explore creative possibilities.
@@ -118,7 +164,7 @@ from PIL import Image
 adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
 # load SD 1.5 based finetuned model
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
-pipe = AnimateDiffVideoToVideoPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16).to("cuda")
+pipe = AnimateDiffVideoToVideoPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
 scheduler = DDIMScheduler.from_pretrained(
     model_id,
     subfolder="scheduler",
@@ -256,7 +302,6 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
-
 ```
 
 <table>
@@ -331,7 +376,6 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
-
 ```
 
 <table>
@@ -516,9 +560,29 @@ export_to_gif(frames, "animatelcm-motion-lora.gif")
 </table>
 
 
+## Using `from_single_file` with the MotionAdapter
+
+`diffusers>=0.30.0` supports loading the AnimateDiff checkpoints into the `MotionAdapter` in their original format via `from_single_file`
+
+```python
+from diffusers import MotionAdapter
+
+ckpt_path = "https://huggingface.co/Lightricks/LongAnimateDiff/blob/main/lt_long_mm_32_frames.ckpt"
+
+adapter = MotionAdapter.from_single_file(ckpt_path, torch_dtype=torch.float16)
+pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter)
+
+```
+
 ## AnimateDiffPipeline
 
 [[autodoc]] AnimateDiffPipeline
+  - all
+  - __call__
+
+## AnimateDiffSDXLPipeline
+
+[[autodoc]] AnimateDiffSDXLPipeline
   - all
   - __call__
 

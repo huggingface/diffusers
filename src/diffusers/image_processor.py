@@ -29,13 +29,32 @@ from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
 PipelineImageInput = Union[
     PIL.Image.Image,
     np.ndarray,
-    torch.FloatTensor,
+    torch.Tensor,
     List[PIL.Image.Image],
     List[np.ndarray],
-    List[torch.FloatTensor],
+    List[torch.Tensor],
 ]
 
 PipelineDepthInput = PipelineImageInput
+
+
+def is_valid_image(image):
+    return isinstance(image, PIL.Image.Image) or isinstance(image, (np.ndarray, torch.Tensor)) and image.ndim in (2, 3)
+
+
+def is_valid_image_imagelist(images):
+    # check if the image input is one of the supported formats for image and image list:
+    # it can be either one of below 3
+    # (1) a 4d pytorch tensor or numpy array,
+    # (2) a valid image: PIL.Image.Image, 2-d np.ndarray or torch.Tensor (grayscale image), 3-d np.ndarray or torch.Tensor
+    # (3) a list of valid image
+    if isinstance(images, (np.ndarray, torch.Tensor)) and images.ndim == 4:
+        return True
+    elif is_valid_image(images):
+        return True
+    elif isinstance(images, list):
+        return all(is_valid_image(image) for image in images)
+    return False
 
 
 class VaeImageProcessor(ConfigMixin):
@@ -67,6 +86,7 @@ class VaeImageProcessor(ConfigMixin):
         self,
         do_resize: bool = True,
         vae_scale_factor: int = 8,
+        vae_latent_channels: int = 4,
         resample: str = "lanczos",
         do_normalize: bool = True,
         do_binarize: bool = False,
@@ -80,7 +100,6 @@ class VaeImageProcessor(ConfigMixin):
                 " if you intended to convert the image into RGB format, please set `do_convert_grayscale = False`.",
                 " if you intended to convert the image into grayscale format, please set `do_convert_rgb = False`",
             )
-            self.config.do_convert_rgb = False
 
     @staticmethod
     def numpy_to_pil(images: np.ndarray) -> List[PIL.Image.Image]:
@@ -111,7 +130,7 @@ class VaeImageProcessor(ConfigMixin):
         return images
 
     @staticmethod
-    def numpy_to_pt(images: np.ndarray) -> torch.FloatTensor:
+    def numpy_to_pt(images: np.ndarray) -> torch.Tensor:
         """
         Convert a NumPy image to a PyTorch tensor.
         """
@@ -122,7 +141,7 @@ class VaeImageProcessor(ConfigMixin):
         return images
 
     @staticmethod
-    def pt_to_numpy(images: torch.FloatTensor) -> np.ndarray:
+    def pt_to_numpy(images: torch.Tensor) -> np.ndarray:
         """
         Convert a PyTorch tensor to a NumPy image.
         """
@@ -498,12 +517,27 @@ class VaeImageProcessor(ConfigMixin):
                 else:
                     image = np.expand_dims(image, axis=-1)
 
-        if isinstance(image, supported_formats):
-            image = [image]
-        elif not (isinstance(image, list) and all(isinstance(i, supported_formats) for i in image)):
-            raise ValueError(
-                f"Input is in incorrect format: {[type(i) for i in image]}. Currently, we only support {', '.join(supported_formats)}"
+        if isinstance(image, list) and isinstance(image[0], np.ndarray) and image[0].ndim == 4:
+            warnings.warn(
+                "Passing `image` as a list of 4d np.ndarray is deprecated."
+                "Please concatenate the list along the batch dimension and pass it as a single 4d np.ndarray",
+                FutureWarning,
             )
+            image = np.concatenate(image, axis=0)
+        if isinstance(image, list) and isinstance(image[0], torch.Tensor) and image[0].ndim == 4:
+            warnings.warn(
+                "Passing `image` as a list of 4d torch.Tensor is deprecated."
+                "Please concatenate the list along the batch dimension and pass it as a single 4d torch.Tensor",
+                FutureWarning,
+            )
+            image = torch.cat(image, axis=0)
+
+        if not is_valid_image_imagelist(image):
+            raise ValueError(
+                f"Input is in incorrect format. Currently, we only support {', '.join(str(x) for x in supported_formats)}"
+            )
+        if not isinstance(image, list):
+            image = [image]
 
         if isinstance(image[0], PIL.Image.Image):
             if crops_coords is not None:
@@ -535,7 +569,7 @@ class VaeImageProcessor(ConfigMixin):
 
             channel = image.shape[1]
             # don't need any preprocess if the image is latents
-            if channel == 4:
+            if channel == self.vae_latent_channels:
                 return image
 
             height, width = self.get_default_height_width(image, height, width)
@@ -551,7 +585,6 @@ class VaeImageProcessor(ConfigMixin):
                 FutureWarning,
             )
             do_normalize = False
-
         if do_normalize:
             image = self.normalize(image)
 
@@ -562,15 +595,15 @@ class VaeImageProcessor(ConfigMixin):
 
     def postprocess(
         self,
-        image: torch.FloatTensor,
+        image: torch.Tensor,
         output_type: str = "pil",
         do_denormalize: Optional[List[bool]] = None,
-    ) -> Union[PIL.Image.Image, np.ndarray, torch.FloatTensor]:
+    ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
         """
         Postprocess the image output from tensor to `output_type`.
 
         Args:
-            image (`torch.FloatTensor`):
+            image (`torch.Tensor`):
                 The image input, should be a pytorch tensor with shape `B x C x H x W`.
             output_type (`str`, *optional*, defaults to `pil`):
                 The output type of the image, can be one of `pil`, `np`, `pt`, `latent`.
@@ -579,7 +612,7 @@ class VaeImageProcessor(ConfigMixin):
                 `VaeImageProcessor` config.
 
         Returns:
-            `PIL.Image.Image`, `np.ndarray` or `torch.FloatTensor`:
+            `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
                 The postprocessed image.
         """
         if not isinstance(image, torch.Tensor):
@@ -739,15 +772,15 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
 
     def postprocess(
         self,
-        image: torch.FloatTensor,
+        image: torch.Tensor,
         output_type: str = "pil",
         do_denormalize: Optional[List[bool]] = None,
-    ) -> Union[PIL.Image.Image, np.ndarray, torch.FloatTensor]:
+    ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
         """
         Postprocess the image output from tensor to `output_type`.
 
         Args:
-            image (`torch.FloatTensor`):
+            image (`torch.Tensor`):
                 The image input, should be a pytorch tensor with shape `B x C x H x W`.
             output_type (`str`, *optional*, defaults to `pil`):
                 The output type of the image, can be one of `pil`, `np`, `pt`, `latent`.
@@ -756,7 +789,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
                 `VaeImageProcessor` config.
 
         Returns:
-            `PIL.Image.Image`, `np.ndarray` or `torch.FloatTensor`:
+            `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
                 The postprocessed image.
         """
         if not isinstance(image, torch.Tensor):
@@ -794,8 +827,8 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
 
     def preprocess(
         self,
-        rgb: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
-        depth: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
+        rgb: Union[torch.Tensor, PIL.Image.Image, np.ndarray],
+        depth: Union[torch.Tensor, PIL.Image.Image, np.ndarray],
         height: Optional[int] = None,
         width: Optional[int] = None,
         target_res: Optional[int] = None,
@@ -934,13 +967,13 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
         )
 
     @staticmethod
-    def downsample(mask: torch.FloatTensor, batch_size: int, num_queries: int, value_embed_dim: int):
+    def downsample(mask: torch.Tensor, batch_size: int, num_queries: int, value_embed_dim: int):
         """
         Downsamples the provided mask tensor to match the expected dimensions for scaled dot-product attention. If the
         aspect ratio of the mask does not match the aspect ratio of the output image, a warning is issued.
 
         Args:
-            mask (`torch.FloatTensor`):
+            mask (`torch.Tensor`):
                 The input mask tensor generated with `IPAdapterMaskProcessor.preprocess()`.
             batch_size (`int`):
                 The batch size.
@@ -950,7 +983,7 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
                 The dimensionality of the value embeddings.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The downsampled mask tensor.
 
         """
@@ -994,3 +1027,77 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
         )
 
         return mask_downsample
+
+
+class PixArtImageProcessor(VaeImageProcessor):
+    """
+    Image processor for PixArt image resize and crop.
+
+    Args:
+        do_resize (`bool`, *optional*, defaults to `True`):
+            Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
+            `height` and `width` arguments from [`image_processor.VaeImageProcessor.preprocess`] method.
+        vae_scale_factor (`int`, *optional*, defaults to `8`):
+            VAE scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of this factor.
+        resample (`str`, *optional*, defaults to `lanczos`):
+            Resampling filter to use when resizing the image.
+        do_normalize (`bool`, *optional*, defaults to `True`):
+            Whether to normalize the image to [-1,1].
+        do_binarize (`bool`, *optional*, defaults to `False`):
+            Whether to binarize the image to 0/1.
+        do_convert_rgb (`bool`, *optional*, defaults to be `False`):
+            Whether to convert the images to RGB format.
+        do_convert_grayscale (`bool`, *optional*, defaults to be `False`):
+            Whether to convert the images to grayscale format.
+    """
+
+    @register_to_config
+    def __init__(
+        self,
+        do_resize: bool = True,
+        vae_scale_factor: int = 8,
+        resample: str = "lanczos",
+        do_normalize: bool = True,
+        do_binarize: bool = False,
+        do_convert_grayscale: bool = False,
+    ):
+        super().__init__(
+            do_resize=do_resize,
+            vae_scale_factor=vae_scale_factor,
+            resample=resample,
+            do_normalize=do_normalize,
+            do_binarize=do_binarize,
+            do_convert_grayscale=do_convert_grayscale,
+        )
+
+    @staticmethod
+    def classify_height_width_bin(height: int, width: int, ratios: dict) -> Tuple[int, int]:
+        """Returns binned height and width."""
+        ar = float(height / width)
+        closest_ratio = min(ratios.keys(), key=lambda ratio: abs(float(ratio) - ar))
+        default_hw = ratios[closest_ratio]
+        return int(default_hw[0]), int(default_hw[1])
+
+    @staticmethod
+    def resize_and_crop_tensor(samples: torch.Tensor, new_width: int, new_height: int) -> torch.Tensor:
+        orig_height, orig_width = samples.shape[2], samples.shape[3]
+
+        # Check if resizing is needed
+        if orig_height != new_height or orig_width != new_width:
+            ratio = max(new_height / orig_height, new_width / orig_width)
+            resized_width = int(orig_width * ratio)
+            resized_height = int(orig_height * ratio)
+
+            # Resize
+            samples = F.interpolate(
+                samples, size=(resized_height, resized_width), mode="bilinear", align_corners=False
+            )
+
+            # Center Crop
+            start_x = (resized_width - new_width) // 2
+            end_x = start_x + new_width
+            start_y = (resized_height - new_height) // 2
+            end_y = start_y + new_height
+            samples = samples[:, :, start_y:end_y, start_x:end_x]
+
+        return samples

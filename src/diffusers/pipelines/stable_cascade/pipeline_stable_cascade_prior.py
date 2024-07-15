@@ -54,19 +54,19 @@ class StableCascadePriorPipelineOutput(BaseOutput):
     Output class for WuerstchenPriorPipeline.
 
     Args:
-        image_embeddings (`torch.FloatTensor` or `np.ndarray`)
+        image_embeddings (`torch.Tensor` or `np.ndarray`)
             Prior image embeddings for text prompt
-        prompt_embeds (`torch.FloatTensor`):
+        prompt_embeds (`torch.Tensor`):
             Text embeddings for the prompt.
-        negative_prompt_embeds (`torch.FloatTensor`):
+        negative_prompt_embeds (`torch.Tensor`):
             Text embeddings for the negative prompt.
     """
 
-    image_embeddings: Union[torch.FloatTensor, np.ndarray]
-    prompt_embeds: Union[torch.FloatTensor, np.ndarray]
-    prompt_embeds_pooled: Union[torch.FloatTensor, np.ndarray]
-    negative_prompt_embeds: Union[torch.FloatTensor, np.ndarray]
-    negative_prompt_embeds_pooled: Union[torch.FloatTensor, np.ndarray]
+    image_embeddings: Union[torch.Tensor, np.ndarray]
+    prompt_embeds: Union[torch.Tensor, np.ndarray]
+    prompt_embeds_pooled: Union[torch.Tensor, np.ndarray]
+    negative_prompt_embeds: Union[torch.Tensor, np.ndarray]
+    negative_prompt_embeds_pooled: Union[torch.Tensor, np.ndarray]
 
 
 class StableCascadePriorPipeline(DiffusionPipeline):
@@ -150,10 +150,10 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         do_classifier_free_guidance,
         prompt=None,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds_pooled: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds_pooled: Optional[torch.Tensor] = None,
     ):
         if prompt_embeds is None:
             # get prompt text embeddings
@@ -374,14 +374,14 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         timesteps: List[float] = None,
         guidance_scale: float = 4.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
-        image_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds_pooled: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds_pooled: Optional[torch.Tensor] = None,
+        image_embeds: Optional[torch.Tensor] = None,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pt",
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
@@ -409,21 +409,21 @@ class StableCascadePriorPipeline(DiffusionPipeline):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `decoder_guidance_scale` is less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
+            prompt_embeds_pooled (`torch.Tensor`, *optional*):
                 Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
                 If not provided, pooled text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            negative_prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds_pooled (`torch.Tensor`, *optional*):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds_pooled will be generated from `negative_prompt`
                 input argument.
-            image_embeds (`torch.FloatTensor`, *optional*):
+            image_embeds (`torch.Tensor`, *optional*):
                 Pre-generated image embeddings. Can be used to easily tweak image inputs, *e.g.* prompt weighting. If
                 not provided, image embeddings will be generated from `image` input argument if existing.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -431,7 +431,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.

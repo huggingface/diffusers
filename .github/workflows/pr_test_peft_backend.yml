@@ -89,11 +89,10 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         if [ "${{ matrix.lib-versions }}" == "main" ]; then
-            python -m uv pip install -U peft@git+https://github.com/huggingface/peft.git
+            python -m pip install -U peft@git+https://github.com/huggingface/peft.git
             python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
             python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
         else
@@ -112,3 +111,21 @@ jobs:
           -s -v \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/lora/
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v \
+          --make-reports=tests_models_lora_${{ matrix.config.report }} \
+          tests/models/ -k "lora"
+
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+        cat reports/tests_models_lora_${{ matrix.config.report }}_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_${{ matrix.config.report }}_test_reports
+        path: reports

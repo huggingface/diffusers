@@ -78,7 +78,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.30.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -406,7 +406,7 @@ def guidance_scale_embedding(w, embedding_dim=512, dtype=torch.float32):
             data type of the generated embeddings
 
     Returns:
-        `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
+        `torch.Tensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
     """
     assert len(w.shape) == 1
     w = w * 1000.0
@@ -1004,7 +1004,7 @@ def main(args):
 
     # 8. Create target student U-Net. This will be updated via EMA updates (polyak averaging).
     # Initialize from (online) unet
-    target_unet = UNet2DConditionModel(**teacher_unet.config)
+    target_unet = UNet2DConditionModel.from_config(unet.config)
     target_unet.load_state_dict(unet.state_dict())
     target_unet.train()
     target_unet.requires_grad_(False)

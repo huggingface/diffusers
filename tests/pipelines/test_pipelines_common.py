@@ -32,6 +32,7 @@ from diffusers import (
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
+from diffusers.models.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
@@ -47,7 +48,10 @@ from ..models.autoencoders.test_models_vae import (
     get_autoencoder_tiny_config,
     get_consistency_vae_config,
 )
-from ..models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
+from ..models.unets.test_models_unet_2d_condition import (
+    create_ip_adapter_faceid_state_dict,
+    create_ip_adapter_state_dict,
+)
 from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
@@ -116,7 +120,7 @@ class SDFunctionTesterMixin:
         inputs["return_dict"] = False
         output_2 = pipe(**inputs)[0]
 
-        assert np.abs(output_2 - output_1).max() < 5e-1
+        assert np.abs(to_np(output_2) - to_np(output_1)).max() < 5e-1
 
         # test that tiled decode works with various shapes
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
@@ -237,6 +241,14 @@ class IPAdapterTesterMixin:
 
     def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):
         return torch.randn((2, 1, cross_attention_dim), device=torch_device)
+
+    def _get_dummy_faceid_image_embeds(self, cross_attention_dim: int = 32):
+        return torch.randn((2, 1, 1, cross_attention_dim), device=torch_device)
+
+    def _get_dummy_masks(self, input_size: int = 64):
+        _masks = torch.zeros((1, 1, input_size, input_size), device=torch_device)
+        _masks[0, :, :, : int(input_size / 2)] = 1
+        return _masks
 
     def _modify_inputs_for_ip_adapter_test(self, inputs: Dict[str, Any]):
         parameters = inspect.signature(self.pipeline_class.__call__).parameters
@@ -364,6 +376,91 @@ class IPAdapterTesterMixin:
         out_cfg = pipe(**inputs)[0]
 
         assert out_cfg.shape == out_no_cfg.shape
+
+    def test_ip_adapter_masks(self, expected_max_diff: float = 1e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
+        sample_size = pipe.unet.config.get("sample_size", 32)
+        block_out_channels = pipe.vae.config.get("block_out_channels", [128, 256, 512, 512])
+        input_size = sample_size * (2 ** (len(block_out_channels) - 1))
+
+        # forward pass without ip adapter
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        output_without_adapter = pipe(**inputs)[0]
+        output_without_adapter = output_without_adapter[0, -3:, -3:, -1].flatten()
+
+        adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
+        pipe.unet._load_ip_adapter_weights(adapter_state_dict)
+
+        # forward pass with single ip adapter and masks, but scale=0 which should have no effect
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
+        inputs["cross_attention_kwargs"] = {"ip_adapter_masks": [self._get_dummy_masks(input_size)]}
+        pipe.set_ip_adapter_scale(0.0)
+        output_without_adapter_scale = pipe(**inputs)[0]
+        output_without_adapter_scale = output_without_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        # forward pass with single ip adapter and masks, but with scale of adapter weights
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
+        inputs["cross_attention_kwargs"] = {"ip_adapter_masks": [self._get_dummy_masks(input_size)]}
+        pipe.set_ip_adapter_scale(42.0)
+        output_with_adapter_scale = pipe(**inputs)[0]
+        output_with_adapter_scale = output_with_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
+        max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
+
+        self.assertLess(
+            max_diff_without_adapter_scale,
+            expected_max_diff,
+            "Output without ip-adapter must be same as normal inference",
+        )
+        self.assertGreater(
+            max_diff_with_adapter_scale, 1e-3, "Output with ip-adapter must be different from normal inference"
+        )
+
+    def test_ip_adapter_faceid(self, expected_max_diff: float = 1e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
+
+        # forward pass without ip adapter
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        output_without_adapter = pipe(**inputs)[0]
+        output_without_adapter = output_without_adapter[0, -3:, -3:, -1].flatten()
+
+        adapter_state_dict = create_ip_adapter_faceid_state_dict(pipe.unet)
+        pipe.unet._load_ip_adapter_weights(adapter_state_dict)
+
+        # forward pass with single ip adapter, but scale=0 which should have no effect
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_faceid_image_embeds(cross_attention_dim)]
+        pipe.set_ip_adapter_scale(0.0)
+        output_without_adapter_scale = pipe(**inputs)[0]
+        output_without_adapter_scale = output_without_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        # forward pass with single ip adapter, but with scale of adapter weights
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_faceid_image_embeds(cross_attention_dim)]
+        pipe.set_ip_adapter_scale(42.0)
+        output_with_adapter_scale = pipe(**inputs)[0]
+        output_with_adapter_scale = output_with_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
+        max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
+
+        self.assertLess(
+            max_diff_without_adapter_scale,
+            expected_max_diff,
+            "Output without ip-adapter must be same as normal inference",
+        )
+        self.assertGreater(
+            max_diff_with_adapter_scale, 1e-3, "Output with ip-adapter must be different from normal inference"
+        )
 
 
 class PipelineLatentTesterMixin:
@@ -689,7 +786,12 @@ class PipelineFromPipeTesterMixin:
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
         pipe_original.set_progress_bar_config(disable=None)
+
         pipe_from_original = self.pipeline_class.from_pipe(pipe_original, **current_pipe_additional_components)
+        for component in pipe_from_original.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe_from_original.enable_model_cpu_offload()
         pipe_from_original.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs_pipe(torch_device)
@@ -1263,6 +1365,8 @@ class PipelineTesterMixin:
         reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
     def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
+        import accelerate
+
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -1276,6 +1380,7 @@ class PipelineTesterMixin:
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload()
+        assert pipe._execution_device.type == "cuda"
 
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
@@ -1283,11 +1388,48 @@ class PipelineTesterMixin:
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
 
+        # make sure all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are offloaded correctly
+        offloaded_modules = {
+            k: v
+            for k, v in pipe.components.items()
+            if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
+        }
+        # 1. all offloaded modules should be saved to cpu and moved to meta device
+        self.assertTrue(
+            all(v.device.type == "meta" for v in offloaded_modules.values()),
+            f"Not offloaded: {[k for k, v in offloaded_modules.items() if v.device.type != 'meta']}",
+        )
+        # 2. all offloaded modules should have hook installed
+        self.assertTrue(
+            all(hasattr(v, "_hf_hook") for k, v in offloaded_modules.items()),
+            f"No hook attached: {[k for k, v in offloaded_modules.items() if not hasattr(v, '_hf_hook')]}",
+        )
+        # 3. all offloaded modules should have correct hooks installed, should be either one of these two
+        #    - `AlignDevicesHook`
+        #    - a SequentialHook` that contains `AlignDevicesHook`
+        offloaded_modules_with_incorrect_hooks = {}
+        for k, v in offloaded_modules.items():
+            if hasattr(v, "_hf_hook"):
+                if isinstance(v._hf_hook, accelerate.hooks.SequentialHook):
+                    # if it is a `SequentialHook`, we loop through its `hooks` attribute to check if it only contains `AlignDevicesHook`
+                    for hook in v._hf_hook.hooks:
+                        if not isinstance(hook, accelerate.hooks.AlignDevicesHook):
+                            offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook.hooks[0])
+                elif not isinstance(v._hf_hook, accelerate.hooks.AlignDevicesHook):
+                    offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook)
+
+        self.assertTrue(
+            len(offloaded_modules_with_incorrect_hooks) == 0,
+            f"Not installed correct hook: {offloaded_modules_with_incorrect_hooks}",
+        )
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
         reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
     )
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
+        import accelerate
+
         generator_device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -1303,19 +1445,39 @@ class PipelineTesterMixin:
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_model_cpu_offload()
+        assert pipe._execution_device.type == "cuda"
+
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
-        offloaded_modules = [
-            v
+
+        # make sure all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are offloaded correctly
+        offloaded_modules = {
+            k: v
             for k, v in pipe.components.items()
             if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
-        ]
-        (
-            self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
-            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
+        }
+        # 1. check if all offloaded modules are saved to cpu
+        self.assertTrue(
+            all(v.device.type == "cpu" for v in offloaded_modules.values()),
+            f"Not offloaded: {[k for k, v in offloaded_modules.items() if v.device.type != 'cpu']}",
+        )
+        # 2. check if all offloaded modules have hooks installed
+        self.assertTrue(
+            all(hasattr(v, "_hf_hook") for k, v in offloaded_modules.items()),
+            f"No hook attached: {[k for k, v in offloaded_modules.items() if not hasattr(v, '_hf_hook')]}",
+        )
+        # 3. check if all offloaded modules have correct type of hooks installed, should be `CpuOffload`
+        offloaded_modules_with_incorrect_hooks = {}
+        for k, v in offloaded_modules.items():
+            if hasattr(v, "_hf_hook") and not isinstance(v._hf_hook, accelerate.hooks.CpuOffload):
+                offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook)
+
+        self.assertTrue(
+            len(offloaded_modules_with_incorrect_hooks) == 0,
+            f"Not installed correct hook: {offloaded_modules_with_incorrect_hooks}",
         )
 
     @unittest.skipIf(
@@ -1347,16 +1509,24 @@ class PipelineTesterMixin:
         self.assertLess(
             max_diff, expected_max_diff, "running CPU offloading 2nd time should not affect the inference results"
         )
+
+        # make sure all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are offloaded correctly
         offloaded_modules = {
             k: v
             for k, v in pipe.components.items()
             if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
         }
+        # 1. check if all offloaded modules are saved to cpu
         self.assertTrue(
             all(v.device.type == "cpu" for v in offloaded_modules.values()),
             f"Not offloaded: {[k for k, v in offloaded_modules.items() if v.device.type != 'cpu']}",
         )
-
+        # 2. check if all offloaded modules have hooks installed
+        self.assertTrue(
+            all(hasattr(v, "_hf_hook") for k, v in offloaded_modules.items()),
+            f"No hook attached: {[k for k, v in offloaded_modules.items() if not hasattr(v, '_hf_hook')]}",
+        )
+        # 3. check if all offloaded modules have correct type of hooks installed, should be `CpuOffload`
         offloaded_modules_with_incorrect_hooks = {}
         for k, v in offloaded_modules.items():
             if hasattr(v, "_hf_hook") and not isinstance(v._hf_hook, accelerate.hooks.CpuOffload):
@@ -1396,19 +1566,36 @@ class PipelineTesterMixin:
         self.assertLess(
             max_diff, expected_max_diff, "running sequential offloading second time should have the inference results"
         )
+
+        # make sure all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are offloaded correctly
         offloaded_modules = {
             k: v
             for k, v in pipe.components.items()
             if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
         }
+        # 1. check if all offloaded modules are moved to meta device
         self.assertTrue(
             all(v.device.type == "meta" for v in offloaded_modules.values()),
             f"Not offloaded: {[k for k, v in offloaded_modules.items() if v.device.type != 'meta']}",
         )
+        # 2. check if all offloaded modules have hook installed
+        self.assertTrue(
+            all(hasattr(v, "_hf_hook") for k, v in offloaded_modules.items()),
+            f"No hook attached: {[k for k, v in offloaded_modules.items() if not hasattr(v, '_hf_hook')]}",
+        )
+        # 3. check if all offloaded modules have correct hooks installed, should be either one of these two
+        #    - `AlignDevicesHook`
+        #    - a SequentialHook` that contains `AlignDevicesHook`
         offloaded_modules_with_incorrect_hooks = {}
         for k, v in offloaded_modules.items():
-            if hasattr(v, "_hf_hook") and not isinstance(v._hf_hook, accelerate.hooks.AlignDevicesHook):
-                offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook)
+            if hasattr(v, "_hf_hook"):
+                if isinstance(v._hf_hook, accelerate.hooks.SequentialHook):
+                    # if it is a `SequentialHook`, we loop through its `hooks` attribute to check if it only contains `AlignDevicesHook`
+                    for hook in v._hf_hook.hooks:
+                        if not isinstance(hook, accelerate.hooks.AlignDevicesHook):
+                            offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook.hooks[0])
+                elif not isinstance(v._hf_hook, accelerate.hooks.AlignDevicesHook):
+                    offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook)
 
         self.assertTrue(
             len(offloaded_modules_with_incorrect_hooks) == 0,
@@ -1635,7 +1822,10 @@ class PipelineTesterMixin:
         self.assertTrue(hasattr(pipe, "vae") and isinstance(pipe.vae, (AutoencoderKL, AutoencoderTiny)))
         self.assertTrue(
             hasattr(pipe, "unet")
-            and isinstance(pipe.unet, (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel))
+            and isinstance(
+                pipe.unet,
+                (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, UNetControlNetXSModel),
+            )
         )
 
 
