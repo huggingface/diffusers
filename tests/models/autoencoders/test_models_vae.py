@@ -24,6 +24,7 @@ from diffusers import (
     AsymmetricAutoencoderKL,
     AutoencoderKL,
     AutoencoderKLTemporalDecoder,
+    AutoencoderOobleck,
     AutoencoderTiny,
     ConsistencyDecoderVAE,
     StableDiffusionPipeline,
@@ -126,6 +127,17 @@ def get_consistency_vae_config(block_out_channels=None, norm_num_groups=None):
         "scaling_factor": 1,
         "latent_channels": 4,
     }
+    
+def get_autoencoder_oobleck_config(block_out_channels=None):
+    init_dict = {
+        "encoder_hidden_size": 12,
+        "decoder_channels": 12,
+        "decoder_input_channels": 6,
+        "audio_channels": 2,
+        "downsampling_ratios": [2, 4],
+        "channel_multiples": [1, 2],
+    }
+    return init_dict
 
 
 class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
@@ -479,6 +491,39 @@ class AutoencoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase)
 
             self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
+class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+    model_class = AutoencoderOobleck
+    main_input_name = "sample"
+    base_precision = 1e-2
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 2
+        seq_len = 24
+
+        waveform = floats_tensor((batch_size, num_channels, seq_len)).to(torch_device)
+
+        return {"sample": waveform, "sample_posterior": False}
+
+    @property
+    def input_shape(self):
+        return (2, 24)
+
+    @property
+    def output_shape(self):
+        return (2, 24)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = get_autoencoder_oobleck_config()
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def test_forward_signature(self):
+        pass
+
+    def test_forward_with_norm_groups(self):
+        pass
 
 @slow
 class AutoencoderTinyIntegrationTests(unittest.TestCase):

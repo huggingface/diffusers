@@ -318,8 +318,7 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
             The sampling rate at which the audio waveform should be digitalized expressed in hertz (Hz).
     """
 
-    _supports_gradient_checkpointing = True
-    _no_split_modules = ["OobleckResidualUnit"]
+    _supports_gradient_checkpointing = False
 
     @register_to_config
     def __init__(
