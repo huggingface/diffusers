@@ -6,7 +6,7 @@ on:
 
 env:
   DIFFUSERS_IS_CI: yes
-  HF_HOME: /mnt/cache
+  HF_HUB_ENABLE_HF_TRANSFER: 1
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
   PYTEST_TIMEOUT: 600
@@ -50,7 +50,7 @@ jobs:
     name: Torch Pipelines CUDA Slow Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
-      max-parallel: 1
+      max-parallel: 4
       fail-fast: false
       matrix:
         module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
@@ -72,6 +72,7 @@ jobs:
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+          python -m uv pip install hf_transfer
       - name: Environment
         run: |
           python utils/print_env.py
