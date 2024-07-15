@@ -211,7 +211,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         # Rescale for zero SNR
         if rescale_betas_zero_snr:
@@ -377,7 +377,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 Whether or not to return a [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] or `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] or `tuple`:
                 If return_dict is `True`, [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] is returned, otherwise a
                 tuple is returned where the first element is the sample tensor.
 

@@ -420,7 +420,6 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipe.scheduler = DDIMScheduler.from_config(
             pipe.scheduler.config, timestep_spacing="trailing", rescale_betas_zero_snr=True
         )
-        pipe.to(torch_device)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
@@ -538,7 +537,6 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         prompt = "Andromeda galaxy in a bottle"
 
         pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
-        pipeline = pipeline.to(torch_device)
         pipeline.enable_attention_slicing(1)
         pipeline.enable_sequential_cpu_offload()
 

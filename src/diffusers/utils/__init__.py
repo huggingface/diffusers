@@ -28,9 +28,11 @@ from .constants import (
     MIN_PEFT_VERSION,
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
+    SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
     SAFETENSORS_WEIGHTS_NAME,
     USE_PEFT_BACKEND,
+    WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
 )
 from .deprecation_utils import deprecate
@@ -40,6 +42,7 @@ from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to
 from .hub_utils import (
     PushToHubMixin,
     _add_variant,
+    _get_checkpoint_shard_files,
     _get_model_file,
     extract_commit_hash,
     http_user_agent,
@@ -68,6 +71,7 @@ from .import_utils import (
     is_k_diffusion_available,
     is_k_diffusion_version,
     is_librosa_available,
+    is_matplotlib_available,
     is_note_seq_available,
     is_notebook,
     is_onnx_available,

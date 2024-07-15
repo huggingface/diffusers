@@ -180,7 +180,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
@@ -194,7 +194,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         if algorithm_type not in ["data_prediction", "noise_prediction"]:
-            raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{algorithm_type} is not implemented for {self.__class__}")
 
         # setable values
         self.num_inference_steps = None

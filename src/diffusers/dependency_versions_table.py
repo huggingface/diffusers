@@ -3,13 +3,13 @@
 # 2. run `make deps_table_update`
 deps = {
     "Pillow": "Pillow",
-    "accelerate": "accelerate>=0.29.3",
+    "accelerate": "accelerate>=0.31.0",
     "compel": "compel==0.1.8",
     "datasets": "datasets",
     "filelock": "filelock",
     "flax": "flax>=0.4.1",
     "hf-doc-builder": "hf-doc-builder>=0.3.0",
-    "huggingface-hub": "huggingface-hub>=0.20.2",
+    "huggingface-hub": "huggingface-hub>=0.23.2",
     "requests-mock": "requests-mock==1.10.0",
     "importlib_metadata": "importlib_metadata",
     "invisible-watermark": "invisible-watermark>=0.2.0",
@@ -40,7 +40,7 @@ deps = {
     "tensorboard": "tensorboard",
     "torch": "torch>=1.4",
     "torchvision": "torchvision",
-    "transformers": "transformers>=4.25.1",
+    "transformers": "transformers>=4.41.2",
     "urllib3": "urllib3<=2.0.0",
     "black": "black",
 }

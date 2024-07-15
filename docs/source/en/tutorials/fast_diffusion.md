@@ -34,13 +34,10 @@ Install [PyTorch nightly](https://pytorch.org/) to benefit from the latest and f
 pip3 install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 ```
 
-<Tip>
+> [!TIP]
+> The results reported below are from a 80GB 400W A100 with its clock rate set to the maximum. 
+> If you're interested in the full benchmarking code, take a look at [huggingface/diffusion-fast](https://github.com/huggingface/diffusion-fast).
 
-The results reported below are from a 80GB 400W A100 with its clock rate set to the maximum. <br>
-
-If you're interested in the full benchmarking code, take a look at [huggingface/diffusion-fast](https://github.com/huggingface/diffusion-fast).
-
-</Tip>
 
 ## Baseline
 
@@ -170,6 +167,9 @@ Using SDPA attention and compiling both the UNet and VAE cuts the latency from 3
     <img src="https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/progressive-acceleration-sdxl/SDXL%2C_Batch_Size%3A_1%2C_Steps%3A_30_3.png" width=500>
 </div>
 
+> [!TIP]
+> From PyTorch 2.3.1, you can control the caching behavior of `torch.compile()`. This is particularly beneficial for compilation modes like `"max-autotune"` which performs a grid-search over several compilation flags to find the optimal configuration. Learn more in the [Compile Time Caching in torch.compile](https://pytorch.org/tutorials/recipes/torch_compile_caching_tutorial.html) tutorial. 
+
 ### Prevent graph breaks
 
 Specifying `fullgraph=True` ensures there are no graph breaks in the underlying model to take full advantage of `torch.compile` without any performance degradation. For the UNet and VAE, this means changing how you access the return variables.
@@ -222,7 +222,7 @@ First, configure all the compiler tags:
 
 ```python
 from diffusers import StableDiffusionXLPipeline
-import torch 
+import torch
 
 # Notice the two new flags at the end.
 torch._inductor.config.conv_1x1_as_mm = True
