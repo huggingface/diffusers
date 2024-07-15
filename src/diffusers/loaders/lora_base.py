@@ -534,9 +534,6 @@ class LoraBaseMixin:
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(adapter_weights)}"
             )
 
-        # Decompose weights into weights for unet, text_encoder and text_encoder_2
-        denoiser_lora_weights, text_encoder_lora_weights, text_encoder_2_lora_weights = [], [], []
-
         list_adapters = self.get_list_adapters()  # eg {"unet": ["adapter1", "adapter2"], "text_encoder": ["adapter2"]}
         all_adapters = {
             adapter for adapters in list_adapters.values() for adapter in adapters
@@ -546,14 +543,10 @@ class LoraBaseMixin:
             for adapter in all_adapters
         }  # eg {"adapter1": ["unet"], "adapter2": ["unet", "text_encoder"]}
 
+        # Decompose weights into weights for denoiser and text encoders.
         _component_adapter_weights = {}
         for component in self._lora_loadable_modules:
-            model = getattr(self, component, None)
-
-            # Check is actually redundant here since self._lora_loadable_modules should always be attributes
-            # of the pipeline
-            if model is None:
-                continue
+            model = getattr(self, component)
 
             for adapter_name, weights in zip(adapter_names, adapter_weights):
                 if isinstance(weights, dict):
