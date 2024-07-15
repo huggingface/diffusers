@@ -62,15 +62,15 @@ class FA3AttnProcessor:
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2).contiguous()
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2).contiguous()
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2).contiguous()
+        query = query.view(batch_size, -1, attn.heads, head_dim).contiguous()
+        key = key.view(batch_size, -1, attn.heads, head_dim).contiguous()
+        value = value.view(batch_size, -1, attn.heads, head_dim).contiguous()
 
         print(f"{query.shape=}, {key.shape=}, {value.shape=}")
         hidden_states, _ = flash_attn_func(
             query, key, value, softmax_scale=attn.scale, causal=False
         )
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
