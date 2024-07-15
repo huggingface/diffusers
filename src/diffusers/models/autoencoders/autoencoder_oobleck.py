@@ -189,18 +189,6 @@ class AutoencoderOobleckOutput(BaseOutput):
 
     latent_dist: "OobleckDiagonalGaussianDistribution"  # noqa: F821
 
-@dataclass
-class AutoencoderOobleckOutput(BaseOutput):
-    """
-    Output of AutoencoderOobleck encoding method.
-
-    Args:
-        latent_dist (`DiagonalGaussianDistribution`):
-            Encoded outputs of `Encoder` represented as the mean and standard deviation of `OobleckDiagonalGaussianDistribution`.
-            `OobleckDiagonalGaussianDistribution` allows for sampling latents from the distribution.
-    """
-
-    latent_dist: "OobleckDiagonalGaussianDistribution"  # noqa: F821
 
 @dataclass
 class OobleckDecoderOutput(BaseOutput):
@@ -297,6 +285,8 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             Intermediate representation dimension for the encoder.
         downsampling_ratios (`List[int]`, *optional*, defaults to `[2, 4, 4, 8, 8]`):
             Ratios for downsampling in the encoder. These are used in reverse order for upsampling in the decoder.
+        channel_multiples (`List[int]`, *optional*, defaults to `[1, 2, 4, 8, 16]`):
+            Multiples used to determine the hidden sizes of the hidden layers.
         decoder_channels (`int`, *optional*, defaults to 128):
             Intermediate representation dimension for the decoder.
         decoder_input_channels (`int`, *optional*, defaults to 64):
@@ -315,7 +305,7 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         encoder_hidden_size=128,
         downsampling_ratios=[2, 4, 4, 8, 8],
-        channel_multiples=[1, 2, 4, 8, 16], # TODO (YL) docstrings
+        channel_multiples=[1, 2, 4, 8, 16],
         decoder_channels=128,
         decoder_input_channels=64,
         audio_channels=2,
