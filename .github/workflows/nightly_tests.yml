@@ -70,7 +70,6 @@ jobs:
           python -m uv pip install -e [quality,test]
           python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
           python -m uv pip install pytest-reportlog
-          python -m uv pip install hf_transfer
       - name: Environment
         run: |
           python utils/print_env.py
@@ -128,8 +127,6 @@ jobs:
         python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
         python -m uv pip install peft@git+https://github.com/huggingface/peft.git
         python -m uv pip install pytest-reportlog
-        python -m uv pip install hf_transfer
-
     - name: Environment
       run: python utils/print_env.py
 
@@ -255,8 +252,6 @@ jobs:
         python -m uv pip install -e [quality,test]
         python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
         python -m uv pip install pytest-reportlog
-        python -m uv pip install hf_transfer
-
     - name: Environment
       run: python utils/print_env.py
 
