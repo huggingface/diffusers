@@ -16,6 +16,7 @@ RUN apt install -y bash \
                    ca-certificates \
                    libsndfile1-dev \
                    python3.10 \
+                   python3.10-dev \
                    python3-pip \
                    libgl1 \
                    python3.10-venv && \
