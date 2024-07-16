@@ -66,8 +66,6 @@ def convert_stable_audio_state_dict_to_diffusers(state_dict, num_autoencoder_lay
             .replace("to_cond_embed", "cross_attention_proj")
         )
 
-        # TODO: (YL) as compared to stable audio model weights we'rte missing `rotary_pos_emb.inv_freq`, we probably don't need it but to verify
-
         # we're using diffusers implementation of timestep_features (GaussianFourierProjection) which creates a 1D tensor
         if new_key == "timestep_features.weight":
             model_state_dict[key] = model_state_dict[key].squeeze(1)
@@ -193,6 +191,7 @@ scheduler = EDMDPMSolverMultistepScheduler(
     sigma_data=1.0,
     algorithm_type="sde-dpmsolver++",
     sigma_schedule="exponential",
+    noise_sampling_strategy = "brownian_tree",
 )
 scheduler.config["sigma_min"] = 0.3
 scheduler.config["sigma_max"] = 500

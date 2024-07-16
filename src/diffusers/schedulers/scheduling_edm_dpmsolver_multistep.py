@@ -19,11 +19,62 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torchsde
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
+class BatchedBrownianTree:
+    """A wrapper around torchsde.BrownianTree that enables batches of entropy."""
+
+    def __init__(self, x, t0, t1, seed=None, **kwargs):
+        t0, t1, self.sign = self.sort(t0, t1)
+        w0 = kwargs.get("w0", torch.zeros_like(x))
+        if seed is None:
+            seed = torch.randint(0, 2**63 - 1, []).item()
+        self.batched = True
+        try:
+            assert len(seed) == x.shape[0]
+            w0 = w0[0]
+        except TypeError:
+            seed = [seed]
+            self.batched = False
+        self.trees = [torchsde.BrownianTree(t0, w0, t1, entropy=s, **kwargs) for s in seed]
+
+    @staticmethod
+    def sort(a, b):
+        return (a, b, 1) if a < b else (b, a, -1)
+
+    def __call__(self, t0, t1):
+        t0, t1, sign = self.sort(t0, t1)
+        w = torch.stack([tree(t0, t1) for tree in self.trees]) * (self.sign * sign)
+        return w if self.batched else w[0]
+
+
+class BrownianTreeNoiseSampler:
+    """A noise sampler backed by a torchsde.BrownianTree.
+
+    Args:
+        x (Tensor): The tensor whose shape, device and dtype to use to generate
+            random samples.
+        sigma_min (float): The low end of the valid interval.
+        sigma_max (float): The high end of the valid interval.
+        seed (int or List[int]): The random seed. If a list of seeds is
+            supplied instead of a single integer, then the noise sampler will use one BrownianTree per batch item, each
+            with its own seed.
+        transform (callable): A function that maps sigma to the sampler's
+            internal timestep.
+    """
+
+    def __init__(self, x, sigma_min, sigma_max, seed=None, transform=lambda x: x):
+        self.transform = transform
+        t0, t1 = self.transform(torch.as_tensor(sigma_min)), self.transform(torch.as_tensor(sigma_max))
+        self.tree = BatchedBrownianTree(x, t0, t1, seed)
+
+    def __call__(self, sigma, sigma_next):
+        t0, t1 = self.transform(torch.as_tensor(sigma)), self.transform(torch.as_tensor(sigma_next))
+        return self.tree(t0, t1) / (t1 - t0).abs().sqrt()
 
 class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
@@ -86,6 +137,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         noise_preconditioning_strategy (`str`, defaults to `"log"`):
             The strategy used to convert sigmas to timestamps. If `"log"`, will use the default strategy, i.e use
             logarithm to convert sigmas. If `atan`, sigmas will be normalized using arctan.
+        noise_sampling_strategy (`str`, defaults to `"normal_distribution"`):
+            The strategy used to sample noise if `algorithm_type=sde-dpmsolver++`. One of `normal_distribution` and `brownian_tree`.
     """
 
     _compatibles = []
@@ -111,6 +164,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         euler_at_final: bool = False,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
         noise_preconditioning_strategy: str = "log",
+        noise_sampling_strategy: str = "normal_distribution",
     ):
         # settings for DPM-Solver
         if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"]:
@@ -128,6 +182,11 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"] and final_sigmas_type == "zero":
             raise ValueError(
                 f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithm_type` {algorithm_type}. Please choose `sigma_min` instead."
+            )
+
+        if noise_sampling_strategy not in ["normal_distribution", "brownian_tree"]:
+            raise ValueError(
+                f"`noise_sampling_strategy` {noise_sampling_strategy} is not supported. Please choose one of `normal_distribution` and `brownian_tree`."
             )
 
         if noise_preconditioning_strategy not in ["log", "atan"]:
@@ -152,6 +211,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.noise_sampling_strategy = noise_sampling_strategy
+        self.noise_sampler = None # only used if `noise_sampling_strategy==brownian_tree`
 
     @property
     def init_noise_sigma(self):
@@ -654,10 +715,13 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
 
-        if self.config.algorithm_type == "sde-dpmsolver++":
+        if self.config.algorithm_type == "sde-dpmsolver++" and self.noise_sampling_strategy == "normal_distribution":
             noise = randn_tensor(
                 model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
             )
+        elif self.config.algorithm_type == "sde-dpmsolver++" and self.noise_sampling_strategy == "brownian_tree":
+            self.noise_sampler = BrownianTreeNoiseSampler(model_output, sigma_min=self.config.sigma_min, sigma_max=self.config.sigma_max) if self.noise_sampler is None else self.noise_sampler
+            noise = self.noise_sampler(self.sigmas[self.step_index], self.sigmas[self.step_index + 1])
         else:
             noise = None
 
