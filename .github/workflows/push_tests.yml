@@ -122,6 +122,7 @@ jobs:
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install peft@git+https://github.com/huggingface/peft.git
 
     - name: Environment
       run: |
