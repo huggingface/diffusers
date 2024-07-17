@@ -113,7 +113,7 @@ jobs:
     strategy:
       matrix:
         max-parallel: 2
-        module: [models, schedulers, lora, others, single_file, examples]
+        module: [models, schedulers, lora, others, single_file]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
@@ -131,7 +131,6 @@ jobs:
       run: python utils/print_env.py
 
     - name: Run nightly PyTorch CUDA tests for non-pipeline modules
-      if: ${{ matrix.module != 'examples'}}
       env:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
@@ -142,18 +141,6 @@ jobs:
           --make-reports=tests_torch_${{ matrix.module }}_cuda \
           --report-log=tests_torch_${{ matrix.module }}_cuda.log \
           tests/${{ matrix.module }}
-
-    - name: Run nightly example tests with Torch
-      if: ${{ matrix.module == 'examples' }}
-      env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
-        CUBLAS_WORKSPACE_CONFIG: :16:8
-      run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v --make-reports=examples_torch_cuda \
-          --report-log=examples_torch_cuda.log \
-          examples/
 
     - name: Failure short reports
       if: ${{ failure() }}
@@ -169,7 +156,7 @@ jobs:
         path: reports
 
     - name: Generate Report and Notify Channel
-      if: always()
+      if: ${{ always() }}
       run: |
         pip install slack_sdk tabulate
         python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
@@ -280,6 +267,66 @@ jobs:
 
     - name: Generate Report and Notify Channel
       if: always()
+      run: |
+        pip install slack_sdk tabulate
+        python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
+
+  run_nightly_examples_tests:
+    name: Examples PyTorch CUDA tests on Ubuntu
+
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
+
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --gpus 0 --shm-size "16gb" --ipc host
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: NVIDIA-SMI
+      run: |
+        nvidia-smi
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test,training]
+        python -m uv pip install pytest-reportlog
+
+    - name: Environment
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python utils/print_env.py
+
+    - name: Run example tests on GPU
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install timm
+        python -m pytest -n 1 --max-worker-restart=0 \
+        --dist=loadfile -s -v --make-reports=examples_torch_cuda \
+        --report-log=examples_torch_cuda.log \
+        examples/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/examples_torch_cuda_stats.txt
+        cat reports/examples_torch_cuda_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: examples_test_reports
+        path: reports
+
+    - name: Generate Report and Notify Channel
+      if: ${{ always() }}
       run: |
         pip install slack_sdk tabulate
         python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
