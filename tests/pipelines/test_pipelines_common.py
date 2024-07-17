@@ -1365,12 +1365,22 @@ class PipelineTesterMixin:
             max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
             max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
             max_diff3 = np.abs(to_np(output_with_slicing3) - to_np(output_without_slicing)).max()
-            self.assertLess(max(max_diff1, max_diff2, max_diff3), expected_max_diff, "Attention slicing should not affect the inference results")
+            self.assertLess(
+                max(max_diff1, max_diff2, max_diff3),
+                expected_max_diff,
+                "Attention slicing should not affect the inference results",
+            )
 
         if test_mean_pixel_difference:
-            assert_mean_pixel_difference(np.mean(np.abs(to_np(output_with_slicing1))), np.mean(np.abs(to_np(output_without_slicing))))
-            assert_mean_pixel_difference(np.mean(np.abs(to_np(output_with_slicing2))), np.mean(np.abs(to_np(output_without_slicing))))
-            assert_mean_pixel_difference(np.mean(np.abs(to_np(output_with_slicing3))), np.mean(np.abs(to_np(output_without_slicing))))
+            assert_mean_pixel_difference(
+                np.mean(np.abs(to_np(output_with_slicing1))), np.mean(np.abs(to_np(output_without_slicing)))
+            )
+            assert_mean_pixel_difference(
+                np.mean(np.abs(to_np(output_with_slicing2))), np.mean(np.abs(to_np(output_without_slicing)))
+            )
+            assert_mean_pixel_difference(
+                np.mean(np.abs(to_np(output_with_slicing3))), np.mean(np.abs(to_np(output_without_slicing)))
+            )
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
