@@ -719,8 +719,12 @@ class StableDiffusionXLPAGImg2ImgPipeline(
                 )
 
             elif isinstance(generator, list):
-                if image.shape[0] < len(generator):
-                    image = image.expand(len(generator), *image.shape[1:])
+                if image.shape[0] < batch_size and batch_size % image.shape[0] == 0:
+                    image = torch.cat([image] * (batch_size // image.shape[0]), dim=0)
+                elif image.shape[0] < batch_size and batch_size % image.shape[0] != 0:
+                    raise ValueError(
+                        f"Cannot duplicate `image` of batch size {image.shape[0]} to effective batch_size {batch_size} "
+                    )
 
                 init_latents = [
                     retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
