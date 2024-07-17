@@ -49,6 +49,7 @@ Core library:
 Integrations:
 
 - deepspeed: HF Trainer/Accelerate: @SunMarc
+- PEFT: @sayakpaul @BenjaminBossan
 
 HF projects:
 
