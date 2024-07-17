@@ -293,7 +293,7 @@ class AnimateDiffPipelineFastTests(
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs.pop("prompt")
-        inputs["prompt_embeds"] = torch.randn((1, 4, 32), device=torch_device)
+        inputs["prompt_embeds"] = torch.randn((1, 4, pipe.text_encoder.config.hidden_size), device=torch_device)
         pipe(**inputs)
 
     def test_free_init(self):
