@@ -32,17 +32,9 @@ from diffusers import (
     StableDiffusionControlNetPAGInpaintPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
-from diffusers.utils import load_image
-from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    load_numpy,
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
-    torch_device,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
