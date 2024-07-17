@@ -205,7 +205,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install --prerelease=allow -e [quality,test] --prerelease=allow
+        python -m uv pip install --prerelease=allow -e [quality,test]
 
     - name: Environment
       run: |
