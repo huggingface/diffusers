@@ -76,7 +76,7 @@ class IPAdapterMixin:
                 list is passed, it should have the same length as `weight_name`.
             weight_name (`str` or `List[str]`):
                 The name of the weight file to load. If a list is passed, it should have the same length as
-                `weight_name`.
+                `subfolder`.
             image_encoder_folder (`str`, *optional*, defaults to `image_encoder`):
                 The subfolder location of the image encoder within a larger model repository on the Hub or locally.
                 Pass `None` to not load the image encoder. If the image encoder is located in a folder inside
