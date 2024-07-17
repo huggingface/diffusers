@@ -28,16 +28,14 @@ from .attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from .embeddings import TextImageProjection, TimestepEmbedding, Timesteps
+from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .unets.unet_2d_blocks import (
-    UNetMidBlock2DCrossAttn,
-    get_down_block,
-)
 from .unets.unet_2d_condition import UNet2DConditionModel
 from .unets.unet_3d_blocks import (
     CrossAttnDownBlockMotion,
     DownBlockMotion,
+    UNetMidBlock3DCrossAttn,
+    get_down_block,
 )
 
 
@@ -255,53 +253,32 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
             in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
         )
 
-        # time
-        time_embed_dim = block_out_channels[0] * 4
-        self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
-        timestep_input_dim = block_out_channels[0]
-        self.time_embedding = TimestepEmbedding(
-            timestep_input_dim,
-            time_embed_dim,
-            act_fn=act_fn,
-        )
-
-        if encoder_hid_dim_type is None and encoder_hid_dim is not None:
-            encoder_hid_dim_type = "text_proj"
-            self.register_to_config(encoder_hid_dim_type=encoder_hid_dim_type)
-            logger.info("encoder_hid_dim_type defaults to 'text_proj' as `encoder_hid_dim` is defined.")
-
-        if encoder_hid_dim is None and encoder_hid_dim_type is not None:
-            raise ValueError(
-                f"`encoder_hid_dim` has to be defined when `encoder_hid_dim_type` is set to {encoder_hid_dim_type}."
-            )
-
-        if encoder_hid_dim_type == "text_proj":
-            self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
-        elif encoder_hid_dim_type == "text_image_proj":
-            # image_embed_dim DOESN'T have to be `cross_attention_dim`. To not clutter the __init__ too much
-            # they are set to `cross_attention_dim` here as this is exactly the required dimension for the currently only use
-            # case when `addition_embed_type == "text_image_proj"` (Kandinsky 2.1)`
-            self.encoder_hid_proj = TextImageProjection(
-                text_embed_dim=encoder_hid_dim,
-                image_embed_dim=cross_attention_dim,
-                cross_attention_dim=cross_attention_dim,
-            )
-
-        elif encoder_hid_dim_type is not None:
-            raise ValueError(
-                f"encoder_hid_dim_type: {encoder_hid_dim_type} must be None, 'text_proj' or 'text_image_proj'."
-            )
-        else:
-            self.encoder_hid_proj = None
-
         if concat_conditioning_mask:
             conditioning_channels = conditioning_channels + 1
 
         self.concate_conditioning_mask = concat_conditioning_mask
 
         # control net conditioning embedding
-        self.controlnet_cond_embedding = nn.Conv2d(
-            conditioning_channels, block_out_channels[0], kernel_size=3, padding=1
+        if use_simplified_condition_embedding:
+            self.controlnet_cond_embedding = zero_module(
+                nn.Conv2d(conditioning_channels, block_out_channels[0], kernel_size=3, padding=1)
+            )
+        else:
+            self.controlnet_cond_embedding = SparseControlNetConditioningEmbedding(
+                conditioning_embedding_channels=block_out_channels[0],
+                block_out_channels=conditioning_embedding_out_channels,
+                conditioning_channels=conditioning_channels,
+            )
+
+        # time
+        time_embed_dim = block_out_channels[0] * 4
+        self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
+        timestep_input_dim = block_out_channels[0]
+
+        self.time_embedding = TimestepEmbedding(
+            timestep_input_dim,
+            time_embed_dim,
+            act_fn=act_fn,
         )
 
         self.down_blocks = nn.ModuleList([])
@@ -370,17 +347,19 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         controlnet_block = zero_module(controlnet_block)
         self.controlnet_mid_block = controlnet_block
 
-        self.mid_block = UNetMidBlock2DCrossAttn(
-            transformer_layers_per_block=transformer_layers_per_block[-1],
+        self.mid_block = UNetMidBlock3DCrossAttn(
             in_channels=mid_block_channel[-1],
             temb_channels=time_embed_dim,
+            dropout=0,
+            num_layers=1,
             resnet_eps=norm_eps,
-            resnet_act_fn=act_fn,
-            output_scale_factor=mid_block_scale_factor,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            cross_attention_dim=cross_attention_dim,
-            num_attention_heads=num_attention_heads[-1],
+            resnet_act_fn=act_fn,
             resnet_groups=norm_num_groups,
+            resnet_pre_norm=True,
+            num_attention_heads=num_attention_heads[-1],
+            output_scale_factor=mid_block_scale_factor,
+            cross_attention_dim=cross_attention_dim,
             dual_cross_attention=False,
             use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
