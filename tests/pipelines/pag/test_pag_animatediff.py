@@ -147,6 +147,43 @@ class AnimateDiffPAGPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         pass
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array(
+                [
+                    0.5501,
+                    0.4545,
+                    0.5547,
+                    0.4507,
+                    0.4455,
+                    0.5968,
+                    0.4870,
+                    0.5419,
+                    0.5042,
+                    0.4616,
+                    0.5982,
+                    0.3840,
+                    0.5687,
+                    0.4831,
+                    0.3812,
+                    0.5885,
+                    0.4847,
+                    0.4825,
+                    0.3834,
+                    0.5659,
+                    0.5913,
+                    0.6491,
+                    0.4444,
+                    0.5425,
+                    0.6090,
+                    0.5761,
+                    0.4833,
+                ]
+            )
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
         if torch_device == "cpu":
