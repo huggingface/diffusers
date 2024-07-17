@@ -18,6 +18,7 @@ from collections import OrderedDict
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
+from .aura_flow import AuraFlowPipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
@@ -45,8 +46,10 @@ from .kandinsky2_2 import (
     KandinskyV22Pipeline,
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
+from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pag import (
+    StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGPipeline,
     StableDiffusionXLPAGImg2ImgPipeline,
@@ -62,6 +65,7 @@ from .stable_diffusion import (
 )
 from .stable_diffusion_3 import (
     StableDiffusion3Img2ImgPipeline,
+    StableDiffusion3InpaintPipeline,
     StableDiffusion3Pipeline,
 )
 from .stable_diffusion_xl import (
@@ -90,8 +94,11 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("pixart-alpha", PixArtAlphaPipeline),
         ("pixart-sigma", PixArtSigmaPipeline),
         ("stable-diffusion-pag", StableDiffusionPAGPipeline),
+        ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGPipeline),
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGPipeline),
+        ("auraflow", AuraFlowPipeline),
+        ("kolors", KolorsPipeline),
     ]
 )
 
@@ -108,6 +115,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGImg2ImgPipeline),
         ("lcm", LatentConsistencyModelImg2ImgPipeline),
+        ("kolors", KolorsImg2ImgPipeline),
     ]
 )
 
@@ -115,6 +123,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
     [
         ("stable-diffusion", StableDiffusionInpaintPipeline),
         ("stable-diffusion-xl", StableDiffusionXLInpaintPipeline),
+        ("stable-diffusion-3", StableDiffusion3InpaintPipeline),
         ("if", IFInpaintingPipeline),
         ("kandinsky", KandinskyInpaintCombinedPipeline),
         ("kandinsky22", KandinskyV22InpaintCombinedPipeline),
