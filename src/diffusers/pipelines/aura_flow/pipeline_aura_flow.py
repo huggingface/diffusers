@@ -391,8 +391,8 @@ class AuraFlowPipeline(DiffusionPipeline):
         sigmas: List[float] = None,
         guidance_scale: float = 3.5,
         num_images_per_prompt: Optional[int] = 1,
-        height: Optional[int] = 512,
-        width: Optional[int] = 512,
+        height: Optional[int] = 1024,
+        width: Optional[int] = 1024,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -415,9 +415,9 @@ class AuraFlowPipeline(DiffusionPipeline):
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
             height (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image. This is set to 512 by default.
+                The height in pixels of the generated image. This is set to 1024 by default for best results.
             width (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image. This is set to 512 by default.
+                The width in pixels of the generated image. This is set to 1024 by default for best results.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
