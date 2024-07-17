@@ -71,9 +71,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
-          python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
-          python -m uv pip install pytest-reportlog
+          python -m uv pip install --prerelease=allow -e [quality,test]
+          python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate.git
+          python -m uv pip install --prerelease=allow pytest-reportlog
 
       - name: Environment
         run: |
@@ -131,9 +131,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
-        python -m uv pip install pytest-reportlog
+        python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install --prerelease=allow pytest-reportlog
 
     - name: Environment
       run: python utils/print_env.py
@@ -158,7 +158,7 @@ jobs:
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
-        python -m uv pip install peft@git+https://github.com/huggingface/peft.git
+        python -m uv pip install --prerelease=allow peft@git+https://github.com/huggingface/peft.git
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v --make-reports=examples_torch_cuda \
           --report-log=examples_torch_cuda.log \
@@ -201,10 +201,10 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
-        python -m uv pip install peft@git+https://github.com/huggingface/peft.git
-        python -m uv pip install pytest-reportlog
+        python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install --prerelease=allow peft@git+https://github.com/huggingface/peft.git
+        python -m uv pip install --prerelease=allow pytest-reportlog
 
     - name: Environment
       run: python utils/print_env.py
@@ -260,9 +260,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
-        python -m uv pip install pytest-reportlog
+        python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install --prerelease=allow pytest-reportlog
 
     - name: Environment
       run: python utils/print_env.py
@@ -315,9 +315,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
-        python -m uv pip install pytest-reportlog
+        python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install --prerelease=allow pytest-reportlog
 
     - name: Environment
       run: python utils/print_env.py
@@ -376,10 +376,10 @@ jobs:
         shell: arch -arch arm64 bash {0}
         run: |
           ${CONDA_RUN} python -m pip install --upgrade pip uv
-          ${CONDA_RUN} python -m uv pip install -e [quality,test]
-          ${CONDA_RUN} python -m uv pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
-          ${CONDA_RUN} python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate
-          ${CONDA_RUN} python -m uv pip install pytest-reportlog
+          ${CONDA_RUN} python -m uv pip install --prerelease=allow -e [quality,test]
+          ${CONDA_RUN} python -m uv pip install --prerelease=allow torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
+          ${CONDA_RUN} python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate
+          ${CONDA_RUN} python -m uv pip install --prerelease=allow pytest-reportlog
 
       - name: Environment
         shell: arch -arch arm64 bash {0}

@@ -63,8 +63,8 @@ jobs:
       - name: Install pytest
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
-          python -m uv pip install peft
+          python -m uv pip install --prerelease=allow -e [quality,test]
+          python -m uv pip install --prerelease=allow peft
 
       - name: Run tests
         env:

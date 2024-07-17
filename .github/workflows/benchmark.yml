@@ -34,8 +34,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
-          python -m uv pip install pandas peft
+          python -m uv pip install --prerelease=allow -e [quality,test]
+          python -m uv pip install --prerelease=allow pandas peft
       - name: Environment
         run: |
           python utils/print_env.py

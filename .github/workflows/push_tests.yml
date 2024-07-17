@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
+          python -m uv pip install --prerelease=allow -e [quality,test]
       - name: Environment
         run: |
           python utils/print_env.py
@@ -74,8 +74,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
-          python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+          python -m uv pip install --prerelease=allow -e [quality,test]
+          python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate.git
       - name: Environment
         run: |
           python utils/print_env.py
@@ -122,8 +122,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
@@ -171,8 +171,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate.git
         python -m pip install -U peft@git+https://github.com/huggingface/peft.git
 
     - name: Environment
@@ -226,8 +226,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
@@ -273,8 +273,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
@@ -323,7 +323,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test,training]
+        python -m uv pip install --prerelease=allow -e [quality,test,training]
     - name: Environment
       run: |
         python utils/print_env.py
@@ -365,7 +365,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test,training]
+        python -m uv pip install --prerelease=allow -e [quality,test,training]
     - name: Environment
       run: |
         python utils/print_env.py
@@ -407,7 +407,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test,training]
+        python -m uv pip install --prerelease=allow -e [quality,test,training]
 
     - name: Environment
       run: |
@@ -419,7 +419,7 @@ jobs:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install timm
+        python -m uv pip install --prerelease=allow timm
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports
