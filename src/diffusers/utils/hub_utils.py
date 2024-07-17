@@ -271,7 +271,8 @@ if cache_version < 1:
 def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
-        splits = splits[:-1] + [variant] + splits[-1:]
+        split_index = -2 if weights_name.endswith(".index.json") else -1
+        splits = splits[:-split_index] + [variant] + splits[-split_index:]
         weights_name = ".".join(splits)
 
     return weights_name

@@ -16,24 +16,24 @@ RUN apt install -y bash \
     ca-certificates \
     libsndfile1-dev \
     libgl1 \
-    python3.9 \
-    python3.9-dev \
+    python3.10 \
+    python3.10-dev \
     python3-pip \
-    python3.9-venv && \
+    python3.10-venv && \
     rm -rf /var/lib/apt/lists
 
 # make sure to use venv
-RUN python3.9 -m venv /opt/venv
+RUN python3.10 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-RUN python3.9 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
-    python3.9 -m uv pip install --no-cache-dir \
+RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
+    python3.10 -m uv pip install --no-cache-dir \
     torch \
     torchvision \
     torchaudio \
     invisible_watermark && \
-    python3.9 -m pip install --no-cache-dir \
+    python3.10 -m pip install --no-cache-dir \
     accelerate \
     datasets \
     hf-doc-builder \
