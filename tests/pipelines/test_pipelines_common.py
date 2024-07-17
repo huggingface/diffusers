@@ -1372,15 +1372,9 @@ class PipelineTesterMixin:
             )
 
         if test_mean_pixel_difference:
-            assert_mean_pixel_difference(
-                np.mean(np.abs(to_np(output_with_slicing1))), np.mean(np.abs(to_np(output_without_slicing)))
-            )
-            assert_mean_pixel_difference(
-                np.mean(np.abs(to_np(output_with_slicing2))), np.mean(np.abs(to_np(output_without_slicing)))
-            )
-            assert_mean_pixel_difference(
-                np.mean(np.abs(to_np(output_with_slicing3))), np.mean(np.abs(to_np(output_without_slicing)))
-            )
+            assert_mean_pixel_difference(to_np(output_with_slicing1[0]), to_np(output_without_slicing[0]))
+            assert_mean_pixel_difference(to_np(output_with_slicing2[0]), to_np(output_without_slicing[0]))
+            assert_mean_pixel_difference(to_np(output_with_slicing3[0]), to_np(output_without_slicing[0]))
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
