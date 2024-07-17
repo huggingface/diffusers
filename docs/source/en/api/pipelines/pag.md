@@ -30,6 +30,11 @@ The abstract from the paper is:
 	- all
 	- __call__
 
+## StableDiffusionControlNetPAGPipeline
+[[autodoc]] StableDiffusionControlNetPAGPipeline
+	- all
+	- __call__
+
 ## StableDiffusionXLPAGPipeline
 [[autodoc]] StableDiffusionXLPAGPipeline
 	- all

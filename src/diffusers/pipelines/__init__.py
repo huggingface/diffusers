@@ -143,6 +143,7 @@ else:
         [
             "AnimateDiffPAGPipeline",
             "StableDiffusionPAGPipeline",
+            "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGPipeline",
@@ -516,6 +517,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .musicldm import MusicLDMPipeline
         from .pag import (
             AnimateDiffPAGPipeline,
+            StableDiffusionControlNetPAGPipeline,
             StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGPipeline,
             StableDiffusionXLPAGImg2ImgPipeline,
