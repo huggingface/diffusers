@@ -121,7 +121,7 @@ class StableAudioPipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.rotary_embed_dim = max(self.transformer.config.attention_head_dim // 2, 32)
+        self.rotary_embed_dim = self.transformer.config.attention_head_dim // 2  # TODO: how to do it ? max(self.transformer.config.attention_head_dim // 2, 32)
 
     # Copied from diffusers.pipelines.pipeline_utils.StableDiffusionMixin.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -211,7 +211,7 @@ class StableAudioPipeline(DiffusionPipeline):
         >>> pipe = pipe.to("cuda")
 
         >>> # Get global and cross attention vectors
-        >>> cross_attention_hidden_states, global_hidden_states = pipe.encode_prompt(
+        >>> cross_attention_hidden_states, global_hidden_states = pipe.encode_prompt_and_seconds(
         ...     prompt="Techno music with a strong, upbeat tempo and high melodic riffs",
         ...     audio_start_in_s=0.0,
         ...     audio_end_in_s=3.0,
@@ -244,6 +244,11 @@ class StableAudioPipeline(DiffusionPipeline):
 
         audio_start_in_s = audio_start_in_s if isinstance(audio_start_in_s, list) else [audio_start_in_s]
         audio_end_in_s = audio_end_in_s if isinstance(audio_end_in_s, list) else [audio_end_in_s]
+        
+        if len(audio_start_in_s) == 1:
+            audio_start_in_s = audio_start_in_s * batch_size
+        if len(audio_end_in_s) == 1:
+            audio_end_in_s = audio_end_in_s * batch_size
 
         if cross_attention_hidden_states is None:
             # 1. Tokenize text
@@ -371,7 +376,7 @@ class StableAudioPipeline(DiffusionPipeline):
 
             # 2. Text encoder forward
             self.text_encoder.eval()
-            with torch.cuda.amp.autocast(dtype=torch.float16) and torch.set_grad_enabled(self.enable_grad):
+            with torch.cuda.amp.autocast(dtype=torch.float16):
                 negative_prompt_embeds = self.text_encoder.to(torch.float16)(
                     uncond_input_ids,
                     attention_mask=negative_attention_mask,
@@ -458,13 +463,9 @@ class StableAudioPipeline(DiffusionPipeline):
         # TODO (YL): check that global hidden states and cross attention hidden states are both passed
         # TODO (YL): check that initial audio waveform length no longer
 
-        # TODO (YL): is this min audio length a thing?
-        min_audio_length_in_s = 2.0
-        audio_length_in_s = audio_end_in_s - audio_start_in_s
-        if audio_length_in_s < min_audio_length_in_s:
+        if audio_end_in_s < audio_start_in_s:
             raise ValueError(
-                f"`audio_end_in_s-audio_start_in_s` has to be a positive value greater than or equal to {min_audio_length_in_s}, but "
-                f"is {audio_length_in_s}."
+                f"`audio_end_in_s={audio_end_in_s}' must be higher than 'audio_start_in_s={audio_start_in_s}` but "
             )
 
         if (
@@ -473,7 +474,7 @@ class StableAudioPipeline(DiffusionPipeline):
         ):
             raise ValueError(
                 f"`audio_start_in_s` must be greater than or equal to {self.projection_model.config.min_value}, and lower than or equal to {self.projection_model.config.max_value} but "
-                f"is {audio_length_in_s}."
+                f"is {audio_start_in_s}."
             )
 
         if (
@@ -555,6 +556,7 @@ class StableAudioPipeline(DiffusionPipeline):
 
         # encode the initial audio for use by the model
         if initial_audio_waveforms is not None:
+            # TODO: crop and pad and channels
             encoded_audio = self.vae.encode(initial_audio_waveforms).latents.sample(generator)
             encoded_audio = torch.repeat(encoded_audio, (num_waveforms_per_prompt * encoded_audio.shape[0], 1, 1))
             latents = encoded_audio + latents
@@ -584,7 +586,7 @@ class StableAudioPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        output_type: Optional[str] = "np",
+        output_type: Optional[str] = "pt",
     ):
         r"""
         The call function to the pipeline for generation.
@@ -647,7 +649,7 @@ class StableAudioPipeline(DiffusionPipeline):
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            output_type (`str`, *optional*, defaults to `"np"`):
+            output_type (`str`, *optional*, defaults to `"pt"`):
                 The output format of the generated audio. Choose between `"np"` to return a NumPy `np.ndarray` or
                 `"pt"` to return a PyTorch `torch.Tensor` object. Set to `"latent"` to return the latent diffusion
                 model (LDM) output.
@@ -715,6 +717,7 @@ class StableAudioPipeline(DiffusionPipeline):
             negative_prompt,
             cross_attention_hidden_states=cross_attention_hidden_states,
             negative_cross_attention_hidden_states=negative_cross_attention_hidden_states,
+            global_hidden_states=global_hidden_states,
             attention_mask=attention_mask,
             negative_attention_mask=negative_attention_mask,
         )

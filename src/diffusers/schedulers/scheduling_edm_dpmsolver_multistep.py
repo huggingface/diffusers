@@ -60,16 +60,19 @@ class BrownianTreeNoiseSampler:
             random samples.
         sigma_min (float): The low end of the valid interval.
         sigma_max (float): The high end of the valid interval.
-        seed (int or List[int]): The random seed. If a list of seeds is
-            supplied instead of a single integer, then the noise sampler will use one BrownianTree per batch item, each
-            with its own seed.
+        generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+            generation deterministic.
         transform (callable): A function that maps sigma to the sampler's
             internal timestep.
     """
 
-    def __init__(self, x, sigma_min, sigma_max, seed=None, transform=lambda x: x):
+    def __init__(self, x, sigma_min, sigma_max, generator, transform=lambda x: x):
         self.transform = transform
         t0, t1 = self.transform(torch.as_tensor(sigma_min)), self.transform(torch.as_tensor(sigma_max))
+        seed = None
+        if generator is not None:
+            seed = [g.seed() for g in generator] if isinstance(generator, list) else generator.seed()
         self.tree = BatchedBrownianTree(x, t0, t1, seed)
 
     def __call__(self, sigma, sigma_next):
@@ -343,6 +346,9 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        
+        # if a noise sampler is used, reinitialise it
+        self.noise_sample = None
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._compute_karras_sigmas
     def _compute_karras_sigmas(self, ramp, sigma_min=None, sigma_max=None) -> torch.Tensor:
@@ -720,8 +726,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
             )
         elif self.config.algorithm_type == "sde-dpmsolver++" and self.noise_sampling_strategy == "brownian_tree":
-            self.noise_sampler = BrownianTreeNoiseSampler(model_output, sigma_min=self.config.sigma_min, sigma_max=self.config.sigma_max) if self.noise_sampler is None else self.noise_sampler
-            noise = self.noise_sampler(self.sigmas[self.step_index], self.sigmas[self.step_index + 1])
+            self.noise_sampler = BrownianTreeNoiseSampler(model_output, sigma_min=self.config.sigma_min, sigma_max=self.config.sigma_max, generator=generator) if self.noise_sampler is None else self.noise_sampler
+            noise = self.noise_sampler(self.sigmas[self.step_index], self.sigmas[self.step_index + 1]).to(model_output.device)
         else:
             noise = None
 
