@@ -71,6 +71,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Semantic Guidance](semantic_stable_diffusion) | text2image |
 | [Shap-E](shap_e) | text-to-3D, image-to-3D |
 | [Spectrogram Diffusion](spectrogram_diffusion) |  |
+| [Stable Audio](stable_audio) | text2audio |
 | [Stable Diffusion](stable_diffusion/overview) | text2image, image2image, depth2image, inpainting, image variation, latent upscaler, super-resolution |
 | [Stable Diffusion Model Editing](model_editing) | model editing |
 | [Stable Diffusion XL](stable_diffusion/stable_diffusion_xl) | text2image, image2image, inpainting |
