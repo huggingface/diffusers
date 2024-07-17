@@ -325,7 +325,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @nightly
 @require_torch_gpu
-class StableAudioPipelineNightlyTests(unittest.TestCase):
+class StableAudioPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
@@ -338,19 +338,20 @@ class StableAudioPipelineNightlyTests(unittest.TestCase):
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
-        latents = np.random.RandomState(seed).standard_normal((1, 8, 128, 16))
+        latents = np.random.RandomState(seed).standard_normal((1, 64, 1024))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
             "prompt": "A hammer hitting a wooden surface",
             "latents": latents,
             "generator": generator,
             "num_inference_steps": 3,
+            "audio_end_in_s": 30,
             "guidance_scale": 2.5,
         }
         return inputs
 
     def test_stable_audio(self):
-        stable_audio_pipe = StableAudioPipeline.from_pretrained("cvssp/stable_audio")
+        stable_audio_pipe = StableAudioPipeline.from_pretrained("ylacombe/stable-audio-1.0") # TODO (YL): change once changed
         stable_audio_pipe = stable_audio_pipe.to(torch_device)
         stable_audio_pipe.set_progress_bar_config(disable=None)
 
@@ -358,30 +359,15 @@ class StableAudioPipelineNightlyTests(unittest.TestCase):
         inputs["num_inference_steps"] = 25
         audio = stable_audio_pipe(**inputs).audios[0]
 
-        assert audio.ndim == 1
-        assert len(audio) == 81952
+        assert audio.ndim == 2
+        assert audio.shape == (2, int(inputs["audio_end_in_s"] * stable_audio_pipe.vae.sampling_rate))
 
         # check the portion of the generated audio with the largest dynamic range (reduces flakiness)
-        audio_slice = audio[8680:8690]
+        audio_slice = audio[0, 637780:637790]
+         # fmt: off
         expected_slice = np.array(
-            [-0.1042, -0.1068, -0.1235, -0.1387, -0.1428, -0.136, -0.1213, -0.1097, -0.0967, -0.0945]
+            [0.6573, 0.6195, 0.5875, 0.5700, 0.5787, 0.6162, 0.6691, 0.7116, 0.7227, 0.6936]
         )
-        max_diff = np.abs(expected_slice - audio_slice).max()
-        assert max_diff < 1e-3
-
-    def test_stable_audio_lms(self):
-        stable_audio_pipe = StableAudioPipeline.from_pretrained("cvssp/stable_audio")
-        stable_audio_pipe = stable_audio_pipe.to(torch_device)
-        stable_audio_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        audio = stable_audio_pipe(**inputs).audios[0]
-
-        assert audio.ndim == 1
-        assert len(audio) == 81952
-
-        # check the portion of the generated audio with the largest dynamic range (reduces flakiness)
-        audio_slice = audio[58020:58030]
-        expected_slice = np.array([0.3592, 0.3477, 0.4084, 0.4665, 0.5048, 0.5891, 0.6461, 0.5579, 0.4595, 0.4403])
-        max_diff = np.abs(expected_slice - audio_slice).max()
+         # fmt: one
+        max_diff = np.abs(expected_slice - audio_slice.detach().cpu().numpy()).max()
         assert max_diff < 1e-3
