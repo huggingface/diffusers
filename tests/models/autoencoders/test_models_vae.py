@@ -1164,7 +1164,6 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
         # automatic decoding with librispeech
         speech_samples = ds.sort("id").select(range(num_samples))[:num_samples]["audio"]
     
-        # TODO: multiple samples -> pad
         return torch.nn.utils.rnn.pad_sequence([torch.from_numpy(x["array"]) for x in speech_samples], batch_first=True)
 
     def get_audio(self, audio_sample_size=2097152, fp16=False):
