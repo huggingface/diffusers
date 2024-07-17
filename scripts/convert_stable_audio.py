@@ -191,7 +191,7 @@ scheduler = EDMDPMSolverMultistepScheduler(
     sigma_data=1.0,
     algorithm_type="sde-dpmsolver++",
     sigma_schedule="exponential",
-    noise_sampling_strategy = "brownian_tree",
+    noise_sampling_strategy="brownian_tree",
 )
 scheduler.config["sigma_min"] = 0.3
 scheduler.config["sigma_max"] = 500

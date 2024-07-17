@@ -18,9 +18,8 @@ import unittest
 
 import numpy as np
 import torch
-from parameterized import parameterized
-
 from datasets import load_dataset
+from parameterized import parameterized
 
 from diffusers import (
     AsymmetricAutoencoderKL,
@@ -129,7 +128,8 @@ def get_consistency_vae_config(block_out_channels=None, norm_num_groups=None):
         "scaling_factor": 1,
         "latent_channels": 4,
     }
-    
+
+
 def get_autoencoder_oobleck_config(block_out_channels=None):
     init_dict = {
         "encoder_hidden_size": 12,
@@ -493,6 +493,7 @@ class AutoencoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase)
 
             self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
+
 class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AutoencoderOobleck
     main_input_name = "sample"
@@ -526,6 +527,7 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
 
     def test_forward_with_norm_groups(self):
         pass
+
 
 @slow
 class AutoencoderTinyIntegrationTests(unittest.TestCase):
@@ -1163,22 +1165,26 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
         )
         # automatic decoding with librispeech
         speech_samples = ds.sort("id").select(range(num_samples))[:num_samples]["audio"]
-    
-        return torch.nn.utils.rnn.pad_sequence([torch.from_numpy(x["array"]) for x in speech_samples], batch_first=True)
+
+        return torch.nn.utils.rnn.pad_sequence(
+            [torch.from_numpy(x["array"]) for x in speech_samples], batch_first=True
+        )
 
     def get_audio(self, audio_sample_size=2097152, fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
         audio = self._load_datasamples(2).to(torch_device).to(dtype)
-        
+
         # pad / crop to audio_sample_size
-        audio = torch.nn.functional.pad(audio[:, :audio_sample_size], pad=(0, audio_sample_size-audio.shape[-1]))
+        audio = torch.nn.functional.pad(audio[:, :audio_sample_size], pad=(0, audio_sample_size - audio.shape[-1]))
 
         # todo channel
         audio = audio.unsqueeze(1).repeat(1, 2, 1).to(torch_device)
-        
+
         return audio
 
-    def get_oobleck_vae_model(self, model_id="ylacombe/stable-audio-1.0", fp16=False): # TODO (YL): change repo id once moved
+    def get_oobleck_vae_model(
+        self, model_id="ylacombe/stable-audio-1.0", fp16=False
+    ):  # TODO (YL): change repo id once moved
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = AutoencoderOobleck.from_pretrained(
@@ -1195,7 +1201,6 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
         if torch_device != "mps":
             return torch.Generator(device=generator_device).manual_seed(seed)
         return torch.manual_seed(seed)
-
 
     @parameterized.expand(
         [
@@ -1216,12 +1221,10 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
         assert sample.shape == audio.shape
         assert ((sample - audio).abs().mean() - expected_mean_absolute_diff).abs() <= 1e-6
 
-
         output_slice = sample[-1, 1, 5:10].cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=1e-5)
-
 
     def test_stable_diffusion_mode(self):
         model = self.get_oobleck_vae_model()
@@ -1231,7 +1234,6 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
             sample = model(audio, sample_posterior=False).sample
 
         assert sample.shape == audio.shape
-
 
     @parameterized.expand(
         [
@@ -1246,7 +1248,6 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
         audio = self.get_audio()
         generator = self.get_generator(seed)
 
-
         with torch.no_grad():
             x = audio
             posterior = model.encode(x).latent_dist
@@ -1258,7 +1259,6 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
 
         assert sample.shape == audio.shape
         assert ((sample - audio).abs().mean() - expected_mean_absolute_diff).abs() <= 1e-6
-
 
         output_slice = sample[-1, 1, 5:10].cpu()
         expected_output_slice = torch.tensor(expected_slice)

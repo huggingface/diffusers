@@ -22,20 +22,19 @@ import torch
 from transformers import (
     T5EncoderModel,
     T5Tokenizer,
-    T5TokenizerFast,
 )
 
 from diffusers import (
     AutoencoderOobleck,
     EDMDPMSolverMultistepScheduler,
-    StableAudioPipeline,
     StableAudioDiTModel,
+    StableAudioPipeline,
     StableAudioProjectionModel,
 )
 from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
-from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
+from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -44,18 +43,20 @@ enable_full_determinism()
 
 class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableAudioPipeline
-    params = frozenset([
-        "prompt",
-        "audio_end_in_s",
-        "audio_start_in_s",
-        "guidance_scale",
-        "negative_prompt",
-        "cross_attention_hidden_states",
-        "negative_cross_attention_hidden_states",
-        "global_hidden_states",
-        "cross_attention_kwargs",
-        "initial_audio_waveforms",
-    ])
+    params = frozenset(
+        [
+            "prompt",
+            "audio_end_in_s",
+            "audio_start_in_s",
+            "guidance_scale",
+            "negative_prompt",
+            "cross_attention_hidden_states",
+            "negative_cross_attention_hidden_states",
+            "global_hidden_states",
+            "cross_attention_kwargs",
+            "initial_audio_waveforms",
+        ]
+    )
     batch_params = TEXT_TO_AUDIO_BATCH_PARAMS
     required_optional_params = frozenset(
         [
@@ -91,30 +92,30 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             sigma_data=1.0,
             algorithm_type="sde-dpmsolver++",
             sigma_schedule="exponential",
-            noise_sampling_strategy = "brownian_tree",
+            noise_sampling_strategy="brownian_tree",
         )
         torch.manual_seed(0)
         vae = AutoencoderOobleck(
             encoder_hidden_size=8,
-            downsampling_ratios=[1,2],
+            downsampling_ratios=[1, 2],
             decoder_channels=8,
             decoder_input_channels=2,
             audio_channels=2,
-            channel_multiples=[1,2],
+            channel_multiples=[1, 2],
             sampling_rate=32,
         )
         torch.manual_seed(0)
         t5_repo_id = "hf-internal-testing/tiny-random-T5ForConditionalGeneration"
         text_encoder = T5EncoderModel.from_pretrained(t5_repo_id)
         tokenizer = T5Tokenizer.from_pretrained(t5_repo_id, truncation=True, model_max_length=25)
-        
+
         torch.manual_seed(0)
         projection_model = StableAudioProjectionModel(
-                text_encoder_dim=text_encoder.config.d_model,
-                conditioning_dim=24,
-                min_value=0,
-                max_value=256,
-            )
+            text_encoder_dim=text_encoder.config.d_model,
+            conditioning_dim=24,
+            min_value=0,
+            max_value=256,
+        )
 
         components = {
             "transformer": transformer,
@@ -138,7 +139,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "guidance_scale": 6.0,
         }
         return inputs
-    
+
     def test_save_load_local(self):
         # increase tolerance from 1e-4 -> 7e-3 to account for large composite model
         super().test_save_load_local(expected_max_difference=7e-3)
@@ -178,18 +179,21 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(torch_device)
         prompt = 3 * [inputs.pop("prompt")]
-        
-        audio_end_in_s = stable_audio_pipe.transformer.config.sample_size * stable_audio_pipe.vae.hop_length / stable_audio_pipe.vae.config.sampling_rate
+
+        audio_end_in_s = (
+            stable_audio_pipe.transformer.config.sample_size
+            * stable_audio_pipe.vae.hop_length
+            / stable_audio_pipe.vae.config.sampling_rate
+        )
 
         cross_attention_hidden_states, global_hidden_states = stable_audio_pipe.encode_prompt_and_seconds(
-                    prompt=prompt,
-                    audio_start_in_s=0.0,
-                    audio_end_in_s=audio_end_in_s,
-                    device="cuda",
-                    do_classifier_free_guidance=False,
-                    num_waveforms_per_prompt=1,
-                )
-
+            prompt=prompt,
+            audio_start_in_s=0.0,
+            audio_end_in_s=audio_end_in_s,
+            device="cuda",
+            do_classifier_free_guidance=False,
+            num_waveforms_per_prompt=1,
+        )
 
         inputs["cross_attention_hidden_states"] = cross_attention_hidden_states
         inputs["global_hidden_states"] = global_hidden_states
@@ -218,20 +222,26 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         prompt = 3 * [inputs.pop("prompt")]
 
-        
-        audio_end_in_s = stable_audio_pipe.transformer.config.sample_size * stable_audio_pipe.vae.hop_length / stable_audio_pipe.vae.config.sampling_rate
+        audio_end_in_s = (
+            stable_audio_pipe.transformer.config.sample_size
+            * stable_audio_pipe.vae.hop_length
+            / stable_audio_pipe.vae.config.sampling_rate
+        )
 
         cross_attention_hidden_states, global_hidden_states = stable_audio_pipe.encode_prompt_and_seconds(
-                    prompt=prompt,
-                    negative_prompt=negative_prompt,
-                    audio_start_in_s=0.0,
-                    audio_end_in_s=audio_end_in_s,
-                    device="cuda",
-                    do_classifier_free_guidance=True,
-                    num_waveforms_per_prompt=1,
-                )
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            audio_start_in_s=0.0,
+            audio_end_in_s=audio_end_in_s,
+            device="cuda",
+            do_classifier_free_guidance=True,
+            num_waveforms_per_prompt=1,
+        )
 
-        inputs["cross_attention_hidden_states"], inputs["global_hidden_states"] = cross_attention_hidden_states[:3], global_hidden_states[:3]
+        inputs["cross_attention_hidden_states"], inputs["global_hidden_states"] = (
+            cross_attention_hidden_states[:3],
+            global_hidden_states[:3],
+        )
         inputs["negative_cross_attention_hidden_states"] = cross_attention_hidden_states[3:]
 
         # forward
@@ -277,7 +287,9 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # test num_waveforms_per_prompt for single prompt
         num_waveforms_per_prompt = 2
-        audios = stable_audio_pipe(prompt, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt).audios
+        audios = stable_audio_pipe(
+            prompt, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt
+        ).audios
 
         assert audios.shape == (num_waveforms_per_prompt, 2, 63)
 
@@ -351,7 +363,9 @@ class StableAudioPipelineIntegrationTests(unittest.TestCase):
         return inputs
 
     def test_stable_audio(self):
-        stable_audio_pipe = StableAudioPipeline.from_pretrained("ylacombe/stable-audio-1.0") # TODO (YL): change once changed
+        stable_audio_pipe = StableAudioPipeline.from_pretrained(
+            "ylacombe/stable-audio-1.0"
+        )  # TODO (YL): change once changed
         stable_audio_pipe = stable_audio_pipe.to(torch_device)
         stable_audio_pipe.set_progress_bar_config(disable=None)
 
@@ -364,7 +378,7 @@ class StableAudioPipelineIntegrationTests(unittest.TestCase):
 
         # check the portion of the generated audio with the largest dynamic range (reduces flakiness)
         audio_slice = audio[0, 637780:637790]
-         # fmt: off
+        # fmt: off
         expected_slice = np.array(
             [0.6573, 0.6195, 0.5875, 0.5700, 0.5787, 0.6162, 0.6691, 0.7116, 0.7227, 0.6936]
         )

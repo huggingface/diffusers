@@ -121,7 +121,9 @@ class StableAudioPipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.rotary_embed_dim = self.transformer.config.attention_head_dim // 2  # TODO: how to do it ? max(self.transformer.config.attention_head_dim // 2, 32)
+        self.rotary_embed_dim = (
+            self.transformer.config.attention_head_dim // 2
+        )  # TODO: how to do it ? max(self.transformer.config.attention_head_dim // 2, 32)
 
     # Copied from diffusers.pipelines.pipeline_utils.StableDiffusionMixin.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -244,7 +246,7 @@ class StableAudioPipeline(DiffusionPipeline):
 
         audio_start_in_s = audio_start_in_s if isinstance(audio_start_in_s, list) else [audio_start_in_s]
         audio_end_in_s = audio_end_in_s if isinstance(audio_end_in_s, list) else [audio_end_in_s]
-        
+
         if len(audio_start_in_s) == 1:
             audio_start_in_s = audio_start_in_s * batch_size
         if len(audio_end_in_s) == 1:
