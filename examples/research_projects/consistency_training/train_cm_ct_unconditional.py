@@ -198,7 +198,7 @@ def scalings_for_boundary_conditions(timestep, sigma_data=0.5, timestep_scaling=
 def log_validation(unet, scheduler, args, accelerator, weight_dtype, step, name="teacher"):
     logger.info("Running validation... ")
 
-    unet = unwrap_model(unet)
+    unet = accelerator.unwrap_model(unet)
     pipeline = ConsistencyModelPipeline(
         unet=unet,
         scheduler=scheduler,
