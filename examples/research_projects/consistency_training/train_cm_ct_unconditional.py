@@ -198,7 +198,7 @@ def scalings_for_boundary_conditions(timestep, sigma_data=0.5, timestep_scaling=
 def log_validation(unet, scheduler, args, accelerator, weight_dtype, step, name="teacher"):
     logger.info("Running validation... ")
 
-    unet = accelerator.unwrap_model(unet)
+    unet = unwrap_model(unet)
     pipeline = ConsistencyModelPipeline(
         unet=unet,
         scheduler=scheduler,
@@ -1195,7 +1195,7 @@ def main(args):
 
     # Resolve the c parameter for the Pseudo-Huber loss
     if args.huber_c is None:
-        args.huber_c = 0.00054 * args.resolution * math.sqrt(accelerator.unwrap_model(unet).config.in_channels)
+        args.huber_c = 0.00054 * args.resolution * math.sqrt(unwrap_model(unet).config.in_channels)
 
     # Get current number of discretization steps N according to our discretization curriculum
     current_discretization_steps = get_discretization_steps(
