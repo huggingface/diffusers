@@ -30,11 +30,11 @@ from .attention_processor import (
 )
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
+from .unets.unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unets.unet_2d_condition import UNet2DConditionModel
 from .unets.unet_3d_blocks import (
     CrossAttnDownBlockMotion,
     DownBlockMotion,
-    UNetMidBlock3DCrossAttn,
     get_down_block,
 )
 
@@ -195,6 +195,8 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 768,
         transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1,
+        transformer_layers_per_mid_block: Optional[Union[int, Tuple[int]]] = None,
+        temporal_transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
         attention_head_dim: Union[int, Tuple[int, ...]] = 8,
@@ -245,6 +247,8 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
 
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
+        if isinstance(temporal_transformer_layers_per_block, int):
+            temporal_transformer_layers_per_block = [temporal_transformer_layers_per_block] * len(down_block_types)
 
         # input
         conv_in_kernel = 3
@@ -284,6 +288,9 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         self.down_blocks = nn.ModuleList([])
         self.controlnet_down_blocks = nn.ModuleList([])
 
+        if isinstance(cross_attention_dim, int):
+            cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
+
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)
 
@@ -292,6 +299,9 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
 
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(down_block_types)
+
+        if isinstance(motion_num_attention_heads, int):
+            motion_num_attention_heads = (motion_num_attention_heads,) * len(down_block_types)
 
         # down
         output_channel = block_out_channels[0]
@@ -308,25 +318,27 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
             down_block = get_down_block(
                 down_block_type,
                 num_layers=layers_per_block,
-                transformer_layers_per_block=transformer_layers_per_block[i],
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=time_embed_dim,
                 add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
-                resnet_groups=norm_num_groups,
-                cross_attention_dim=cross_attention_dim,
                 num_attention_heads=num_attention_heads[i],
-                attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                resnet_groups=norm_num_groups,
+                cross_attention_dim=cross_attention_dim[i],
                 downsample_padding=downsample_padding,
+                dual_cross_attention=False,
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                temporal_num_attention_heads=motion_num_attention_heads,
+                temporal_num_attention_heads=motion_num_attention_heads[i],
                 temporal_max_seq_length=motion_max_seq_length,
                 temporal_double_self_attention=False,
+                transformer_layers_per_block=transformer_layers_per_block[i],
+                temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
+                dropout=0,
             )
             self.down_blocks.append(down_block)
 
@@ -341,17 +353,23 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                 self.controlnet_down_blocks.append(controlnet_block)
 
         # mid
-        mid_block_channel = block_out_channels[-1]
+        mid_block_channels = block_out_channels[-1]
 
-        controlnet_block = nn.Conv2d(mid_block_channel, mid_block_channel, kernel_size=1)
+        controlnet_block = nn.Conv2d(mid_block_channels, mid_block_channels, kernel_size=1)
         controlnet_block = zero_module(controlnet_block)
         self.controlnet_mid_block = controlnet_block
 
-        self.mid_block = UNetMidBlock3DCrossAttn(
-            in_channels=mid_block_channel[-1],
+        if transformer_layers_per_mid_block is None:
+            transformer_layers_per_mid_block = (
+                transformer_layers_per_block[-1] if isinstance(transformer_layers_per_block[-1], int) else 1
+            )
+
+        self.mid_block = UNetMidBlock2DCrossAttn(
+            in_channels=mid_block_channels,
             temb_channels=time_embed_dim,
             dropout=0,
             num_layers=1,
+            transformer_layers_per_block=transformer_layers_per_mid_block,
             resnet_eps=norm_eps,
             resnet_time_scale_shift=resnet_time_scale_shift,
             resnet_act_fn=act_fn,
@@ -359,10 +377,11 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
             resnet_pre_norm=True,
             num_attention_heads=num_attention_heads[-1],
             output_scale_factor=mid_block_scale_factor,
-            cross_attention_dim=cross_attention_dim,
+            cross_attention_dim=cross_attention_dim[-1],
             dual_cross_attention=False,
             use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
+            attention_type="default",
         )
 
     @classmethod
@@ -578,7 +597,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
     def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
-        if isinstance(module, (CrossAttnDownBlockMotion, DownBlockMotion)):
+        if isinstance(module, (CrossAttnDownBlockMotion, DownBlockMotion, UNetMidBlock2DCrossAttn)):
             module.gradient_checkpointing = value
 
     def forward(

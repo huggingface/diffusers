@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_animatediff"] = ["AnimateDiffPipeline"]
     _import_structure["pipeline_animatediff_sdxl"] = ["AnimateDiffSDXLPipeline"]
+    _import_structure["pipeline_animatediff_sparsectrl"] = ["AnimateDiffSparseControlNetPipeline"]
     _import_structure["pipeline_animatediff_video2video"] = ["AnimateDiffVideoToVideoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -35,6 +36,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_animatediff import AnimateDiffPipeline
         from .pipeline_animatediff_sdxl import AnimateDiffSDXLPipeline
+        from .pipeline_animatediff_sparsectrl import AnimateDiffSparseControlNetPipeline
         from .pipeline_animatediff_video2video import AnimateDiffVideoToVideoPipeline
         from .pipeline_output import AnimateDiffPipelineOutput
 
