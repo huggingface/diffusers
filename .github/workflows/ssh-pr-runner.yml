@@ -30,10 +30,6 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: NVIDIA-SMI
-        run: |
-          nvidia-smi
-
       - name: Tailscale # In order to be able to SSH when a test fails
         uses: huggingface/tailscale-action@main
         with:
