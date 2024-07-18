@@ -880,8 +880,6 @@ class AnimateDiffSparseControlNetPipeline(
                     else:
                         control_model_input = latent_model_input
                         controlnet_prompt_embeds = prompt_embeds
-                    controlnet_prompt_embeds = controlnet_prompt_embeds.repeat_interleave(num_frames, dim=0)
-                    print("controlnet_prompt_embeds:", controlnet_prompt_embeds.shape)
 
                     down_block_res_samples, mid_block_res_sample = self.controlnet(
                         control_model_input,

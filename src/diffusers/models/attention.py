@@ -458,15 +458,6 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
-        print(
-            "first:",
-            norm_hidden_states.shape,
-            encoder_hidden_states.shape if encoder_hidden_states is not None else None,
-            attn_output.shape,
-        )
-        print("first processor:", self.attn1.processor)
-        if attention_mask is not None:
-            print("attention_mask", attention_mask.shape)
 
         if self.norm_type == "ada_norm_zero":
             attn_output = gate_msa.unsqueeze(1) * attn_output
@@ -482,9 +473,7 @@ class BasicTransformerBlock(nn.Module):
             hidden_states = self.fuser(hidden_states, gligen_kwargs["objs"])
 
         # 3. Cross-Attention
-        print("has_self_attn2:", self.attn2 is not None)
         if self.attn2 is not None:
-            print("second processor:", self.attn2.processor)
             if self.norm_type == "ada_norm":
                 norm_hidden_states = self.norm2(hidden_states, timestep)
             elif self.norm_type in ["ada_norm_zero", "layer_norm", "layer_norm_i2vgen"]:
@@ -507,14 +496,6 @@ class BasicTransformerBlock(nn.Module):
                 attention_mask=encoder_attention_mask,
                 **cross_attention_kwargs,
             )
-            print(
-                "second:",
-                norm_hidden_states.shape,
-                encoder_hidden_states.shape if encoder_hidden_states is not None else None,
-                attn_output.shape,
-            )
-            if encoder_attention_mask is not None:
-                print("encoder_attention_mask", encoder_attention_mask.shape)
             hidden_states = attn_output + hidden_states
 
         # 4. Feed-forward

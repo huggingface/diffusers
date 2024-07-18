@@ -697,9 +697,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
 
         emb = self.time_embedding(t_emb, timestep_cond)
         emb = emb.repeat_interleave(sample_num_frames, dim=0)
-        # print("before:", encoder_hidden_states.shape)
-        # encoder_hidden_states = encoder_hidden_states.repeat_interleave(sample_num_frames, dim=0)
-        # print("after:", encoder_hidden_states.shape)
+        encoder_hidden_states = encoder_hidden_states.repeat_interleave(sample_num_frames, dim=0)
 
         # 2. pre-process
         batch_size, channels, num_frames, height, width = sample.shape
@@ -730,15 +728,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
-                print(
-                    "branch 1",
-                    sample.shape,
-                    emb.shape,
-                    encoder_hidden_states.shape,
-                    cross_attention_kwargs,
-                    num_frames,
-                    attention_mask.shape if attention_mask is not None else None,
-                )
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -748,7 +737,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                     cross_attention_kwargs=cross_attention_kwargs,
                 )
             else:
-                print("branch 2", sample.shape, emb.shape, num_frames)
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb, num_frames=num_frames)
 
             down_block_res_samples += res_samples
