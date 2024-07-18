@@ -153,7 +153,6 @@ class SD3LoRATests(unittest.TestCase):
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        inputs = self.get_dummy_inputs(torch_device)
 
         pipe.transformer.add_adapter(transformer_config)
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
