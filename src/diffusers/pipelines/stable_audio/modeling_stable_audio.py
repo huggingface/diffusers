@@ -39,6 +39,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class StableAudioGaussianFourierProjection(nn.Module):
     """Gaussian Fourier embeddings for noise levels."""
+
     # Copied from diffusers.models.embeddings.GaussianFourierProjection.__init__
     def __init__(
         self, embedding_size: int = 256, scale: float = 1.0, set_W_to_weight=True, log=True, flip_sin_to_cos=False
