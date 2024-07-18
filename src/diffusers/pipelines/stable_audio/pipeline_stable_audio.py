@@ -457,12 +457,9 @@ class StableAudioPipeline(DiffusionPipeline):
         global_hidden_states=None,
         attention_mask=None,
         negative_attention_mask=None,
-        initial_audio_waveforms=None,  # TODO (YL), check this
+        initial_audio_waveforms=None,
         initial_audio_sampling_rate=None,
     ):
-        # TODO(YL): check here that seconds_start and seconds_end have the right BS (either 1 or prompt BS)
-        # TODO (YL): check that global hidden states and cross attention hidden states are both passed
-        # TODO (YL): check that initial audio waveform length no longer
         if audio_end_in_s < audio_start_in_s:
             raise ValueError(
                 f"`audio_end_in_s={audio_end_in_s}' must be higher than 'audio_start_in_s={audio_start_in_s}` but "
@@ -525,6 +522,17 @@ class StableAudioPipeline(DiffusionPipeline):
                     "`attention_mask should have the same batch size and sequence length as `cross_attention_hidden_states`, but got:"
                     f"`attention_mask: {attention_mask.shape} != `cross_attention_hidden_states` {cross_attention_hidden_states.shape}"
                 )
+                
+        if cross_attention_hidden_states is not None and global_hidden_states is None:
+            raise ValueError(
+                "`global_hidden_states` must also be provided if `cross_attention_hidden_states` is."
+            )
+         
+        if global_hidden_states is not None and cross_attention_hidden_states is None:
+            raise ValueError(
+                "`cross_attention_hidden_states` must also be provided if `global_hidden_states` is."
+            )       
+
 
         if initial_audio_sampling_rate is None and initial_audio_waveforms is not None:
             raise ValueError(
@@ -624,7 +632,7 @@ class StableAudioPipeline(DiffusionPipeline):
         initial_audio_sampling_rate: Optional[torch.Tensor] = None,
         cross_attention_hidden_states: Optional[torch.Tensor] = None,
         negative_cross_attention_hidden_states: Optional[torch.Tensor] = None,
-        global_hidden_states: Optional[torch.Tensor] = None,  # TODO (YL): add to docstrings
+        global_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
         negative_attention_mask: Optional[torch.LongTensor] = None,
         return_dict: bool = True,
@@ -673,12 +681,14 @@ class StableAudioPipeline(DiffusionPipeline):
             initial_audio_sampling_rate (`int`, *optional*):
                 Sampling rate of the `initial_audio_waveforms`, if they are provided. Must be the same as the model.
             cross_attention_hidden_states (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
-                provided, text embeddings are generated from the `prompt` input argument.
+                Pre-generated cross-attention hidden states. Can be used to tweak inputs (prompt weighting). If not provided,
+                will be computed from `prompt`, `audio_start_in_s` and `audio_end_in_s` input arguments.
             negative_cross_attention_hidden_states (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
-                not provided, `negative_cross_attention_hidden_states` are generated from the `negative_prompt` input
-                argument.
+                Pre-generated negative cross-attention hidden states. Can be used to tweak inputs (prompt weighting). If not provided,
+                will be computed from `prompt`, `audio_start_in_s` and `audio_end_in_s` input arguments.
+            global_hidden_states (`torch.Tensor`, *optional*):
+                Pre-generated global hidden states. Can be used to tweak inputs (prompt weighting). If not provided,
+                will be computed from `audio_start_in_s` and `audio_end_in_s` input arguments.
             attention_mask (`torch.LongTensor`, *optional*):
                 Pre-computed attention mask to be applied to the `cross_attention_hidden_states`. If not provided,
                 attention mask will be computed from `prompt` input argument.
