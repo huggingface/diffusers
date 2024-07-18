@@ -313,7 +313,6 @@ def _is_model_weights_in_cached_folder(cached_folder, name):
 
 def load_single_file_checkpoint(
     pretrained_model_link_or_path,
-    resume_download=False,
     force_download=False,
     proxies=None,
     token=None,
@@ -331,7 +330,6 @@ def load_single_file_checkpoint(
             weights_name=weights_name,
             force_download=force_download,
             cache_dir=cache_dir,
-            resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
             token=token,
