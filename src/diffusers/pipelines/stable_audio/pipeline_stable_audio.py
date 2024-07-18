@@ -47,7 +47,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import StableAudioPipeline
 
-        >>> repo_id = "cvssp/audioldm2"  # TODO (YL): change once set
+        >>> repo_id = "ylacombe/stable-audio-1.0"  # TODO (YL): change once set
         >>> pipe = StableAudioPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
@@ -121,9 +121,7 @@ class StableAudioPipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.rotary_embed_dim = (
-            self.transformer.config.attention_head_dim // 2
-        )  # TODO: how to do it ? max(self.transformer.config.attention_head_dim // 2, 32)
+        self.rotary_embed_dim = self.transformer.config.attention_head_dim // 2
 
     # Copied from diffusers.pipelines.pipeline_utils.StableDiffusionMixin.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -460,11 +458,11 @@ class StableAudioPipeline(DiffusionPipeline):
         attention_mask=None,
         negative_attention_mask=None,
         initial_audio_waveforms=None,  # TODO (YL), check this
+        initial_audio_sampling_rate=None,
     ):
         # TODO(YL): check here that seconds_start and seconds_end have the right BS (either 1 or prompt BS)
         # TODO (YL): check that global hidden states and cross attention hidden states are both passed
         # TODO (YL): check that initial audio waveform length no longer
-
         if audio_end_in_s < audio_start_in_s:
             raise ValueError(
                 f"`audio_end_in_s={audio_end_in_s}' must be higher than 'audio_start_in_s={audio_start_in_s}` but "
@@ -528,6 +526,18 @@ class StableAudioPipeline(DiffusionPipeline):
                     f"`attention_mask: {attention_mask.shape} != `cross_attention_hidden_states` {cross_attention_hidden_states.shape}"
                 )
 
+        if initial_audio_sampling_rate is None and initial_audio_waveforms is not None:
+            raise ValueError(
+                f"`initial_audio_waveforms' is provided but the sampling rate is not. Make sure to pass `initial_audio_sampling_rate`."
+            )
+        
+        if initial_audio_sampling_rate is not None and initial_audio_sampling_rate != self.vae.sampling_rate:
+            raise ValueError(
+                f"`initial_audio_sampling_rate` must be {self.vae.hop_length}' but is `{initial_audio_sampling_rate}`."
+                "Make sure to resample the `initial_audio_waveforms` and to correct the sampling rate. "
+            )
+
+
     def prepare_latents(
         self,
         batch_size,
@@ -539,6 +549,7 @@ class StableAudioPipeline(DiffusionPipeline):
         latents=None,
         initial_audio_waveforms=None,
         num_waveforms_per_prompt=None,
+        audio_channels=None,
     ):
         shape = (batch_size, num_channels_vae, sample_size)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -557,9 +568,41 @@ class StableAudioPipeline(DiffusionPipeline):
 
         # encode the initial audio for use by the model
         if initial_audio_waveforms is not None:
-            # TODO: crop and pad and channels
-            encoded_audio = self.vae.encode(initial_audio_waveforms).latents.sample(generator)
-            encoded_audio = torch.repeat(encoded_audio, (num_waveforms_per_prompt * encoded_audio.shape[0], 1, 1))
+            # check dimension
+            if initial_audio_waveforms.ndim == 2:
+                initial_audio_waveforms = initial_audio_waveforms.unsqueeze(1)
+            elif initial_audio_waveforms.ndim != 3:
+                raise ValueError(f"`initial_audio_waveforms` must be of shape `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)` but has `{initial_audio_waveforms.ndim}` dimensions")
+             
+            audio_vae_length =  self.transformer.config.sample_size * self.vae.hop_length
+            audio_shape = (batch_size // num_waveforms_per_prompt, audio_channels,audio_vae_length)
+            
+            # check num_channels
+            if initial_audio_waveforms.shape[1] == 1 and audio_channels == 2:
+                initial_audio_waveforms = initial_audio_waveforms.repeat(1, 2, 1)
+            elif initial_audio_waveforms.shape[1] == 2 and audio_channels == 1:
+                initial_audio_waveforms = initial_audio_waveforms.mean(1, keepdim=True)
+            
+            if initial_audio_waveforms.shape[:2] != audio_shape[:2]:
+                raise ValueError(f"`initial_audio_waveforms` must be of shape `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)` but is of shape `{initial_audio_waveforms.shape}`")
+
+
+            # crop or pad
+            audio_length = initial_audio_waveforms.shape[-1]
+            if audio_length < audio_vae_length:
+                logger.warning(
+                    f"The provided input waveform is shorter ({audio_length}) than the required audio length ({audio_vae_length}) of the model and will thus be padded."
+                )
+            elif audio_length > audio_vae_length:
+                logger.warning(
+                    f"The provided input waveform is longer ({audio_length}) than the required audio length ({audio_vae_length}) of the model and will thus be cropped."
+                )
+
+            audio = initial_audio_waveforms.new_zeros(audio_shape)
+            audio[:, :, :min(audio_length, audio_vae_length)] = initial_audio_waveforms[:, :, :audio_vae_length]
+
+            encoded_audio = self.vae.encode(audio).latent_dist.sample(generator)
+            encoded_audio = encoded_audio.repeat((num_waveforms_per_prompt, 1, 1))
             latents = encoded_audio + latents
         return latents
 
@@ -578,6 +621,7 @@ class StableAudioPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         initial_audio_waveforms: Optional[torch.Tensor] = None,
+        initial_audio_sampling_rate: Optional[torch.Tensor] = None,
         cross_attention_hidden_states: Optional[torch.Tensor] = None,
         negative_cross_attention_hidden_states: Optional[torch.Tensor] = None,
         global_hidden_states: Optional[torch.Tensor] = None,  # TODO (YL): add to docstrings
@@ -623,8 +667,11 @@ class StableAudioPipeline(DiffusionPipeline):
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
             initial_audio_waveforms (`torch.Tensor`, *optional*):
-                Optional initial audio waveforms to use as the initial audio for generation. TODO: decide format and
-                how to deal with sampling rate and channels.
+                Optional initial audio waveforms to use as the initial audio waveform for generation.
+                Must be of shape `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)`, where `batch_size` 
+                corresponds to the number of prompts passed to the model.  
+            initial_audio_sampling_rate (`int`, *optional*):
+                Sampling rate of the `initial_audio_waveforms`, if they are provided. Must be the same as the model.
             cross_attention_hidden_states (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
@@ -691,6 +738,7 @@ class StableAudioPipeline(DiffusionPipeline):
             attention_mask,
             negative_attention_mask,
             initial_audio_waveforms,
+            initial_audio_sampling_rate,
         )
 
         # 2. Define call parameters
@@ -739,6 +787,7 @@ class StableAudioPipeline(DiffusionPipeline):
             latents,
             initial_audio_waveforms,
             num_waveforms_per_prompt,
+            audio_channels=self.vae.config.audio_channels,
         )
 
         # 6. Prepare extra step kwargs
