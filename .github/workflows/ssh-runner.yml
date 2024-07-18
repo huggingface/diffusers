@@ -1,4 +1,4 @@
-name: SSH into runners
+name: SSH into GPU runners
 
 on:
   workflow_dispatch:

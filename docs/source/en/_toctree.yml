@@ -249,6 +249,10 @@
       title: DiTTransformer2DModel
     - local: api/models/hunyuan_transformer2d
       title: HunyuanDiT2DModel
+    - local: api/models/aura_flow_transformer2d
+      title: AuraFlowTransformer2DModel
+    - local: api/models/latte_transformer3d
+      title: LatteTransformer3DModel
     - local: api/models/lumina_nextdit2d
       title: LuminaNextDiT2DModel
     - local: api/models/transformer_temporal
@@ -278,6 +282,8 @@
       title: AudioLDM
     - local: api/pipelines/audioldm2
       title: AudioLDM 2
+    - local: api/pipelines/aura_flow
+      title: AuraFlow
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
     - local: api/pipelines/blip_diffusion
@@ -320,10 +326,14 @@
       title: Kandinsky 2.2
     - local: api/pipelines/kandinsky3
       title: Kandinsky 3
+    - local: api/pipelines/kolors
+      title: Kolors
     - local: api/pipelines/latent_consistency_models
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
+    - local: api/pipelines/latte
+      title: Latte
     - local: api/pipelines/ledits_pp
       title: LEDITS++
     - local: api/pipelines/lumina

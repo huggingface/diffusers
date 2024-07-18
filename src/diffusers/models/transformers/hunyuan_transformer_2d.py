@@ -14,7 +14,6 @@
 from typing import Dict, Optional, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -29,18 +28,10 @@ from ..embeddings import (
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous
+from ..normalization import AdaLayerNormContinuous, FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-class FP32LayerNorm(nn.LayerNorm):
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        origin_dtype = inputs.dtype
-        return F.layer_norm(
-            inputs.float(), self.normalized_shape, self.weight.float(), self.bias.float(), self.eps
-        ).to(origin_dtype)
 
 
 class AdaLayerNormShift(nn.Module):
