@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from math import pi
 from typing import Any, Dict, List, Optional, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
@@ -27,9 +28,6 @@ from ...models.attention_processor import (
     AttentionProcessor,
     StableAudioAttnProcessor2_0,
 )
-from ...models.embeddings import (
-    GaussianFourierProjection,
-)
 from ...models.modeling_utils import ModelMixin
 from ...models.transformers.transformer_2d import Transformer2DModelOutput
 from ...utils import BaseOutput, is_torch_version, logging
@@ -37,6 +35,44 @@ from ...utils.torch_utils import maybe_allow_in_graph
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Copied from diffusers.models.embeddings.GaussianFourierProjection with GaussianFourierProjection->StableAudioGaussianFourierProjection
+class StableAudioGaussianFourierProjection(nn.Module):
+    """Gaussian Fourier embeddings for noise levels."""
+
+    def __init__(
+        self,
+        embedding_size: int = 256,
+        scale: float = 1.0,
+        set_W_to_weight=True,
+        log=True,
+        flip_sin_to_cos=False,
+    ):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
+        self.log = log
+        self.flip_sin_to_cos = flip_sin_to_cos
+
+        if set_W_to_weight:
+            # to delete later
+            del self.weight
+            self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
+            self.weight = self.W
+            del self.W
+
+    def forward(self, x):
+        if self.log:
+            x = torch.log(x)
+
+        # Ignore copy
+        x_proj = 2 * np.pi * x[:, None] @ self.weight[None, :]
+
+        if self.flip_sin_to_cos:
+            out = torch.cat([torch.cos(x_proj), torch.sin(x_proj)], dim=-1)
+        else:
+            out = torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
+        return out
 
 
 class StableAudioPositionalEmbedding(nn.Module):
@@ -369,12 +405,11 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         self.out_channels = out_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.timestep_features = GaussianFourierProjection(
+        self.timestep_features = StableAudioGaussianFourierProjection(
             embedding_size=timestep_features_dim // 2,
             flip_sin_to_cos=True,
             log=False,
             set_W_to_weight=False,
-            use_stable_audio_implementation=True,
         )
 
         self.timestep_proj = nn.Sequential(

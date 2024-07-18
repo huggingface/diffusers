@@ -19,12 +19,12 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torchsde
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils.import_utils import OptionalDependencyNotAvailable, is_torchsde_available
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
-from ..utils.import_utils import is_torchsde_available, OptionalDependencyNotAvailable
+
 
 if is_torchsde_available():
     from .scheduling_dpmsolver_sde import BrownianTreeNoiseSampler
@@ -143,11 +143,11 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 f"`noise_sampling_strategy` {noise_sampling_strategy} is not supported. Please choose one of `normal_distribution` and `brownian_tree`."
             )
-        
+
         if noise_sampling_strategy == "brownian_tree" and not is_torchsde_available():
             raise OptionalDependencyNotAvailable(
                 "`noise_sampling_strategy == 'brownian_tree'` but the `torchsde` library is not installed. Install it with `pip install torchsde`."
-            ) 
+            )
 
         if noise_preconditioning_strategy not in ["log", "atan"]:
             raise NotImplementedError(f"{noise_preconditioning_strategy} is not implemented for {self.__class__}")
@@ -686,10 +686,14 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             if self.noise_sampler is None:
                 seed = None
                 if generator is not None:
-                    seed = [g.initial_seed() for g in generator] if isinstance(generator, list) else generator.initial_seed()
-                self.noise_sampler = BrownianTreeNoiseSampler(
-                        model_output, sigma_min=self.config.sigma_min, sigma_max=self.config.sigma_max, seed=seed
+                    seed = (
+                        [g.initial_seed() for g in generator]
+                        if isinstance(generator, list)
+                        else generator.initial_seed()
                     )
+                self.noise_sampler = BrownianTreeNoiseSampler(
+                    model_output, sigma_min=self.config.sigma_min, sigma_max=self.config.sigma_max, seed=seed
+                )
             noise = self.noise_sampler(self.sigmas[self.step_index], self.sigmas[self.step_index + 1]).to(
                 model_output.device
             )

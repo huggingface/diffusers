@@ -522,29 +522,23 @@ class StableAudioPipeline(DiffusionPipeline):
                     "`attention_mask should have the same batch size and sequence length as `cross_attention_hidden_states`, but got:"
                     f"`attention_mask: {attention_mask.shape} != `cross_attention_hidden_states` {cross_attention_hidden_states.shape}"
                 )
-                
-        if cross_attention_hidden_states is not None and global_hidden_states is None:
-            raise ValueError(
-                "`global_hidden_states` must also be provided if `cross_attention_hidden_states` is."
-            )
-         
-        if global_hidden_states is not None and cross_attention_hidden_states is None:
-            raise ValueError(
-                "`cross_attention_hidden_states` must also be provided if `global_hidden_states` is."
-            )       
 
+        if cross_attention_hidden_states is not None and global_hidden_states is None:
+            raise ValueError("`global_hidden_states` must also be provided if `cross_attention_hidden_states` is.")
+
+        if global_hidden_states is not None and cross_attention_hidden_states is None:
+            raise ValueError("`cross_attention_hidden_states` must also be provided if `global_hidden_states` is.")
 
         if initial_audio_sampling_rate is None and initial_audio_waveforms is not None:
             raise ValueError(
-                f"`initial_audio_waveforms' is provided but the sampling rate is not. Make sure to pass `initial_audio_sampling_rate`."
+                "`initial_audio_waveforms' is provided but the sampling rate is not. Make sure to pass `initial_audio_sampling_rate`."
             )
-        
+
         if initial_audio_sampling_rate is not None and initial_audio_sampling_rate != self.vae.sampling_rate:
             raise ValueError(
                 f"`initial_audio_sampling_rate` must be {self.vae.hop_length}' but is `{initial_audio_sampling_rate}`."
                 "Make sure to resample the `initial_audio_waveforms` and to correct the sampling rate. "
             )
-
 
     def prepare_latents(
         self,
@@ -580,20 +574,23 @@ class StableAudioPipeline(DiffusionPipeline):
             if initial_audio_waveforms.ndim == 2:
                 initial_audio_waveforms = initial_audio_waveforms.unsqueeze(1)
             elif initial_audio_waveforms.ndim != 3:
-                raise ValueError(f"`initial_audio_waveforms` must be of shape `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)` but has `{initial_audio_waveforms.ndim}` dimensions")
-             
-            audio_vae_length =  self.transformer.config.sample_size * self.vae.hop_length
-            audio_shape = (batch_size // num_waveforms_per_prompt, audio_channels,audio_vae_length)
-            
+                raise ValueError(
+                    f"`initial_audio_waveforms` must be of shape `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)` but has `{initial_audio_waveforms.ndim}` dimensions"
+                )
+
+            audio_vae_length = self.transformer.config.sample_size * self.vae.hop_length
+            audio_shape = (batch_size // num_waveforms_per_prompt, audio_channels, audio_vae_length)
+
             # check num_channels
             if initial_audio_waveforms.shape[1] == 1 and audio_channels == 2:
                 initial_audio_waveforms = initial_audio_waveforms.repeat(1, 2, 1)
             elif initial_audio_waveforms.shape[1] == 2 and audio_channels == 1:
                 initial_audio_waveforms = initial_audio_waveforms.mean(1, keepdim=True)
-            
-            if initial_audio_waveforms.shape[:2] != audio_shape[:2]:
-                raise ValueError(f"`initial_audio_waveforms` must be of shape `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)` but is of shape `{initial_audio_waveforms.shape}`")
 
+            if initial_audio_waveforms.shape[:2] != audio_shape[:2]:
+                raise ValueError(
+                    f"`initial_audio_waveforms` must be of shape `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)` but is of shape `{initial_audio_waveforms.shape}`"
+                )
 
             # crop or pad
             audio_length = initial_audio_waveforms.shape[-1]
@@ -607,7 +604,7 @@ class StableAudioPipeline(DiffusionPipeline):
                 )
 
             audio = initial_audio_waveforms.new_zeros(audio_shape)
-            audio[:, :, :min(audio_length, audio_vae_length)] = initial_audio_waveforms[:, :, :audio_vae_length]
+            audio[:, :, : min(audio_length, audio_vae_length)] = initial_audio_waveforms[:, :, :audio_vae_length]
 
             encoded_audio = self.vae.encode(audio).latent_dist.sample(generator)
             encoded_audio = encoded_audio.repeat((num_waveforms_per_prompt, 1, 1))
@@ -675,17 +672,18 @@ class StableAudioPipeline(DiffusionPipeline):
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
             initial_audio_waveforms (`torch.Tensor`, *optional*):
-                Optional initial audio waveforms to use as the initial audio waveform for generation.
-                Must be of shape `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)`, where `batch_size` 
-                corresponds to the number of prompts passed to the model.  
+                Optional initial audio waveforms to use as the initial audio waveform for generation. Must be of shape
+                `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)`, where `batch_size`
+                corresponds to the number of prompts passed to the model.
             initial_audio_sampling_rate (`int`, *optional*):
                 Sampling rate of the `initial_audio_waveforms`, if they are provided. Must be the same as the model.
             cross_attention_hidden_states (`torch.Tensor`, *optional*):
-                Pre-generated cross-attention hidden states. Can be used to tweak inputs (prompt weighting). If not provided,
-                will be computed from `prompt`, `audio_start_in_s` and `audio_end_in_s` input arguments.
+                Pre-generated cross-attention hidden states. Can be used to tweak inputs (prompt weighting). If not
+                provided, will be computed from `prompt`, `audio_start_in_s` and `audio_end_in_s` input arguments.
             negative_cross_attention_hidden_states (`torch.Tensor`, *optional*):
-                Pre-generated negative cross-attention hidden states. Can be used to tweak inputs (prompt weighting). If not provided,
-                will be computed from `prompt`, `audio_start_in_s` and `audio_end_in_s` input arguments.
+                Pre-generated negative cross-attention hidden states. Can be used to tweak inputs (prompt weighting).
+                If not provided, will be computed from `prompt`, `audio_start_in_s` and `audio_end_in_s` input
+                arguments.
             global_hidden_states (`torch.Tensor`, *optional*):
                 Pre-generated global hidden states. Can be used to tweak inputs (prompt weighting). If not provided,
                 will be computed from `audio_start_in_s` and `audio_end_in_s` input arguments.

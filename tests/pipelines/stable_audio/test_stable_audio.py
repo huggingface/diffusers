@@ -342,24 +342,41 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         stable_audio_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A hammer hitting a wooden surface"
-        
+
         initial_audio_waveforms = torch.ones((1, 5))
 
         # test raises error when no sampling rate
         with self.assertRaises(ValueError):
-            audios = stable_audio_pipe(prompt, num_inference_steps=2, initial_audio_waveforms=initial_audio_waveforms).audios
+            audios = stable_audio_pipe(
+                prompt, num_inference_steps=2, initial_audio_waveforms=initial_audio_waveforms
+            ).audios
 
         # test raises error when wrong sampling rate
         with self.assertRaises(ValueError):
-            audios = stable_audio_pipe(prompt, num_inference_steps=2, initial_audio_waveforms=initial_audio_waveforms, initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate-1).audios
+            audios = stable_audio_pipe(
+                prompt,
+                num_inference_steps=2,
+                initial_audio_waveforms=initial_audio_waveforms,
+                initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate - 1,
+            ).audios
 
-        audios = stable_audio_pipe(prompt, num_inference_steps=2, initial_audio_waveforms=initial_audio_waveforms, initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate).audios
+        audios = stable_audio_pipe(
+            prompt,
+            num_inference_steps=2,
+            initial_audio_waveforms=initial_audio_waveforms,
+            initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate,
+        ).audios
         assert audios.shape == (1, 2, 63)
 
         # test works with num_waveforms_per_prompt
         num_waveforms_per_prompt = 2
         audios = stable_audio_pipe(
-            prompt, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt, initial_audio_waveforms=initial_audio_waveforms, initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate).audios
+            prompt,
+            num_inference_steps=2,
+            num_waveforms_per_prompt=num_waveforms_per_prompt,
+            initial_audio_waveforms=initial_audio_waveforms,
+            initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate,
+        ).audios
 
         assert audios.shape == (num_waveforms_per_prompt, 2, 63)
 
@@ -367,12 +384,16 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         batch_size = 2
         initial_audio_waveforms = torch.ones((batch_size, 2, 5))
         audios = stable_audio_pipe(
-            [prompt] * batch_size, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt, initial_audio_waveforms=initial_audio_waveforms, initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate).audios
+            [prompt] * batch_size,
+            num_inference_steps=2,
+            num_waveforms_per_prompt=num_waveforms_per_prompt,
+            initial_audio_waveforms=initial_audio_waveforms,
+            initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate,
+        ).audios
 
         assert audios.shape == (batch_size * num_waveforms_per_prompt, 2, 63)
-        
-        
-        
+
+
 @nightly
 @require_torch_gpu
 class StableAudioPipelineIntegrationTests(unittest.TestCase):
