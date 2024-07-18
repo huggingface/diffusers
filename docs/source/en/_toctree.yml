@@ -358,6 +358,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/stable_audio
+      title: Stable Audio
     - local: api/pipelines/stable_cascade
       title: Stable Cascade
     - sections:
