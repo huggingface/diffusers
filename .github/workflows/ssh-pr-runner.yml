@@ -1,11 +1,8 @@
-name: SSH into GPU runners
+name: SSH into PR runners
 
 on:
   workflow_dispatch:
     inputs:
-      runner_type:
-        description: 'Type of runner to test (a10 or t4)'
-        required: true
       docker_image:
         description: 'Name of the Docker image'
         required: true
@@ -22,7 +19,7 @@ env:
 jobs:
   ssh_runner:
     name: "SSH"
-    runs-on: [single-gpu, nvidia-gpu, "${{ github.event.inputs.runner_type }}", ci]
+    runs-on: [self-hosted, intel-cpu, 32-cpu, 256-ram, ci]
     container:
       image: ${{ github.event.inputs.docker_image }}
       options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0 --privileged
