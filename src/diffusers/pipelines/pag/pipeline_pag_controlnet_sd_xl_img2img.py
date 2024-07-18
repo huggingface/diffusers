@@ -1347,5 +1347,360 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
             control_guidance_start,
             control_guidance_end,
             callback_on_step_end_tensor_inputs,
-            
         )
+
+        self._guidance_scale = guidance_scale 
+        self._clip_skip = clip_skip 
+        self._cross_attention_kwargs = cross_attention_kwargs 
+        self._pag_scale = pag_scale 
+        self._pag_adaptive_scale = pag_adaptive_scale 
+
+        # 2. Define call parameters 
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
+        device = self._execution_device 
+
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+
+        # 3.1 Encode input prompt 
+        text_encoder_lora_scale = (
+            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None 
+        )
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = self.encode_prompt(
+            prompt,
+            prompt_2,
+            device,
+            num_images_per_prompt,
+            self.do_classifier_free_guidance,
+            negative_prompt,
+            negative_prompt_2,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
+            clip_skip=self.clip_skip,
+        )
+
+        # 3.2 Encode ip_adapter_image 
+        if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image,
+                ip_adapter_image_embeds,
+                device,
+                batch_size * num_images_per_prompt,
+                self.do_classifier_free_guidance,
+            )
+
+        # 4. Prepare image and controlnet_conditioning_image
+        image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+
+        if isinstance(controlnet, ControlNetModel):
+            image = self.prepare_control_image(
+                image=control_image,
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=controlnet.dtype,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+                guess_mode=False,
+            )
+            height, width = control_image.shape[-2:]
+        elif isinstance(controlnet, MultiControlNetModel):
+            control_images = []
+
+            for control_image_ in control_image:
+                control_image_ = self.prepare_control_image(
+                    image=control_image_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=self.do_classifier_free_guidance,
+                    guess_mode=False,
+                )
+
+                control_images.append(control_image_)
+
+            control_image = control_images 
+            height, width = control_image[0].shape[-2:]
+        else:
+            assert False 
+
+        # 5. Prepare timesteps 
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        self._num_timesteps = len(timesteps)
+
+        # 6. Prepare latent variables 
+        if latents is None:
+            latents = self.prepare_latents(
+                image,
+                latent_timestep,
+                batch_size,
+                num_images_per_prompt,
+                prompt_embeds.dtype,
+                device,
+                generator,
+                True,
+            )
+
+        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline 
+        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+
+        # 7.1 Create tensor stating which controlnets to keep 
+        controlnet_keep = []
+        for i in range(len(timesteps)):
+            keeps = [
+                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
+                for s, e in zip(controlnet_guidance_start, control_guidance_end)
+            ]
+            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
+
+        # 7.2 Prepare added time ids & embeddings 
+        if isinstance(control_image, list):
+            original_size = original_size or control_image[0].shape[-2:]
+        else:
+            original_size = original_size or control_image.shape[-2:]
+        target_size = target_size or (height, width)
+
+        if negative_original_size is None:
+            negative_original_size = original_size 
+        if negative_target_size is None:
+            negative_target_size = target_size 
+        add_text_embeds = pooled_prompt_embeds 
+
+        if self.text_encoder_2 is None:
+            text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
+        else:
+            text_encoder_projection_dim = self.text_encoder_2.config.projection_dim 
+
+        add_time_ids, add_neg_time_ids = self._get_add_time_ids(
+            original_size,
+            crops_coords_top_left,
+            target_size,
+            aesthetic_score,
+            negative_aesthetic_score,
+            negative_original_size,
+            negative_crops_coords_top_left,
+            negative_target_size,
+            dtype=prompt_embeds.dtype,
+            text_encoder_projection_dim=text_encoder_projection_dim,
+        )
+        add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1)
+        add_neg_time_ids = add_neg_time_ids.repeat(batch_size * num_images_per_prompt, 1)
+
+        images = image if isinstance(image, list) else [image]
+        for i, single_image in enumerate(images):
+            if self.do_classifier_free_guidance:
+                single_image = single_image.chunk(2)[0]
+            
+            if self.do_perturbed_attention_guidance:
+                single_image = self._prepare_perturbed_attention_guidance(
+                    single_image, single_image, self.do_classifier_free_guidance
+                )
+            elif self.do_classifier_free_guidance:
+                single_image = torch.cat([single_image] * 2)
+            single_image = single_image.to(device)
+            images[i] = single_image 
+
+        image = images if isinstance(image, list) else images[0] 
+
+        if ip_adapter_image_embeds is not None:
+            for i, image_embeds in enumerate(ip_adapter_image_embeds):
+                negative_image_embeds = None 
+                if self.do_classifier_free_guidance:
+                    negative_image_embeds, image_embeds = image_embeds.chunk(2)
+                
+                if self.do_perturbed_attention_guidance:
+                    image_embeds = self._prepare_perturbed_attention_guidance(
+                        image_embeds, negative_image_embeds, self.do_classifier_free_guidance
+                    )
+                elif self.do_classifier_free_guidance:
+                    image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
+                image_embeds = image_embeds.to(device)
+                ip_adapter_image_embeds[i] = image_embeds 
+
+        if self.do_perturbed_attention_guidance:
+            prompt_embeds = self._prepare_perturbed_attention_guidance(
+                prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
+            )
+            add_text_embeds = self._prepare_perturbed_attention_guidance(
+                add_text_embeds, negative_pooled_prompt_embeds, self.do_classifier_free_guidance
+            )
+            add_time_ids = self._prepare_perturbed_attention_guidance(
+                add_time_ids, add_neg_time_ids, self.do_classifier_free_guidance
+            )
+        elif self.do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            add_time_ids = torch.cat([add_neg_time_ids, add_time_ids], dim=0)
+
+        prompt_embeds = prompt_embeds.to(device)
+        add_text_embeds = add_text_embeds.to(device)
+        add_time_ids = add_time_ids.to(device)
+        added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+        controlnet_prompt_embeds = prompt_embeds 
+        controlnet_added_cond_kwargs = added_cond_kwargs 
+
+        # 8. Denoising loop 
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order 
+
+        if self.do_perturbed_attention_guidance:
+            original_attn_proc = self.unet.attn_processors 
+            self._set_pag_attn_processor(
+                pag_applied_layers=self.pag_applied_layers,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+            )
+
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance 
+                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                # controlnet(s) inference 
+                control_model_input = latent_model_input 
+
+                if isinstance(controlnet_keep[i]. list):
+                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+                else:
+                    controlnet_cond_scale = controlnet_conditioning_scale 
+                    if isinstance(controlnet_cond_scale, list):
+                        controlnet_cond_scale = controlnet_cond_scale[0]
+                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
+
+                down_block_res_samples, mid_block_res_sample = self.controlnet(
+                    control_model_input,
+                    t,
+                    encoder_hidden_states=controlnet_prompt_embeds,
+                    controlnet_cond=control_image,
+                    conditioning_scale=cond_scale,
+                    guess_mode=False,
+                    added_cond_kwargs=controlnet_added_cond_kwargs,
+                    return_dict=False,
+                )
+
+                if ip_adapter_image_embeds is not None:
+                    added_cond_kwargs["image_embeds"] = image_embeds 
+
+                # predict the noise residual 
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=self.cross_attention_kwargs,
+                    down_block_additional_residuals=down_block_res_samples,
+                    mid_block_additional_residual=mid_block_res_sample,
+                    added_cond_kwargs=added_cond_kwargs,
+                    return_dict=False,
+                )[0]
+
+                # perform guidance 
+                if self.do_perturbed_attention_guidance:
+                    noise_pred = self._apply_perturbed_attention_guidance(
+                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
+                    )
+                elif self.do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                # compute the previous noisy sample x_t -> x_t-1 
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_output.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    add_text_embeds = callback_outputs.pop("add_text_embeds", add_text_embeds)
+                    negative_pooled_prompt_embeds = callback_outputs.pop(
+                        "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds 
+                    )
+                    add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
+                    add_neg_time_ids = callback_outputs.pop("add_neg_time_ids", add_neg_time_ids)
+
+                # call the callback, if provided 
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+
+        # If we do sequential model offloading, let's offload unet and controlnet 
+        # manually for max memory savings 
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.unet.to("cpu")
+            self.controlnet.to("cpu")
+            torch.cuda.empty_cache()
+
+        if not output_type == "latent":
+            # make sure the VAE is in float32 mode, as it overflows in float16 
+            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast 
+
+            if needs_upcasting:
+                self.upcast_vae()
+                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+
+            # unscale/denormalize the latents 
+            # denormalize with the mean and std if available and not None 
+            has_latents_mean = hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None 
+            has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None 
+            if has_latents_mean and has_latents_std:
+                latents_mean = (
+                    torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1).to(latents.device, latents.dtype)
+                )
+                latents_std = (
+                    torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
+                )
+                latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean 
+            else:
+                latents = self.vae.decode(latents, return_dict=False)[0]
+
+            image = self.vae.decode(latents, return_dict=False)[0]
+
+            # cast back to fp16 of needed 
+            if needs_upcasting:
+                self.vae.to(dtype=torch.float16)
+        else:
+            image = latents 
+            return StableDiffusionXLPipelineOutput(images=image)
+        
+        # apply watermark if available 
+        if self.watermark is not None:
+            image = self.watermark.apply_watermark(image)
+        
+        image = self.image_processor.postprocess(image, output_type=output_type)
+
+        # Offload all models 
+        self.maybe_free_model_hooks()
+
+        if self.do_perturbed_attention_guidance:
+            self.unet.set_attn_processor(original_attn_proc)
+
+        if not return_dict:
+            return (image,)
+        
+        return StableDiffusionXLPipelineOutput(images=image)
+        
+        
+
+
