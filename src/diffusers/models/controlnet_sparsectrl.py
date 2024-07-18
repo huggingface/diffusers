@@ -85,9 +85,6 @@ class SparseControlNetConditioningEmbedding(nn.Module):
         )
 
     def forward(self, conditioning: torch.Tensor) -> torch.Tensor:
-        batch_size, channels, num_frames, height, width = conditioning.shape
-        conditioning = conditioning.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-
         embedding = self.conv_in(conditioning)
         embedding = F.silu(embedding)
 
@@ -96,8 +93,6 @@ class SparseControlNetConditioningEmbedding(nn.Module):
             embedding = F.silu(embedding)
 
         embedding = self.conv_out(embedding)
-        embedding = embedding.reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
-
         return embedding
 
 

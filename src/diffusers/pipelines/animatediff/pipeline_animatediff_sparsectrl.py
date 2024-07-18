@@ -61,6 +61,20 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 class AnimateDiffSparseControlNetPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
@@ -587,9 +601,8 @@ class AnimateDiffSparseControlNetPipeline(
 
         if self.controlnet.use_simplified_condition_embedding:
             controlnet_images = controlnet_images.reshape(batch_size * num_frames, channels, height, width)
-            conditioning_frames = (
-                self.vae.encode(2 * controlnet_images - 1).latent_dist.sample() * self.vae.config.scaling_factor
-            )
+            controlnet_images = 2 * controlnet_images - 1
+            conditioning_frames = retrieve_latents(self.vae.encode(controlnet_images)) * self.vae.config.scaling_factor
             conditioning_frames = conditioning_frames.reshape(
                 batch_size, num_frames, 4, height // self.vae_scale_factor, width // self.vae_scale_factor
             )
@@ -614,9 +627,6 @@ class AnimateDiffSparseControlNetPipeline(
         controlnet_cond_mask = torch.zeros((batch_size, 1, num_frames, height, width), dtype=dtype, device=device)
         controlnet_cond[:, :, controlnet_image_index] = conditioning_frames[:, :, : len(controlnet_image_index)]
         controlnet_cond_mask[:, :, controlnet_image_index] = 1
-
-        controlnet_cond = controlnet_cond.to(device, dtype)
-        controlnet_cond_mask = controlnet_cond_mask.to(device, dtype)
 
         return controlnet_cond, controlnet_cond_mask
 
@@ -827,11 +837,11 @@ class AnimateDiffSparseControlNetPipeline(
             conditioning_frames, num_frames, controlnet_image_index, device, controlnet.dtype
         )
 
-        # 4. Prepare timesteps
+        # 6. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 5. Prepare latent variables
+        # 7. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
@@ -845,10 +855,10 @@ class AnimateDiffSparseControlNetPipeline(
             latents,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Add image embeds for IP-Adapter
+        # 9. Add image embeds for IP-Adapter
         added_cond_kwargs = (
             {"image_embeds": image_embeds}
             if ip_adapter_image is not None or ip_adapter_image_embeds is not None
@@ -865,7 +875,7 @@ class AnimateDiffSparseControlNetPipeline(
             self._num_timesteps = len(timesteps)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
-            # 8. Denoising loop
+            # 10. Denoising loop
             with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     # expand the latents if we are doing classifier free guidance
@@ -873,7 +883,7 @@ class AnimateDiffSparseControlNetPipeline(
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                     if guess_mode and self.do_classifier_free_guidance:
-                        # Infer ControlNet only for the conditional batch.
+                        # Infer SparseControlNetModel only for the conditional batch.
                         control_model_input = latents
                         control_model_input = self.scheduler.scale_model_input(control_model_input, t)
                         controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
@@ -925,14 +935,14 @@ class AnimateDiffSparseControlNetPipeline(
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
 
-        # 9. Post processing
+        # 11. Post processing
         if output_type == "latent":
             video = latents
         else:
             video_tensor = self.decode_latents(latents)
             video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
-        # 10. Offload all models
+        # 12. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
