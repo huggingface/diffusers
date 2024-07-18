@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib
 import inspect
 import re
 from contextlib import nullcontext
@@ -21,6 +22,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
+    convert_animatediff_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
@@ -69,7 +71,21 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_sd3_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "MotionAdapter": {
+        "checkpoint_mapping_fn": convert_animatediff_checkpoint_to_diffusers,
+    },
 }
+
+
+def _get_single_file_loadable_mapping_class(cls):
+    diffusers_module = importlib.import_module(__name__.split(".")[0])
+    for loadable_class_str in SINGLE_FILE_LOADABLE_CLASSES:
+        loadable_class = getattr(diffusers_module, loadable_class_str)
+
+        if issubclass(cls, loadable_class):
+            return loadable_class_str
+
+    return None
 
 
 def _get_mapping_function_kwargs(mapping_fn, **kwargs):
@@ -147,8 +163,9 @@ class FromOriginalModelMixin:
         ```
         """
 
-        class_name = cls.__name__
-        if class_name not in SINGLE_FILE_LOADABLE_CLASSES:
+        mapping_class_name = _get_single_file_loadable_mapping_class(cls)
+        # if class_name not in SINGLE_FILE_LOADABLE_CLASSES:
+        if mapping_class_name is None:
             raise ValueError(
                 f"FromOriginalModelMixin is currently only compatible with {', '.join(SINGLE_FILE_LOADABLE_CLASSES.keys())}"
             )
@@ -191,7 +208,7 @@ class FromOriginalModelMixin:
                 revision=revision,
             )
 
-        mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[class_name]
+        mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
         if original_config:
@@ -203,7 +220,7 @@ class FromOriginalModelMixin:
             if config_mapping_fn is None:
                 raise ValueError(
                     (
-                        f"`original_config` has been provided for {class_name} but no mapping function"
+                        f"`original_config` has been provided for {mapping_class_name} but no mapping function"
                         "was found to convert the original config to a Diffusers config in"
                         "`diffusers.loaders.single_file_utils`"
                     )
@@ -263,7 +280,7 @@ class FromOriginalModelMixin:
         )
         if not diffusers_format_checkpoint:
             raise SingleFileComponentError(
-                f"Failed to load {class_name}. Weights for this component appear to be missing in the checkpoint."
+                f"Failed to load {mapping_class_name}. Weights for this component appear to be missing in the checkpoint."
             )
 
         ctx = init_empty_weights if is_accelerate_available() else nullcontext

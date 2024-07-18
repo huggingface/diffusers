@@ -547,7 +547,4 @@ class FromSingleFileMixin:
 
         pipe = pipeline_class(**init_kwargs)
 
-        if torch_dtype is not None:
-            pipe.to(dtype=torch_dtype)
-
         return pipe

@@ -22,7 +22,9 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
+    _import_structure["pipeline_pag_controlnet_sd"] = ["StableDiffusionControlNetPAGPipeline"]
     _import_structure["pipeline_pag_controlnet_sd_xl"] = ["StableDiffusionXLControlNetPAGPipeline"]
+    _import_structure["pipeline_pag_sd"] = ["StableDiffusionPAGPipeline"]
     _import_structure["pipeline_pag_sd_xl"] = ["StableDiffusionXLPAGPipeline"]
     _import_structure["pipeline_pag_sd_xl_img2img"] = ["StableDiffusionXLPAGImg2ImgPipeline"]
     _import_structure["pipeline_pag_sd_xl_inpaint"] = ["StableDiffusionXLPAGInpaintPipeline"]
@@ -35,7 +37,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
+        from .pipeline_pag_controlnet_sd import StableDiffusionControlNetPAGPipeline
         from .pipeline_pag_controlnet_sd_xl import StableDiffusionXLControlNetPAGPipeline
+        from .pipeline_pag_sd import StableDiffusionPAGPipeline
         from .pipeline_pag_sd_xl import StableDiffusionXLPAGPipeline
         from .pipeline_pag_sd_xl_img2img import StableDiffusionXLPAGImg2ImgPipeline
         from .pipeline_pag_sd_xl_inpaint import StableDiffusionXLPAGInpaintPipeline
