@@ -472,6 +472,12 @@ class Attention(nn.Module):
                 f"cross_attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
             )
         cross_attention_kwargs = {k: w for k, w in cross_attention_kwargs.items() if k in attn_parameters}
+        print(
+            "attn call:",
+            hidden_states.shape,
+            encoder_hidden_states.shape if encoder_hidden_states is not None else None,
+            attention_mask.shape if attention_mask is not None else None,
+        )
 
         return self.processor(
             self,
@@ -1549,6 +1555,7 @@ class AttnProcessor2_0:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
         input_ndim = hidden_states.ndim
+        print("input_dim:", input_ndim)
 
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
@@ -1601,6 +1608,8 @@ class AttnProcessor2_0:
 
         if input_ndim == 4:
             hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        print("out:", hidden_states.shape)
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual

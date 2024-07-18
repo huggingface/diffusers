@@ -587,12 +587,16 @@ class AnimateDiffSparseControlNetPipeline(
 
         if self.controlnet.use_simplified_condition_embedding:
             controlnet_images = controlnet_images.reshape(batch_size * num_frames, channels, height, width)
-            conditioning_frames = self.vae.encode(2 * controlnet_images - 1).latent_dist.sample() * 0.18215
-            conditioning_frames = conditioning_frames.reshape(batch_size, num_frames, channels, height, width)
+            conditioning_frames = (
+                self.vae.encode(2 * controlnet_images - 1).latent_dist.sample() * self.vae.config.scaling_factor
+            )
+            conditioning_frames = conditioning_frames.reshape(
+                batch_size, num_frames, 4, height // self.vae_scale_factor, width // self.vae_scale_factor
+            )
         else:
             conditioning_frames = controlnet_images
 
-        conditioning_frames = conditioning_frames.permute(0, 2, 1, 3, 4)
+        conditioning_frames = conditioning_frames.permute(0, 2, 1, 3, 4)  # [b, c, f, h, w]
         return conditioning_frames
 
     def prepare_sparse_control_conditioning(
@@ -877,6 +881,7 @@ class AnimateDiffSparseControlNetPipeline(
                         control_model_input = latent_model_input
                         controlnet_prompt_embeds = prompt_embeds
                     controlnet_prompt_embeds = controlnet_prompt_embeds.repeat_interleave(num_frames, dim=0)
+                    print("controlnet_prompt_embeds:", controlnet_prompt_embeds.shape)
 
                     down_block_res_samples, mid_block_res_sample = self.controlnet(
                         control_model_input,
