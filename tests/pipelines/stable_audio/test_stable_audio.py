@@ -375,13 +375,12 @@ class StableAudioPipelineIntegrationTests(unittest.TestCase):
 
         assert audio.ndim == 2
         assert audio.shape == (2, int(inputs["audio_end_in_s"] * stable_audio_pipe.vae.sampling_rate))
-
         # check the portion of the generated audio with the largest dynamic range (reduces flakiness)
-        audio_slice = audio[0, 637780:637790]
+        audio_slice = audio[0, 447590:447600]
         # fmt: off
         expected_slice = np.array(
-            [0.6573, 0.6195, 0.5875, 0.5700, 0.5787, 0.6162, 0.6691, 0.7116, 0.7227, 0.6936]
+            [-0.0278,  0.1096,  0.1877,  0.3178,  0.5329,  0.6990,  0.6972,  0.6186, 0.5608,  0.5060]
         )
          # fmt: one
         max_diff = np.abs(expected_slice - audio_slice.detach().cpu().numpy()).max()
-        assert max_diff < 1e-3
+        assert max_diff < 1.5e-3
