@@ -215,9 +215,9 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         motion_num_attention_heads: int = 8,
         concat_conditioning_mask: bool = True,
         use_simplified_condition_embedding: bool = True,
-        set_noisy_sample_input_to_zero: bool = False,
     ):
         super().__init__()
+        self.use_simplified_condition_embedding = use_simplified_condition_embedding
 
         # If `num_attention_heads` is not defined (which is the case for most models)
         # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
@@ -256,7 +256,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         if concat_conditioning_mask:
             conditioning_channels = conditioning_channels + 1
 
-        self.concate_conditioning_mask = concat_conditioning_mask
+        self.concat_conditioning_mask = concat_conditioning_mask
 
         # control net conditioning embedding
         if use_simplified_condition_embedding:
@@ -634,7 +634,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                 returned where the first element is the sample tensor.
         """
         sample_batch_size, sample_channels, sample_num_frames, sample_height, sample_width = sample.shape
-        sample = torch.zeros_like(sample).to(sample.device)
+        sample = torch.zeros_like(sample)
 
         # check channel order
         channel_order = self.config.controlnet_conditioning_channel_order
@@ -675,7 +675,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=sample.dtype)
-
         emb = self.time_embedding(t_emb, timestep_cond)
 
         # 2. pre-process
@@ -689,7 +688,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         batch_frames, channels, height, width = sample.shape
         sample = sample[:, None].reshape(sample_batch_size, sample_num_frames, channels, height, width)
 
-        if self.concate_conditioning_mask:
+        if self.concat_conditioning_mask:
             controlnet_cond = torch.cat([controlnet_cond, conditioning_mask], dim=1)
 
         batch_size, channels, num_frames, height, width = controlnet_cond.shape
