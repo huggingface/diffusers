@@ -28,6 +28,8 @@ from diffusers import (
     HunyuanDiTPipeline,
 )
 from diffusers.utils.testing_utils import (
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
@@ -40,11 +42,6 @@ from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
-
-
-def check_qkv_fusion_matches_attn_procs_length(model, original_attn_processors):
-    current_attn_processors = model.attn_processors
-    return len(current_attn_processors) == len(original_attn_processors)
 
 
 class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -269,6 +266,9 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
+        assert check_qkv_fusion_processors_exist(
+            pipe.transformer
+        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
         assert check_qkv_fusion_matches_attn_procs_length(
             pipe.transformer, pipe.transformer.original_attn_processors
         ), "Something wrong with the attention processors concerning the fused QKV projections."

@@ -830,6 +830,17 @@ def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
         test_case.fail(f'{results["error"]}')
 
 
+def check_qkv_fusion_matches_attn_procs_length(model, original_attn_processors):
+    current_attn_processors = model.attn_processors
+    return len(current_attn_processors) == len(original_attn_processors)
+
+
+def check_qkv_fusion_processors_exist(model):
+    current_attn_processors = model.attn_processors
+    proc_names = list(current_attn_processors.keys())
+    return all("Fused" in p for p in proc_names)
+
+
 class CaptureLogger:
     """
     Args:

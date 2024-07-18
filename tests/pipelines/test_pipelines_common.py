@@ -41,7 +41,14 @@ from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import CaptureLogger, require_torch, skip_mps, torch_device
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
+    require_torch,
+    skip_mps,
+    torch_device,
+)
 
 from ..models.autoencoders.test_models_vae import (
     get_asym_autoencoder_kl_config,
@@ -66,11 +73,6 @@ def to_np(tensor):
 def check_same_shape(tensor_list):
     shapes = [tensor.shape for tensor in tensor_list]
     return all(shape == shapes[0] for shape in shapes[1:])
-
-
-def check_qkv_fusion_matches_attn_procs_length(model, original_attn_processors):
-    current_attn_processors = model.attn_processors
-    return len(current_attn_processors) == len(original_attn_processors)
 
 
 class SDFunctionTesterMixin:
@@ -208,6 +210,9 @@ class SDFunctionTesterMixin:
                 and hasattr(component, "original_attn_processors")
                 and component.original_attn_processors is not None
             ):
+                assert check_qkv_fusion_processors_exist(
+                    component
+                ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
                 assert check_qkv_fusion_matches_attn_procs_length(
                     component, component.original_attn_processors
                 ), "Something wrong with the attention processors concerning the fused QKV projections."
