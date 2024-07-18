@@ -815,7 +815,8 @@ class UNet2DConditionModel(
             size = slice_size[i]
             dim = sliceable_head_dims[i]
             if size is not None and size > dim:
-                raise ValueError(f"size {size} has to be smaller or equal to {dim}.")
+                slice_size[i] = dim
+                logger.warning(f"size {size} has to be smaller or equal to {dim}, and slice_size {size} has been set to {dim}")
 
         # Recursively walk through all the children.
         # Any children which exposes the set_attention_slice method
