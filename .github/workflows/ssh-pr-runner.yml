@@ -22,17 +22,13 @@ jobs:
     runs-on: [self-hosted, intel-cpu, 32-cpu, 256-ram, ci]
     container:
       image: ${{ github.event.inputs.docker_image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0 --privileged
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --privileged
 
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
         with:
           fetch-depth: 2
-
-      - name: NVIDIA-SMI
-        run: |
-          nvidia-smi
 
       - name: Tailscale # In order to be able to SSH when a test fails
         uses: huggingface/tailscale-action@main
