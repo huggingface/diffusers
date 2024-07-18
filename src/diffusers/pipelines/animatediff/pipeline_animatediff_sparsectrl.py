@@ -18,8 +18,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn.functional as F
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 from PIL import Image
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
@@ -483,11 +483,11 @@ class AnimateDiffSparseControlNetPipeline(
                 raise ValueError(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
-        
+
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
         )
-        
+
         # check `image`
         if (
             isinstance(self.controlnet, SparseControlNetModel)
@@ -512,7 +512,7 @@ class AnimateDiffSparseControlNetPipeline(
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
         else:
             assert False
-    
+
     # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
     def check_image(self, image, prompt, prompt_embeds):
         image_is_pil = isinstance(image, Image.Image)
@@ -581,7 +581,7 @@ class AnimateDiffSparseControlNetPipeline(
         image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
         controlnet_images = image.unsqueeze(0).to(device, dtype)
         batch_size, num_frames, channels, height, width = controlnet_images.shape
-        
+
         # TODO: remove below line
         assert controlnet_images.min() >= 0 and controlnet_images.max() <= 1
 
@@ -591,11 +591,18 @@ class AnimateDiffSparseControlNetPipeline(
             conditioning_frames = conditioning_frames.reshape(batch_size, num_frames, channels, height, width)
         else:
             conditioning_frames = controlnet_images
-        
+
         conditioning_frames = conditioning_frames.permute(0, 2, 1, 3, 4)
         return conditioning_frames
 
-    def prepare_sparse_control_conditioning(self, conditioning_frames: torch.Tensor, num_frames: int, controlnet_image_index: int, device: torch.device, dtype: torch.dtype) -> Tuple[torch.Tensor, torch.Tensor]:
+    def prepare_sparse_control_conditioning(
+        self,
+        conditioning_frames: torch.Tensor,
+        num_frames: int,
+        controlnet_image_index: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         assert conditioning_frames.shape[2] >= len(controlnet_image_index)
 
         batch_size, channels, _, height, width = conditioning_frames.shape
@@ -809,10 +816,12 @@ class AnimateDiffSparseControlNetPipeline(
                 batch_size * num_videos_per_prompt,
                 self.do_classifier_free_guidance,
             )
-        
+
         # 5. Prepare controlnet conditioning
         conditioning_frames = self.prepare_image(conditioning_frames, width, height, device, controlnet.dtype)
-        controlnet_cond, controlnet_cond_mask = self.prepare_sparse_control_conditioning(conditioning_frames, num_frames, controlnet_image_index, device, controlnet.dtype)
+        controlnet_cond, controlnet_cond_mask = self.prepare_sparse_control_conditioning(
+            conditioning_frames, num_frames, controlnet_image_index, device, controlnet.dtype
+        )
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -858,7 +867,7 @@ class AnimateDiffSparseControlNetPipeline(
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                    
+
                     if guess_mode and self.do_classifier_free_guidance:
                         # Infer ControlNet only for the conditional batch.
                         control_model_input = latents
