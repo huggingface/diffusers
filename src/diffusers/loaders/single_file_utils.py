@@ -681,7 +681,7 @@ def create_controlnet_diffusers_config_from_ldm(original_config, checkpoint, ima
     image_size = set_image_size(checkpoint, image_size=image_size)
 
     unet_params = original_config["model"]["params"]["control_stage_config"]["params"]
-    diffusers_unet_config = create_unet_diffusers_config_from_ldm(original_config, image_size=image_size)
+    diffusers_unet_config = create_unet_diffusers_config_from_ldm(original_config, checkpoint=checkpoint, image_size=image_size)
 
     controlnet_config = {
         "conditioning_channels": unet_params["hint_channels"],
