@@ -98,7 +98,8 @@ class SparseControlNetConditioningEmbedding(nn.Module):
 
 class SparseControlNetModel(ModelMixin, ConfigMixin):
     """
-    A ControlNet model.
+    A SparseControlNet model as described in [SparseCtrl: Adding Sparse Controls to Text-to-Video Diffusion
+    Models](https://arxiv.org/abs/2311.16933).
 
     Args:
         in_channels (`int`, defaults to 4):
@@ -387,14 +388,14 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
         load_weights_from_unet: bool = True,
         conditioning_channels: int = 3,
-    ):
+    ) -> "SparseControlNetModel":
         r"""
-        Instantiate a [`ControlNetModel`] from [`UNet2DConditionModel`].
+        Instantiate a [`SparseControlNetModel`] from [`UNet2DConditionModel`].
 
         Parameters:
             unet (`UNet2DConditionModel`):
-                The UNet model weights to copy to the [`ControlNetModel`]. All configuration options are also copied
-                where applicable.
+                The UNet model weights to copy to the [`SparseControlNetModel`]. All configuration options are also
+                copied where applicable.
         """
         transformer_layers_per_block = (
             unet.config.transformer_layers_per_block if "transformer_layers_per_block" in unet.config else 1
@@ -610,7 +611,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[SparseControlNetOutput, Tuple[Tuple[torch.Tensor, ...], torch.Tensor]]:
         """
-        The [`ControlNetModel`] forward method.
+        The [`SparseControlNetModel`] forward method.
 
         Args:
             sample (`torch.Tensor`):

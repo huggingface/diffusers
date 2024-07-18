@@ -47,16 +47,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import torch
-        >>> from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
-        >>> from diffusers.utils import export_to_gif
-
-        >>> adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
-        >>> pipe = AnimateDiffPipeline.from_pretrained("frankjoshua/toonyou_beta6", motion_adapter=adapter)
-        >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False)
-        >>> output = pipe(prompt="A corgi walking in the park")
-        >>> frames = output.frames[0]
-        >>> export_to_gif(frames, "animation.gif")
+        >>> TODO
         ```
 """
 
@@ -84,7 +75,8 @@ class AnimateDiffSparseControlNetPipeline(
     FreeInitMixin,
 ):
     r"""
-    Pipeline for text-to-video generation.
+    Pipeline for controlled text-to-video generation using the method described in [SparseCtrl: Adding Sparse Controls
+    to Text-to-Video Diffusion Models](https://arxiv.org/abs/2311.16933).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -616,17 +608,17 @@ class AnimateDiffSparseControlNetPipeline(
         self,
         conditioning_frames: torch.Tensor,
         num_frames: int,
-        controlnet_image_index: int,
+        controlnet_frame_indices: int,
         device: torch.device,
         dtype: torch.dtype,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        assert conditioning_frames.shape[2] >= len(controlnet_image_index)
+        assert conditioning_frames.shape[2] >= len(controlnet_frame_indices)
 
         batch_size, channels, _, height, width = conditioning_frames.shape
         controlnet_cond = torch.zeros((batch_size, channels, num_frames, height, width), dtype=dtype, device=device)
         controlnet_cond_mask = torch.zeros((batch_size, 1, num_frames, height, width), dtype=dtype, device=device)
-        controlnet_cond[:, :, controlnet_image_index] = conditioning_frames[:, :, : len(controlnet_image_index)]
-        controlnet_cond_mask[:, :, controlnet_image_index] = 1
+        controlnet_cond[:, :, controlnet_frame_indices] = conditioning_frames[:, :, : len(controlnet_frame_indices)]
+        controlnet_cond_mask[:, :, controlnet_frame_indices] = 1
 
         return controlnet_cond, controlnet_cond_mask
 
@@ -658,9 +650,9 @@ class AnimateDiffSparseControlNetPipeline(
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        num_frames: int = 16,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        num_frames: int = 16,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -677,7 +669,7 @@ class AnimateDiffSparseControlNetPipeline(
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
-        controlnet_image_index: List[int] = [0],
+        controlnet_frame_indices: List[int] = [0],
         guess_mode: bool = False,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
@@ -729,6 +721,8 @@ class AnimateDiffSparseControlNetPipeline(
                 IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
                 contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
                 provided, embeddings are computed from the `ip_adapter_image` input argument.
+            conditioning_frames (`List[PipelineImageInput]`, *optional*):
+                The SparseControlNet input to provide guidance to the `unet` for generation.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video. Choose between `torch.Tensor`, `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -737,6 +731,15 @@ class AnimateDiffSparseControlNetPipeline(
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
+                the corresponding scale as a list.
+            controlnet_frame_indices (`List[int]`):
+                The indices where the conditioning frames must be applied for generation. Multiple frames can be
+                provided to guide the model to generate similar structure outputs, where the `unet` can
+                "fill-in-the-gaps" for interpolation videos, or a single frame could be provided for general expected
+                structure. Must have the same length as `conditioning_frames`.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
@@ -834,7 +837,7 @@ class AnimateDiffSparseControlNetPipeline(
         # 5. Prepare controlnet conditioning
         conditioning_frames = self.prepare_image(conditioning_frames, width, height, device, controlnet.dtype)
         controlnet_cond, controlnet_cond_mask = self.prepare_sparse_control_conditioning(
-            conditioning_frames, num_frames, controlnet_image_index, device, controlnet.dtype
+            conditioning_frames, num_frames, controlnet_frame_indices, device, controlnet.dtype
         )
 
         # 6. Prepare timesteps
