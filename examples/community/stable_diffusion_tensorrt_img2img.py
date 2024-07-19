@@ -25,8 +25,8 @@ import onnx
 import onnx_graphsurgeon as gs
 import PIL.Image
 import tensorrt as trt
-from cuda import cudart
 import torch
+from cuda import cudart
 from huggingface_hub import snapshot_download
 from huggingface_hub.utils import validate_hf_hub_args
 from onnx import shape_inference
@@ -170,7 +170,7 @@ class Engine:
             self.context.set_tensor_address(name, tensor.data_ptr())
         noerror = self.context.execute_async_v3(stream)
         if not noerror:
-            raise ValueError(f"ERROR: inference failed.")
+            raise ValueError("ERROR: inference failed.")
 
         return self.tensors
 
