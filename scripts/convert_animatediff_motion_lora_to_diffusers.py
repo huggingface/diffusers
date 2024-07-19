@@ -2,7 +2,7 @@ import argparse
 import os
 
 import torch
-from huggingface_hub import HfApi
+from huggingface_hub import create_repo, upload_folder
 from safetensors.torch import load_file, save_file
 
 
@@ -65,6 +65,5 @@ if __name__ == "__main__":
     save_file(output_dict, filepath)
 
     if args.push_to_hub:
-        api = HfApi()
-        repo_id = api.create_repo(args.output_path, exist_ok=True).repo_id
-        api.upload_folder(repo_id=repo_id, folder_path=args.output_path, repo_type="model")
+        repo_id = create_repo(args.output_path, exist_ok=True).repo_id
+        upload_folder(repo_id=repo_id, folder_path=args.output_path, repo_type="model")
