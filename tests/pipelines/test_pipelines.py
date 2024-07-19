@@ -291,6 +291,8 @@ class DownloadTests(unittest.TestCase):
                 assert not any(".bin" in f for f in files)
 
     def test_download_bin_index(self):
+        # pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe-indexes", variant="fp16")
+        # assert pipeline is None
         for variant in ["fp16", None]:
             with tempfile.TemporaryDirectory() as tmpdirname:
                 tmpdirname = DiffusionPipeline.download(
