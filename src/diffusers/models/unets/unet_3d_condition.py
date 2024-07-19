@@ -529,14 +529,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         self.original_attn_processors = self.attn_processors
 
-        def fuse_recursively(module):
-            for submodule in module.children():
-                if isinstance(submodule, Attention):
-                    submodule.fuse_projections(fuse=True)
-                # Recursively call this function on the submodule to handle nesting
-                fuse_recursively(submodule)
-
-        fuse_recursively(self)
+        for module in self.modules():
+            if isinstance(module, Attention):
+                module.fuse_projections(fuse=True)
 
         self.set_attn_processor(FusedAttnProcessor2_0())
 
