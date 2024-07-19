@@ -765,6 +765,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         )
 
 
+# Copied from diffusers.models.controlnet.zero_module
 def zero_module(module: nn.Module) -> nn.Module:
     for p in module.parameters():
         nn.init.zeros_(p)
