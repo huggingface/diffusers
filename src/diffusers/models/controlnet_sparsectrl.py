@@ -104,6 +104,9 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
     Args:
         in_channels (`int`, defaults to 4):
             The number of channels in the input sample.
+        conditioning_channels (`int`, defaults to 4):
+            The number of input channels in the controlnet conditional embedding module. If
+            `concat_condition_embedding` is True, the value provided here is incremented by 1.
         flip_sin_to_cos (`bool`, defaults to `True`):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, defaults to 0):
@@ -132,38 +135,25 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
             [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
-        encoder_hid_dim (`int`, *optional*, defaults to None):
-            If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
-            dimension to `cross_attention_dim`.
-        encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
-            If given, the `encoder_hidden_states` and potentially other embeddings are down-projected to text
-            embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
-        attention_head_dim (`Union[int, Tuple[int]]`, defaults to 8):
+        transformer_layers_per_mid_block (`int` or `Tuple[int]`, *optional*, defaults to 1):
+            The number of transformer layers to use in each layer in the middle block.
+        attention_head_dim (`int` or `Tuple[int]`, defaults to 8):
             The dimension of the attention heads.
+        num_attention_heads (`int` or `Tuple[int]`, *optional*):
+            The number of heads to use for multi-head attention.
         use_linear_projection (`bool`, defaults to `False`):
-        class_embed_type (`str`, *optional*, defaults to `None`):
-            The type of class embedding to use which is ultimately summed with the time embeddings. Choose from None,
-            `"timestep"`, `"identity"`, `"projection"`, or `"simple_projection"`.
-        addition_embed_type (`str`, *optional*, defaults to `None`):
-            Configures an optional embedding which will be summed with the time embeddings. Choose from `None` or
-            "text". "text" will use the `TextTimeEmbedding` layer.
-        num_class_embeds (`int`, *optional*, defaults to 0):
-            Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
-            class conditioning with `class_embed_type` equal to `None`.
         upcast_attention (`bool`, defaults to `False`):
         resnet_time_scale_shift (`str`, defaults to `"default"`):
             Time scale shift config for ResNet blocks (see `ResnetBlock2D`). Choose from `default` or `scale_shift`.
-        projection_class_embeddings_input_dim (`int`, *optional*, defaults to `None`):
-            The dimension of the `class_labels` input when `class_embed_type="projection"`. Required when
-            `class_embed_type="projection"`.
-        controlnet_conditioning_channel_order (`str`, defaults to `"rgb"`):
-            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
-        conditioning_embedding_out_channels (`tuple[int]`, *optional*, defaults to `(16, 32, 96, 256)`):
+        conditioning_embedding_out_channels (`Tuple[int]`, defaults to `(16, 32, 96, 256)`):
             The tuple of output channel for each block in the `conditioning_embedding` layer.
-        global_pool_conditions (`bool`, defaults to `False`):
-            TODO(Patrick) - unused parameter.
-        addition_embed_type_num_heads (`int`, defaults to 64):
-            The number of heads to use for the `TextTimeEmbedding` layer.
+        controlnet_conditioning_channel_order (`str`, defaults to `rgb`):
+        motion_max_seq_length (`int`, defaults to `32`):
+            The maximum sequence length to use in the motion module.
+        motion_num_attention_heads (`int` or `Tuple[int]`, defaults to `8`):
+            The number of heads to use in each attention layer of the motion module.
+        concat_conditioning_mask (`bool`, defaults to `True`):
+        use_simplified_condition_embedding (`bool`, defaults to `True`):
     """
 
     _supports_gradient_checkpointing = True
@@ -193,22 +183,13 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1,
         transformer_layers_per_mid_block: Optional[Union[int, Tuple[int]]] = None,
         temporal_transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1,
-        encoder_hid_dim: Optional[int] = None,
-        encoder_hid_dim_type: Optional[str] = None,
         attention_head_dim: Union[int, Tuple[int, ...]] = 8,
         num_attention_heads: Optional[Union[int, Tuple[int, ...]]] = None,
         use_linear_projection: bool = False,
-        class_embed_type: Optional[str] = None,
-        addition_embed_type: Optional[str] = None,
-        addition_time_embed_dim: Optional[int] = None,
-        num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        projection_class_embeddings_input_dim: Optional[int] = None,
-        controlnet_conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
-        global_pool_conditions: bool = False,
-        addition_embed_type_num_heads: int = 64,
+        controlnet_conditioning_channel_order: str = "rgb",
         motion_max_seq_length: int = 32,
         motion_num_attention_heads: int = 8,
         concat_conditioning_mask: bool = True,
