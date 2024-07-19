@@ -1017,6 +1017,11 @@ class UNet2DConditionLoadersMixin:
     def _load_ip_adapter_weights(self, state_dicts, low_cpu_mem_usage=False):
         if not isinstance(state_dicts, list):
             state_dicts = [state_dicts]
+
+        # Kolors
+        if self.encoder_hid_proj is not None and not hasattr(self, "text_encoder_hid_proj"):
+            self.text_encoder_hid_proj = self.encoder_hid_proj
+
         # Set encoder_hid_proj after loading ip_adapter weights,
         # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None

@@ -222,7 +222,8 @@ class IPAdapterMixin:
 
             # create feature extractor if it has not been registered to the pipeline yet
             if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
-                feature_extractor = CLIPImageProcessor()
+                clip_image_size = self.image_encoder.config.image_size
+                feature_extractor = CLIPImageProcessor(size=clip_image_size, crop_size=clip_image_size)
                 self.register_modules(feature_extractor=feature_extractor)
 
         # load ip-adapter into unet
