@@ -160,17 +160,18 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
         # For transformers, `pytorch_model.fp16.bin` as well as `pytorch_model.fp16-00001-of-00004.bin`.
         # For diffusers `diffusion_pytorch_model.fp16.bin` as well as `diffusion_pytorch_model-00001-of-00002.fp16.safetensors`
         # These differences exist because `diffusers` delegates the process of loading sharded checkpoints
-        # to `accelerate`. However, `transformers` has custom code that takes care of it. 
-        mid_pattern = f"({variant}-{transformers_index_format}|(-{transformers_index_format})?\.{variant})"
+        # to `accelerate`. However, `transformers` has custom code that takes care of it.
+        mid_pattern = rf"({variant}-{transformers_index_format}|(-{transformers_index_format})?\.{variant})"
         variant_file_re = re.compile(
             rf"({'|'.join(weight_prefixes)})\.({variant}|{mid_pattern})\.({'|'.join(weight_suffixs)})$"
         )
         # Examples:
         # For transformers, it will be `text_encoder/pytorch_model.bin.index.fp16.json`
         # for diffusers, it will be `unet/diffusion_pytorch_model.safetensors.fp16.index.json`
-        end_pattern = f"({variant}\.index|index\.{variant})"
-        variant_index_re = re.compile(rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.{end_pattern}\.json")
-    
+        end_pattern = rf"({variant}\.index|index\.{variant})"
+        variant_index_re = re.compile(
+            rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.{end_pattern}\.json"
+        )
 
     # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetensors`
     non_variant_file_re = re.compile(
@@ -192,7 +193,7 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
 
     # all variant filenames will be used by default
     usable_filenames = set(variant_filenames)
-    is_transformers_index_file = False 
+    is_transformers_index_file = False
     for filename in filenames:
         if filename.startswith(("pytorch_model", "model")) and "index" in filename:
             is_transformers_index_file = True
