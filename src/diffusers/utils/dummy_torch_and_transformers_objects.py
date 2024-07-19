@@ -1403,11 +1403,11 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(metaclass=DummyObject):
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["torch", "transformers"])
 
-    @classmethod 
+    @classmethod
     def from_config(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
-    @classmethod 
+    @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
