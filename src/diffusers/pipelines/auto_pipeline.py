@@ -47,8 +47,8 @@ from .kandinsky2_2 import (
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pag import (
-    StableDiffusionControlNetPAGPipeline,
     StableDiffusionControlNetPAGInpaintPipeline,
+    StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGPipeline,
     StableDiffusionXLPAGImg2ImgPipeline,
@@ -947,8 +947,7 @@ class AutoPipelineForInpainting(ConfigMixin):
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
                 if "controlnet" in kwargs:
-                    # TODO: Replace ControlNetPAGInpaintPipeline to ControlNetPipeline when available
-                    orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPAGInpaintPipeline")
+                    orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPAGPipeline")
                 else:
                     orig_class_name = config["_class_name"].replace("Pipeline", "PAGPipeline")
 

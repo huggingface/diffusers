@@ -101,7 +101,7 @@ EXAMPLE_DOC_STRING = """
         ...     image=init_image,
         ...     mask_image=mask_image,
         ...     control_image=control_image,
-        ...     pag_scale=0.3
+        ...     pag_scale=0.3,
         ... ).images[0]
         ```
 """
@@ -546,7 +546,6 @@ class StableDiffusionControlNetPAGInpaintPipeline(
         mask_image,
         height,
         width,
-        callback_steps,
         output_type,
         negative_prompt=None,
         prompt_embeds=None,
@@ -561,12 +560,6 @@ class StableDiffusionControlNetPAGInpaintPipeline(
     ):
         if height is not None and height % 8 != 0 or width is not None and width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -755,6 +748,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetInpaintPipeline.prepare_control_image
     def prepare_control_image(
         self,
         image,
@@ -1153,7 +1147,6 @@ class StableDiffusionControlNetPAGInpaintPipeline(
             mask_image,
             height,
             width,
-            None,
             output_type,
             negative_prompt,
             prompt_embeds,
@@ -1393,7 +1386,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
         control_image = control_images if isinstance(control_image, list) else control_images[0]
         controlnet_prompt_embeds = prompt_embeds
 
-        # 7.2 Create tensor stating which controlnets to keep
+        # 7.4 Create tensor stating which controlnets to keep
         controlnet_keep = []
         for i in range(len(timesteps)):
             keeps = [
@@ -1402,7 +1395,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
             ]
             controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
-        # 7.3 Optionally get Guidance Scale Embedding
+        # 7.5 Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
             guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
@@ -1453,7 +1446,9 @@ class StableDiffusionControlNetPAGInpaintPipeline(
                         repeat_factor = (first_dim_size + mask.shape[0] - 1) // mask.shape[0]
                         mask = mask.repeat(repeat_factor, 1, 1, 1)[:first_dim_size]
                     if masked_image_latents.shape[0] < first_dim_size:
-                        repeat_factor = (first_dim_size + masked_image_latents.shape[0] - 1) // masked_image_latents.shape[0]
+                        repeat_factor = (
+                            first_dim_size + masked_image_latents.shape[0] - 1
+                        ) // masked_image_latents.shape[0]
                         masked_image_latents = masked_image_latents.repeat(repeat_factor, 1, 1, 1)[:first_dim_size]
                     # Perform the concatenation
                     latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
