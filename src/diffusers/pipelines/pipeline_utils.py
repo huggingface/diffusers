@@ -1412,6 +1412,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
+            is_sharded = any("index.json" in f for f in filenames)
 
             if (
                 use_safetensors
@@ -1439,6 +1440,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 if (
                     len(safetensors_variant_filenames) > 0
                     and safetensors_model_filenames != safetensors_variant_filenames
+                    and not is_sharded
                 ):
                     logger.warning(
                         f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
@@ -1452,7 +1454,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
                 bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
                 bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
-                if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
+                if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames and not is_sharded:
                     logger.warning(
                         f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                     )
