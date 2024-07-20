@@ -920,7 +920,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: int,
+        timestep: Union[int, torch.Tensor],
         sample: torch.Tensor,
         generator=None,
         variance_noise: Optional[torch.Tensor] = None,
