@@ -320,7 +320,13 @@ class IPAdapterMixin:
 
         # remove hidden encoder
         self.unet.encoder_hid_proj = None
-        self.config.encoder_hid_dim_type = None
+        self.unet.config.encoder_hid_dim_type = None
+
+        # Kolors: restore `encoder_hid_proj` with `text_encoder_hid_proj`
+        if hasattr(self.unet, "text_encoder_hid_proj") and self.unet.text_encoder_hid_proj is not None:
+            self.unet.encoder_hid_proj = self.unet.text_encoder_hid_proj
+            self.unet.text_encoder_hid_proj = None
+            self.unet.config.encoder_hid_dim_type = "text_proj"
 
         # restore original Unet attention processors layers
         attn_procs = {}

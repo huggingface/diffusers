@@ -1018,8 +1018,12 @@ class UNet2DConditionLoadersMixin:
         if not isinstance(state_dicts, list):
             state_dicts = [state_dicts]
 
-        # Kolors
-        if self.encoder_hid_proj is not None and not hasattr(self, "text_encoder_hid_proj"):
+        # Kolors Unet already has a `encoder_hid_proj`
+        if (
+            self.encoder_hid_proj is not None
+            and self.config.encoder_hid_dim_type == "text_proj"
+            and not hasattr(self, "text_encoder_hid_proj")
+        ):
             self.text_encoder_hid_proj = self.encoder_hid_proj
 
         # Set encoder_hid_proj after loading ip_adapter weights,
