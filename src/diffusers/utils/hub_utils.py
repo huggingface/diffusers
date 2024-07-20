@@ -448,7 +448,7 @@ def _get_checkpoint_shard_files(
         _check_if_shards_exist_locally(
             pretrained_model_name_or_path, subfolder=subfolder, original_shard_filenames=original_shard_filenames
         )
-        return pretrained_model_name_or_path, sharded_metadata
+        return shards_path, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
     allow_patterns = original_shard_filenames
@@ -467,35 +467,37 @@ def _get_checkpoint_shard_files(
                     "required according to the checkpoint index."
                 )
 
-    try:
-        # Load from URL
-        cached_folder = snapshot_download(
-            pretrained_model_name_or_path,
-            cache_dir=cache_dir,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-            allow_patterns=allow_patterns,
-            ignore_patterns=ignore_patterns,
-            user_agent=user_agent,
-        )
-        if subfolder is not None:
-            cached_folder = os.path.join(cached_folder, subfolder)
+        try:
+            # Load from URL
+            cached_folder = snapshot_download(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
+                user_agent=user_agent,
+            )
+            if subfolder is not None:
+                cached_folder = os.path.join(cached_folder, subfolder)
 
-    # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
-    # we don't have to catch them here. We have also dealt with EntryNotFoundError.
-    except HTTPError as e:
-        raise EnvironmentError(
-            f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
-            " again after checking your internet connection."
-        ) from e
+        # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
+        # we don't have to catch them here. We have also dealt with EntryNotFoundError.
+        except HTTPError as e:
+            raise EnvironmentError(
+                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
+                " again after checking your internet connection."
+            ) from e
 
     # If `local_files_only=True`, `cached_folder` may not contain all the shard files.
-    if local_files_only:
+    elif local_files_only:
         _check_if_shards_exist_locally(
             local_dir=cache_dir, subfolder=subfolder, original_shard_filenames=original_shard_filenames
         )
+        if subfolder is not None:
+            cached_folder = os.path.join(cached_folder, subfolder)
 
     return cached_folder, sharded_metadata
 
