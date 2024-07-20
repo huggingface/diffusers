@@ -748,7 +748,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetInpaintPipeline.prepare_control_image
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_inpaint.StableDiffusionControlNetInpaintPipeline.prepare_control_image
     def prepare_control_image(
         self,
         image,
@@ -1324,7 +1324,6 @@ class StableDiffusionControlNetPAGInpaintPipeline(
         )
 
         # 7.1 Check that sizes of mask, masked image and latents match
-        # Copied from diffusers.pipelines.pag.pipeline_pag_sd_xl_inpaint.StableDiffusionXLPAGInpaintPipeline.__call__
         if num_channels_unet == 9:
             # default case for runwayml/stable-diffusion-inpainting
             num_channels_mask = mask.shape[1]
