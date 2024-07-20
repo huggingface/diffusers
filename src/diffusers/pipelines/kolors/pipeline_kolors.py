@@ -131,6 +131,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
     The pipeline also inherits the following loading methods:
         - [`~loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
         - [`~loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -149,7 +150,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
             `Kwai-Kolors/Kolors-diffusers`.
     """
 
-    model_cpu_offload_seq = "text_encoder->unet->vae"
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
     _optional_components = [
         "image_encoder",
         "feature_extractor",
@@ -450,6 +451,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
     def check_inputs(
         self,
         prompt,
+        num_inference_steps,
         height,
         width,
         negative_prompt=None,
@@ -462,6 +464,12 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
+        if not isinstance(num_inference_steps, int) or num_inference_steps <= 0:
+            raise ValueError(
+                f"`num_inference_steps` has to be a positive integer but is {num_inference_steps} of type"
+                f" {type(num_inference_steps)}."
+            )
+
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
@@ -830,6 +838,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLL
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
+            num_inference_steps,
             height,
             width,
             negative_prompt,
