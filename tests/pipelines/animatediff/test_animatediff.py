@@ -11,6 +11,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     MotionAdapter,
+    StableDiffusionPipeline,
     UNet2DConditionModel,
     UNetMotionModel,
 )
@@ -132,13 +133,34 @@ class AnimateDiffPipelineFastTests(
         return inputs
 
     def test_from_pipe_consistent_config(self):
-        # Note: This test tries to load components from the "hf-internal-testing/tiny-stable-diffusion-pipe" or
-        # "hf-internal-testing/tiny-stable-diffusion-xl-pipe" depending upon the AnimateDiff pipeline being
-        # SD1.5 or SDXL. The dummy pipe components have different initialization configs than required here.
-        # For example, cross_atttention_dim is 32 for dummy model whereas we are using 8 here to speed up tests.
-        # I think we might need to push dummy models with the initialization configuration used here and rewrite
-        # the test to use that variant for this to pass. We skip it for now.
-        pass
+        assert self.original_pipeline_class == StableDiffusionPipeline
+        original_repo = "a-r-r-o-w/tinier-stable-diffusion-pipe"
+        original_kwargs = {"requires_safety_checker": False}
+
+        # create original_pipeline_class(sd)
+        pipe_original = self.original_pipeline_class.from_pretrained(original_repo, **original_kwargs)
+
+        # original_pipeline_class(sd) -> pipeline_class
+        pipe_components = self.get_dummy_components()
+        pipe_additional_components = {}
+        for name, component in pipe_components.items():
+            if name not in pipe_original.components:
+                pipe_additional_components[name] = component
+
+        pipe = self.pipeline_class.from_pipe(pipe_original, **pipe_additional_components)
+
+        # pipeline_class -> original_pipeline_class(sd)
+        original_pipe_additional_components = {}
+        for name, component in pipe_original.components.items():
+            if name not in pipe.components or not isinstance(component, pipe.components[name].__class__):
+                original_pipe_additional_components[name] = component
+
+        pipe_original_2 = self.original_pipeline_class.from_pipe(pipe, **original_pipe_additional_components)
+
+        # compare the config
+        original_config = {k: v for k, v in pipe_original.config.items() if not k.startswith("_")}
+        original_config_2 = {k: v for k, v in pipe_original_2.config.items() if not k.startswith("_")}
+        assert original_config_2 == original_config
 
     def test_motion_unet_loading(self):
         components = self.get_dummy_components()
