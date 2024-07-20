@@ -43,8 +43,6 @@ from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
     require_torch,
     skip_mps,
     torch_device,
@@ -73,6 +71,17 @@ def to_np(tensor):
 def check_same_shape(tensor_list):
     shapes = [tensor.shape for tensor in tensor_list]
     return all(shape == shapes[0] for shape in shapes[1:])
+
+
+def check_qkv_fusion_matches_attn_procs_length(model, original_attn_processors):
+    current_attn_processors = model.attn_processors
+    return len(current_attn_processors) == len(original_attn_processors)
+
+
+def check_qkv_fusion_processors_exist(model):
+    current_attn_processors = model.attn_processors
+    proc_names = [v.__class__.__name__ for _, v in current_attn_processors.items()]
+    return all(p.startswith("Fused") for p in proc_names)
 
 
 class SDFunctionTesterMixin:

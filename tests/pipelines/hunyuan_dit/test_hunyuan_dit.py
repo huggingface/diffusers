@@ -28,8 +28,6 @@ from diffusers import (
     HunyuanDiTPipeline,
 )
 from diffusers.utils.testing_utils import (
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
@@ -38,7 +36,12 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import (
+    PipelineTesterMixin,
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
+    to_np,
+)
 
 
 enable_full_determinism()

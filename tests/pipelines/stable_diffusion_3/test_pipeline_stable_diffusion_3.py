@@ -7,15 +7,17 @@ from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProject
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
 from diffusers.utils.testing_utils import (
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import (
+    PipelineTesterMixin,
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
+)
 
 
 class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
