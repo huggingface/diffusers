@@ -36,7 +36,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_3.pipeline_output import StableDiffusion3PipelineOutput
-from .pag_utils import PAGMixin
+from .pag_utils import SD3PAGMixin
 
 
 if is_torch_xla_available():
@@ -126,7 +126,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, PAGMixin):
+class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, SD3PAGMixin):
     r"""
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -202,7 +202,7 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
             else 128
         )
         
-        self.set_pag_applied_layers_sd3(pag_applied_layers)
+        self.set_pag_applied_layers(pag_applied_layers)
 
 
     def _get_t5_prompt_embeds(
@@ -849,7 +849,7 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
 
         if self.do_perturbed_attention_guidance:
             original_attn_proc = self.transformer.attn_processors
-            self._set_pag_attn_processor_sd3(
+            self._set_pag_attn_processor(
                 pag_applied_layers=self.pag_applied_layers,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
             )

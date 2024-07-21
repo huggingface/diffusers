@@ -1110,9 +1110,9 @@ class PAGJointAttnProcessor2_0:
         batch_size = encoder_hidden_states_org.shape[0]
 
         # `sample` projections.
-        query = attn.to_q(hidden_states_org)
-        key = attn.to_k(hidden_states_org)
-        value = attn.to_v(hidden_states_org)
+        query_org = attn.to_q(hidden_states_org)
+        key_org = attn.to_k(hidden_states_org)
+        value_org = attn.to_v(hidden_states_org)
 
         # `context` projections.
         encoder_hidden_states_org_query_proj = attn.add_q_proj(encoder_hidden_states_org)
@@ -1120,19 +1120,19 @@ class PAGJointAttnProcessor2_0:
         encoder_hidden_states_org_value_proj = attn.add_v_proj(encoder_hidden_states_org)
 
         # attention
-        query = torch.cat([query, encoder_hidden_states_org_query_proj], dim=1)
-        key = torch.cat([key, encoder_hidden_states_org_key_proj], dim=1)
-        value = torch.cat([value, encoder_hidden_states_org_value_proj], dim=1)
+        query_org = torch.cat([query_org, encoder_hidden_states_org_query_proj], dim=1)
+        key_org = torch.cat([key_org, encoder_hidden_states_org_key_proj], dim=1)
+        value_org = torch.cat([value_org, encoder_hidden_states_org_value_proj], dim=1)
 
-        inner_dim = key.shape[-1]
+        inner_dim = key_org.shape[-1]
         head_dim = inner_dim // attn.heads
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        query_org = query_org.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key_org = key_org.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value_org = value_org.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        hidden_states_org = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states_org = F.scaled_dot_product_attention(query_org, key_org, value_org, dropout_p=0.0, is_causal=False)
         hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states_org = hidden_states_org.to(query.dtype)
+        hidden_states_org = hidden_states_org.to(query_org.dtype)
 
         # Split the attention outputs.
         hidden_states_org, encoder_hidden_states_org = (
@@ -1157,29 +1157,29 @@ class PAGJointAttnProcessor2_0:
         batch_size = encoder_hidden_states_ptb.shape[0]
 
         # `sample` projections.
-        query = attn.to_q(hidden_states_ptb)
-        key = attn.to_k(hidden_states_ptb)
-        value = attn.to_v(hidden_states_ptb)
+        query_ptb = attn.to_q(hidden_states_ptb)
+        key_ptb = attn.to_k(hidden_states_ptb)
+        value_ptb = attn.to_v(hidden_states_ptb)
 
         # `context` projections.
-        encoder_hidden_states_org_query_proj = attn.add_q_proj(encoder_hidden_states_ptb)
-        encoder_hidden_states_org_key_proj = attn.add_k_proj(encoder_hidden_states_ptb)
+        encoder_hidden_states_ptb_query_proj = attn.add_q_proj(encoder_hidden_states_ptb)
+        encoder_hidden_states_ptb_key_proj = attn.add_k_proj(encoder_hidden_states_ptb)
         encoder_hidden_states_ptb_value_proj = attn.add_v_proj(encoder_hidden_states_ptb)
 
         # attention
-        query = torch.cat([query, encoder_hidden_states_org_query_proj], dim=1)
-        key = torch.cat([key, encoder_hidden_states_org_key_proj], dim=1)
-        value = torch.cat([value, encoder_hidden_states_ptb_value_proj], dim=1)
+        query_ptb = torch.cat([query_ptb, encoder_hidden_states_ptb_query_proj], dim=1)
+        key_ptb = torch.cat([key_ptb, encoder_hidden_states_ptb_key_proj], dim=1)
+        value_ptb = torch.cat([value_ptb, encoder_hidden_states_ptb_value_proj], dim=1)
 
-        inner_dim = key.shape[-1]
+        inner_dim = key_ptb.shape[-1]
         head_dim = inner_dim // attn.heads
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        query_ptb = query_ptb.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key_ptb = key_ptb.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value_ptb = value_ptb.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
         # create a full mask with all entries set to 0
-        seq_len = query.size(2)
-        full_mask = torch.zeros((seq_len, seq_len), device=query.device, dtype=query.dtype)
+        seq_len = query_ptb.size(2)
+        full_mask = torch.zeros((seq_len, seq_len), device=query_ptb.device, dtype=query_ptb.dtype)
 
         # set the attention value between image patches to -inf
         full_mask[:identity_block_size, :identity_block_size] = float('-inf')
@@ -1190,9 +1190,9 @@ class PAGJointAttnProcessor2_0:
         # expand the mask to match the attention weights shape
         full_mask = full_mask.unsqueeze(0).unsqueeze(0)  # Add batch and num_heads dimensions
 
-        hidden_states_ptb = F.scaled_dot_product_attention(query, key, value, attn_mask=full_mask, dropout_p=0.0, is_causal=False)
+        hidden_states_ptb = F.scaled_dot_product_attention(query_ptb, key_ptb, value_ptb, attn_mask=full_mask, dropout_p=0.0, is_causal=False)
         hidden_states_ptb = hidden_states_ptb.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states_ptb = hidden_states_ptb.to(query.dtype)
+        hidden_states_ptb = hidden_states_ptb.to(query_ptb.dtype)
 
         # split the attention outputs.
         hidden_states_ptb, encoder_hidden_states_ptb = (
@@ -1259,9 +1259,9 @@ class PAGCFGJointAttnProcessor2_0:
         batch_size = encoder_hidden_states_org.shape[0]
 
         # `sample` projections.
-        query = attn.to_q(hidden_states_org)
-        key = attn.to_k(hidden_states_org)
-        value = attn.to_v(hidden_states_org)
+        query_org = attn.to_q(hidden_states_org)
+        key_org = attn.to_k(hidden_states_org)
+        value_org = attn.to_v(hidden_states_org)
 
         # `context` projections.
         encoder_hidden_states_org_query_proj = attn.add_q_proj(encoder_hidden_states_org)
@@ -1269,19 +1269,19 @@ class PAGCFGJointAttnProcessor2_0:
         encoder_hidden_states_org_value_proj = attn.add_v_proj(encoder_hidden_states_org)
 
         # attention
-        query = torch.cat([query, encoder_hidden_states_org_query_proj], dim=1)
-        key = torch.cat([key, encoder_hidden_states_org_key_proj], dim=1)
-        value = torch.cat([value, encoder_hidden_states_org_value_proj], dim=1)
+        query_org = torch.cat([query_org, encoder_hidden_states_org_query_proj], dim=1)
+        key_org = torch.cat([key_org, encoder_hidden_states_org_key_proj], dim=1)
+        value_org = torch.cat([value_org, encoder_hidden_states_org_value_proj], dim=1)
 
-        inner_dim = key.shape[-1]
+        inner_dim = key_org.shape[-1]
         head_dim = inner_dim // attn.heads
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        query_org = query_org.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key_org = key_org.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value_org = value_org.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        hidden_states_org = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states_org = F.scaled_dot_product_attention(query_org, key_org, value_org, dropout_p=0.0, is_causal=False)
         hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states_org = hidden_states_org.to(query.dtype)
+        hidden_states_org = hidden_states_org.to(query_org.dtype)
 
         # Split the attention outputs.
         hidden_states_org, encoder_hidden_states_org = (
@@ -1306,29 +1306,29 @@ class PAGCFGJointAttnProcessor2_0:
         batch_size = encoder_hidden_states_ptb.shape[0]
 
         # `sample` projections.
-        query = attn.to_q(hidden_states_ptb)
-        key = attn.to_k(hidden_states_ptb)
-        value = attn.to_v(hidden_states_ptb)
+        query_ptb = attn.to_q(hidden_states_ptb)
+        key_ptb = attn.to_k(hidden_states_ptb)
+        value_ptb = attn.to_v(hidden_states_ptb)
 
         # `context` projections.
-        encoder_hidden_states_org_query_proj = attn.add_q_proj(encoder_hidden_states_ptb)
-        encoder_hidden_states_org_key_proj = attn.add_k_proj(encoder_hidden_states_ptb)
+        encoder_hidden_states_ptb_query_proj = attn.add_q_proj(encoder_hidden_states_ptb)
+        encoder_hidden_states_ptb_key_proj = attn.add_k_proj(encoder_hidden_states_ptb)
         encoder_hidden_states_ptb_value_proj = attn.add_v_proj(encoder_hidden_states_ptb)
 
         # attention
-        query = torch.cat([query, encoder_hidden_states_org_query_proj], dim=1)
-        key = torch.cat([key, encoder_hidden_states_org_key_proj], dim=1)
-        value = torch.cat([value, encoder_hidden_states_ptb_value_proj], dim=1)
+        query_ptb = torch.cat([query_ptb, encoder_hidden_states_ptb_query_proj], dim=1)
+        key_ptb = torch.cat([key_ptb, encoder_hidden_states_ptb_key_proj], dim=1)
+        value_ptb = torch.cat([value_ptb, encoder_hidden_states_ptb_value_proj], dim=1)
 
-        inner_dim = key.shape[-1]
+        inner_dim = key_ptb.shape[-1]
         head_dim = inner_dim // attn.heads
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        query_ptb = query_ptb.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key_ptb = key_ptb.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value_ptb = value_ptb.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
         # create a full mask with all entries set to 0
-        seq_len = query.size(2)
-        full_mask = torch.zeros((seq_len, seq_len), device=query.device, dtype=query.dtype)
+        seq_len = query_ptb.size(2)
+        full_mask = torch.zeros((seq_len, seq_len), device=query_ptb.device, dtype=query_ptb.dtype)
 
         # set the attention value between image patches to -inf
         full_mask[:identity_block_size, :identity_block_size] = float('-inf')
@@ -1339,9 +1339,9 @@ class PAGCFGJointAttnProcessor2_0:
         # expand the mask to match the attention weights shape
         full_mask = full_mask.unsqueeze(0).unsqueeze(0)  # Add batch and num_heads dimensions
 
-        hidden_states_ptb = F.scaled_dot_product_attention(query, key, value, attn_mask=full_mask, dropout_p=0.0, is_causal=False)
+        hidden_states_ptb = F.scaled_dot_product_attention(query_ptb, key_ptb, value_ptb, attn_mask=full_mask, dropout_p=0.0, is_causal=False)
         hidden_states_ptb = hidden_states_ptb.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states_ptb = hidden_states_ptb.to(query.dtype)
+        hidden_states_ptb = hidden_states_ptb.to(query_ptb.dtype)
 
         # split the attention outputs.
         hidden_states_ptb, encoder_hidden_states_ptb = (
