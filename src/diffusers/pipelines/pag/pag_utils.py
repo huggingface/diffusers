@@ -300,13 +300,13 @@ class PixArtPAGMixin(PAGMixin):
         else:
             pag_attn_proc = PAGIdentitySelfAttnProcessor2_0()
 
-        def is_attn(module_name):
+        def is_self_attn(module_name):
             r"""
             Check if the module is self-attention module based on its name.
             """
             return (
-                "attn" in module_name and len(module_name.split(".")) == 3
-            )  # include transformer_blocks.1.attn, exclude transformer_blocks.18.attn.to_q, transformer_blocks.1.attn.add_q_proj, ...
+                "attn1" in module_name and len(module_name.split(".")) == 3
+            )  # include transformer_blocks.1.attn1, exclude transformer_blocks.18.attn1.to_q, transformer_blocks.1.attn1.add_q_proj, ...
 
         def get_block_index(module_name):
             r"""
@@ -323,7 +323,7 @@ class PixArtPAGMixin(PAGMixin):
             block_index = str(pag_layer_input)
 
             for name, module in self.transformer.named_modules():
-                if is_attn(name) and get_block_index(name) == block_index:
+                if is_self_attn(name) and get_block_index(name) == block_index:
                     target_modules.append(module)
 
             if len(target_modules) == 0:
@@ -331,3 +331,18 @@ class PixArtPAGMixin(PAGMixin):
 
             for module in target_modules:
                 module.processor = pag_attn_proc
+
+    @property
+    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.pag_attn_processors with unet->transformer
+    def pag_attn_processors(self):
+        r"""
+        Returns:
+            `dict` of PAG attention processors: A dictionary contains all PAG attention processors used in the model
+            with the key as the name of the layer.
+        """
+
+        processors = {}
+        for name, proc in self.transformer.attn_processors.items():
+            if proc.__class__ in (PAGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0):
+                processors[name] = proc
+        return processors
