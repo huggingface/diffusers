@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import math
 from typing import Optional
 
 import torch
@@ -21,10 +20,10 @@ from torch import nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ..attention import FeedForward
-from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, apply_rotary_emb
+from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, apply_rotary_emb
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormSingle, FP32LayerNorm
+from ..normalization import AdaLayerNormContinuous, FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -46,6 +45,7 @@ class SmolDiTAttention(nn.Module):
         self.query_dim = query_dim
         self.num_heads = num_heads
         self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
+        self.is_cross_attention = cross_attention_dim is not None
 
         self.scale = dim_head**-0.5
 
@@ -58,13 +58,18 @@ class SmolDiTAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor = None,
         attention_mask: Optional[torch.Tensor] = None,
-        query_rotary_emb: Optional[torch.Tensor] = None,
-        key_rotary_emb: Optional[torch.Tensor] = None,
-        base_sequence_length: Optional[int] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
     ):
         batch_size, sequence_length, _ = hidden_states.shape
+        encoder_hidden_states = hidden_states if encoder_hidden_states is None else encoder_hidden_states
+
+        # scaled_dot_product_attention expects attention_mask shape to be
+        # (batch, heads, source_length, target_length)
+        if attention_mask is not None:
+            attention_mask = attention_mask.bool().view(batch_size, 1, 1, -1)
+            attention_mask = attention_mask.expand(-1, self.num_heads, sequence_length, -1)
 
         # Projections.
         query = self.to_q(hidden_states)
@@ -83,44 +88,30 @@ class SmolDiTAttention(nn.Module):
         value = value.view(batch_size, -1, kv_heads, head_dim)
 
         # Apply RoPE if needed
-        if query_rotary_emb is not None:
-            query = apply_rotary_emb(query, query_rotary_emb, use_real=False)
-        if key_rotary_emb is not None:
-            key = apply_rotary_emb(key, key_rotary_emb, use_real=False)
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb)
+            if not self.is_cross_attention:
+                key = apply_rotary_emb(key, image_rotary_emb)
 
         query, key = query.to(dtype), key.to(dtype)
 
-        # Apply proportional attention if true
-        if key_rotary_emb is None:
-            softmax_scale = None
-        else:
-            if base_sequence_length is not None:
-                softmax_scale = math.sqrt(math.log(sequence_length, base_sequence_length)) * self.scale
-            else:
-                softmax_scale = self.scale
-
-        # perform Grouped-qurey Attention (GQA)
+        # perform Grouped-query Attention (GQA)
         n_rep = self.num_heads // kv_heads
         if n_rep >= 1:
             key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
             value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
-
-        # scaled_dot_product_attention expects attention_mask shape to be
-        # (batch, heads, source_length, target_length)
-        attention_mask = attention_mask.bool().view(batch_size, 1, 1, -1)
-        attention_mask = attention_mask.expand(-1, self.num_heads, sequence_length, -1)
 
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)
         value = value.transpose(1, 2)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for self.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, scale=softmax_scale
-        )
-        hidden_states = hidden_states.transpose(1, 2).to(dtype)
+        hidden_states = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask, scale=self.scale)
 
+        # out
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, self.num_heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+        hidden_states = self.to_out(hidden_states)
         return hidden_states
 
 
@@ -148,7 +139,7 @@ class SmolDiTBlock(nn.Module):
         )
 
         # 2. Cross-Attn
-        self.norm2 = FP32LayerNorm(dim, eps=1e-6, norm_elementwise_affine=True)
+        self.norm2 = FP32LayerNorm(dim, eps=1e-6, elementwise_affine=True)
         self.attn2 = SmolDiTAttention(
             query_dim=dim,
             cross_attention_dim=cross_attention_dim,
@@ -178,6 +169,7 @@ class SmolDiTBlock(nn.Module):
             norm_hidden_states,
             image_rotary_emb=image_rotary_emb,
         )
+        print(f"{hidden_states.shape=}, {attn_output.shape=}")
         hidden_states = hidden_states + attn_output
 
         # 2. Cross-Attention
@@ -205,7 +197,6 @@ class SmolDiT2DModel(ModelMixin, ConfigMixin):
         in_channels: int = 4,
         out_channels: int = 4,
         activation_fn: str = "gelu-approximate",
-        hidden_size=1152,
         num_layers: int = 28,
         mlp_ratio: float = 4.0,
         cross_attention_dim: int = 1024,
@@ -213,7 +204,8 @@ class SmolDiT2DModel(ModelMixin, ConfigMixin):
         super().__init__()
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.adaln_single = AdaLayerNormSingle(self.inner_dim, use_additional_conditions=False)
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=self.inner_dim)
 
         self.text_embedder = PixArtAlphaTextProjection(
             in_features=cross_attention_dim,
@@ -226,7 +218,7 @@ class SmolDiT2DModel(ModelMixin, ConfigMixin):
             height=sample_size,
             width=sample_size,
             in_channels=in_channels,
-            embed_dim=hidden_size,
+            embed_dim=self.inner_dim,
             patch_size=patch_size,
             pos_embed_type=None,
         )
@@ -247,9 +239,8 @@ class SmolDiT2DModel(ModelMixin, ConfigMixin):
         )
 
         self.out_channels = out_channels
-        self.scale_shift_table = nn.Parameter(torch.randn(2, self.inner_dim) / self.inner_dim**0.5)
-        self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
-        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * out_channels, bias=True)
+        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
+        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * out_channels)
 
     def forward(
         self,
@@ -260,17 +251,15 @@ class SmolDiT2DModel(ModelMixin, ConfigMixin):
         return_dict=True,
     ):
         height, width = hidden_states.shape[-2:]
+        hidden_dtype = hidden_states.dtype
 
+        # patch embed
         hidden_states = self.pos_embed(hidden_states)
 
         # timestep
         batch_size = hidden_states.shape[0]
-        timestep, embedded_timestep = self.adaln_single(
-            timestep,
-            added_cond_kwargs={"resolution": None, "aspect_ratio": None},
-            batch_size=batch_size,
-            hidden_dtype=hidden_states.dtype,
-        )
+        timesteps_proj = self.time_proj(timestep)
+        temb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, 256)
 
         # text projection
         batch_size, sequence_length, _ = encoder_hidden_states.shape
@@ -280,18 +269,13 @@ class SmolDiT2DModel(ModelMixin, ConfigMixin):
         for _, block in enumerate(self.blocks):
             hidden_states = block(
                 hidden_states=hidden_states,
-                temb=timestep,
+                temb=temb,
                 encoder_hidden_states=encoder_hidden_states,
                 image_rotary_emb=image_rotary_emb,
             )  # (N, L, D)
 
         # final layer
-        shift, scale = (
-            self.scale_shift_table[None] + embedded_timestep[:, None].to(self.scale_shift_table.device)
-        ).chunk(2, dim=1)
-        hidden_states = self.norm_out(hidden_states)
-        # modulation
-        hidden_states = hidden_states * (1 + scale.to(hidden_states.device)) + shift.to(hidden_states.device)
+        hidden_states = self.norm_out(hidden_states, temb.to(torch.float32))
         hidden_states = self.proj_out(hidden_states)
         # (N, L, patch_size ** 2 * out_channels)
 
