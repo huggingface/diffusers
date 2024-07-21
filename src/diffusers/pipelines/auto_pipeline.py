@@ -98,7 +98,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGPipeline),
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGPipeline),
-        ("stable-diffusion-3-medium-diffusers", StableDiffusion3PAGPipeline)
+        ("stable-diffusion-3-medium-diffusers", StableDiffusion3PAGPipeline),
         ("auraflow", AuraFlowPipeline),
         ("kolors", KolorsPipeline),
     ]
