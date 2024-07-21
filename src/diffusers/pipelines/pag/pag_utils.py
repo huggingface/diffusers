@@ -57,24 +57,7 @@ class PAGMixin:
             if not layer_splits[2].startswith("attentions_"):
                 raise ValueError(f"Invalid attention_index in pag layer: {layer}. Should start with 'attentions_'")
 
-    @staticmethod
-    def _check_input_pag_applied_layer_sd3(layer):
-        r"""
-        Check if each layer input in `applied_pag_layers` is valid. It should be the block index: {block_index}.
-        """
-
-        # Check if the layer index is valid (should be int or str of int)
-        if isinstance(layer, int):
-            return  # Valid layer index
-
-        if isinstance(layer, str):
-            if layer.isdigit():
-                return  # Valid layer index
-
-        # If it is not a valid layer index, raise a ValueError
-        raise ValueError(f"Pag layer should only contain block index. Accept number string like '3', got {layer}")
-
-
+   
     def _set_pag_attn_processor(self, pag_applied_layers, do_classifier_free_guidance):
         r"""
         Set the attention processor for the PAG layers.
@@ -167,50 +150,6 @@ class PAGMixin:
                 module.processor = pag_attn_proc
 
 
-    def _set_pag_attn_processor_sd3(self, pag_applied_layers, do_classifier_free_guidance):
-        r"""
-        Set the attention processor for the PAG layers.
-        """
-        if do_classifier_free_guidance:
-            pag_attn_proc = PAGCFGJointAttnProcessor2_0()
-        else:
-            pag_attn_proc = PAGJointAttnProcessor2_0()
-
-        def is_attn(module_name):
-            r"""
-            Check if the module is self-attention module based on its name.
-            """
-            return "attn" in module_name and len(module_name.split(".")) == 3 # include transformer_blocks.1.attn, exclude transformer_blocks.18.attn.to_q, transformer_blocks.1.attn.add_q_proj, ...
-
-        def get_block_index(module_name):
-            r"""
-            Get the block index from the module name. can be "block_0", "block_1", ... If there is only one block (e.g.
-            mid_block) and index is ommited from the name, it will be "block_0".
-            """
-            # transformer_blocks.23.attn -> "23"
-            return module_name.split('.')[1]
-
-        for pag_layer_input in pag_applied_layers:
-            # for each PAG layer input, we find corresponding self-attention layers in the transformer model
-            target_modules = []
-            
-            block_index = str(pag_layer_input)
-            
-            for name, module in self.transformer.named_modules():
-                if (
-                    is_attn(name)
-                    and get_block_index(name) == block_index
-                ):
-                    target_modules.append(module)
-                    
-                
-            if len(target_modules) == 0:
-                raise ValueError(f"Cannot find pag layer to set attention processor for: {pag_layer_input}")
-
-            for module in target_modules:
-                module.processor = pag_attn_proc
-
-
     def _get_pag_scale(self, t):
         r"""
         Get the scale factor for the perturbed attention guidance at timestep `t`.
@@ -281,19 +220,7 @@ class PAGMixin:
             self._check_input_pag_applied_layer(pag_layer)
 
         self.pag_applied_layers = pag_applied_layers
-        
-    def set_pag_applied_layers_sd3(self, pag_applied_layers):
-        r"""
-        set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
-        """
 
-        if not isinstance(pag_applied_layers, list):
-            pag_applied_layers = [pag_applied_layers]
-
-        for pag_layer in pag_applied_layers:
-            self._check_input_pag_applied_layer_sd3(pag_layer)
-
-        self.pag_applied_layers = pag_applied_layers
 
     @property
     def pag_scale(self):
@@ -416,7 +343,6 @@ class SD3PAGMixin(PAGMixin):
         self.pag_applied_layers = pag_applied_layers
 
 
-    # TODO: need test
     @property
     def pag_attn_processors(self):
         r"""
