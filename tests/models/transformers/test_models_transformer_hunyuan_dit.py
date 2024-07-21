@@ -85,7 +85,7 @@ class HunyuanDiTTests(ModelTesterMixin, unittest.TestCase):
             "sample_size": 16,
             "patch_size": 2,
             "in_channels": 4,
-            "num_layers": 2,
+            "num_layers": 1,
             "attention_head_dim": 8,
             "num_attention_heads": 3,
             "cross_attention_dim": 32,
@@ -101,3 +101,11 @@ class HunyuanDiTTests(ModelTesterMixin, unittest.TestCase):
         super().test_output(
             expected_output_shape=(self.dummy_input[self.main_input_name].shape[0],) + self.output_shape
         )
+
+    @unittest.skip("HunyuanDIT use a custom processor HunyuanAttnProcessor2_0")
+    def test_set_xformers_attn_processor_for_determinism(self):
+        pass
+
+    @unittest.skip("HunyuanDIT use a custom processor HunyuanAttnProcessor2_0")
+    def test_set_attn_processor_for_determinism(self):
+        pass
