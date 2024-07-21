@@ -337,7 +337,6 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
             encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
 
         # 2. Blocks
-        i = 0
         for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
 
@@ -372,8 +371,6 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=None,
                 )
-                print(f"{i}th block processed.")
-                i += 1
 
         # 3. Output
         shift, scale = (
