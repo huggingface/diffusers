@@ -40,7 +40,7 @@ class LatteTransformerTests(ModelTesterMixin, unittest.TestCase):
         num_frames = 1
         height = width = 8
         embedding_dim = 32
-        sequence_length = 35
+        sequence_length = 8
 
         hidden_states = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
@@ -65,7 +65,7 @@ class LatteTransformerTests(ModelTesterMixin, unittest.TestCase):
         init_dict = {
             "sample_size": 8,
             "num_layers": 1,
-            "patch_size": 2,
+            "patch_size": 1,
             "attention_head_dim": 8,
             "num_attention_heads": 3,
             "caption_channels": 32,
