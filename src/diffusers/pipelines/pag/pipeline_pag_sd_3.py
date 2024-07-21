@@ -53,15 +53,17 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusion3Pipeline
+        >>> from diffusers import AutoPipelineForText2Image
 
-        >>> pipe = StableDiffusion3Pipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
+        >>> pipe = AutoPipelineForText2Image.from_pretrained(
+        ...     "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16,
+        ...     enable_pag=True,
+        ...     pag_applied_layers=["13"]
         ... )
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
-        >>> image = pipe(prompt).images[0]
-        >>> image.save("sd3.png")
+        >>> image = pipe(prompt, guidance_scale=5.0, pag_scale=0.7).images[0]
+        >>> image.save("sd3_pag.png")
         ```
 """
 
