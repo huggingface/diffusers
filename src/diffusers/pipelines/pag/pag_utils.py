@@ -257,7 +257,7 @@ class PAGMixin:
 
         processors = {}
         for name, proc in self.unet.attn_processors.items():
-            if proc.__class__ in (PAGCFGHunyuanAttnProcessor2_0, PAGHunyuanAttnProcessor2_0):
+            if proc.__class__ in (PAGCFGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0):
                 processors[name] = proc
         return processors
 
