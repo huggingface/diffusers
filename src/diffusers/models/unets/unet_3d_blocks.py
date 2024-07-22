@@ -1581,7 +1581,7 @@ class UpBlockMotion(nn.Module):
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     num_layers=temporal_transformer_layers_per_block[i],
-                    norm_num_groups=temporal_norm_num_groups,
+                    norm_num_groups=resnet_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
                     attention_bias=False,
                     activation_fn="geglu",

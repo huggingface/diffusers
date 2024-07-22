@@ -584,7 +584,7 @@ class AnimateDiffSparseControlNetPipeline(
         return latents
 
     def prepare_image(self, image, width, height, device, dtype):
-        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        image = self.control_image_processor.preprocess(image, height=height, width=width)
         controlnet_images = image.unsqueeze(0).to(device, dtype)
         batch_size, num_frames, channels, height, width = controlnet_images.shape
 

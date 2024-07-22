@@ -147,6 +147,8 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
             Time scale shift config for ResNet blocks (see `ResnetBlock2D`). Choose from `default` or `scale_shift`.
         conditioning_embedding_out_channels (`Tuple[int]`, defaults to `(16, 32, 96, 256)`):
             The tuple of output channel for each block in the `conditioning_embedding` layer.
+        global_pool_conditions (`bool`, defaults to `False`):
+            TODO(Patrick) - unused parameter
         controlnet_conditioning_channel_order (`str`, defaults to `rgb`):
         motion_max_seq_length (`int`, defaults to `32`):
             The maximum sequence length to use in the motion module.
@@ -189,6 +191,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
         conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
+        global_pool_conditions: bool = False,
         controlnet_conditioning_channel_order: str = "rgb",
         motion_max_seq_length: int = 32,
         motion_num_attention_heads: int = 8,
