@@ -24,7 +24,8 @@ import PIL
 import numpy as np
 
 from diffusers.image_processor import PixArtImageProcessor, PipelineImageInput, VaeImageProcessor
-from diffusers.models import AutoencoderKL, PixArtTransformer2DModel, PixArtControlNetAdapterModel, PixArtControlNetTransformerModel
+from diffusers.models import AutoencoderKL, PixArtTransformer2DModel
+from controlnet_pixart_alpha import PixArtControlNetAdapterModel, PixArtControlNetTransformerModel
 from diffusers.schedulers import DPMSolverMultistepScheduler
 from diffusers.utils import ( 
     BACKENDS_MAPPING,

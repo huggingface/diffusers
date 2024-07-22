@@ -156,12 +156,6 @@ else:
             "StableDiffusionXLControlNetXSPipeline",
         ]
     )
-    _import_structure["controlnet_pixart"].extend(
-        [
-            "PixArtAlphaControlnetPipeline",
-            "get_closest_hw",
-        ]
-    )
     _import_structure["controlnet_hunyuandit"].extend(
         [
             "HunyuanDiTControlNetPipeline",
