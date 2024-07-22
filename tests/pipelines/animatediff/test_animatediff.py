@@ -134,7 +134,7 @@ class AnimateDiffPipelineFastTests(
 
     def test_from_pipe_consistent_config(self):
         assert self.original_pipeline_class == StableDiffusionPipeline
-        original_repo = "a-r-r-o-w/tinier-stable-diffusion-pipe"
+        original_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"
         original_kwargs = {"requires_safety_checker": False}
 
         # create original_pipeline_class(sd)
@@ -177,33 +177,33 @@ class AnimateDiffPipelineFastTests(
         if torch_device == "cpu":
             expected_pipe_slice = np.array(
                 [
-                    0.5083,
-                    0.5301,
-                    0.4923,
-                    0.4824,
-                    0.4192,
-                    0.5940,
-                    0.5302,
-                    0.3950,
-                    0.5301,
-                    0.4715,
-                    0.3944,
-                    0.4758,
-                    0.4071,
-                    0.3234,
-                    0.5477,
-                    0.4851,
-                    0.4532,
-                    0.5306,
-                    0.5976,
-                    0.5382,
-                    0.3505,
-                    0.5280,
-                    0.6072,
-                    0.4913,
-                    0.5447,
-                    0.4772,
-                    0.5540,
+                    0.5216,
+                    0.5620,
+                    0.4927,
+                    0.5082,
+                    0.4786,
+                    0.5932,
+                    0.5125,
+                    0.4514,
+                    0.5315,
+                    0.4694,
+                    0.3276,
+                    0.4863,
+                    0.3920,
+                    0.3684,
+                    0.5745,
+                    0.4499,
+                    0.5081,
+                    0.5414,
+                    0.6014,
+                    0.5062,
+                    0.3630,
+                    0.5296,
+                    0.6018,
+                    0.5098,
+                    0.4948,
+                    0.5101,
+                    0.5620,
                 ]
             )
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
@@ -211,7 +211,7 @@ class AnimateDiffPipelineFastTests(
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
         if torch_device == "cpu":
-            expected_slice = np.array([0.4051, 0.4495, 0.4480, 0.5845, 0.4172, 0.6066, 0.4205, 0.3786, 0.5323])
+            expected_slice = np.array([0.5125, 0.4514, 0.5315, 0.4499, 0.5081, 0.5414, 0.4948, 0.5101, 0.5620])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     def test_inference_batch_single_identical(

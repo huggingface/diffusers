@@ -140,7 +140,7 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
 
     def test_from_pipe_consistent_config(self):
         assert self.original_pipeline_class == StableDiffusionPipeline
-        original_repo = "a-r-r-o-w/tinier-stable-diffusion-pipe"
+        original_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"
         original_kwargs = {"requires_safety_checker": False}
 
         # create original_pipeline_class(sd)
@@ -180,33 +180,33 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
         if torch_device == "cpu":
             expected_pipe_slice = np.array(
                 [
-                    0.5274,
-                    0.5645,
+                    0.5475,
+                    0.5769,
                     0.4873,
-                    0.5165,
-                    0.4361,
-                    0.5634,
-                    0.5582,
-                    0.3879,
-                    0.5105,
-                    0.5934,
-                    0.3639,
-                    0.4301,
-                    0.4414,
-                    0.3736,
-                    0.5153,
-                    0.4920,
-                    0.4703,
-                    0.5378,
-                    0.6306,
-                    0.5377,
-                    0.3343,
-                    0.5461,
-                    0.5933,
-                    0.5245,
-                    0.5550,
-                    0.4701,
-                    0.5622,
+                    0.5064,
+                    0.4445,
+                    0.5876,
+                    0.5453,
+                    0.4102,
+                    0.5247,
+                    0.5370,
+                    0.3406,
+                    0.4322,
+                    0.3991,
+                    0.3756,
+                    0.5438,
+                    0.4780,
+                    0.5087,
+                    0.5248,
+                    0.6243,
+                    0.5506,
+                    0.3491,
+                    0.5440,
+                    0.6111,
+                    0.5122,
+                    0.5326,
+                    0.5180,
+                    0.5538,
                 ]
             )
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
@@ -214,7 +214,7 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
         if torch_device == "cpu":
-            expected_slice = np.array([0.5597, 0.3899, 0.5205, 0.4981, 0.4674, 0.5326, 0.5579, 0.4773, 0.5603])
+            expected_slice = np.array([0.5476, 0.4092, 0.5289, 0.4755, 0.5092, 0.5186, 0.5403, 0.5287, 0.5467])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     @unittest.skip("Attention slicing is not enabled in this pipeline")

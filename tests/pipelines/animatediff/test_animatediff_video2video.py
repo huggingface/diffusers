@@ -135,7 +135,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(
 
     def test_from_pipe_consistent_config(self):
         assert self.original_pipeline_class == StableDiffusionPipeline
-        original_repo = "a-r-r-o-w/tinier-stable-diffusion-pipe"
+        original_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"
         original_kwargs = {"requires_safety_checker": False}
 
         # create original_pipeline_class(sd)
@@ -179,24 +179,24 @@ class AnimateDiffVideoToVideoPipelineFastTests(
         if torch_device == "cpu":
             expected_pipe_slice = np.array(
                 [
-                    0.5576,
-                    0.6205,
-                    0.4176,
-                    0.5664,
-                    0.5530,
-                    0.5202,
-                    0.5085,
-                    0.4977,
-                    0.4923,
-                    0.5680,
-                    0.3908,
-                    0.4926,
-                    0.6404,
-                    0.4366,
-                    0.5555,
-                    0.5631,
-                    0.4308,
-                    0.5422,
+                    0.5569,
+                    0.6250,
+                    0.4145,
+                    0.5613,
+                    0.5563,
+                    0.5213,
+                    0.5092,
+                    0.4950,
+                    0.4950,
+                    0.5685,
+                    0.3858,
+                    0.4864,
+                    0.6458,
+                    0.4312,
+                    0.5518,
+                    0.5608,
+                    0.4418,
+                    0.5378,
                 ]
             )
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
