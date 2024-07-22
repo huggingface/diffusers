@@ -11,6 +11,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     MotionAdapter,
+    StableDiffusionPipeline,
     UNet2DConditionModel,
     UNetMotionModel,
 )
@@ -36,7 +37,6 @@ def to_np(tensor):
 class AnimateDiffPAGPipelineFastTests(
     IPAdapterTesterMixin, SDFunctionTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase
 ):
-    original_pipeline_class = AnimateDiffPipeline
     pipeline_class = AnimateDiffPAGPipeline
     params = TEXT_TO_IMAGE_PARAMS.union({"pag_scale", "pag_adaptive_scale"})
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -58,7 +58,7 @@ class AnimateDiffPAGPipelineFastTests(
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=block_out_channels,
-            layers_per_block=1,
+            layers_per_block=2,
             sample_size=8,
             in_channels=4,
             out_channels=4,
@@ -99,7 +99,7 @@ class AnimateDiffPAGPipelineFastTests(
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         motion_adapter = MotionAdapter(
             block_out_channels=block_out_channels,
-            motion_layers_per_block=1,
+            motion_layers_per_block=2,
             motion_norm_num_groups=2,
             motion_num_attention_heads=4,
         )
@@ -133,9 +133,34 @@ class AnimateDiffPAGPipelineFastTests(
         return inputs
 
     def test_from_pipe_consistent_config(self):
-        # TODO(aryan): In order to save my sanity, while not being able to justify the amount of time spent
-        # trying to fix this, let's look into this later
-        pass
+        assert self.original_pipeline_class == StableDiffusionPipeline
+        original_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"
+        original_kwargs = {"requires_safety_checker": False}
+
+        # create original_pipeline_class(sd)
+        pipe_original = self.original_pipeline_class.from_pretrained(original_repo, **original_kwargs)
+
+        # original_pipeline_class(sd) -> pipeline_class
+        pipe_components = self.get_dummy_components()
+        pipe_additional_components = {}
+        for name, component in pipe_components.items():
+            if name not in pipe_original.components:
+                pipe_additional_components[name] = component
+
+        pipe = self.pipeline_class.from_pipe(pipe_original, **pipe_additional_components)
+
+        # pipeline_class -> original_pipeline_class(sd)
+        original_pipe_additional_components = {}
+        for name, component in pipe_original.components.items():
+            if name not in pipe.components or not isinstance(component, pipe.components[name].__class__):
+                original_pipe_additional_components[name] = component
+
+        pipe_original_2 = self.original_pipeline_class.from_pipe(pipe, **original_pipe_additional_components)
+
+        # compare the config
+        original_config = {k: v for k, v in pipe_original.config.items() if not k.startswith("_")}
+        original_config_2 = {k: v for k, v in pipe_original_2.config.items() if not k.startswith("_")}
+        assert original_config_2 == original_config
 
     def test_motion_unet_loading(self):
         components = self.get_dummy_components()
@@ -153,33 +178,33 @@ class AnimateDiffPAGPipelineFastTests(
         if torch_device == "cpu":
             expected_pipe_slice = np.array(
                 [
-                    0.5501,
-                    0.4545,
-                    0.5547,
-                    0.4507,
-                    0.4455,
-                    0.5968,
-                    0.4870,
-                    0.5419,
-                    0.5042,
-                    0.4616,
-                    0.5982,
-                    0.3840,
-                    0.5687,
-                    0.4831,
-                    0.3812,
-                    0.5885,
-                    0.4847,
-                    0.4825,
-                    0.3834,
-                    0.5659,
-                    0.5913,
-                    0.6491,
-                    0.4444,
-                    0.5425,
-                    0.6090,
-                    0.5761,
-                    0.4833,
+                    0.5068,
+                    0.5294,
+                    0.4926,
+                    0.4810,
+                    0.4188,
+                    0.5935,
+                    0.5295,
+                    0.3947,
+                    0.5300,
+                    0.4706,
+                    0.3950,
+                    0.4737,
+                    0.4072,
+                    0.3227,
+                    0.5481,
+                    0.4864,
+                    0.4518,
+                    0.5315,
+                    0.5979,
+                    0.5374,
+                    0.3503,
+                    0.5275,
+                    0.6067,
+                    0.4914,
+                    0.5440,
+                    0.4775,
+                    0.5538,
                 ]
             )
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
@@ -187,7 +212,7 @@ class AnimateDiffPAGPipelineFastTests(
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
         if torch_device == "cpu":
-            expected_slice = np.array([0.4051, 0.4495, 0.4480, 0.5845, 0.4172, 0.6066, 0.4205, 0.3786, 0.5323])
+            expected_slice = np.array([0.5295, 0.3947, 0.5300, 0.4864, 0.4518, 0.5315, 0.5440, 0.4775, 0.5538])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
@@ -401,19 +426,19 @@ class AnimateDiffPAGPipelineFastTests(
         pipe.unet.set_attn_processor(original_attn_procs.copy())
         pag_layers = ["down"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 3
+        assert len(pipe.pag_attn_processors) == 6
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
         pag_layers = ["down.block_0"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert (len(pipe.pag_attn_processors)) == 2
+        assert (len(pipe.pag_attn_processors)) == 4
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
         pag_layers = ["down.block_1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 1
+        assert len(pipe.pag_attn_processors) == 2
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_1.motion_modules_1"]
+        pag_layers = ["down.block_1.motion_modules_2"]
         with self.assertRaises(ValueError):
             pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
