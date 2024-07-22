@@ -41,7 +41,6 @@ class TemporalTransformerTests(ModelTesterMixin, unittest.TestCase):
         sequence_length = 8
 
         hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
-        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
         timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
 
         return {
