@@ -100,6 +100,137 @@ AnimateDiff tends to work better with finetuned Stable Diffusion models. If you 
 
 </Tip>
 
+### AnimateDiffSparseControlNetPipeline
+
+[SparseCtrl: Adding Sparse Controls to Text-to-Video Diffusion Models](https://arxiv.org/abs/2311.16933) for achieving controlled generation in text-to-video diffusion models by Yuwei Guo, Ceyuan Yang, Anyi Rao, Maneesh Agrawala, Dahua Lin, and Bo Dai.
+
+The abstract from the paper is:
+
+*The development of text-to-video (T2V), i.e., generating videos with a given text prompt, has been significantly advanced in recent years. However, relying solely on text prompts often results in ambiguous frame composition due to spatial uncertainty. The research community thus leverages the dense structure signals, e.g., per-frame depth/edge sequences, to enhance controllability, whose collection accordingly increases the burden of inference. In this work, we present SparseCtrl to enable flexible structure control with temporally sparse signals, requiring only one or a few inputs, as shown in Figure 1. It incorporates an additional condition encoder to process these sparse signals while leaving the pre-trained T2V model untouched. The proposed approach is compatible with various modalities, including sketches, depth maps, and RGB images, providing more practical control for video generation and promoting applications such as storyboarding, depth rendering, keyframe animation, and interpolation. Extensive experiments demonstrate the generalization of SparseCtrl on both original and personalized T2V generators. Codes and models will be publicly available at [this https URL](https://guoyww.github.io/projects/SparseCtrl).*
+
+SparseCtrl introduces the following checkpoints for controlled text-to-video generation:
+
+- [SparseCtrl Scribble](https://huggingface.co/a-r-r-o-w/animatediff-sparsectrl-scribble) TODO: update link after transfer
+- [SparseCtrl RGB](https://huggingface.co/a-r-r-o-w/animatediff-sparsectrl-rgb) TODO: update link after transfer
+
+Using SparseCtrl Scribble:
+
+```python
+import torch
+
+from diffusers import AnimateDiffSparseControlNetPipeline
+from diffusers.models import AutoencoderKL, MotionAdapter, SparseControlNetModel
+from diffusers.schedulers import DPMSolverMultistepScheduler
+from diffusers.utils import export_to_gif, load_image
+
+# TODO: update org
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
+controlnet_id = "a-r-r-o-w/animatediff-sparsectrl-scribble"
+vae_id = "stabilityai/sd-vae-ft-mse"
+lora_adapter_id = "a-r-r-o-w/animatediff-motion-lora-v1-5-3"
+device = "cuda"
+
+motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, torch_dtype=torch.float16).to(device)
+controlnet = SparseControlNetModel.from_pretrained(controlnet_id, torch_dtype=torch.float16).to(device)
+vae = AutoencoderKL.from_pretrained(vae_id, torch_dtype=torch.float16).to(device)
+scheduler = DPMSolverMultistepScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    beta_schedule="linear",
+    algorithm_type="dpmsolver++",
+    use_karras_sigmas=True,
+)
+pipe = AnimateDiffSparseControlNetPipeline.from_pretrained(
+    model_id,
+    motion_adapter=motion_adapter,
+    controlnet=controlnet,
+    vae=vae,
+    scheduler=scheduler,
+    torch_dtype=torch.float16,
+).to(device)
+pipe.load_lora_weights(lora_adapter_id, adapter_name="motion_lora")
+pipe.fuse_lora(lora_scale=1.0)
+
+prompt = "an aerial view of a cyberpunk city, night time, neon lights, masterpiece, high quality"
+negative_prompt = "low quality, worst quality, letterboxed"
+
+# TODO: update these with HF links
+image_files = ["scribble-1.png", "scribble-2.png", "scribble-3.png"]
+condition_frame_indices = [0, 8, 15]
+conditioning_frames = [load_image(img_file) for img_file in image_files]
+
+video = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_inference_steps=25,
+    conditioning_frames=conditioning_frames,
+    controlnet_conditioning_scale=1.0,
+    controlnet_frame_indices=condition_frame_indices,
+    generator=torch.Generator().manual_seed(1337),
+).frames[0]
+export_to_gif(video, "output.gif")
+
+```
+
+Using SparseCtrl RGB:
+
+```python
+import torch
+
+from diffusers import AnimateDiffSparseControlNetPipeline
+from diffusers.models import AutoencoderKL, MotionAdapter, SparseControlNetModel
+from diffusers.schedulers import DPMSolverMultistepScheduler
+from diffusers.utils import export_to_gif, load_image
+
+
+# update org
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
+controlnet_id = "a-r-r-o-w/animatediff-sparsectrl-rgb"
+vae_id = "stabilityai/sd-vae-ft-mse"
+lora_adapter_id = "a-r-r-o-w/animatediff-motion-lora-v1-5-3"
+device = "cuda:1"
+
+motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, torch_dtype=torch.float16).to(device)
+controlnet = SparseControlNetModel.from_pretrained(controlnet_id, torch_dtype=torch.float16).to(device)
+vae = AutoencoderKL.from_pretrained(vae_id, torch_dtype=torch.float16).to(device)
+scheduler = DPMSolverMultistepScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    beta_schedule="linear",
+    algorithm_type="dpmsolver++",
+    use_karras_sigmas=True,
+)
+pipe = AnimateDiffSparseControlNetPipeline.from_pretrained(
+    model_id,
+    motion_adapter=motion_adapter,
+    controlnet=controlnet,
+    vae=vae,
+    scheduler=scheduler,
+    torch_dtype=torch.float16,
+).to(device)
+pipe.load_lora_weights(lora_adapter_id, adapter_name="motion_lora")
+
+# TODO: update with HF URL
+image = load_image("firework.png")
+
+video = pipe(
+    prompt="closeup face photo of man in black clothes, night city street, bokeh, fireworks in background",
+    negative_prompt="low quality, worst quality",
+    num_inference_steps=25,
+    conditioning_frames=image,
+    controlnet_frame_indices=[0],
+    controlnet_conditioning_scale=1.0,
+    generator=torch.Generator().manual_seed(42),
+).frames[0]
+export_to_gif(video, "output.gif")
+```
+
+Here are some sample outputs:
+
+TODO: update after adding gifs to documentation repo
+
 ### AnimateDiffSDXLPipeline
 
 AnimateDiff can also be used with SDXL models. This is currently an experimental feature as only a beta release of the motion adapter checkpoint is available.
@@ -571,12 +702,17 @@ ckpt_path = "https://huggingface.co/Lightricks/LongAnimateDiff/blob/main/lt_long
 
 adapter = MotionAdapter.from_single_file(ckpt_path, torch_dtype=torch.float16)
 pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter)
-
 ```
 
 ## AnimateDiffPipeline
 
 [[autodoc]] AnimateDiffPipeline
+  - all
+  - __call__
+
+## AnimateDiffSparseControlNetPipeline
+
+[[autodoc]] AnimateDiffSparseControlNetPipeline
   - all
   - __call__
 
