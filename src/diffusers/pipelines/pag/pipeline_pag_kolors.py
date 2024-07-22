@@ -152,13 +152,11 @@ class KolorsPAGPipeline(
             Whether the negative prompt embeddings shall be forced to always be set to 0. Also see the config of
             `Kwai-Kolors/Kolors-diffusers`.
         pag_applied_layers (`str` or `List[str]``, *optional*, defaults to `"mid"`):
-            Set the transformer attention layers where to apply the perturbed attention guidance.
-            Can be a string or a list of strings with "down", "mid", "up", a whole transformer block or
-            specific transformer block attention layers, e.g.:
-                ["mid"]
-                ["down", "mid"]
-                ["down", "mid", "up.block_1"]
-                ["down", "mid", "up.block_1.attentions_0", "up.block_1.attentions_1"]
+            Set the transformer attention layers where to apply the perturbed attention guidance. Can be a string or a
+            list of strings with "down", "mid", "up", a whole transformer block or specific transformer block attention
+            layers, e.g.:
+                ["mid"] ["down", "mid"] ["down", "mid", "up.block_1"] ["down", "mid", "up.block_1.attentions_0",
+                "up.block_1.attentions_1"]
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
