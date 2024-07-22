@@ -1641,7 +1641,7 @@ from io import BytesIO
 from PIL import Image
 import torch
 from diffusers import DDIMScheduler
-from diffusers.pipelines import DiffusionPipeline
+from diffusers import DiffusionPipeline
 
 # Use the DDIMScheduler scheduler here instead
 scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
