@@ -122,7 +122,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class KolorsPagPipeline(
+class KolorsPAGPipeline(
     DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLLoraLoaderMixin, IPAdapterMixin, PAGMixin
 ):
     r"""
