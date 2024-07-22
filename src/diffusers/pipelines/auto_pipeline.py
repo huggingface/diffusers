@@ -49,6 +49,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pag import (
+    HunyuanDiTPAGPipeline,
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGPipeline,
@@ -83,6 +84,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-3", StableDiffusion3Pipeline),
         ("if", IFPipeline),
         ("hunyuan", HunyuanDiTPipeline),
+        ("hunyuan-pag", HunyuanDiTPAGPipeline),
         ("kandinsky", KandinskyCombinedPipeline),
         ("kandinsky22", KandinskyV22CombinedPipeline),
         ("kandinsky3", Kandinsky3Pipeline),

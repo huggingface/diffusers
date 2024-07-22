@@ -34,6 +34,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from .pag_utils import HunyuanDiTPAGMixin
 
 
 if is_torch_xla_available():
@@ -50,17 +51,18 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import HunyuanDiTPipeline
+        >>> from diffusers import AutoPipelineForText2Image
 
-        >>> pipe = HunyuanDiTPipeline.from_pretrained(
-        ...     "Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
-        ... )
-        >>> pipe.to("cuda")
+        >>> pipe = AutoPipelineForText2Image.from_pretrained(
+        ...     "Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers",
+        ...     torch_dtype=torch.float16,
+        ...     enable_pag=True,
+        ...     pag_applied_layers=[16, 17, 18, 19]
+        >>> ).to("cuda")
 
-        >>> # You may also use English prompt as HunyuanDiT supports both English and Chinese
-        >>> # prompt = "An astronaut riding a horse"
+        >>> # prompt = "an astronaut riding a horse"
         >>> prompt = "一个宇航员在骑马"
-        >>> image = pipe(prompt).images[0]
+        >>> image = pipe(, guidance_scale=4, pag_scale=3).images[0]
         ```
 """
 
@@ -138,9 +140,10 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class HunyuanDiTPAGPipeline(DiffusionPipeline):
+class HunyuanDiTPAGPipeline(DiffusionPipeline, HunyuanDiTPAGMixin):
     r"""
-    Pipeline for English/Chinese-to-image generation using HunyuanDiT.
+    Pipeline for English/Chinese-to-image generation using HunyuanDiT and [Perturbed Attention
+    Guidance](https://huggingface.co/docs/diffusers/en/using-diffusers/pag).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -197,6 +200,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
         requires_safety_checker: bool = True,
         text_encoder_2: Optional[T5EncoderModel] = None,
         tokenizer_2: Optional[MT5Tokenizer] = None,
+        pag_applied_layers: Union[str, List[str]] = [], # "blocks.16.attn1", "blocks.16", "16", 16
     ):
         super().__init__()
 
@@ -239,6 +243,9 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
             else 128
         )
 
+        self.set_pag_applied_layers(pag_applied_layers)
+
+    # Copied from diffusers.pipelines.hunyuandit.pipeline_hunyuandit.HunyuanDiTPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: str,
@@ -437,6 +444,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.hunyuandit.pipeline_hunyuandit.HunyuanDiTPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -592,6 +600,8 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
         target_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         use_resolution_binning: bool = True,
+        pag_scale: float = 3.0,
+        pag_adaptive_scale: float = 0.0,
     ):
         r"""
         The call function to the pipeline for generation with HunyuanDiT.
@@ -663,6 +673,12 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
                 Whether to use resolution binning or not. If `True`, the input resolution will be mapped to the closest
                 standard resolution. Supported resolutions are 1024x1024, 1280x1280, 1024x768, 1152x864, 1280x960,
                 768x1024, 864x1152, 960x1280, 1280x768, and 768x1280. It is recommended to set this to `True`.
+            pag_scale (`float`, *optional*, defaults to 3.0):
+                The scale factor for the perturbed attention guidance. If it is set to 0.0, the perturbed attention
+                guidance will not be used.
+            pag_adaptive_scale (`float`, *optional*, defaults to 0.0):
+                The adaptive scale factor for the perturbed attention guidance. If it is set to 0.0, `pag_scale` is
+                used.
 
         Examples:
 
@@ -677,7 +693,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        # 0. default height and width
+        # 0. Default height and width
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
         height = int((height // 16) * 16)
@@ -708,6 +724,8 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
         self._guidance_scale = guidance_scale
         self._guidance_rescale = guidance_rescale
         self._interrupt = False
+        self._pag_scale = pag_scale
+        self._pag_adaptive_scale = pag_adaptive_scale
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -720,7 +738,6 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # 3. Encode input prompt
-
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -780,7 +797,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7 create image_rotary_emb, style embedding & time ids
+        # 7. Create image_rotary_emb, style embedding & time ids
         grid_height = height // 8 // self.transformer.config.patch_size
         grid_width = width // 8 // self.transformer.config.patch_size
         base_size = 512 // 8 // self.transformer.config.patch_size
@@ -795,7 +812,25 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
         add_time_ids = list(original_size + target_size + crops_coords_top_left)
         add_time_ids = torch.tensor([add_time_ids], dtype=prompt_embeds.dtype)
 
-        if self.do_classifier_free_guidance:
+        # For classifier free guidance, we need to do two forward passes.
+        # Here we concatenate the unconditional and text embeddings into a single batch
+        # to avoid doing two forward passes
+        if self.do_perturbed_attention_guidance:
+            prompt_embeds = self._prepare_perturbed_attention_guidance(
+                prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
+            )
+            prompt_attention_mask = self._prepare_perturbed_attention_guidance(
+                prompt_attention_mask, negative_prompt_attention_mask, self.do_classifier_free_guidance
+            )
+            prompt_embeds_2 = self._prepare_perturbed_attention_guidance(
+                prompt_embeds_2, negative_prompt_embeds_2, self.do_classifier_free_guidance
+            )
+            prompt_attention_mask_2 = self._prepare_perturbed_attention_guidance(
+                prompt_attention_mask_2, negative_prompt_attention_mask_2, self.do_classifier_free_guidance
+            )
+            add_time_ids = torch.cat([add_time_ids] * 3, dim=0)
+            style = torch.cat([style] * 3, dim=0)
+        elif self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
             prompt_embeds_2 = torch.cat([negative_prompt_embeds_2, prompt_embeds_2])
@@ -815,13 +850,21 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
+
+        if self.do_perturbed_attention_guidance:
+            original_attn_proc = self.transformer.attn_processors
+            self._set_pag_attn_processor(
+                pag_applied_layers=self.pag_applied_layers,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+            )
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # expand scalar t to 1-D tensor to match the 1st dim of latent_model_input
@@ -846,7 +889,11 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
                 noise_pred, _ = noise_pred.chunk(2, dim=1)
 
                 # perform guidance
-                if self.do_classifier_free_guidance:
+                if self.do_perturbed_attention_guidance:
+                    noise_pred = self._apply_perturbed_attention_guidance(
+                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
+                    )
+                elif self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
@@ -891,8 +938,11 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline):
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
-        # Offload all models
+        # 9. Offload all models
         self.maybe_free_model_hooks()
+
+        if self.do_perturbed_attention_guidance:
+            self.transformer.set_attn_processor(original_attn_proc)
 
         if not return_dict:
             return (image, has_nsfw_concept)

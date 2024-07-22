@@ -15,7 +15,9 @@
 import torch
 
 from ...models.attention_processor import (
+    PAGCFGHunyuanAttnProcessor2_0,
     PAGCFGIdentitySelfAttnProcessor2_0,
+    PAGHunyuanAttnProcessor2_0,
     PAGIdentitySelfAttnProcessor2_0,
 )
 from ...utils import logging
@@ -255,6 +257,91 @@ class PAGMixin:
 
         processors = {}
         for name, proc in self.unet.attn_processors.items():
-            if proc.__class__ in (PAGCFGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0):
+            if proc.__class__ in (PAGCFGHunyuanAttnProcessor2_0, PAGHunyuanAttnProcessor2_0):
+                processors[name] = proc
+        return processors
+
+
+class HunyuanDiTPAGMixin(PAGMixin):
+    r"""Mixin class for PAG applied to HunyuanDiT."""
+
+    @staticmethod
+    def _check_input_pag_applied_layer(layer):
+        r"""
+        Check if each layer input in `applied_pag_layers` is valid. It should be the block index: {block_index}.
+        """
+
+        # Check if the layer index is valid (should be int or str of int)
+        if isinstance(layer, int):
+            return  # Valid layer index
+
+        if isinstance(layer, str):
+            if layer.isdigit():
+                return  # Valid layer index
+
+        # If it is not a valid layer index, raise a ValueError
+        raise ValueError(f"Pag layer should only contain block index. Accept number string like '3', got {layer}")
+
+    def _set_pag_attn_processor(self, pag_applied_layers, do_classifier_free_guidance):
+        r"""
+        Set the attention processor for the PAG layers.
+        """
+        if do_classifier_free_guidance:
+            pag_attn_proc = PAGCFGHunyuanAttnProcessor2_0()
+        else:
+            pag_attn_proc = PAGHunyuanAttnProcessor2_0()
+
+        def is_self_attn(module_name):
+            r"""
+            Check if the module is self-attention module based on its name.
+            """
+            # include blocks.1.attn1
+            # exclude blocks.18.attn1.to_q, blocks.1.attn1.norm_k, ...
+            return "attn1" in module_name and len(module_name.split(".")) == 3
+
+        def get_block_index(module_name):
+            r"""
+            Get the block index from the module name. can be "block_0", "block_1", ... If there is only one block (e.g.
+            mid_block) and index is ommited from the name, it will be "block_0".
+            """
+            # blocks.23.attn1 -> "23"
+            return module_name.split(".")[1]
+
+        for pag_layer_input in pag_applied_layers:
+            # for each PAG layer input, we find corresponding self-attention layers in the transformer model
+            target_modules = []
+            pag_layer_input_splits = str(pag_layer_input).split(".")
+
+            if len(pag_layer_input_splits) == 1:
+                # 20, "20" -> "20"
+                block_index = pag_layer_input_splits[0]
+            elif len(pag_layer_input_splits) >= 2:
+                # "blocks.20" -> "20"
+                # "blocks.20.attn1" -> "20"
+                block_index = pag_layer_input_splits[1]
+                
+            for name, module in self.transformer.named_modules():
+                if is_self_attn(name) and get_block_index(name) == block_index:
+                    target_modules.append(module)
+            
+            if len(target_modules) == 0:
+                raise ValueError(f"Cannot find pag layer to set attention processor for: {pag_layer_input}")
+
+            for module in target_modules:
+                module.processor = pag_attn_proc
+
+    @property
+    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.pag_attn_processors with unet->transformer
+    def pag_attn_processors(self):
+        r"""
+        Returns:
+            `dict`:
+                A dictionary contains all PAG attention processors used in the model with the key as the name of the
+                layer.
+        """
+
+        processors = {}
+        for name, proc in self.transformer.attn_processors.items():
+            if proc.__class__ in (PAGCFGHunyuanAttnProcessor2_0, PAGHunyuanAttnProcessor2_0):
                 processors[name] = proc
         return processors
