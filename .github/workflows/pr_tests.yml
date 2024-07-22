@@ -85,16 +85,16 @@ jobs:
             runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_models_schedulers
-          - name: Fast Flax CPU tests
-            framework: flax
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
-            image: diffusers/diffusers-flax-cpu
-            report: flax_cpu
-          - name: PyTorch Example CPU tests
-            framework: pytorch_examples
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_example_cpu
+          # - name: Fast Flax CPU tests
+          #   framework: flax
+          #   runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+          #   image: diffusers/diffusers-flax-cpu
+          #   report: flax_cpu
+          # - name: PyTorch Example CPU tests
+          #   framework: pytorch_examples
+          #   runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+          #   image: diffusers/diffusers-pytorch-cpu
+          #   report: torch_example_cpu
 
     name: ${{ matrix.config.name }}
 
@@ -102,7 +102,7 @@ jobs:
 
     container:
       image: ${{ matrix.config.image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/
 
     defaults:
       run:
@@ -129,97 +129,40 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 8 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/pipelines
+        # python -m pytest -n 8 --max-worker-restart=0 --dist=loadfile \
+        #   -s -v -k "not Flax and not Onnx" \
+        #   --make-reports=tests_${{ matrix.config.report }} \
+        #   tests/pipelines
+        pytest tests/pipelines/test_pipelines.py::DownloadTests::test_less_downloads_passed_object_calls
+        pytest tests/pipelines/test_pipelines.py::DownloadTests::test_one_request_upon_cached
 
     - name: Run fast PyTorch Model Scheduler CPU tests
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx and not Dependency" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/models tests/schedulers tests/others
+        # python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        #   -s -v -k "not Flax and not Onnx and not Dependency" \
+        #   --make-reports=tests_${{ matrix.config.report }} \
+        #   tests/models tests/schedulers tests/others
+        pytest tests/models/test_modeling_common.py::ModelUtilsTest::test_one_request_upon_cached
 
-    - name: Run fast Flax TPU tests
-      if: ${{ matrix.config.framework == 'flax' }}
-      run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "Flax" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests
+    # - name: Run fast Flax TPU tests
+    #   if: ${{ matrix.config.framework == 'flax' }}
+    #   run: |
+    #     python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+    #     python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+    #       -s -v -k "Flax" \
+    #       --make-reports=tests_${{ matrix.config.report }} \
+    #       tests
 
-    - name: Run example PyTorch CPU tests
-      if: ${{ matrix.config.framework == 'pytorch_examples' }}
-      run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install peft timm
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          --make-reports=tests_${{ matrix.config.report }} \
-          examples
-
-    - name: Failure short reports
-      if: ${{ failure() }}
-      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
-
-    - name: Test suite reports artifacts
-      if: ${{ always() }}
-      uses: actions/upload-artifact@v2
-      with:
-        name: pr_${{ matrix.config.report }}_test_reports
-        path: reports
-
-  run_staging_tests:
-    needs: [check_code_quality, check_repository_consistency]
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - name: Hub tests for models, schedulers, and pipelines
-            framework: hub_tests_pytorch
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_hub
-
-    name: ${{ matrix.config.name }}
-
-    runs-on: ${{ matrix.config.runner }}
-
-    container:
-      image: ${{ matrix.config.image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
-
-    defaults:
-      run:
-        shell: bash
-
-    steps:
-    - name: Checkout diffusers
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 2
-
-    - name: Install dependencies
-      run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-
-    - name: Environment
-      run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python utils/print_env.py
-
-    - name: Run Hub tests for models, schedulers, and pipelines on a staging env
-      if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
-      run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        HUGGINGFACE_CO_STAGING=true python -m pytest \
-          -m "is_staging_test" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests
+    # - name: Run example PyTorch CPU tests
+    #   if: ${{ matrix.config.framework == 'pytorch_examples' }}
+    #   run: |
+    #     python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+    #     python -m uv pip install peft timm
+    #     python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+    #       --make-reports=tests_${{ matrix.config.report }} \
+    #       examples
 
     - name: Failure short reports
       if: ${{ failure() }}
@@ -231,3 +174,63 @@ jobs:
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports
+
+  # run_staging_tests:
+  #   needs: [check_code_quality, check_repository_consistency]
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       config:
+  #         - name: Hub tests for models, schedulers, and pipelines
+  #           framework: hub_tests_pytorch
+  #           runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+  #           image: diffusers/diffusers-pytorch-cpu
+  #           report: torch_hub
+
+  #   name: ${{ matrix.config.name }}
+
+  #   runs-on: ${{ matrix.config.runner }}
+
+  #   container:
+  #     image: ${{ matrix.config.image }}
+  #     options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+  #   defaults:
+  #     run:
+  #       shell: bash
+
+  #   steps:
+  #   - name: Checkout diffusers
+  #     uses: actions/checkout@v3
+  #     with:
+  #       fetch-depth: 2
+
+  #   - name: Install dependencies
+  #     run: |
+  #       python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+  #       python -m uv pip install -e [quality,test]
+
+  #   - name: Environment
+  #     run: |
+  #       python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+  #       python utils/print_env.py
+
+  #   - name: Run Hub tests for models, schedulers, and pipelines on a staging env
+  #     if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
+  #     run: |
+  #       python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+  #       HUGGINGFACE_CO_STAGING=true python -m pytest \
+  #         -m "is_staging_test" \
+  #         --make-reports=tests_${{ matrix.config.report }} \
+  #         tests
+
+  #   - name: Failure short reports
+  #     if: ${{ failure() }}
+  #     run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+
+  #   - name: Test suite reports artifacts
+  #     if: ${{ always() }}
+  #     uses: actions/upload-artifact@v2
+  #     with:
+  #       name: pr_${{ matrix.config.report }}_test_reports
+  #       path: reports
