@@ -170,7 +170,6 @@ video = pipe(
     generator=torch.Generator().manual_seed(1337),
 ).frames[0]
 export_to_gif(video, "output.gif")
-
 ```
 
 Using SparseCtrl RGB:
