@@ -319,11 +319,11 @@ class HunyuanDiTPAGMixin(PAGMixin):
                 # "blocks.20" -> "20"
                 # "blocks.20.attn1" -> "20"
                 block_index = pag_layer_input_splits[1]
-                
+
             for name, module in self.transformer.named_modules():
                 if is_self_attn(name) and get_block_index(name) == block_index:
                     target_modules.append(module)
-            
+
             if len(target_modules) == 0:
                 raise ValueError(f"Cannot find pag layer to set attention processor for: {pag_layer_input}")
 

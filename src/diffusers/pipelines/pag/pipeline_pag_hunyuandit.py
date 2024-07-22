@@ -49,7 +49,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        ```py
+        ```python
         >>> import torch
         >>> from diffusers import AutoPipelineForText2Image
 
@@ -57,12 +57,12 @@ EXAMPLE_DOC_STRING = """
         ...     "Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers",
         ...     torch_dtype=torch.float16,
         ...     enable_pag=True,
-        ...     pag_applied_layers=[16, 17, 18, 19]
-        >>> ).to("cuda")
+        ...     pag_applied_layers=[16, 17, 18, 19],
+        ... ).to("cuda")
 
         >>> # prompt = "an astronaut riding a horse"
         >>> prompt = "一个宇航员在骑马"
-        >>> image = pipe(, guidance_scale=4, pag_scale=3).images[0]
+        >>> image = pipe(prompt, guidance_scale=4, pag_scale=3).images[0]
         ```
 """
 
@@ -200,7 +200,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, HunyuanDiTPAGMixin):
         requires_safety_checker: bool = True,
         text_encoder_2: Optional[T5EncoderModel] = None,
         tokenizer_2: Optional[MT5Tokenizer] = None,
-        pag_applied_layers: Union[str, List[str]] = [], # "blocks.16.attn1", "blocks.16", "16", 16
+        pag_applied_layers: Union[str, List[str]] = [],  # "blocks.16.attn1", "blocks.16", "16", 16
     ):
         super().__init__()
 

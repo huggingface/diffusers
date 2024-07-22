@@ -1717,7 +1717,9 @@ class PAGHunyuanAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("PAGHunyuanAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "PAGHunyuanAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
 
     def __call__(
         self,
@@ -1739,7 +1741,7 @@ class PAGHunyuanAttnProcessor2_0:
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-        
+
         # chunk
         hidden_states_org, hidden_states_ptb = hidden_states.chunk(2)
 
@@ -1802,7 +1804,7 @@ class PAGHunyuanAttnProcessor2_0:
 
         if input_ndim == 4:
             hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
-        
+
         # 2. Perturbed Path
         if attn.group_norm is not None:
             hidden_states_ptb = attn.group_norm(hidden_states_ptb.transpose(1, 2)).transpose(1, 2)
@@ -1817,7 +1819,7 @@ class PAGHunyuanAttnProcessor2_0:
 
         if input_ndim == 4:
             hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
-        
+
         # cat
         hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
 
@@ -1838,7 +1840,9 @@ class PAGCFGHunyuanAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("PAGCFGHunyuanAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "PAGCFGHunyuanAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
 
     def __call__(
         self,
@@ -1860,7 +1864,7 @@ class PAGCFGHunyuanAttnProcessor2_0:
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-        
+
         # chunk
         hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
         hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
@@ -1924,7 +1928,7 @@ class PAGCFGHunyuanAttnProcessor2_0:
 
         if input_ndim == 4:
             hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
-        
+
         # 2. Perturbed Path
         if attn.group_norm is not None:
             hidden_states_ptb = attn.group_norm(hidden_states_ptb.transpose(1, 2)).transpose(1, 2)
@@ -1939,7 +1943,7 @@ class PAGCFGHunyuanAttnProcessor2_0:
 
         if input_ndim == 4:
             hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
-        
+
         # cat
         hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
 
