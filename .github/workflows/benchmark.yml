@@ -23,7 +23,7 @@ jobs:
       group: aws-g6-4xlarge
     container:
       image: diffusers/diffusers-pytorch-compile-cuda
-      options: --shm-size "16gb" --ipc host 
+      options: --shm-size "16gb" --ipc host --gpus 0
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
