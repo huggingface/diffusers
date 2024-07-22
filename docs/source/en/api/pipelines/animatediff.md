@@ -190,7 +190,7 @@ motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
 controlnet_id = "a-r-r-o-w/animatediff-sparsectrl-rgb"
 vae_id = "stabilityai/sd-vae-ft-mse"
 lora_adapter_id = "a-r-r-o-w/animatediff-motion-lora-v1-5-3"
-device = "cuda:1"
+device = "cuda"
 
 motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, torch_dtype=torch.float16).to(device)
 controlnet = SparseControlNetModel.from_pretrained(controlnet_id, torch_dtype=torch.float16).to(device)
