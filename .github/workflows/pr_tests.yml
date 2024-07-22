@@ -70,7 +70,7 @@ jobs:
           echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
 
   run_fast_tests:
-    needs: [check_code_quality, check_repository_consistency]
+    # needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
       matrix:
