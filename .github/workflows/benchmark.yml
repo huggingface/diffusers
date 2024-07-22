@@ -19,7 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 1
-    runs-on: [single-gpu, nvidia-gpu, a10, ci]
+    runs-on: 
+      group: aws-g6-4xlarge
     container:
       image: diffusers/diffusers-pytorch-compile-cuda
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
