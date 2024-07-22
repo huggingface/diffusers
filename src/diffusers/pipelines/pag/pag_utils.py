@@ -335,9 +335,8 @@ class HunyuanDiTPAGMixin(PAGMixin):
     def pag_attn_processors(self):
         r"""
         Returns:
-            `dict`:
-                A dictionary contains all PAG attention processors used in the model with the key as the name of the
-                layer.
+            `dict` of PAG attention processors: A dictionary contains all PAG attention processors used in the model
+            with the key as the name of the layer.
         """
 
         processors = {}
