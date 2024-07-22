@@ -1,4 +1,4 @@
-# Copyright 2024 Lumina, Hunyuan DiT, The HuggingFace Team. All rights reserved.
+# Copyright 2024 Lumina, Hunyuan DiT, PixArt, The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -169,7 +169,6 @@ class SmolDiTBlock(nn.Module):
             norm_hidden_states,
             image_rotary_emb=image_rotary_emb,
         )
-        print(f"{hidden_states.shape=}, {attn_output.shape=}")
         hidden_states = hidden_states + attn_output
 
         # 2. Cross-Attention
@@ -200,6 +199,7 @@ class SmolDiT2DModel(ModelMixin, ConfigMixin):
         num_layers: int = 28,
         mlp_ratio: float = 4.0,
         cross_attention_dim: int = 1024,
+        interpolation_scale: Optional[int] = None,
     ):
         super().__init__()
         self.inner_dim = num_attention_heads * attention_head_dim
@@ -214,13 +214,15 @@ class SmolDiT2DModel(ModelMixin, ConfigMixin):
             act_fn="silu_fp32",
         )
 
+        # Position + patch embeddings from PixArt
+        interpolation_scale = interpolation_scale if interpolation_scale is not None else max(sample_size // 64, 1)
         self.pos_embed = PatchEmbed(
             height=sample_size,
             width=sample_size,
+            patch_size=patch_size,
             in_channels=in_channels,
             embed_dim=self.inner_dim,
-            patch_size=patch_size,
-            pos_embed_type=None,
+            interpolation_scale=interpolation_scale,
         )
 
         # SmolDiT Blocks

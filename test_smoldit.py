@@ -56,7 +56,6 @@ inputs = {
         model.inner_dim // model.config.num_attention_heads, grid_crops_coords, (grid_height, grid_width)
     )
 }
-print(inputs["image_rotary_emb"][0].shape)
 
 with torch.no_grad():
     out = model(**inputs).sample
