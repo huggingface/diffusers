@@ -18,14 +18,14 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
     ControlNetModel,
-    EulerDiscreteScheduler,
-    StableDiffusionXLControlNetPAGPipeline,
-    StableDiffusionXLControlNetPipeline,
+    DDIMScheduler,
+    StableDiffusionControlNetPAGPipeline,
+    StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
@@ -44,22 +44,20 @@ from ..test_pipelines_common import (
     PipelineFromPipeTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
 enable_full_determinism()
 
 
-class StableDiffusionXLControlNetPAGPipelineFastTests(
+class StableDiffusionControlNetPAGPipelineFastTests(
     PipelineTesterMixin,
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineFromPipeTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
-    pipeline_class = StableDiffusionXLControlNetPAGPipeline
+    pipeline_class = StableDiffusionControlNetPAGPipeline
     params = TEXT_TO_IMAGE_PARAMS.union({"pag_scale", "pag_adaptive_scale"})
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -70,76 +68,59 @@ class StableDiffusionXLControlNetPAGPipelineFastTests(
         # Copied from tests.pipelines.controlnet.test_controlnet_sdxl.StableDiffusionXLControlNetPipelineFastTests.get_dummy_components
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
+            block_out_channels=(4, 8),
             layers_per_block=2,
             sample_size=32,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            # SD2-specific config below
-            attention_head_dim=(2, 4),
-            use_linear_projection=True,
-            addition_embed_type="text_time",
-            addition_time_embed_dim=8,
-            transformer_layers_per_block=(1, 2),
-            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
-            cross_attention_dim=64,
+            cross_attention_dim=8,
             time_cond_proj_dim=time_cond_proj_dim,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         controlnet = ControlNetModel(
-            block_out_channels=(32, 64),
+            block_out_channels=(4, 8),
             layers_per_block=2,
             in_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            conditioning_embedding_out_channels=(16, 32),
-            # SD2-specific config below
-            attention_head_dim=(2, 4),
-            use_linear_projection=True,
-            addition_embed_type="text_time",
-            addition_time_embed_dim=8,
-            transformer_layers_per_block=(1, 2),
-            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
-            cross_attention_dim=64,
+            conditioning_embedding_out_channels=(2, 4),
+            cross_attention_dim=8,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
-        scheduler = EulerDiscreteScheduler(
+        scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
-            steps_offset=1,
             beta_schedule="scaled_linear",
-            timestep_spacing="leading",
+            clip_sample=False,
+            set_alpha_to_one=False,
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 64],
+            block_out_channels=[4, 8],
             in_channels=3,
             out_channels=3,
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
-            hidden_size=32,
-            intermediate_size=37,
+            hidden_size=8,
+            intermediate_size=16,
             layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
+            num_attention_heads=2,
+            num_hidden_layers=2,
             pad_token_id=1,
             vocab_size=1000,
-            # SD2-specific config below
-            hidden_act="gelu",
-            projection_dim=32,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-
-        text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
-        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         components = {
             "unet": unet,
@@ -148,8 +129,7 @@ class StableDiffusionXLControlNetPAGPipelineFastTests(
             "vae": vae,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            "text_encoder_2": text_encoder_2,
-            "tokenizer_2": tokenizer_2,
+            "safety_checker": None,
             "feature_extractor": None,
             "image_encoder": None,
         }
@@ -185,7 +165,7 @@ class StableDiffusionXLControlNetPAGPipelineFastTests(
         components = self.get_dummy_components()
 
         # base  pipeline (expect same output when pag is disabled)
-        pipe_sd = StableDiffusionXLControlNetPipeline(**components)
+        pipe_sd = StableDiffusionControlNetPipeline(**components)
         pipe_sd = pipe_sd.to(device)
         pipe_sd.set_progress_bar_config(disable=None)
 
@@ -216,9 +196,6 @@ class StableDiffusionXLControlNetPAGPipelineFastTests(
         assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
         assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
 
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     def test_pag_cfg(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -238,7 +215,7 @@ class StableDiffusionXLControlNetPAGPipelineFastTests(
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
         expected_slice = np.array(
-            [0.6819614, 0.5551478, 0.5499094, 0.5769566, 0.53942275, 0.5707505, 0.41131154, 0.47833863, 0.49982738]
+            [0.45505235, 0.2785938, 0.16334778, 0.79689944, 0.53095645, 0.40135607, 0.7052706, 0.69065094, 0.41548574]
         )
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
@@ -264,7 +241,7 @@ class StableDiffusionXLControlNetPAGPipelineFastTests(
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
         expected_slice = np.array(
-            [0.66685176, 0.53207266, 0.5541569, 0.5912994, 0.5368312, 0.58433825, 0.42607725, 0.46805605, 0.5098659]
+            [0.45127502, 0.2797252, 0.15970308, 0.7993157, 0.5414344, 0.40160775, 0.7114598, 0.69803864, 0.4217583]
         )
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
