@@ -126,8 +126,8 @@ class ModelUtilsTest(unittest.TestCase):
 
     def test_one_request_upon_cached(self):
         # TODO: For some reason this test fails on MPS where no HEAD call is made.
-        if torch_device == "mps":
-            return
+        # if torch_device == "mps":
+        #     return
 
         use_safetensors = False
 
@@ -142,6 +142,7 @@ class ModelUtilsTest(unittest.TestCase):
 
             download_requests = [r.method for r in m.request_history]
             print(f"{download_requests.count('GET')=}")
+            assert download_requests is None
             assert (
                 download_requests.count("HEAD") == 3
             ), "3 HEAD requests one for config, one for model, and one for shard index file."

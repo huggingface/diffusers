@@ -342,6 +342,7 @@ def _get_model_file(
                 )
         try:
             # 2. Load model file as usual
+            print("Another Hub call.")
             model_file = hf_hub_download(
                 pretrained_model_name_or_path,
                 filename=weights_name,

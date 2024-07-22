@@ -376,6 +376,7 @@ class ConfigMixin:
         else:
             try:
                 # Load from URL or cache if already cached
+                print("Within try calling Hub.")
                 config_file = hf_hub_download(
                     pretrained_model_name_or_path,
                     filename=cls.config_name,
