@@ -1,5 +1,3 @@
-# pip install transformers SentencePiece torchvision controlnet-aux
-
 import torch
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
