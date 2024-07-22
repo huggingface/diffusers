@@ -47,7 +47,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLI
 from diffusers.configuration_utils import FrozenDict, deprecate
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import (
     StableDiffusionPipelineOutput,
     StableDiffusionSafetyChecker,
