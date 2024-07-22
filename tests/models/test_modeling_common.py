@@ -141,7 +141,7 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             download_requests = [r.method for r in m.request_history]
-            print(download_requests.count("GET"))
+            print(f"{download_requests.count("GET")=}")
             assert (
                 download_requests.count("HEAD") == 3
             ), "3 HEAD requests one for config, one for model, and one for shard index file."
