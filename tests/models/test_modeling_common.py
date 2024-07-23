@@ -143,17 +143,13 @@ class ModelUtilsTest(unittest.TestCase):
             infos = []
             for r in m.request_history:
                 if r.method == "GET":
-                    if len(r.qs) == 0:
-                        infos.append(f" r.url: {r.url}")
-                    else:
-                        infos.append(f" f.qs: {r.qs}")
+                    infos.append(f" r.url: {r.url} ;;; verify: {r.verify}, r.cert: {r.cert}")
 
             download_requests = [r.method for r in m.request_history]
             assert (
                 download_requests.count("HEAD") == 3
             ), "3 HEAD requests one for config, one for model, and one for shard index file."
-            assert download_requests.count("GET") == 2, f" details for {len(infos)} GET requests: {infos}"
-
+            assert download_requests.count("GET") == 1, f" details for {len(infos)} GET requests: {infos}"
             with requests_mock.mock(real_http=True) as m:
                 UNet2DConditionModel.from_pretrained(
                     "hf-internal-testing/tiny-stable-diffusion-torch",
