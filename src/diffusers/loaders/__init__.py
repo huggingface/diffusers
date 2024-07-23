@@ -76,7 +76,6 @@ _import_structure["peft"] = ["PeftAdapterMixin"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
         from .single_file_model import FromOriginalModelMixin
-        from .transformer_sd3 import SD3TransformerLoRALoadersMixin
         from .unet import UNet2DConditionLoadersMixin
         from .utils import AttnProcsLayers
 
