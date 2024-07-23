@@ -4,7 +4,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
-from huggingface_hub import HfApi, ModelFilter
+from huggingface_hub import HfApi
 
 import diffusers
 
@@ -27,7 +27,6 @@ PIPELINE_USAGE_CUTOFF = int(os.getenv("PIPELINE_USAGE_CUTOFF", 50000))
 
 logger = logging.getLogger(__name__)
 api = HfApi()
-filter = ModelFilter(library="diffusers")
 
 
 def filter_pipelines(usage_dict, usage_cutoff=10000):
@@ -46,7 +45,7 @@ def filter_pipelines(usage_dict, usage_cutoff=10000):
 
 
 def fetch_pipeline_objects():
-    models = api.list_models(filter=filter)
+    models = api.list_models(library="diffusers")
     downloads = defaultdict(int)
 
     for model in models:
@@ -88,7 +87,7 @@ def main():
     test_modules.extend(ALWAYS_TEST_PIPELINE_MODULES)
 
     # Get unique modules
-    test_modules = list(set(test_modules))
+    test_modules = sorted(set(test_modules))
     print(json.dumps(test_modules))
 
     save_path = f"{PATH_TO_REPO}/reports"

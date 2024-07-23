@@ -97,9 +97,7 @@ class UNet2DConditionLoadersMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download:
-                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
-                of Diffusers.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -140,7 +138,6 @@ class UNet2DConditionLoadersMixin:
         """
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
@@ -174,7 +171,6 @@ class UNet2DConditionLoadersMixin:
                         weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
                         cache_dir=cache_dir,
                         force_download=force_download,
-                        resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
                         token=token,
@@ -194,7 +190,6 @@ class UNet2DConditionLoadersMixin:
                     weights_name=weight_name or LORA_WEIGHT_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
-                    resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
                     token=token,
@@ -457,6 +452,15 @@ class UNet2DConditionLoadersMixin:
         )
         if is_custom_diffusion:
             state_dict = self._get_custom_diffusion_state_dict()
+            if save_function is None and safe_serialization:
+                # safetensors does not support saving dicts with non-tensor values
+                empty_state_dict = {k: v for k, v in state_dict.items() if not isinstance(v, torch.Tensor)}
+                if len(empty_state_dict) > 0:
+                    logger.warning(
+                        f"Safetensors does not support saving dicts with non-tensor values. "
+                        f"The following keys will be ignored: {empty_state_dict.keys()}"
+                    )
+                state_dict = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
         else:
             if not USE_PEFT_BACKEND:
                 raise ValueError("PEFT backend is required for saving LoRAs using the `save_attn_procs()` method.")
@@ -922,8 +926,6 @@ class UNet2DConditionLoadersMixin:
 
     def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
         from ..models.attention_processor import (
-            AttnProcessor,
-            AttnProcessor2_0,
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
         )
@@ -963,9 +965,7 @@ class UNet2DConditionLoadersMixin:
                 hidden_size = self.config.block_out_channels[block_id]
 
             if cross_attention_dim is None or "motion_modules" in name:
-                attn_processor_class = (
-                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                )
+                attn_processor_class = self.attn_processors[name].__class__
                 attn_procs[name] = attn_processor_class()
 
             else:

@@ -22,6 +22,9 @@ on:
 
 jobs:
   mirror_community_pipeline:
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_COMMUNITY_MIRROR }}
+    
     runs-on: ubuntu-latest
     steps:
       # Checkout to correct ref
@@ -36,7 +39,7 @@ jobs:
       #     If ref is 'refs/heads/main' => set 'main'
       #     Else it must be a tag => set {tag}
       - name: Set checkout_ref and path_in_repo
-        run: | 
+        run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             if [ -z "${{ github.event.inputs.ref }}" ]; then
               echo "Error: Missing ref input"
@@ -54,7 +57,7 @@ jobs:
           else
             # e.g. refs/tags/v0.28.1 -> v0.28.1
             echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
-            echo "PATH_IN_REPO=${${{ github.ref }}#refs/tags/}" >> $GITHUB_ENV
+            echo "PATH_IN_REPO=$(echo ${{ github.ref }} | sed 's/^refs\/tags\///')" >> $GITHUB_ENV
           fi
       - name: Print env vars
         run: |
@@ -87,3 +90,13 @@ jobs:
         env:
             PATH_IN_REPO: ${{ env.PATH_IN_REPO }}
             HF_TOKEN: ${{ secrets.HF_TOKEN_MIRROR_COMMUNITY_PIPELINES }}
+
+      - name: Report success status
+        if: ${{ success() }}
+        run: |
+          pip install requests && python utils/notify_community_pipelines_mirror.py --status=success
+      
+      - name: Report failure status
+        if: ${{ failure() }}
+        run: |
+          pip install requests && python utils/notify_community_pipelines_mirror.py --status=failure

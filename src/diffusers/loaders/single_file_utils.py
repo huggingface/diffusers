@@ -21,6 +21,7 @@ from io import BytesIO
 from urllib.parse import urlparse
 
 import requests
+import torch
 import yaml
 
 from ..models.modeling_utils import load_state_dict
@@ -65,11 +66,17 @@ CHECKPOINT_KEY_NAMES = {
     "inpainting": "model.diffusion_model.input_blocks.0.0.weight",
     "clip": "cond_stage_model.transformer.text_model.embeddings.position_embedding.weight",
     "clip_sdxl": "conditioner.embedders.0.transformer.text_model.embeddings.position_embedding.weight",
+    "clip_sd3": "text_encoders.clip_l.transformer.text_model.embeddings.position_embedding.weight",
     "open_clip": "cond_stage_model.model.token_embedding.weight",
     "open_clip_sdxl": "conditioner.embedders.1.model.positional_embedding",
     "open_clip_sdxl_refiner": "conditioner.embedders.0.model.text_projection",
+    "open_clip_sd3": "text_encoders.clip_g.transformer.text_model.embeddings.position_embedding.weight",
     "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
+    "sd3": "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
+    "animatediff": "down_blocks.0.motion_modules.0.temporal_transformer.transformer_blocks.0.attention_blocks.1.pos_encoder.pe",
+    "animatediff_v2": "mid_block.motion_modules.0.temporal_transformer.norm.bias",
+    "animatediff_sdxl_beta": "up_blocks.2.motion_modules.0.temporal_transformer.norm.weight",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -96,6 +103,13 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
         "pretrained_model_name_or_path": "stabilityai/stable-cascade-prior",
         "subfolder": "prior_lite",
     },
+    "sd3": {
+        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3-medium-diffusers",
+    },
+    "animatediff_v1": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5"},
+    "animatediff_v2": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-2"},
+    "animatediff_v3": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-3"},
+    "animatediff_sdxl_beta": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-sdxl-beta"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -242,7 +256,10 @@ LDM_VAE_DEFAULT_SCALING_FACTOR = 0.18215
 PLAYGROUND_VAE_SCALING_FACTOR = 0.5
 LDM_UNET_KEY = "model.diffusion_model."
 LDM_CONTROLNET_KEY = "control_model."
-LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
+LDM_CLIP_PREFIX_TO_REMOVE = [
+    "cond_stage_model.transformer.",
+    "conditioner.embedders.0.transformer.",
+]
 OPEN_CLIP_PREFIX = "conditioner.embedders.0.model."
 LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
 
@@ -296,7 +313,6 @@ def _is_model_weights_in_cached_folder(cached_folder, name):
 
 def load_single_file_checkpoint(
     pretrained_model_link_or_path,
-    resume_download=False,
     force_download=False,
     proxies=None,
     token=None,
@@ -314,7 +330,6 @@ def load_single_file_checkpoint(
             weights_name=weights_name,
             force_download=force_download,
             cache_dir=cache_dir,
-            resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
             token=token,
@@ -366,6 +381,13 @@ def is_clip_sdxl_model(checkpoint):
     return False
 
 
+def is_clip_sd3_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["clip_sd3"] in checkpoint:
+        return True
+
+    return False
+
+
 def is_open_clip_model(checkpoint):
     if CHECKPOINT_KEY_NAMES["open_clip"] in checkpoint:
         return True
@@ -375,6 +397,13 @@ def is_open_clip_model(checkpoint):
 
 def is_open_clip_sdxl_model(checkpoint):
     if CHECKPOINT_KEY_NAMES["open_clip_sdxl"] in checkpoint:
+        return True
+
+    return False
+
+
+def is_open_clip_sd3_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["open_clip_sd3"] in checkpoint:
         return True
 
     return False
@@ -391,9 +420,11 @@ def is_clip_model_in_single_file(class_obj, checkpoint):
     is_clip_in_checkpoint = any(
         [
             is_clip_model(checkpoint),
+            is_clip_sd3_model(checkpoint),
             is_open_clip_model(checkpoint),
             is_open_clip_sdxl_model(checkpoint),
             is_open_clip_sdxl_refiner_model(checkpoint),
+            is_open_clip_sd3_model(checkpoint),
         ]
     )
     if (
@@ -455,6 +486,22 @@ def infer_diffusers_model_type(checkpoint):
         and checkpoint[CHECKPOINT_KEY_NAMES["stable_cascade_stage_b"]].shape[-1] == 640
     ):
         model_type = "stable_cascade_stage_b"
+
+    elif CHECKPOINT_KEY_NAMES["sd3"] in checkpoint:
+        model_type = "sd3"
+
+    elif CHECKPOINT_KEY_NAMES["animatediff"] in checkpoint:
+        if CHECKPOINT_KEY_NAMES["animatediff_v2"] in checkpoint:
+            model_type = "animatediff_v2"
+
+        elif checkpoint[CHECKPOINT_KEY_NAMES["animatediff_sdxl_beta"]].shape[-1] == 320:
+            model_type = "animatediff_sdxl_beta"
+
+        elif checkpoint[CHECKPOINT_KEY_NAMES["animatediff"]].shape[1] == 24:
+            model_type = "animatediff_v1"
+
+        else:
+            model_type = "animatediff_v3"
 
     else:
         model_type = "v1"
@@ -1206,11 +1253,14 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     return new_checkpoint
 
 
-def convert_ldm_clip_checkpoint(checkpoint):
+def convert_ldm_clip_checkpoint(checkpoint, remove_prefix=None):
     keys = list(checkpoint.keys())
     text_model_dict = {}
 
-    remove_prefixes = LDM_CLIP_PREFIX_TO_REMOVE
+    remove_prefixes = []
+    remove_prefixes.extend(LDM_CLIP_PREFIX_TO_REMOVE)
+    if remove_prefix:
+        remove_prefixes.append(remove_prefix)
 
     for key in keys:
         for prefix in remove_prefixes:
@@ -1235,8 +1285,6 @@ def convert_open_clip_checkpoint(
         text_proj_dim = text_model.config.projection_dim
     else:
         text_proj_dim = LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
-
-    text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
 
     keys = list(checkpoint.keys())
     keys_to_ignore = SD_2_TEXT_ENCODER_KEYS_TO_IGNORE
@@ -1285,9 +1333,6 @@ def convert_open_clip_checkpoint(
             text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :].clone().detach()
         else:
             text_model_dict[diffusers_key] = checkpoint.get(key)
-
-    if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
-        text_model_dict.pop("text_model.embeddings.position_ids", None)
 
     return text_model_dict
 
@@ -1349,6 +1394,13 @@ def create_diffusers_clip_model_from_ldm(
     ):
         diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
 
+    elif (
+        is_clip_sd3_model(checkpoint)
+        and checkpoint[CHECKPOINT_KEY_NAMES["clip_sd3"]].shape[-1] == position_embedding_dim
+    ):
+        diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint, "text_encoders.clip_l.transformer.")
+        diffusers_format_checkpoint["text_projection.weight"] = torch.eye(position_embedding_dim)
+
     elif is_open_clip_model(checkpoint):
         prefix = "cond_stage_model.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
@@ -1364,22 +1416,28 @@ def create_diffusers_clip_model_from_ldm(
         prefix = "conditioner.embedders.0.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
+    elif (
+        is_open_clip_sd3_model(checkpoint)
+        and checkpoint[CHECKPOINT_KEY_NAMES["open_clip_sd3"]].shape[-1] == position_embedding_dim
+    ):
+        diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint, "text_encoders.clip_g.transformer.")
+
     else:
         raise ValueError("The provided checkpoint does not seem to contain a valid CLIP model.")
 
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        if model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
     else:
-        model.load_state_dict(diffusers_format_checkpoint)
+        _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
+
+    if model._keys_to_ignore_on_load_unexpected is not None:
+        for pat in model._keys_to_ignore_on_load_unexpected:
+            unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+    if len(unexpected_keys) > 0:
+        logger.warning(
+            f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+        )
 
     if torch_dtype is not None:
         model.to(torch_dtype)
@@ -1559,3 +1617,245 @@ def _legacy_load_safety_checker(local_files_only, torch_dtype):
     )
 
     return {"safety_checker": safety_checker, "feature_extractor": feature_extractor}
+
+
+# in SD3 original implementation of AdaLayerNormContinuous, it split linear projection output into shift, scale;
+# while in diffusers it split into scale, shift. Here we swap the linear projection weights in order to be able to use diffusers implementation
+def swap_scale_shift(weight, dim):
+    shift, scale = weight.chunk(2, dim=0)
+    new_weight = torch.cat([scale, shift], dim=0)
+    return new_weight
+
+
+def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {}
+    keys = list(checkpoint.keys())
+    for k in keys:
+        if "model.diffusion_model." in k:
+            checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
+    num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "joint_blocks" in k))[-1] + 1  # noqa: C401
+    caption_projection_dim = 1536
+
+    # Positional and patch embeddings.
+    converted_state_dict["pos_embed.pos_embed"] = checkpoint.pop("pos_embed")
+    converted_state_dict["pos_embed.proj.weight"] = checkpoint.pop("x_embedder.proj.weight")
+    converted_state_dict["pos_embed.proj.bias"] = checkpoint.pop("x_embedder.proj.bias")
+
+    # Timestep embeddings.
+    converted_state_dict["time_text_embed.timestep_embedder.linear_1.weight"] = checkpoint.pop(
+        "t_embedder.mlp.0.weight"
+    )
+    converted_state_dict["time_text_embed.timestep_embedder.linear_1.bias"] = checkpoint.pop("t_embedder.mlp.0.bias")
+    converted_state_dict["time_text_embed.timestep_embedder.linear_2.weight"] = checkpoint.pop(
+        "t_embedder.mlp.2.weight"
+    )
+    converted_state_dict["time_text_embed.timestep_embedder.linear_2.bias"] = checkpoint.pop("t_embedder.mlp.2.bias")
+
+    # Context projections.
+    converted_state_dict["context_embedder.weight"] = checkpoint.pop("context_embedder.weight")
+    converted_state_dict["context_embedder.bias"] = checkpoint.pop("context_embedder.bias")
+
+    # Pooled context projection.
+    converted_state_dict["time_text_embed.text_embedder.linear_1.weight"] = checkpoint.pop("y_embedder.mlp.0.weight")
+    converted_state_dict["time_text_embed.text_embedder.linear_1.bias"] = checkpoint.pop("y_embedder.mlp.0.bias")
+    converted_state_dict["time_text_embed.text_embedder.linear_2.weight"] = checkpoint.pop("y_embedder.mlp.2.weight")
+    converted_state_dict["time_text_embed.text_embedder.linear_2.bias"] = checkpoint.pop("y_embedder.mlp.2.bias")
+
+    # Transformer blocks 🎸.
+    for i in range(num_layers):
+        # Q, K, V
+        sample_q, sample_k, sample_v = torch.chunk(
+            checkpoint.pop(f"joint_blocks.{i}.x_block.attn.qkv.weight"), 3, dim=0
+        )
+        context_q, context_k, context_v = torch.chunk(
+            checkpoint.pop(f"joint_blocks.{i}.context_block.attn.qkv.weight"), 3, dim=0
+        )
+        sample_q_bias, sample_k_bias, sample_v_bias = torch.chunk(
+            checkpoint.pop(f"joint_blocks.{i}.x_block.attn.qkv.bias"), 3, dim=0
+        )
+        context_q_bias, context_k_bias, context_v_bias = torch.chunk(
+            checkpoint.pop(f"joint_blocks.{i}.context_block.attn.qkv.bias"), 3, dim=0
+        )
+
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_q.weight"] = torch.cat([sample_q])
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_q.bias"] = torch.cat([sample_q_bias])
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_k.weight"] = torch.cat([sample_k])
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_k.bias"] = torch.cat([sample_k_bias])
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_v.weight"] = torch.cat([sample_v])
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_v.bias"] = torch.cat([sample_v_bias])
+
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_q_proj.weight"] = torch.cat([context_q])
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_q_proj.bias"] = torch.cat([context_q_bias])
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_k_proj.weight"] = torch.cat([context_k])
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_k_proj.bias"] = torch.cat([context_k_bias])
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_v_proj.weight"] = torch.cat([context_v])
+        converted_state_dict[f"transformer_blocks.{i}.attn.add_v_proj.bias"] = torch.cat([context_v_bias])
+
+        # output projections.
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_out.0.weight"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.attn.proj.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{i}.attn.to_out.0.bias"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.attn.proj.bias"
+        )
+        if not (i == num_layers - 1):
+            converted_state_dict[f"transformer_blocks.{i}.attn.to_add_out.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.attn.proj.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.to_add_out.bias"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.attn.proj.bias"
+            )
+
+        # norms.
+        converted_state_dict[f"transformer_blocks.{i}.norm1.linear.weight"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.adaLN_modulation.1.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{i}.norm1.linear.bias"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.adaLN_modulation.1.bias"
+        )
+        if not (i == num_layers - 1):
+            converted_state_dict[f"transformer_blocks.{i}.norm1_context.linear.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.adaLN_modulation.1.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.norm1_context.linear.bias"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.adaLN_modulation.1.bias"
+            )
+        else:
+            converted_state_dict[f"transformer_blocks.{i}.norm1_context.linear.weight"] = swap_scale_shift(
+                checkpoint.pop(f"joint_blocks.{i}.context_block.adaLN_modulation.1.weight"),
+                dim=caption_projection_dim,
+            )
+            converted_state_dict[f"transformer_blocks.{i}.norm1_context.linear.bias"] = swap_scale_shift(
+                checkpoint.pop(f"joint_blocks.{i}.context_block.adaLN_modulation.1.bias"),
+                dim=caption_projection_dim,
+            )
+
+        # ffs.
+        converted_state_dict[f"transformer_blocks.{i}.ff.net.0.proj.weight"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.mlp.fc1.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{i}.ff.net.0.proj.bias"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.mlp.fc1.bias"
+        )
+        converted_state_dict[f"transformer_blocks.{i}.ff.net.2.weight"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.mlp.fc2.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{i}.ff.net.2.bias"] = checkpoint.pop(
+            f"joint_blocks.{i}.x_block.mlp.fc2.bias"
+        )
+        if not (i == num_layers - 1):
+            converted_state_dict[f"transformer_blocks.{i}.ff_context.net.0.proj.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.mlp.fc1.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.ff_context.net.0.proj.bias"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.mlp.fc1.bias"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.ff_context.net.2.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.mlp.fc2.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.ff_context.net.2.bias"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.mlp.fc2.bias"
+            )
+
+    # Final blocks.
+    converted_state_dict["proj_out.weight"] = checkpoint.pop("final_layer.linear.weight")
+    converted_state_dict["proj_out.bias"] = checkpoint.pop("final_layer.linear.bias")
+    converted_state_dict["norm_out.linear.weight"] = swap_scale_shift(
+        checkpoint.pop("final_layer.adaLN_modulation.1.weight"), dim=caption_projection_dim
+    )
+    converted_state_dict["norm_out.linear.bias"] = swap_scale_shift(
+        checkpoint.pop("final_layer.adaLN_modulation.1.bias"), dim=caption_projection_dim
+    )
+
+    return converted_state_dict
+
+
+def is_t5_in_single_file(checkpoint):
+    if "text_encoders.t5xxl.transformer.shared.weight" in checkpoint:
+        return True
+
+    return False
+
+
+def convert_sd3_t5_checkpoint_to_diffusers(checkpoint):
+    keys = list(checkpoint.keys())
+    text_model_dict = {}
+
+    remove_prefixes = ["text_encoders.t5xxl.transformer."]
+
+    for key in keys:
+        for prefix in remove_prefixes:
+            if key.startswith(prefix):
+                diffusers_key = key.replace(prefix, "")
+                text_model_dict[diffusers_key] = checkpoint.get(key)
+
+    return text_model_dict
+
+
+def create_diffusers_t5_model_from_checkpoint(
+    cls,
+    checkpoint,
+    subfolder="",
+    config=None,
+    torch_dtype=None,
+    local_files_only=None,
+):
+    if config:
+        config = {"pretrained_model_name_or_path": config}
+    else:
+        config = fetch_diffusers_config(checkpoint)
+
+    model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        model = cls(model_config)
+
+    diffusers_format_checkpoint = convert_sd3_t5_checkpoint_to_diffusers(checkpoint)
+
+    if is_accelerate_available():
+        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warning(
+                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
+
+    else:
+        model.load_state_dict(diffusers_format_checkpoint)
+
+    use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (torch_dtype == torch.float16)
+    if use_keep_in_fp32_modules:
+        keep_in_fp32_modules = model._keep_in_fp32_modules
+    else:
+        keep_in_fp32_modules = []
+
+    if keep_in_fp32_modules is not None:
+        for name, param in model.named_parameters():
+            if any(module_to_keep_in_fp32 in name.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules):
+                # param = param.to(torch.float32) does not work here as only in the local scope.
+                param.data = param.data.to(torch.float32)
+
+    return model
+
+
+def convert_animatediff_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {}
+    for k, v in checkpoint.items():
+        if "pos_encoder" in k:
+            continue
+
+        else:
+            converted_state_dict[
+                k.replace(".norms.0", ".norm1")
+                .replace(".norms.1", ".norm2")
+                .replace(".ff_norm", ".norm3")
+                .replace(".attention_blocks.0", ".attn1")
+                .replace(".attention_blocks.1", ".attn2")
+                .replace(".temporal_transformer", "")
+            ] = v
+
+    return converted_state_dict

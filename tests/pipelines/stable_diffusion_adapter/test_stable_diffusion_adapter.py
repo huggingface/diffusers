@@ -361,6 +361,9 @@ class StableDiffusionFullAdapterPipelineFastTests(
         expected_slice = np.array([0.4858, 0.5500, 0.4278, 0.4669, 0.6184, 0.4322, 0.5010, 0.5033, 0.4746])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
+    def test_from_pipe_consistent_forward_pass_cpu_offload(self):
+        super().test_from_pipe_consistent_forward_pass_cpu_offload(expected_max_diff=6e-3)
+
 
 class StableDiffusionLightAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self, time_cond_proj_dim=None):
@@ -535,7 +538,6 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
 
         # batchify inputs
         batched_inputs = {}
-        batch_size = batch_size
         for name, value in inputs.items():
             if name in self.batch_params:
                 # prompt is string

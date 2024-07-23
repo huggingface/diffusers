@@ -270,7 +270,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         save_function: Optional[Callable] = None,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
-        max_shard_size: Union[int, str] = "5GB",
+        max_shard_size: Union[int, str] = "10GB",
         push_to_hub: bool = False,
         **kwargs,
     ):
@@ -293,10 +293,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
-            max_shard_size (`int` or `str`, defaults to `"5GB"`):
+            max_shard_size (`int` or `str`, defaults to `"10GB"`):
                 The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size
                 lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5GB"`).
-                If expressed as an integer, the unit is bytes.
+                If expressed as an integer, the unit is bytes. Note that this limit will be decreased after a certain
+                period of time (starting from Oct 2024) to allow users to upgrade to the latest version of `diffusers`.
+                This is to establish a common default size for this argument across different libraries in the Hugging
+                Face ecosystem (`transformers`, and `accelerate`, for example).
             push_to_hub (`bool`, *optional*, defaults to `False`):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
@@ -431,9 +434,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download:
-                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
-                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -459,7 +459,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
-                same device.
+                same device. Defaults to `None`, meaning that the model will be loaded on CPU.
 
                 Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
                 more information about each option see [designing a device
@@ -515,7 +515,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
         from_flax = kwargs.pop("from_flax", False)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
         local_files_only = kwargs.pop("local_files_only", None)
@@ -616,7 +615,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             return_unused_kwargs=True,
             return_commit_hash=True,
             force_download=force_download,
-            resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
             token=token,
@@ -638,7 +636,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             cache_dir=cache_dir,
             variant=variant,
             force_download=force_download,
-            resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
             token=token,
@@ -660,7 +657,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 weights_name=FLAX_WEIGHTS_NAME,
                 cache_dir=cache_dir,
                 force_download=force_download,
-                resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,
@@ -682,7 +678,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     index_file,
                     cache_dir=cache_dir,
                     proxies=proxies,
-                    resume_download=resume_download,
                     local_files_only=local_files_only,
                     token=token,
                     user_agent=user_agent,
@@ -697,7 +692,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
                         cache_dir=cache_dir,
                         force_download=force_download,
-                        resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
                         token=token,
@@ -721,7 +715,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     weights_name=_add_variant(WEIGHTS_NAME, variant),
                     cache_dir=cache_dir,
                     force_download=force_download,
-                    resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
                     token=token,
@@ -771,7 +764,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
+                    force_hook = True
                     device_map = _determine_device_map(model, device_map, max_memory, torch_dtype)
+                    if device_map is None and is_sharded:
+                        # we load the parameters on the cpu
+                        device_map = {"": "cpu"}
+                        force_hook = False
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
@@ -781,7 +779,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             offload_folder=offload_folder,
                             offload_state_dict=offload_state_dict,
                             dtype=torch_dtype,
-                            force_hooks=True,
+                            force_hooks=force_hook,
                             strict=True,
                         )
                     except AttributeError as e:
@@ -805,12 +803,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             model._temp_convert_self_to_deprecated_attention_blocks()
                             accelerate.load_checkpoint_and_dispatch(
                                 model,
-                                model_file,
+                                model_file if not is_sharded else sharded_ckpt_cached_folder,
                                 device_map,
                                 max_memory=max_memory,
                                 offload_folder=offload_folder,
                                 offload_state_dict=offload_state_dict,
                                 dtype=torch_dtype,
+                                force_hooks=force_hook,
+                                strict=True,
                             )
                             model._undo_temp_convert_self_to_deprecated_attention_blocks()
                         else:
@@ -1159,7 +1159,7 @@ class LegacyModelMixin(ModelMixin):
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
-        # To prevent depedency import problem.
+        # To prevent dependency import problem.
         from .model_loading_utils import _fetch_remapped_cls_from_config
 
         # Create a copy of the kwargs so that we don't mess with the keyword arguments in the downstream calls.
@@ -1167,7 +1167,6 @@ class LegacyModelMixin(ModelMixin):
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
@@ -1190,7 +1189,6 @@ class LegacyModelMixin(ModelMixin):
             return_unused_kwargs=True,
             return_commit_hash=True,
             force_download=force_download,
-            resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
             token=token,

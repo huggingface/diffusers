@@ -40,10 +40,11 @@ from diffusers.models.attention_processor import (
 )
 from diffusers.training_utils import EMAModel
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, is_torch_npu_available, is_xformers_available, logging
+from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     get_python_version,
-    require_python39_or_higher,
+    is_torch_compile,
     require_torch_2,
     require_torch_accelerator_with_training,
     require_torch_gpu,
@@ -53,6 +54,15 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
+
+
+def caculate_expected_num_shards(index_map_path):
+    with open(index_map_path) as f:
+        weight_map_dict = json.load(f)["weight_map"]
+    first_key = list(weight_map_dict.keys())[0]
+    weight_loc = weight_map_dict[first_key]  # e.g., diffusion_pytorch_model-00001-of-00002.safetensors
+    expected_num_shards = int(weight_loc.split("-")[-1].split(".")[0])
+    return expected_num_shards
 
 
 # Will be run via run_test_in_subprocess
@@ -114,11 +124,8 @@ class ModelUtilsTest(unittest.TestCase):
             if p1.data.ne(p2.data).sum() > 0:
                 assert False, "Parameters not the same!"
 
+    @unittest.skipIf(torch_device == "mps", reason="Test not supported for MPS.")
     def test_one_request_upon_cached(self):
-        # TODO: For some reason this test fails on MPS where no HEAD call is made.
-        if torch_device == "mps":
-            return
-
         use_safetensors = False
 
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -373,6 +380,10 @@ class ModelTesterMixin:
             # If not has `set_attn_processor`, skip test
             return
 
+        if not hasattr(model, "set_default_attn_processor"):
+            # If not has `set_attn_processor`, skip test
+            return
+
         model.set_default_attn_processor()
         assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
@@ -503,7 +514,7 @@ class ModelTesterMixin:
         max_diff = (image - new_image).abs().max().item()
         self.assertLessEqual(max_diff, expected_max_diff, "Models give different forward passes")
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     @unittest.skipIf(
         get_python_version == (3, 12),
@@ -872,6 +883,75 @@ class ModelTesterMixin:
 
     @require_torch_gpu
     def test_sharded_checkpoints(self):
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
+            self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
+
+            # Now check if the right number of shards exists. First, let's get the number of shards.
+            # Since this number can be dependent on the model being tested, it's important that we calculate it
+            # instead of hardcoding it.
+            expected_num_shards = caculate_expected_num_shards(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME))
+            actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(".safetensors")])
+            self.assertTrue(actual_num_shards == expected_num_shards)
+
+            new_model = self.model_class.from_pretrained(tmp_dir).eval()
+            new_model = new_model.to(torch_device)
+
+            torch.manual_seed(0)
+            if "generator" in inputs_dict:
+                _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            new_output = new_model(**inputs_dict)
+
+            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_gpu
+    def test_sharded_checkpoints_with_variant(self):
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+
+        base_output = model(**inputs_dict)
+
+        model_size = compute_module_sizes(model)[""]
+        max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
+        variant = "fp16"
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # It doesn't matter if the actual model is in fp16 or not. Just adding the variant and
+            # testing if loading works with the variant when the checkpoint is sharded should be
+            # enough.
+            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB", variant=variant)
+            index_filename = _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
+            self.assertTrue(os.path.exists(os.path.join(tmp_dir, index_filename)))
+
+            # Now check if the right number of shards exists. First, let's get the number of shards.
+            # Since this number can be dependent on the model being tested, it's important that we calculate it
+            # instead of hardcoding it.
+            expected_num_shards = caculate_expected_num_shards(os.path.join(tmp_dir, index_filename))
+            actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(".safetensors")])
+            self.assertTrue(actual_num_shards == expected_num_shards)
+
+            new_model = self.model_class.from_pretrained(tmp_dir, variant=variant).eval()
+            new_model = new_model.to(torch_device)
+
+            torch.manual_seed(0)
+            if "generator" in inputs_dict:
+                _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            new_output = new_model(**inputs_dict)
+
+            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_gpu
+    def test_sharded_checkpoints_device_map(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
         if model._no_split_modules is None:
@@ -890,18 +970,16 @@ class ModelTesterMixin:
             # Now check if the right number of shards exists. First, let's get the number of shards.
             # Since this number can be dependent on the model being tested, it's important that we calculate it
             # instead of hardcoding it.
-            with open(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)) as f:
-                weight_map_dict = json.load(f)["weight_map"]
-                first_key = list(weight_map_dict.keys())[0]
-                weight_loc = weight_map_dict[first_key]  # e.g., diffusion_pytorch_model-00001-of-00002.safetensors
-                expected_num_shards = int(weight_loc.split("-")[-1].split(".")[0])
-
+            expected_num_shards = caculate_expected_num_shards(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME))
             actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(".safetensors")])
             self.assertTrue(actual_num_shards == expected_num_shards)
 
             new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto")
+            new_model = new_model.to(torch_device)
 
             torch.manual_seed(0)
+            if "generator" in inputs_dict:
+                _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
