@@ -42,6 +42,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..free_init_utils import FreeInitMixin
+from ..free_noise_utils import FreeNoiseMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
 
@@ -72,6 +73,7 @@ class AnimateDiffPipeline(
     IPAdapterMixin,
     LoraLoaderMixin,
     FreeInitMixin,
+    FreeNoiseMixin,
 ):
     r"""
     Pipeline for text-to-video generation.
@@ -394,15 +396,20 @@ class AnimateDiffPipeline(
 
         return ip_adapter_image_embeds
 
-    # Copied from diffusers.pipelines.text_to_video_synthesis/pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
-    def decode_latents(self, latents):
+    def decode_latents(self, latents, decode_batch_size: int = 16):
         latents = 1 / self.vae.config.scaling_factor * latents
 
         batch_size, channels, num_frames, height, width = latents.shape
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-
-        image = self.vae.decode(latents).sample
-        video = image[None, :].reshape((batch_size, num_frames, -1) + image.shape[2:]).permute(0, 2, 1, 3, 4)
+        
+        video = []
+        for i in range(0, latents.shape[0], decode_batch_size):
+            batch_latents = latents[i : i + decode_batch_size]
+            batch_latents = self.vae.decode(batch_latents).sample
+            video.append(batch_latents)
+        
+        video = torch.cat(video)
+        video = video[None, :].reshape((batch_size, num_frames, -1) + video.shape[2:]).permute(0, 2, 1, 3, 4)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         video = video.float()
         return video
@@ -495,7 +502,6 @@ class AnimateDiffPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
-    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
@@ -516,6 +522,22 @@ class AnimateDiffPipeline(
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
+        
+        if self.free_noise_enabled and self._free_noise_shuffle:
+            for i in range(self._free_noise_context_length, num_frames, self._free_noise_context_stride):
+                # ensure window is within bounds
+                window_start = max(0, i - self._free_noise_context_length)
+                window_end = min(num_frames, window_start + self._free_noise_context_stride)
+                window_length = window_end - window_start
+                
+                if window_length == 0:
+                    break
+                
+                indices = torch.LongTensor(list(range(window_start, window_end)))
+                shuffled_indices = indices[torch.randperm(window_length, generator=generator)]
+
+                # shuffle latents in every window
+                latents[:, :, window_start : window_end] = latents[:, :, shuffled_indices]
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -569,6 +591,7 @@ class AnimateDiffPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        decode_batch_size: int = 16,
         **kwargs,
     ):
         r"""
@@ -808,7 +831,7 @@ class AnimateDiffPipeline(
         if output_type == "latent":
             video = latents
         else:
-            video_tensor = self.decode_latents(latents)
+            video_tensor = self.decode_latents(latents, decode_batch_size)
             video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 10. Offload all models
