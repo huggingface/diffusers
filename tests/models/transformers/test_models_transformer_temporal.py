@@ -37,8 +37,7 @@ class TemporalTransformerTests(ModelTesterMixin, unittest.TestCase):
     def dummy_input(self):
         batch_size = 2
         num_channels = 4
-        height = width = embedding_dim = 32
-        sequence_length = 8
+        height = width = 32
 
         hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
         timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
