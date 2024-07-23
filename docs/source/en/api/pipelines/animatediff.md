@@ -110,10 +110,10 @@ The abstract from the paper is:
 
 SparseCtrl introduces the following checkpoints for controlled text-to-video generation:
 
-- [SparseCtrl Scribble](https://huggingface.co/a-r-r-o-w/animatediff-sparsectrl-scribble) TODO: update link after transfer
-- [SparseCtrl RGB](https://huggingface.co/a-r-r-o-w/animatediff-sparsectrl-rgb) TODO: update link after transfer
+- [SparseCtrl Scribble](https://huggingface.co/guoyww/animatediff-sparsectrl-scribble)
+- [SparseCtrl RGB](https://huggingface.co/guoyww/animatediff-sparsectrl-rgb)
 
-Using SparseCtrl Scribble:
+#### Using SparseCtrl Scribble
 
 ```python
 import torch
@@ -123,12 +123,12 @@ from diffusers.models import AutoencoderKL, MotionAdapter, SparseControlNetModel
 from diffusers.schedulers import DPMSolverMultistepScheduler
 from diffusers.utils import export_to_gif, load_image
 
-# TODO: update org
+
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
-controlnet_id = "a-r-r-o-w/animatediff-sparsectrl-scribble"
+controlnet_id = "guoyww/animatediff-sparsectrl-scribble"
+lora_adapter_id = "guoyww/animatediff-motion-lora-v1-5-3"
 vae_id = "stabilityai/sd-vae-ft-mse"
-lora_adapter_id = "a-r-r-o-w/animatediff-motion-lora-v1-5-3"
 device = "cuda"
 
 motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, torch_dtype=torch.float16).to(device)
@@ -155,8 +155,11 @@ pipe.fuse_lora(lora_scale=1.0)
 prompt = "an aerial view of a cyberpunk city, night time, neon lights, masterpiece, high quality"
 negative_prompt = "low quality, worst quality, letterboxed"
 
-# TODO: update these with HF links
-image_files = ["scribble-1.png", "scribble-2.png", "scribble-3.png"]
+image_files = [
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-1.png",
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-2.png",
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-3.png"
+]
 condition_frame_indices = [0, 8, 15]
 conditioning_frames = [load_image(img_file) for img_file in image_files]
 
@@ -172,7 +175,41 @@ video = pipe(
 export_to_gif(video, "output.gif")
 ```
 
-Using SparseCtrl RGB:
+Here are some sample outputs:
+
+<table align="center">
+    <tr>
+        <center>
+          <b>an aerial view of a cyberpunk city, night time, neon lights, masterpiece, high quality</b>
+        </center>
+    </tr>
+    <tr>
+        <td>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-1.png" alt="scribble-1" />
+          </center>
+        </td>
+        <td>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-2.png" alt="scribble-2" />
+          </center>
+        </td>
+        <td>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-3.png" alt="scribble-3" />
+          </center>
+        </td>
+    </tr>
+    <tr>
+        <td colspan=3>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-sparsectrl-scribble-results.gif" alt="an aerial view of a cyberpunk city, night time, neon lights, masterpiece, high quality" />
+          </center>
+        </td>
+    </tr>
+</table>
+
+#### Using SparseCtrl RGB
 
 ```python
 import torch
@@ -183,12 +220,11 @@ from diffusers.schedulers import DPMSolverMultistepScheduler
 from diffusers.utils import export_to_gif, load_image
 
 
-# TODO: update org
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
-controlnet_id = "a-r-r-o-w/animatediff-sparsectrl-rgb"
+controlnet_id = "guoyww/animatediff-sparsectrl-rgb"
+lora_adapter_id = "guoyww/animatediff-motion-lora-v1-5-3"
 vae_id = "stabilityai/sd-vae-ft-mse"
-lora_adapter_id = "a-r-r-o-w/animatediff-motion-lora-v1-5-3"
 device = "cuda"
 
 motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, torch_dtype=torch.float16).to(device)
@@ -211,8 +247,7 @@ pipe = AnimateDiffSparseControlNetPipeline.from_pretrained(
 ).to(device)
 pipe.load_lora_weights(lora_adapter_id, adapter_name="motion_lora")
 
-# TODO: update with HF URL
-image = load_image("firework.png")
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-firework.png")
 
 video = pipe(
     prompt="closeup face photo of man in black clothes, night city street, bokeh, fireworks in background",
@@ -228,7 +263,25 @@ export_to_gif(video, "output.gif")
 
 Here are some sample outputs:
 
-TODO: update after adding gifs to documentation repo
+<table align="center">
+    <tr>
+        <center>
+          <b>closeup face photo of man in black clothes, night city street, bokeh, fireworks in background</b>
+        </center>
+    </tr>
+    <tr>
+        <td>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-firework.png" alt="closeup face photo of man in black clothes, night city street, bokeh, fireworks in background" />
+          </center>
+        </td>
+        <td>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-sparsectrl-rgb-result.gif" alt="closeup face photo of man in black clothes, night city street, bokeh, fireworks in background" />
+          </center>
+        </td>
+    </tr>
+</table>
 
 ### AnimateDiffSDXLPipeline
 

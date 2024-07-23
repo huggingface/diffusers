@@ -48,16 +48,17 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import AnimateDiffSparseControlNetPipeline, DPMSolverMultistepScheduler
+        >>> from diffusers import AnimateDiffSparseControlNetPipeline
         >>> from diffusers.models import AutoencoderKL, MotionAdapter, SparseControlNetModel
+        >>> from diffusers.schedulers import DPMSolverMultistepScheduler
         >>> from diffusers.utils import export_to_gif, load_image
 
-        >>> # TODO: update org
         >>> model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
         >>> motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
-        >>> controlnet_id = "a-r-r-o-w/animatediff-sparsectrl-scribble"
+        >>> controlnet_id = "guoyww/animatediff-sparsectrl-scribble"
+        >>> lora_adapter_id = "guoyww/animatediff-motion-lora-v1-5-3"
         >>> vae_id = "stabilityai/sd-vae-ft-mse"
-        >>> lora_adapter_id = "a-r-r-o-w/animatediff-motion-lora-v1-5-3"
+        >>> device = "cuda"
 
         >>> motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, torch_dtype=torch.float16).to(device)
         >>> controlnet = SparseControlNetModel.from_pretrained(controlnet_id, torch_dtype=torch.float16).to(device)
@@ -83,8 +84,11 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "an aerial view of a cyberpunk city, night time, neon lights, masterpiece, high quality"
         >>> negative_prompt = "low quality, worst quality, letterboxed"
 
-        >>> # TODO: update these with HF links
-        >>> image_files = ["scribble-1.png", "scribble-2.png", "scribble-3.png"]
+        >>> image_files = [
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-1.png",
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-2.png",
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-3.png",
+        ... ]
         >>> condition_frame_indices = [0, 8, 15]
         >>> conditioning_frames = [load_image(img_file) for img_file in image_files]
 
