@@ -78,7 +78,7 @@ image = pipe(
     prompt=prompt,
     num_inference_steps=4,
     guidance_scale=0,
-    eta=0.3, 
+    eta=0.3,
     generator=torch.Generator(device=device).manual_seed(0),
 ).images[0]
 ```
@@ -156,14 +156,14 @@ image = pipe(
     prompt=prompt,
     num_inference_steps=8,
     guidance_scale=0,
-    eta=0.3, 
+    eta=0.3,
     generator=torch.Generator(device=device).manual_seed(0),
 ).images[0]
 ```
 
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/animagine_xl.png)
 
-TCD-LoRA also supports other LoRAs trained on different styles. For example, let's load the [TheLastBen/Papercut_SDXL](https://huggingface.co/TheLastBen/Papercut_SDXL) LoRA and fuse it with the TCD-LoRA with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method. 
+TCD-LoRA also supports other LoRAs trained on different styles. For example, let's load the [TheLastBen/Papercut_SDXL](https://huggingface.co/TheLastBen/Papercut_SDXL) LoRA and fuse it with the TCD-LoRA with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method.
 
 > [!TIP]
 > Check out the [Merge LoRAs](merge_loras) guide to learn more about efficient merging methods.
@@ -171,7 +171,7 @@ TCD-LoRA also supports other LoRAs trained on different styles. For example, let
 ```python
 import torch
 from diffusers import StableDiffusionXLPipeline
-from scheduling_tcd import TCDScheduler 
+from scheduling_tcd import TCDScheduler
 
 device = "cuda"
 base_model_id = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -191,7 +191,7 @@ image = pipe(
     prompt=prompt,
     num_inference_steps=4,
     guidance_scale=0,
-    eta=0.3, 
+    eta=0.3,
     generator=torch.Generator(device=device).manual_seed(0),
 ).images[0]
 ```
@@ -215,7 +215,7 @@ from PIL import Image
 from transformers import DPTFeatureExtractor, DPTForDepthEstimation
 from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
 from diffusers.utils import load_image, make_image_grid
-from scheduling_tcd import TCDScheduler 
+from scheduling_tcd import TCDScheduler
 
 device = "cuda"
 depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to(device)
@@ -249,13 +249,13 @@ controlnet = ControlNetModel.from_pretrained(
     controlnet_id,
     torch_dtype=torch.float16,
     variant="fp16",
-).to(device)
+)
 pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
     base_model_id,
     controlnet=controlnet,
     torch_dtype=torch.float16,
     variant="fp16",
-).to(device)
+)
 pipe.enable_model_cpu_offload()
 
 pipe.scheduler = TCDScheduler.from_config(pipe.scheduler.config)
@@ -271,9 +271,9 @@ depth_image = get_depth_map(image)
 controlnet_conditioning_scale = 0.5  # recommended for good generalization
 
 image = pipe(
-    prompt, 
-    image=depth_image, 
-    num_inference_steps=4, 
+    prompt,
+    image=depth_image,
+    num_inference_steps=4,
     guidance_scale=0,
     eta=0.3,
     controlnet_conditioning_scale=controlnet_conditioning_scale,
@@ -290,7 +290,7 @@ grid_image = make_image_grid([depth_image, image], rows=1, cols=2)
 import torch
 from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
 from diffusers.utils import load_image, make_image_grid
-from scheduling_tcd import TCDScheduler 
+from scheduling_tcd import TCDScheduler
 
 device = "cuda"
 base_model_id = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -301,13 +301,13 @@ controlnet = ControlNetModel.from_pretrained(
     controlnet_id,
     torch_dtype=torch.float16,
     variant="fp16",
-).to(device)
+)
 pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
     base_model_id,
     controlnet=controlnet,
     torch_dtype=torch.float16,
     variant="fp16",
-).to(device)
+)
 pipe.enable_model_cpu_offload()
 
 pipe.scheduler = TCDScheduler.from_config(pipe.scheduler.config)
@@ -322,9 +322,9 @@ canny_image = load_image("https://huggingface.co/datasets/hf-internal-testing/di
 controlnet_conditioning_scale = 0.5  # recommended for good generalization
 
 image = pipe(
-    prompt, 
-    image=canny_image, 
-    num_inference_steps=4, 
+    prompt,
+    image=canny_image,
+    num_inference_steps=4,
     guidance_scale=0,
     eta=0.3,
     controlnet_conditioning_scale=controlnet_conditioning_scale,
@@ -336,7 +336,7 @@ grid_image = make_image_grid([canny_image, image], rows=1, cols=2)
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/controlnet_canny_tcd.png)
 
 <Tip>
-The inference parameters in this example might not work for all examples, so we recommend you to try different values for `num_inference_steps`, `guidance_scale`, `controlnet_conditioning_scale` and `cross_attention_kwargs` parameters and choose the best one. 
+The inference parameters in this example might not work for all examples, so we recommend you to try different values for `num_inference_steps`, `guidance_scale`, `controlnet_conditioning_scale` and `cross_attention_kwargs` parameters and choose the best one.
 </Tip>
 
 </hfoption>
@@ -350,7 +350,7 @@ from diffusers import StableDiffusionXLPipeline
 from diffusers.utils import load_image, make_image_grid
 
 from ip_adapter import IPAdapterXL
-from scheduling_tcd import TCDScheduler 
+from scheduling_tcd import TCDScheduler
 
 device = "cuda"
 base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -359,8 +359,8 @@ ip_ckpt = "sdxl_models/ip-adapter_sdxl.bin"
 tcd_lora_id = "h1t/TCD-SDXL-LoRA"
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    base_model_path, 
-    torch_dtype=torch.float16, 
+    base_model_path,
+    torch_dtype=torch.float16,
     variant="fp16"
 )
 pipe.scheduler = TCDScheduler.from_config(pipe.scheduler.config)
@@ -375,13 +375,13 @@ ref_image = load_image("https://raw.githubusercontent.com/tencent-ailab/IP-Adapt
 prompt = "best quality, high quality, wearing sunglasses"
 
 image = ip_model.generate(
-    pil_image=ref_image, 
+    pil_image=ref_image,
     prompt=prompt,
     scale=0.5,
-    num_samples=1, 
-    num_inference_steps=4, 
+    num_samples=1,
+    num_inference_steps=4,
     guidance_scale=0,
-    eta=0.3, 
+    eta=0.3,
     seed=0,
 )[0]
 

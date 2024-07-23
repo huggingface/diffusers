@@ -13,14 +13,17 @@ env:
 
 jobs:
   torch_pipelines_cuda_benchmark_tests:
+    env: 
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_BENCHMARK }}
     name: Torch Core Pipelines CUDA Benchmarking Tests
     strategy:
       fail-fast: false
       max-parallel: 1
-    runs-on: [single-gpu, nvidia-gpu, a10, ci]
+    runs-on: 
+      group: aws-g6-4xlarge-plus
     container:
-      image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      image: diffusers/diffusers-pytorch-compile-cuda
+      options: --shm-size "16gb" --ipc host --gpus 0
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
@@ -39,7 +42,7 @@ jobs:
           python utils/print_env.py
       - name: Diffusers Benchmarking
         env:
-            HUGGING_FACE_HUB_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
+            HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
             BASE_PATH: benchmark_outputs
         run: |
           export TOTAL_GPU_MEMORY=$(python -c "import torch; print(torch.cuda.get_device_properties(0).total_memory / (1024**3))")
@@ -51,3 +54,13 @@ jobs:
         with:
           name: benchmark_test_reports
           path: benchmarks/benchmark_outputs
+
+      - name: Report success status
+        if: ${{ success() }}
+        run: |
+          pip install requests && python utils/notify_benchmarking_status.py --status=success
+        
+      - name: Report failure status
+        if: ${{ failure() }}
+        run: |
+          pip install requests && python utils/notify_benchmarking_status.py --status=failure

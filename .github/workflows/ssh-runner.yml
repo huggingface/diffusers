@@ -1,4 +1,4 @@
-name: SSH into runners
+name: SSH into GPU runners
 
 on:
   workflow_dispatch:
@@ -25,7 +25,7 @@ jobs:
     runs-on: [single-gpu, nvidia-gpu, "${{ github.event.inputs.runner_type }}", ci]
     container:
       image: ${{ github.event.inputs.docker_image }}
-      options: --gpus all --privileged --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0 --privileged
 
     steps:
       - name: Checkout diffusers
@@ -38,7 +38,7 @@ jobs:
           nvidia-smi
 
       - name: Tailscale # In order to be able to SSH when a test fails
-        uses: huggingface/tailscale-action@v1
+        uses: huggingface/tailscale-action@main
         with:
           authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
           slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}

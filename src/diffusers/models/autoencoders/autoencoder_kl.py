@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalVAEMixin
+from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -32,7 +32,7 @@ from ..modeling_utils import ModelMixin
 from .vae import Decoder, DecoderOutput, DiagonalGaussianDistribution, Encoder
 
 
-class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
+class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images.
 
@@ -62,6 +62,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             If enabled it will force the VAE to run in float32 for high image resolution pipelines, such as SD-XL. VAE
             can be fine-tuned / trained to a lower range without loosing too much precision in which case
             `force_upcast` can be set to `False` - see: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix
+        mid_block_add_attention (`bool`, *optional*, default to `True`):
+            If enabled, the mid_block of the Encoder and Decoder will have attention blocks. If set to false, the
+            mid_block will only have resnet blocks
     """
 
     _supports_gradient_checkpointing = True
@@ -81,9 +84,13 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         norm_num_groups: int = 32,
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
+        shift_factor: Optional[float] = None,
         latents_mean: Optional[Tuple[float]] = None,
         latents_std: Optional[Tuple[float]] = None,
         force_upcast: float = True,
+        use_quant_conv: bool = True,
+        use_post_quant_conv: bool = True,
+        mid_block_add_attention: bool = True,
     ):
         super().__init__()
 
@@ -97,6 +104,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
             double_z=True,
+            mid_block_add_attention=mid_block_add_attention,
         )
 
         # pass init params to Decoder
@@ -108,10 +116,11 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             layers_per_block=layers_per_block,
             norm_num_groups=norm_num_groups,
             act_fn=act_fn,
+            mid_block_add_attention=mid_block_add_attention,
         )
 
-        self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
-        self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
+        self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_quant_conv else None
+        self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1) if use_post_quant_conv else None
 
         self.use_slicing = False
         self.use_tiling = False
@@ -172,7 +181,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -237,13 +246,13 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
     @apply_forward_hook
     def encode(
-        self, x: torch.FloatTensor, return_dict: bool = True
+        self, x: torch.Tensor, return_dict: bool = True
     ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 
         Args:
-            x (`torch.FloatTensor`): Input batch of images.
+            x (`torch.Tensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
 
@@ -260,7 +269,11 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         else:
             h = self.encoder(x)
 
-        moments = self.quant_conv(h)
+        if self.quant_conv is not None:
+            moments = self.quant_conv(h)
+        else:
+            moments = h
+
         posterior = DiagonalGaussianDistribution(moments)
 
         if not return_dict:
@@ -268,11 +281,13 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
             return self.tiled_decode(z, return_dict=return_dict)
 
-        z = self.post_quant_conv(z)
+        if self.post_quant_conv is not None:
+            z = self.post_quant_conv(z)
+
         dec = self.decoder(z)
 
         if not return_dict:
@@ -288,7 +303,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         Decode a batch of images.
 
         Args:
-            z (`torch.FloatTensor`): Input batch of latent vectors.
+            z (`torch.Tensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
 
@@ -321,7 +336,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
-    def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
+    def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> AutoencoderKLOutput:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
@@ -331,7 +346,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         output, but they should be much less noticeable.
 
         Args:
-            x (`torch.FloatTensor`): Input batch of images.
+            x (`torch.Tensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
 
@@ -351,7 +366,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             for j in range(0, x.shape[3], overlap_size):
                 tile = x[:, :, i : i + self.tile_sample_min_size, j : j + self.tile_sample_min_size]
                 tile = self.encoder(tile)
-                tile = self.quant_conv(tile)
+                if self.config.use_quant_conv:
+                    tile = self.quant_conv(tile)
                 row.append(tile)
             rows.append(row)
         result_rows = []
@@ -375,12 +391,12 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def tiled_decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""
         Decode a batch of images using a tiled decoder.
 
         Args:
-            z (`torch.FloatTensor`): Input batch of latent vectors.
+            z (`torch.Tensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
 
@@ -400,7 +416,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             row = []
             for j in range(0, z.shape[3], overlap_size):
                 tile = z[:, :, i : i + self.tile_latent_min_size, j : j + self.tile_latent_min_size]
-                tile = self.post_quant_conv(tile)
+                if self.config.use_post_quant_conv:
+                    tile = self.post_quant_conv(tile)
                 decoded = self.decoder(tile)
                 row.append(decoded)
             rows.append(row)
@@ -425,14 +442,14 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, torch.Tensor]:
         r"""
         Args:
-            sample (`torch.FloatTensor`): Input sample.
+            sample (`torch.Tensor`): Input sample.
             sample_posterior (`bool`, *optional*, defaults to `False`):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):

@@ -126,7 +126,7 @@ def get_karras_sigmas(
     return sigmas
 
 
-def get_discretized_lognormal_weights(noise_levels: torch.FloatTensor, p_mean: float = -1.1, p_std: float = 2.0):
+def get_discretized_lognormal_weights(noise_levels: torch.Tensor, p_mean: float = -1.1, p_std: float = 2.0):
     """
     Calculates the unnormalized weights for a 1D array of noise level sigma_i based on the discretized lognormal"
     " distribution used in the iCT paper (given in Equation 10).
@@ -137,14 +137,14 @@ def get_discretized_lognormal_weights(noise_levels: torch.FloatTensor, p_mean: f
     return weights
 
 
-def get_loss_weighting_schedule(noise_levels: torch.FloatTensor):
+def get_loss_weighting_schedule(noise_levels: torch.Tensor):
     """
     Calculates the loss weighting schedule lambda given a set of noise levels.
     """
     return 1.0 / (noise_levels[1:] - noise_levels[:-1])
 
 
-def add_noise(original_samples: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.FloatTensor):
+def add_noise(original_samples: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor):
     # Make sure timesteps (Karras sigmas) have the same device and dtype as original_samples
     sigmas = timesteps.to(device=original_samples.device, dtype=original_samples.dtype)
     while len(sigmas.shape) < len(original_samples.shape):
@@ -1195,7 +1195,7 @@ def main(args):
 
     # Resolve the c parameter for the Pseudo-Huber loss
     if args.huber_c is None:
-        args.huber_c = 0.00054 * args.resolution * math.sqrt(unet.config.in_channels)
+        args.huber_c = 0.00054 * args.resolution * math.sqrt(unwrap_model(unet).config.in_channels)
 
     # Get current number of discretization steps N according to our discretization curriculum
     current_discretization_steps = get_discretization_steps(

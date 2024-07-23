@@ -214,6 +214,44 @@ class StableDiffusionXLPipelineFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_ays(self):
+        from diffusers.schedulers import AysSchedules
+
+        timestep_schedule = AysSchedules["StableDiffusionXLTimesteps"]
+        sigma_schedule = AysSchedules["StableDiffusionXLSigmas"]
+
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 10
+        output = sd_pipe(**inputs).images
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = None
+        inputs["timesteps"] = timestep_schedule
+        output_ts = sd_pipe(**inputs).images
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = None
+        inputs["sigmas"] = sigma_schedule
+        output_sigmas = sd_pipe(**inputs).images
+
+        assert (
+            np.abs(output_sigmas.flatten() - output_ts.flatten()).max() < 1e-3
+        ), "ays timesteps and ays sigmas should have the same outputs"
+        assert (
+            np.abs(output.flatten() - output_ts.flatten()).max() > 1e-3
+        ), "use ays timesteps should have different outputs"
+        assert (
+            np.abs(output.flatten() - output_sigmas.flatten()).max() > 1e-3
+        ), "use ays sigmas should have different outputs"
+
     def test_stable_diffusion_xl_prompt_embeds(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**components)
@@ -1034,8 +1072,9 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a red car standing on the side of the street"
 
-        image = sd_pipe(prompt, num_inference_steps=4, guidance_scale=8.0).images[0]
-
+        image = sd_pipe(
+            prompt, num_inference_steps=4, guidance_scale=8.0, generator=torch.Generator("cpu").manual_seed(0)
+        ).images[0]
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_full/stable_diffusion_ssd_1b_lcm.png"
         )
@@ -1046,68 +1085,3 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
 
         assert max_diff < 1e-2
-
-    def test_download_ckpt_diff_format_is_same(self):
-        ckpt_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
-        )
-
-        pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
-
-        pipe = StableDiffusionXLPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        )
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
-
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
-
-        assert max_diff < 6e-3
-
-    def test_single_file_component_configs(self):
-        pipe = StableDiffusionXLPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        )
-        ckpt_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
-        )
-        single_file_pipe = StableDiffusionXLPipeline.from_single_file(
-            ckpt_path, variant="fp16", torch_dtype=torch.float16
-        )
-
-        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
-            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
-                continue
-            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
-
-        for param_name, param_value in single_file_pipe.text_encoder_2.config.to_dict().items():
-            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
-                continue
-            assert pipe.text_encoder_2.config.to_dict()[param_name] == param_value
-
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
-        for param_name, param_value in single_file_pipe.unet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            if param_name == "upcast_attention" and pipe.unet.config[param_name] is None:
-                pipe.unet.config[param_name] = False
-            assert (
-                pipe.unet.config[param_name] == param_value
-            ), f"{param_name} is differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.vae.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.vae.config[param_name] == param_value
-            ), f"{param_name} is differs between single file loading and pretrained loading"

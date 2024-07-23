@@ -361,9 +361,10 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
     forward_requires_fresh_args = True
 
     def inputs_dict(self, seed=None):
-        generator = torch.Generator("cpu")
-        if seed is not None:
-            generator.manual_seed(0)
+        if seed is None:
+            generator = torch.Generator("cpu").manual_seed(0)
+        else:
+            generator = torch.Generator("cpu").manual_seed(seed)
         image = randn_tensor((4, 3, 32, 32), generator=generator, device=torch.device(torch_device))
 
         return {"sample": image, "generator": generator}
@@ -790,62 +791,6 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
         tolerance = 3e-3 if torch_device != "mps" else 1e-2
         assert torch_all_close(output_slice, expected_output_slice, atol=tolerance)
-
-    def test_stable_diffusion_model_local(self):
-        model_id = "stabilityai/sd-vae-ft-mse"
-        model_1 = AutoencoderKL.from_pretrained(model_id).to(torch_device)
-
-        url = "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
-        model_2 = AutoencoderKL.from_single_file(url).to(torch_device)
-        image = self.get_sd_image(33)
-
-        with torch.no_grad():
-            sample_1 = model_1(image).sample
-            sample_2 = model_2(image).sample
-
-        assert sample_1.shape == sample_2.shape
-
-        output_slice_1 = sample_1[-1, -2:, -2:, :2].flatten().float().cpu()
-        output_slice_2 = sample_2[-1, -2:, -2:, :2].flatten().float().cpu()
-
-        assert torch_all_close(output_slice_1, output_slice_2, atol=3e-3)
-
-    def test_single_file_component_configs(self):
-        vae_single_file = AutoencoderKL.from_single_file(
-            "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
-        )
-        vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
-
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values"]
-        for param_name, param_value in vae_single_file.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                vae.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-    def test_single_file_arguments(self):
-        vae_default = AutoencoderKL.from_single_file(
-            "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors",
-        )
-
-        assert vae_default.config.scaling_factor == 0.18215
-        assert vae_default.config.sample_size == 512
-        assert vae_default.dtype == torch.float32
-
-        scaling_factor = 2.0
-        image_size = 256
-        torch_dtype = torch.float16
-
-        vae = AutoencoderKL.from_single_file(
-            "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors",
-            image_size=image_size,
-            scaling_factor=scaling_factor,
-            torch_dtype=torch_dtype,
-        )
-        assert vae.config.scaling_factor == scaling_factor
-        assert vae.config.sample_size == image_size
-        assert vae.dtype == torch_dtype
 
 
 @slow

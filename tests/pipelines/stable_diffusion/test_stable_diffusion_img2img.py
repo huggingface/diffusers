@@ -37,10 +37,10 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    is_torch_compile,
     load_image,
     load_numpy,
     nightly,
-    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -472,7 +472,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_img2img_intermediate_state(self):
         number_of_steps = 0
 
-        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+        def callback_fn(step: int, timestep: int, latents: torch.Tensor) -> None:
             callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
@@ -513,7 +513,6 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
@@ -644,7 +643,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         assert out.nsfw_content_detected[0], f"Safety checker should work for prompt: {inputs['prompt']}"
         assert np.abs(out.images[0]).sum() < 1e-5  # should be all zeros
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     def test_img2img_compile(self):
         seed = 0

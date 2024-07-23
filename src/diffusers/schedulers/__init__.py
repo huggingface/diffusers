@@ -56,6 +56,8 @@ else:
     _import_structure["scheduling_edm_euler"] = ["EDMEulerScheduler"]
     _import_structure["scheduling_euler_ancestral_discrete"] = ["EulerAncestralDiscreteScheduler"]
     _import_structure["scheduling_euler_discrete"] = ["EulerDiscreteScheduler"]
+    _import_structure["scheduling_flow_match_euler_discrete"] = ["FlowMatchEulerDiscreteScheduler"]
+    _import_structure["scheduling_flow_match_heun_discrete"] = ["FlowMatchHeunDiscreteScheduler"]
     _import_structure["scheduling_heun_discrete"] = ["HeunDiscreteScheduler"]
     _import_structure["scheduling_ipndm"] = ["IPNDMScheduler"]
     _import_structure["scheduling_k_dpm_2_ancestral_discrete"] = ["KDPM2AncestralDiscreteScheduler"]
@@ -68,7 +70,7 @@ else:
     _import_structure["scheduling_tcd"] = ["TCDScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
-    _import_structure["scheduling_utils"] = ["KarrasDiffusionSchedulers", "SchedulerMixin"]
+    _import_structure["scheduling_utils"] = ["AysSchedules", "KarrasDiffusionSchedulers", "SchedulerMixin"]
     _import_structure["scheduling_vq_diffusion"] = ["VQDiffusionScheduler"]
 
 try:
@@ -151,6 +153,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_edm_euler import EDMEulerScheduler
         from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
         from .scheduling_euler_discrete import EulerDiscreteScheduler
+        from .scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
+        from .scheduling_flow_match_heun_discrete import FlowMatchHeunDiscreteScheduler
         from .scheduling_heun_discrete import HeunDiscreteScheduler
         from .scheduling_ipndm import IPNDMScheduler
         from .scheduling_k_dpm_2_ancestral_discrete import KDPM2AncestralDiscreteScheduler
@@ -163,7 +167,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_tcd import TCDScheduler
         from .scheduling_unclip import UnCLIPScheduler
         from .scheduling_unipc_multistep import UniPCMultistepScheduler
-        from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
+        from .scheduling_utils import AysSchedules, KarrasDiffusionSchedulers, SchedulerMixin
         from .scheduling_vq_diffusion import VQDiffusionScheduler
 
     try:

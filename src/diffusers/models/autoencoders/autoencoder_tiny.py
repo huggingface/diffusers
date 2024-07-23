@@ -111,6 +111,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         latent_shift: float = 0.5,
         force_upcast: bool = False,
         scaling_factor: float = 1.0,
+        shift_factor: float = 0.0,
     ):
         super().__init__()
 
@@ -157,11 +158,11 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         if isinstance(module, (EncoderTiny, DecoderTiny)):
             module.gradient_checkpointing = value
 
-    def scale_latents(self, x: torch.FloatTensor) -> torch.FloatTensor:
+    def scale_latents(self, x: torch.Tensor) -> torch.Tensor:
         """raw latents -> [0, 1]"""
         return x.div(2 * self.latent_magnitude).add(self.latent_shift).clamp(0, 1)
 
-    def unscale_latents(self, x: torch.FloatTensor) -> torch.FloatTensor:
+    def unscale_latents(self, x: torch.Tensor) -> torch.Tensor:
         """[0, 1] -> raw latents"""
         return x.sub(self.latent_shift).mul(2 * self.latent_magnitude)
 
@@ -194,7 +195,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         """
         self.enable_tiling(False)
 
-    def _tiled_encode(self, x: torch.FloatTensor) -> torch.FloatTensor:
+    def _tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
@@ -202,10 +203,10 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         tiles overlap and are blended together to form a smooth output.
 
         Args:
-            x (`torch.FloatTensor`): Input batch of images.
+            x (`torch.Tensor`): Input batch of images.
 
         Returns:
-            `torch.FloatTensor`: Encoded batch of images.
+            `torch.Tensor`: Encoded batch of images.
         """
         # scale of encoder output relative to input
         sf = self.spatial_scale_factor
@@ -242,7 +243,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
                 tile_out.copy_(blend_mask * tile + (1 - blend_mask) * tile_out)
         return out
 
-    def _tiled_decode(self, x: torch.FloatTensor) -> torch.FloatTensor:
+    def _tiled_decode(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
@@ -250,10 +251,10 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         tiles overlap and are blended together to form a smooth output.
 
         Args:
-            x (`torch.FloatTensor`): Input batch of images.
+            x (`torch.Tensor`): Input batch of images.
 
         Returns:
-            `torch.FloatTensor`: Encoded batch of images.
+            `torch.Tensor`: Encoded batch of images.
         """
         # scale of decoder output relative to input
         sf = self.spatial_scale_factor
@@ -290,9 +291,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         return out
 
     @apply_forward_hook
-    def encode(
-        self, x: torch.FloatTensor, return_dict: bool = True
-    ) -> Union[AutoencoderTinyOutput, Tuple[torch.FloatTensor]]:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[AutoencoderTinyOutput, Tuple[torch.Tensor]]:
         if self.use_slicing and x.shape[0] > 1:
             output = [
                 self._tiled_encode(x_slice) if self.use_tiling else self.encoder(x_slice) for x_slice in x.split(1)
@@ -308,8 +307,8 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def decode(
-        self, x: torch.FloatTensor, generator: Optional[torch.Generator] = None, return_dict: bool = True
-    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
+        self, x: torch.Tensor, generator: Optional[torch.Generator] = None, return_dict: bool = True
+    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
         if self.use_slicing and x.shape[0] > 1:
             output = [self._tiled_decode(x_slice) if self.use_tiling else self.decoder(x) for x_slice in x.split(1)]
             output = torch.cat(output)
@@ -323,12 +322,12 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
+    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
         r"""
         Args:
-            sample (`torch.FloatTensor`): Input sample.
+            sample (`torch.Tensor`): Input sample.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
         """

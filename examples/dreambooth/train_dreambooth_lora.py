@@ -70,7 +70,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.30.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -680,7 +680,7 @@ def collate_fn(examples, with_prior_preservation=False):
 
 
 class PromptDataset(Dataset):
-    "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
+    """A simple dataset to prepare the prompts to generate class images on multiple GPUs."""
 
     def __init__(self, prompt, num_samples):
         self.prompt = prompt
