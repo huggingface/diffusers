@@ -140,12 +140,19 @@ class ModelUtilsTest(unittest.TestCase):
                     use_safetensors=use_safetensors,
                 )
 
+            infos = []
+            for r in m.request_history: 
+                if r.method == "GET":
+                    if len(r.qs) == 0:
+                        infos.append(f" r.url: {r.url}")
+                    else:
+                        infos.append(f" f.qs: {r.qs}")
+
             download_requests = [r.method for r in m.request_history]
-            print(download_requests)
             assert (
                 download_requests.count("HEAD") == 3
             ), "3 HEAD requests one for config, one for model, and one for shard index file."
-            assert download_requests.count("GET") == 2, "2 GET requests one for config, one for model"
+            assert download_requests.count("GET") == 2, f" details for {len(infos)} GET requests: {infos}"
 
             with requests_mock.mock(real_http=True) as m:
                 UNet2DConditionModel.from_pretrained(
