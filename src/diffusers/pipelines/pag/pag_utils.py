@@ -322,7 +322,7 @@ class PixArtPAGMixin:
     # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.set_pag_applied_layers
     def set_pag_applied_layers(self, pag_applied_layers):
         r"""
-        Set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
+        set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
         """
 
         if not isinstance(pag_applied_layers, list):
