@@ -44,10 +44,10 @@ from polygraphy.backend.trt import (
 )
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict, deprecate
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import (
     StableDiffusionPipelineOutput,
     StableDiffusionSafetyChecker,
@@ -88,6 +88,7 @@ else:
 
 # Map of torch dtype -> numpy dtype
 torch_to_numpy_dtype_dict = {value: key for (key, value) in numpy_to_torch_dtype_dict.items()}
+
 
 def preprocess_image(image):
     """
@@ -134,7 +135,7 @@ class Engine:
 
         extra_build_args = {}
         if not enable_all_tactics:
-            extra_build_args['tactic_sources'] = []
+            extra_build_args["tactic_sources"] = []
 
         engine = engine_from_network(
             network_from_onnx_path(onnx_path, flags=[trt.OnnxParserFlag.NATIVE_INSTANCENORM]),
@@ -150,7 +151,7 @@ class Engine:
     def activate(self):
         self.context = self.engine.create_execution_context()
 
-    def allocate_buffers(self, shape_dict=None, device='cuda'):
+    def allocate_buffers(self, shape_dict=None, device="cuda"):
         for binding in range(self.engine.num_io_tensors):
             name = self.engine.get_tensor_name(binding)
             if shape_dict and name in shape_dict:
@@ -681,6 +682,7 @@ class TensorRTStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+
     _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
 
     def __init__(
@@ -923,9 +925,7 @@ class TensorRTStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         return tuple(init_images)
 
     def __encode_image(self, init_image):
-        init_latents = runEngine(self.engine["vae_encoder"], {"images": init_image}, self.stream)[
-            "latent"
-        ]
+        init_latents = runEngine(self.engine["vae_encoder"], {"images": init_image}, self.stream)["latent"]
         init_latents = 0.18215 * init_latents
         return init_latents
 
