@@ -327,6 +327,20 @@ else:
     )
 
 try:
+    if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils import dummy_torch_and_transformers_and_onnx_objects  # noqa F403
+
+    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_onnx_objects))
+else:
+    _import_structure["stable_diffusion_3"].extend(
+        [
+            "OnnxStableDiffusion3Pipeline",
+        ]
+    )
+
+try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -608,6 +622,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 OnnxStableDiffusionPipeline,
                 OnnxStableDiffusionUpscalePipeline,
                 StableDiffusionOnnxPipeline,
+            )
+
+        try:
+            if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
+                raise OptionalDependencyNotAvailable()
+        except OptionalDependencyNotAvailable:
+            from ..utils.dummy_torch_and_transformers_and_onnx_objects import *
+        else:
+            from .stable_diffusion_3 import (
+                OnnxStableDiffusion3Pipeline,
             )
 
         try:

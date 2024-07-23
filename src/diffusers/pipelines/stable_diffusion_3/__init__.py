@@ -8,6 +8,7 @@ from ...utils import (
     is_flax_available,
     is_torch_available,
     is_transformers_available,
+    is_onnx_available,
 )
 
 
@@ -27,6 +28,18 @@ else:
     _import_structure["pipeline_stable_diffusion_3_img2img"] = ["StableDiffusion3Img2ImgPipeline"]
     _import_structure["pipeline_stable_diffusion_3_inpaint"] = ["StableDiffusion3InpaintPipeline"]
 
+try:
+    if not (is_transformers_available() and is_onnx_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils import dummy_onnx_objects  # noqa F403
+
+    _dummy_objects.update(get_objects_from_module(dummy_onnx_objects))
+else:
+    _import_structure["pipeline_onnx_stable_diffusion_3"] = [
+        "OnnxStableDiffusion3Pipeline",
+    ]
+
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -37,6 +50,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_stable_diffusion_3 import StableDiffusion3Pipeline
         from .pipeline_stable_diffusion_3_img2img import StableDiffusion3Img2ImgPipeline
         from .pipeline_stable_diffusion_3_inpaint import StableDiffusion3InpaintPipeline
+
+    try:
+        if not (is_transformers_available() and is_onnx_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_onnx_objects import *
+    else:
+        from .pipeline_onnx_stable_diffusion_3 import OnnxStableDiffusion3Pipeline
 
 else:
     import sys
