@@ -183,7 +183,7 @@ from diffusers.schedulers import DPMSolverMultistepScheduler
 from diffusers.utils import export_to_gif, load_image
 
 
-# update org
+# TODO: update org
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
 controlnet_id = "a-r-r-o-w/animatediff-sparsectrl-rgb"
