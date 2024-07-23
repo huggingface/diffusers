@@ -141,7 +141,7 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             infos = []
-            for r in m.request_history: 
+            for r in m.request_history:
                 if r.method == "GET":
                     if len(r.qs) == 0:
                         infos.append(f" r.url: {r.url}")
