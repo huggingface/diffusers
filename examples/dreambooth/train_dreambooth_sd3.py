@@ -95,17 +95,22 @@ def save_model_card(
 
 These are {repo_id} DreamBooth weights for {base_model}.
 
-The weights were trained  using [DreamBooth](https://dreambooth.github.io/).
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [SD3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sd3.md).
 
-Text encoder was fine-tuned: {train_text_encoder}.
+Was the text encoder fine-tuned? {train_text_encoder}.
 
 ## Trigger words
 
-You should use {instance_prompt} to trigger the image generation.
+You should use `{instance_prompt}` to trigger the image generation.
 
-## Download model
+## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
 
-[Download]({repo_id}/tree/main) them in the Files & versions tab.
+```py
+from diffusers import AutoPipelineForText2Image
+import torch
+pipeline = AutoPipelineForText2Image.from_pretrained('{repo_id}', torch_dtype=torch.float16).to('cuda')
+image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
+```
 
 ## License
 
@@ -488,6 +493,13 @@ def parse_args(input_args=None):
         type=float,
         default=1.29,
         help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
+    )
+    parser.add_argument(
+        "--precondition_outputs",
+        type=int,
+        default=1,
+        help="Flag indicating if we are preconditioning the model outputs or not as done in EDM. This affects how "
+        "model `target` is calculated.",
     )
     parser.add_argument(
         "--optimizer",
@@ -1544,7 +1556,7 @@ def main(args):
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
-                model_input = model_input * vae.config.scaling_factor
+                model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
                 # Sample noise that we'll add to the latents
@@ -1564,8 +1576,9 @@ def main(args):
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
                 # Add noise according to flow matching.
+                # zt = (1 - texp) * x + texp * z1
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
-                noisy_model_input = sigmas * noise + (1.0 - sigmas) * model_input
+                noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 # Predict the noise residual
                 if not args.train_text_encoder:
@@ -1593,13 +1606,18 @@ def main(args):
 
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                 # Preconditioning of the model outputs.
-                model_pred = model_pred * (-sigmas) + noisy_model_input
+                if args.precondition_outputs:
+                    model_pred = model_pred * (-sigmas) + noisy_model_input
+
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
                 # flow matching loss
-                target = model_input
+                if args.precondition_outputs:
+                    target = model_input
+                else:
+                    target = noise - model_input
 
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.

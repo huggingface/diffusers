@@ -1,0 +1,39 @@
+name: SSH into PR runners
+
+on:
+  workflow_dispatch:
+    inputs:
+      docker_image:
+        description: 'Name of the Docker image'
+        required: true
+
+env:
+  IS_GITHUB_CI: "1"
+  HF_HUB_READ_TOKEN: ${{ secrets.HF_HUB_READ_TOKEN }}
+  HF_HOME: /mnt/cache
+  DIFFUSERS_IS_CI: yes
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8
+  RUN_SLOW: yes
+
+jobs:
+  ssh_runner:
+    name: "SSH"
+    runs-on: [self-hosted, intel-cpu, 32-cpu, 256-ram, ci]
+    container:
+      image: ${{ github.event.inputs.docker_image }}
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --privileged
+
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Tailscale # In order to be able to SSH when a test fails
+        uses: huggingface/tailscale-action@main
+        with:
+          authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
+          slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
+          slackToken: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
+          waitForSSH: true

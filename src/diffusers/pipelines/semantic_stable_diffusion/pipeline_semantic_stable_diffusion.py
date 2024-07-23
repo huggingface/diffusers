@@ -661,7 +661,6 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
                         noise_guidance_edit_tmp = torch.einsum(
                             "cb,cbijk->bijk", concept_weights_tmp, noise_guidance_edit_tmp
                         )
-                        noise_guidance_edit_tmp = noise_guidance_edit_tmp
                         noise_guidance = noise_guidance + noise_guidance_edit_tmp
 
                         self.sem_guidance[i] = noise_guidance_edit_tmp.detach().cpu()
