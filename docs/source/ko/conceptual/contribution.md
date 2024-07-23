@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Diffusers에 기여하는 방법 🧨
+# Diffusers에 기여하는 방법 🧨 [[how-to-contribute-to-diffusers-]]
 
 오픈 소스 커뮤니티에서의 기여를 환영합니다! 누구나 참여할 수 있으며, 코드뿐만 아니라 질문에 답변하거나 문서를 개선하는 등 모든 유형의 참여가 가치 있고 감사히 여겨집니다. 질문에 답변하고 다른 사람들을 도와주며 소통하고 문서를 개선하는 것은 모두 커뮤니티에게 큰 도움이 됩니다. 따라서 관심이 있다면 두려워하지 말고 참여해보세요!
 
@@ -20,7 +20,7 @@ specific language governing permissions and limitations under the License.
 
 우리는 커뮤니티로부터의 피드백을 매우 중요하게 생각하므로, 라이브러리를 개선하는 데 도움이 될 가치 있는 피드백이 있다고 생각되면 망설이지 말고 의견을 제시해주세요 - 모든 메시지, 댓글, 이슈, 풀 리퀘스트(PR)는 읽히고 고려됩니다.
 
-## 개요
+## 개요 [[overview]]
 
 이슈에 있는 질문에 답변하는 것에서부터 코어 라이브러리에 새로운 diffusion 모델을 추가하는 것까지 다양한 방법으로 기여를 할 수 있습니다.
 
@@ -40,7 +40,7 @@ specific language governing permissions and limitations under the License.
 
 4부터 9까지의 모든 기여에는 PR을 열어야 합니다. [PR을 열기](#how-to-open-a-pr)에서 자세히 설명되어 있습니다.
 
-### 1. Diffusers 토론 포럼이나 Diffusers Discord에서 질문하고 답변하기
+### 1. Diffusers 토론 포럼이나 Diffusers Discord에서 질문하고 답변하기 [[1-asking-and-answering-questions-on-the-diffusers-discussion-forum-or-on-the-diffusers-discord]]
 
 Diffusers 라이브러리와 관련된 모든 질문이나 의견은 [토론 포럼](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63)이나 [Discord](https://discord.gg/G7tWnz98XR)에서 할 수 있습니다. 이러한 질문과 의견에는 다음과 같은 내용이 포함됩니다(하지만 이에 국한되지는 않습니다):
 - 지식을 공유하기 위해서 훈련 또는 추론 실험에 대한 결과 보고
@@ -66,7 +66,7 @@ Diffusers 라이브러리와 관련된 모든 질문이나 의견은 [토론 포
 반면 *Discord*는 채팅 형식으로 되어 있어 빠른 대화를 유도합니다.
 질문에 대한 답변을 빠르게 받을 수는 있겠지만, 시간이 지나면 질문이 더 이상 보이지 않습니다. 또한, Discord에서 이전에 게시된 정보를 찾는 것은 훨씬 어렵습니다. 따라서 포럼을 사용하여 고품질의 질문과 답변을 하여 커뮤니티를 위한 오래 지속되는 지식을 만들기를 권장합니다. Discord에서의 토론이 매우 흥미로운 답변과 결론을 이끌어내는 경우, 해당 정보를 포럼에 게시하여 미래 독자들에게 더 쉽게 액세스할 수 있도록 권장합니다.
 
-### 2. GitHub 이슈 탭에서 새로운 이슈 열기
+### 2. GitHub 이슈 탭에서 새로운 이슈 열기 [[2-opening-new-issues-on-the-github-issues-tab]]
 
 🧨 Diffusers 라이브러리는 사용자들이 마주치는 문제를 알려주는 덕분에 견고하고 신뢰할 수 있습니다. 따라서 이슈를 보고해주셔서 감사합니다.
 
@@ -81,7 +81,7 @@ Diffusers 라이브러리와 관련된 모든 질문이나 의견은 [토론 포
 - 이슈가 최신 Diffusers 버전으로 업데이트하면 해결될 수 있는지 확인해주세요. 이슈를 게시하기 전에 `python -c "import diffusers; print(diffusers.__version__)"` 명령을 실행하여 현재 사용 중인 Diffusers 버전이 최신 버전과 일치하거나 더 높은지 확인해주세요.
 - 새로운 이슈를 열 때 투자하는 노력이 많을수록 답변의 품질이 높아지고 Diffusers 이슈 전체의 품질도 향상됩니다.
 
-#### 2.1 재현가능하고 최소한인 버그 리포트
+#### 2.1 재현가능하고 최소한인 버그 리포트 [[21-reproducible-minimal-bug-reports]]
 
 새로운 이슈는 일반적으로 다음과 같은 내용을 포함합니다.
 
@@ -100,7 +100,7 @@ Diffusers 라이브러리와 관련된 모든 질문이나 의견은 [토론 포
 버그 보고서를 열려면 [여기](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=bug&projects=&template=bug-report.yml)를 클릭하세요.
 
 
-#### 2.2. 기능 요청
+#### 2.2. 기능 요청 [[22-feature-requests]]
 
 세계적인 기능 요청은 다음 사항을 다룹니다:
 
@@ -115,19 +115,19 @@ Diffusers 라이브러리와 관련된 모든 질문이나 의견은 [토론 포
 
 기능 요청은 [여기](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=)에서 열 수 있습니다.
 
-#### 2.3 피드백
+#### 2.3 피드백 [[23-feedback]]
 
 라이브러리 디자인과 그것이 왜 좋은지 또는 나쁜지에 대한 이유에 대한 피드백은 핵심 메인테이너가 사용자 친화적인 라이브러리를 만드는 데 엄청난 도움이 됩니다. 현재 디자인 철학을 이해하려면 [여기](https://huggingface.co/docs/diffusers/conceptual/philosophy)를 참조해 주세요. 특정 디자인 선택이 현재 디자인 철학과 맞지 않는다고 생각되면, 그 이유와 어떻게 변경되어야 하는지 설명해 주세요. 반대로 특정 디자인 선택이 디자인 철학을 너무 따르기 때문에 사용 사례를 제한한다고 생각되면, 그 이유와 어떻게 변경되어야 하는지 설명해 주세요. 특정 디자인 선택이 매우 유용하다고 생각되면, 미래의 디자인 결정에 큰 도움이 되므로 이에 대한 의견을 남겨 주세요.
 
 피드백에 관한 이슈는 [여기](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=)에서 열 수 있습니다.
 
-#### 2.4 기술적인 질문
+#### 2.4 기술적인 질문 [[24-technical-questions]]
 
 기술적인 질문은 주로 라이브러리의 특정 코드가 왜 특정 방식으로 작성되었는지 또는 코드의 특정 부분이 무엇을 하는지에 대한 질문입니다. 질문하신 코드 부분에 대한 링크를 제공하고 해당 코드 부분이 이해하기 어려운 이유에 대한 자세한 설명을 해주시기 바랍니다.
 
 기술적인 질문에 관한 이슈를 [여기](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=bug&template=bug-report.yml)에서 열 수 있습니다.
 
-#### 2.5 새로운 모델, 스케줄러 또는 파이프라인 추가 제안
+#### 2.5 새로운 모델, 스케줄러 또는 파이프라인 추가 제안 [[25-proposal-to-add-a-new-model-scheduler-or-pipeline]]
 
 만약 diffusion 모델 커뮤니티에서 Diffusers 라이브러리에 추가하고 싶은 새로운 모델, 파이프라인 또는 스케줄러가 있다면, 다음 정보를 제공해주세요:
 
@@ -139,7 +139,7 @@ Diffusers 라이브러리와 관련된 모든 질문이나 의견은 [토론 포
 
 모델/파이프라인/스케줄러에 대한 요청을 [여기](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=New+model%2Fpipeline%2Fscheduler&template=new-model-addition.yml)에서 열 수 있습니다.
 
-### 3. GitHub 이슈 탭에서 문제에 대한 답변하기
+### 3. GitHub 이슈 탭에서 문제에 대한 답변하기 [[3-answering-issues-on-the-github-issues-tab]]
 
 GitHub에서 이슈에 대한 답변을 하기 위해서는 Diffusers에 대한 기술적인 지식이 필요할 수 있지만, 정확한 답변이 아니더라도 모두가 시도해기를 권장합니다. 이슈에 대한 고품질 답변을 제공하기 위한 몇 가지 팁:
 - 가능한 한 간결하고 최소한으로 유지합니다.
@@ -153,7 +153,7 @@ GitHub에서 이슈에 대한 답변을 하기 위해서는 Diffusers에 대한 
 
 다음 모든 기여에 대해서는 PR을 열여야 합니다. [PR 열기](#how-to-open-a-pr) 섹션에서 자세히 설명되어 있습니다.
 
-### 4. "Good first issue" 고치기
+### 4. "Good first issue" 고치기 [[4-fixing-a-good-first-issue]]
 
 *Good first issues*는 [Good first issue](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) 라벨로 표시됩니다. 일반적으로, 이슈는 이미 잠재적인 해결책이 어떻게 보이는지 설명하고 있어서 수정하기 쉽습니다.
 만약 이슈가 아직 닫히지 않았고 이 문제를 해결해보고 싶다면, "이 이슈를 해결해보고 싶습니다."라는 메시지를 남기면 됩니다. 일반적으로 세 가지 시나리오가 있습니다:
@@ -162,7 +162,7 @@ GitHub에서 이슈에 대한 답변을 하기 위해서는 Diffusers에 대한 
 - c.) 이미 이 문제를 해결하기 위해 열린 PR이 있지만, 이슈가 아직 닫히지 않았습니다. PR이 더 이상 진행되지 않았다면, 새로운 PR을 열고 이전 PR에 링크를 걸면 됩니다. PR은 종종 원래 기여자가 갑자기 시간을 내지 못해 더 이상 진행하지 못하는 경우에 더 이상 진행되지 않게 됩니다. 이는 오픈 소스에서 자주 발생하는 일이며 매우 정상적인 상황입니다. 이 경우, 커뮤니티는 새로 시도하고 기존 PR의 지식을 활용해주면 매우 기쁠 것입니다. 이미 PR이 있고 활성화되어 있다면, 제안을 해주거나 PR을 검토하거나 PR에 기여할 수 있는지 물어보는 등 작성자를 도와줄 수 있습니다.
 
 
-### 5. 문서에 기여하기
+### 5. 문서에 기여하기 [[5-contribute-to-the-documentation]]
 
 좋은 라이브러리는 항상 좋은 문서를 갖고 있습니다! 공식 문서는 라이브러리를 처음 사용하는 사용자들에게 첫 번째 접점 중 하나이며, 따라서 문서에 기여하는 것은 매우 가치 있는 기여입니다.
 
@@ -180,7 +180,7 @@ GitHub에서 이슈에 대한 답변을 하기 위해서는 Diffusers에 대한 
 문서에 대한 변경 사항을 로컬에서 확인하는 방법은 [이 페이지](https://github.com/huggingface/diffusers/tree/main/docs)를 참조해주세요.
 
 
-### 6. 커뮤니티 파이프라인에 기여하기
+### 6. 커뮤니티 파이프라인에 기여하기 [[6-contribute-a-community-pipeline]]
 
 > [!TIP]
 > 커뮤니티 파이프라인에 대해 자세히 알아보려면 [커뮤니티 파이프라인](../using-diffusers/custom_pipeline_overview#community-pipelines) 가이드를 읽어보세요. 커뮤니티 파이프라인이 왜 필요한지 궁금하다면 GitHub 이슈 [#841](https://github.com/huggingface/diffusers/issues/841)를 확인해보세요 (기본적으로, 우리는 diffusion 모델이 추론에 사용될 수 있는 모든 방법을 유지할 수 없지만 커뮤니티가 이를 구축하는 것을 방해하고 싶지 않습니다).
@@ -256,7 +256,7 @@ Hub 파이프라인을 공유하려면, 허브에 모델 저장소를 생성하�
 </hfoption>
 </hfoptions>
 
-### 7. 훈련 예제에 기여하기
+### 7. 훈련 예제에 기여하기 [[7-contribute-to-training-examples]]
 
 Diffusers 예제는 [examples](https://github.com/huggingface/diffusers/tree/main/examples) 폴더에 있는 훈련 스크립트의 모음입니다.
 
@@ -298,14 +298,14 @@ Diffusers와 긴밀하게 통합되어 있기 때문에, 기여자들이 [Accele
 
 만약 공식 훈련 예제에 기여하는 경우, [examples/test_examples.py](https://github.com/huggingface/diffusers/blob/main/examples/test_examples.py)에 테스트를 추가하는 것도 확인해주세요. 비공식 훈련 예제에는 이 작업이 필요하지 않습니다.
 
-### 8. "Good second issue" 고치기
+### 8. "Good second issue" 고치기 [[8-fixing-a-good-second-issue]]
 
 "Good second issue"는 [Good second issue](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22) 라벨로 표시됩니다. Good second issue는 [Good first issues](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)보다 해결하기가 더 복잡합니다.
 이슈 설명은 일반적으로 이슈를 해결하는 방법에 대해 덜 구체적이며, 관심 있는 기여자는 라이브러리에 대한 꽤 깊은 이해가 필요합니다.
 Good second issue를 해결하고자 하는 경우, 해당 이슈를 해결하기 위해 PR을 열고 PR을 이슈에 링크하세요. 이미 해당 이슈에 대한 PR이 열려있지만 병합되지 않은 경우, 왜 병합되지 않았는지 이해하기 위해 살펴보고 개선된 PR을 열어보세요.
 Good second issue는 일반적으로 Good first issue 이슈보다 병합하기가 더 어려우므로, 핵심 메인테이너에게 도움을 요청하는 것이 좋습니다. PR이 거의 완료된 경우, 핵심 메인테이너는 PR에 참여하여 커밋하고 병합을 진행할 수 있습니다.
 
-### 9. 파이프라인, 모델, 스케줄러 추가하기
+### 9. 파이프라인, 모델, 스케줄러 추가하기 [[9-adding-pipelines-models-schedulers]]
 
 파이프라인, 모델, 스케줄러는 Diffusers 라이브러리에서 가장 중요한 부분입니다.
 이들은 최첨단 diffusion 기술에 쉽게 접근하도록 하며, 따라서 커뮤니티가 강력한 생성형 AI 애플리케이션을 만들 수 있도록 합니다.
@@ -323,7 +323,7 @@ PR에 원본 코드베이스/논문 링크를 추가하고, 가능하면 PR에�
 
 PR에서 막힌 경우나 도움이 필요한 경우, 첫 번째 리뷰나 도움을 요청하는 메시지를 남기는 것을 주저하지 마세요.
 
-#### Copied from mechanism
+#### Copied from mechanism [[copied-from-mechanism]]
 
 `# Copied from mechanism` 은 파이프라인, 모델 또는 스케줄러 코드를 추가할 때 이해해야 할 독특하고 중요한 기능입니다. Diffusers 코드베이스 전체에서 이를 자주 볼 수 있는데, 이를 사용하는 이유는 코드베이스를 이해하기 쉽고 유지 관리하기 쉽게 유지하기 위함입니다. `# Copied from mechanism` 으로 표시된 코드는 복사한 코드와 정확히 동일하도록 강제됩니다. 이를 통해 `make fix-copies`를 실행할 때 많은 파일에 걸쳐 변경 사항을 쉽게 업데이트하고 전파할 수 있습니다.
 
@@ -347,7 +347,7 @@ class AltDiffusionPipelineOutput(BaseOutput):
 
 더 자세히 알고 싶다면 [~Don't~ Repeat Yourself*](https://huggingface.co/blog/transformers-design-philosophy#4-machine-learning-models-are-static) 블로그 포스트의 이 섹션을 읽어보세요.
 
-## 좋은 이슈 작성 방법
+## 좋은 이슈 작성 방법 [[how-to-write-a-good-issue]]
 
 **이슈를 잘 작성할수록 빠르게 해결될 가능성이 높아집니다.**
 
@@ -359,7 +359,7 @@ class AltDiffusionPipelineOutput(BaseOutput):
 6. 포맷팅. 파이썬 코드 구문으로 코드를 포맷팅하고, 일반 코드 구문으로 에러 메시지를 포맷팅해주세요. 자세한 내용은 [공식 GitHub 포맷팅 문서](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax)를 참조하세요.
 7. 이슈를 해결해야 하는 티켓이 아니라, 잘 작성된 백과사전 항목으로 생각해보세요. 추가된 이슈는 공개적으로 사용 가능한 지식에 기여하는 것입니다. 잘 작성된 이슈를 추가함으로써 메인테이너가 문제를 해결하는 데 도움을 주는 것뿐만 아니라, 전체 커뮤니티가 라이브러리의 특정 측면을 더 잘 이해할 수 있도록 도움을 주는 것입니다.
 
-## 좋은 PR 작성 방법
+## 좋은 PR 작성 방법 [[how-to-write-a-good-pr]]
 
 1. 카멜레온이 되세요. 기존의 디자인 패턴과 구문을 이해하고, 코드 추가가 기존 코드베이스에 매끄럽게 흐르도록 해야 합니다. 기존 디자인 패턴이나 사용자 인터페이스와 크게 다른 PR은 병합되지 않습니다.
 2. 초점을 맞추세요. 하나의 문제만 해결하는 PR을 작성해야 합니다. "추가하면서 다른 문제도 해결하기"에 빠지지 않도록 주의하세요. 여러 개의 관련 없는 문제를 해결하는 PR을 작성하는 것은 리뷰하기가 훨씬 어렵습니다.
@@ -377,7 +377,7 @@ CircleCI는 느린 테스트를 실행하지 않지만, GitHub Actions는 매일
 11. 레포지토리가 빠르게 성장하고 있기 때문에, 레포지토리에 큰 부담을 주는 파일이 추가되지 않도록 주의해야 합니다. 이미지, 비디오 및 기타 텍스트가 아닌 파일을 포함합니다. 이러한 파일을 배치하기 위해 hf.co 호스팅 `dataset`인 [`hf-internal-testing`](https://huggingface.co/hf-internal-testing) 또는 [huggingface/documentation-images](https://huggingface.co/datasets/huggingface/documentation-images)를 활용하는 것이 우선입니다.
 외부 기여인 경우, 이미지를 PR에 추가하고 Hugging Face 구성원에게 이미지를 이 데이터셋으로 이동하도록 요청하세요.
 
-## PR을 열기 위한 방법
+## PR을 열기 위한 방법 [[how-to-open-a-pr]]
 
 코드를 작성하기 전에, 이미 누군가가 같은 작업을 하고 있는지 확인하기 위해 기존의 PR이나 이슈를 검색하는 것이 좋습니다. 확실하지 않은 경우, 피드백을 받기 위해 이슈를 열어보는 것이 항상 좋은 아이디어입니다.
 
@@ -467,7 +467,7 @@ CircleCI는 느린 테스트를 실행하지 않지만, GitHub Actions는 매일
 
 7. 메인테이너가 변경 사항을 요청하는 것은 괜찮습니다. 핵심 기여자들에게도 일어나는 일입니다! 따라서 변경 사항을 Pull request에서 볼 수 있도록 로컬 브랜치에서 작업하고 변경 사항을 포크에 푸시하면 자동으로 Pull request에 나타납니다.
 
-### 테스트
+### 테스트 [[tests]]
 
 라이브러리 동작과 여러 예제를 테스트하기 위해 포괄적인 테스트 묶음이 포함되어 있습니다. 라이브러리 테스트는 [tests 폴더](https://github.com/huggingface/diffusers/tree/main/tests)에서 찾을 수 있습니다.
 
@@ -494,7 +494,7 @@ $ python -m unittest discover -s tests -t . -v
 $ python -m unittest discover -s examples -t examples -v
 ```
 
-### upstream(main)과 forked main 동기화하기
+### upstream(main)과 forked main 동기화하기 [[syncing-forked-main-with-upstream-huggingface-main]]
 
 upstream 저장소에 불필요한 참조 노트를 추가하고 관련 개발자에게 알림을 보내는 것을 피하기 위해,
 forked 저장소의 main 브랜치를 동기화할 때 다음 단계를 따르세요:
@@ -507,6 +507,6 @@ $ git commit -m '<your message without GitHub references>'
 $ git push --set-upstream origin your-branch-for-syncing
 ```
 
-### 스타일 가이드
+### 스타일 가이드 [[style-guide]]
 
 Documentation string에 대해서는, 🧨 Diffusers는 [Google 스타일](https://google.github.io/styleguide/pyguide.html)을 따릅니다.
