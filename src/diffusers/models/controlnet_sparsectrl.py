@@ -35,7 +35,6 @@ from .unets.unet_2d_condition import UNet2DConditionModel
 from .unets.unet_3d_blocks import (
     CrossAttnDownBlockMotion,
     DownBlockMotion,
-    get_down_block,
 )
 
 
@@ -295,31 +294,54 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
 
-            down_block = get_down_block(
-                down_block_type,
-                num_layers=layers_per_block,
-                in_channels=input_channel,
-                out_channels=output_channel,
-                temb_channels=time_embed_dim,
-                add_downsample=not is_final_block,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                num_attention_heads=num_attention_heads[i],
-                resnet_groups=norm_num_groups,
-                cross_attention_dim=cross_attention_dim[i],
-                downsample_padding=downsample_padding,
-                dual_cross_attention=False,
-                use_linear_projection=use_linear_projection,
-                only_cross_attention=only_cross_attention[i],
-                upcast_attention=upcast_attention,
-                resnet_time_scale_shift=resnet_time_scale_shift,
-                temporal_num_attention_heads=motion_num_attention_heads[i],
-                temporal_max_seq_length=motion_max_seq_length,
-                temporal_double_self_attention=False,
-                transformer_layers_per_block=transformer_layers_per_block[i],
-                temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
-                dropout=0,
-            )
+            if down_block_type == "CrossAttnDownBlockMotion":
+                down_block = CrossAttnDownBlockMotion(
+                    in_channels=input_channel,
+                    out_channels=output_channel,
+                    temb_channels=time_embed_dim,
+                    dropout=0,
+                    num_layers=layers_per_block,
+                    transformer_layers_per_block=transformer_layers_per_block[i],
+                    resnet_eps=norm_eps,
+                    resnet_time_scale_shift=resnet_time_scale_shift,
+                    resnet_act_fn=act_fn,
+                    resnet_groups=norm_num_groups,
+                    resnet_pre_norm=True,
+                    num_attention_heads=num_attention_heads[i],
+                    cross_attention_dim=cross_attention_dim[i],
+                    add_downsample=not is_final_block,
+                    dual_cross_attention=False,
+                    use_linear_projection=use_linear_projection,
+                    only_cross_attention=only_cross_attention[i],
+                    upcast_attention=upcast_attention,
+                    temporal_num_attention_heads=motion_num_attention_heads[i],
+                    temporal_max_seq_length=motion_max_seq_length,
+                    temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
+                    temporal_double_self_attention=False,
+                )
+            elif down_block_type == "DownBlockMotion":
+                down_block = DownBlockMotion(
+                    in_channels=input_channel,
+                    out_channels=output_channel,
+                    temb_channels=time_embed_dim,
+                    dropout=0,
+                    num_layers=layers_per_block,
+                    resnet_eps=norm_eps,
+                    resnet_time_scale_shift=resnet_time_scale_shift,
+                    resnet_act_fn=act_fn,
+                    resnet_groups=norm_num_groups,
+                    resnet_pre_norm=True,
+                    add_downsample=not is_final_block,
+                    temporal_num_attention_heads=motion_num_attention_heads[i],
+                    temporal_max_seq_length=motion_max_seq_length,
+                    temporal_double_self_attention=False,
+                    temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
+                )
+            else:
+                raise ValueError(
+                    "Invalid `block_type` encountered. Must be one of `CrossAttnDownBlockMotion` or `DownBlockMotion`"
+                )
+
             self.down_blocks.append(down_block)
 
             for _ in range(layers_per_block):
