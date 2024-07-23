@@ -16,6 +16,8 @@ import html
 import inspect
 import re
 import urllib.parse as ul
+import sys
+import os
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
@@ -25,7 +27,6 @@ import numpy as np
 
 from diffusers.image_processor import PixArtImageProcessor, PipelineImageInput, VaeImageProcessor
 from diffusers.models import AutoencoderKL, PixArtTransformer2DModel
-from controlnet_pixart_alpha import PixArtControlNetAdapterModel, PixArtControlNetTransformerModel
 from diffusers.schedulers import DPMSolverMultistepScheduler
 from diffusers.utils import ( 
     BACKENDS_MAPPING,
@@ -37,6 +38,9 @@ from diffusers.utils import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.pipelines import DiffusionPipeline, ImagePipelineOutput
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pixart.controlnet_pixart_alpha import PixArtControlNetAdapterModel, PixArtControlNetTransformerModel
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

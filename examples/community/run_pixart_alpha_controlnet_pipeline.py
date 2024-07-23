@@ -1,14 +1,18 @@
+import sys
+import os
 import torch
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
 
-from controlnet_pixart_alpha import PixArtControlNetAdapterModel
 from pipeline_pixart_alpha_controlnet import PixArtAlphaControlnetPipeline
 from diffusers.utils import load_image
 
 from diffusers.image_processor import PixArtImageProcessor
 
 from controlnet_aux import HEDdetector
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pixart.controlnet_pixart_alpha import PixArtControlNetAdapterModel
 
 controlnet_repo_id = "raulc0399/pixart-alpha-hed-controlnet"
 
