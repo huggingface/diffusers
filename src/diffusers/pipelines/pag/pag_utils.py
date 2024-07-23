@@ -331,7 +331,6 @@ class HunyuanDiTPAGMixin(PAGMixin):
                 module.processor = pag_attn_proc
 
     @property
-    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.pag_attn_processors with unet->transformer
     def pag_attn_processors(self):
         r"""
         Returns:
