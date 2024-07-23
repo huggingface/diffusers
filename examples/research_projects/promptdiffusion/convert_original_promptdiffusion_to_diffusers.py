@@ -2051,7 +2051,7 @@ if __name__ == "__main__":
         default=512,
         type=int,
         help=(
-            "The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable Siffusion v2"
+            "The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable Diffusion v2"
             " Base. Use 768 for Stable Diffusion v2."
         ),
     )
