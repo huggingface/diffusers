@@ -260,7 +260,7 @@ class PAGMixin:
         return processors
 
 
-class PixArtPAGMixin(PAGMixin):
+class PixArtPAGMixin:
     @staticmethod
     def _check_input_pag_applied_layer(layer):
         r"""
@@ -277,19 +277,6 @@ class PixArtPAGMixin(PAGMixin):
 
         # If it is not a valid layer index, raise a ValueError
         raise ValueError(f"Pag layer should only contain block index. Accept number string like '3', got {layer}.")
-
-    def set_pag_applied_layers(self, pag_applied_layers):
-        r"""
-        Set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
-        """
-
-        if not isinstance(pag_applied_layers, list):
-            pag_applied_layers = [pag_applied_layers]
-
-        for pag_layer in pag_applied_layers:
-            self._check_input_pag_applied_layer(pag_layer)
-
-        self.pag_applied_layers = pag_applied_layers
 
     def _set_pag_attn_processor(self, pag_applied_layers, do_classifier_free_guidance):
         r"""
@@ -331,6 +318,113 @@ class PixArtPAGMixin(PAGMixin):
 
             for module in target_modules:
                 module.processor = pag_attn_proc
+
+    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.set_pag_applied_layers
+    def set_pag_applied_layers(self, pag_applied_layers):
+        r"""
+        Set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
+        """
+
+        if not isinstance(pag_applied_layers, list):
+            pag_applied_layers = [pag_applied_layers]
+
+        for pag_layer in pag_applied_layers:
+            self._check_input_pag_applied_layer(pag_layer)
+
+        self.pag_applied_layers = pag_applied_layers
+
+    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin._get_pag_scale
+    def _get_pag_scale(self, t):
+        r"""
+        Get the scale factor for the perturbed attention guidance at timestep `t`.
+        """
+
+        if self.do_pag_adaptive_scaling:
+            signal_scale = self.pag_scale - self.pag_adaptive_scale * (1000 - t)
+            if signal_scale < 0:
+                signal_scale = 0
+            return signal_scale
+        else:
+            return self.pag_scale
+
+    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin._apply_perturbed_attention_guidance
+    def _apply_perturbed_attention_guidance(self, noise_pred, do_classifier_free_guidance, guidance_scale, t):
+        r"""
+        Apply perturbed attention guidance to the noise prediction.
+
+        Args:
+            noise_pred (torch.Tensor): The noise prediction tensor.
+            do_classifier_free_guidance (bool): Whether to apply classifier-free guidance.
+            guidance_scale (float): The scale factor for the guidance term.
+            t (int): The current time step.
+
+        Returns:
+            torch.Tensor: The updated noise prediction tensor after applying perturbed attention guidance.
+        """
+        pag_scale = self._get_pag_scale(t)
+        if do_classifier_free_guidance:
+            noise_pred_uncond, noise_pred_text, noise_pred_perturb = noise_pred.chunk(3)
+            noise_pred = (
+                noise_pred_uncond
+                + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                + pag_scale * (noise_pred_text - noise_pred_perturb)
+            )
+        else:
+            noise_pred_text, noise_pred_perturb = noise_pred.chunk(2)
+            noise_pred = noise_pred_text + pag_scale * (noise_pred_text - noise_pred_perturb)
+        return noise_pred
+
+    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin._prepare_perturbed_attention_guidance
+    def _prepare_perturbed_attention_guidance(self, cond, uncond, do_classifier_free_guidance):
+        """
+        Prepares the perturbed attention guidance for the PAG model.
+
+        Args:
+            cond (torch.Tensor): The conditional input tensor.
+            uncond (torch.Tensor): The unconditional input tensor.
+            do_classifier_free_guidance (bool): Flag indicating whether to perform classifier-free guidance.
+
+        Returns:
+            torch.Tensor: The prepared perturbed attention guidance tensor.
+        """
+
+        cond = torch.cat([cond] * 2, dim=0)
+
+        if do_classifier_free_guidance:
+            cond = torch.cat([uncond, cond], dim=0)
+        return cond
+
+    @property
+    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.pag_scale
+    def pag_scale(self):
+        """
+        Get the scale factor for the perturbed attention guidance.
+        """
+        return self._pag_scale
+
+    @property
+    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.pag_adaptive_scale
+    def pag_adaptive_scale(self):
+        """
+        Get the adaptive scale factor for the perturbed attention guidance.
+        """
+        return self._pag_adaptive_scale
+
+    @property
+    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.do_pag_adaptive_scaling
+    def do_pag_adaptive_scaling(self):
+        """
+        Check if the adaptive scaling is enabled for the perturbed attention guidance.
+        """
+        return self._pag_adaptive_scale > 0 and self._pag_scale > 0 and len(self.pag_applied_layers) > 0
+
+    @property
+    # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.do_perturbed_attention_guidance
+    def do_perturbed_attention_guidance(self):
+        """
+        Check if the perturbed attention guidance is enabled.
+        """
+        return self._pag_scale > 0 and len(self.pag_applied_layers) > 0
 
     @property
     # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.pag_attn_processors with unet->transformer
