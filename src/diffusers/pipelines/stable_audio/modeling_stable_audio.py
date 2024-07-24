@@ -50,21 +50,17 @@ class StableAudioProjectionModelOutput(BaseOutput):
     """
     Args:
     Class for StableAudio projection layer's outputs.
-        text_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`):
+        text_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
             Sequence of hidden-states obtained by linearly projecting the hidden-states for the text encoder.
-        attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Mask to avoid performing attention on padding token indices, formed by concatenating the attention masks
-             for the two text encoders together. Mask values selected in `[0, 1]`:
-
-            - 1 for tokens that are **not masked**,
-            - 0 for tokens that are **masked**.
+        seconds_start_hidden_states (`torch.Tensor` of shape `(batch_size, 1, hidden_size)`, *optional*):
+            Sequence of hidden-states obtained by linearly projecting the audio start hidden states.
+        seconds_end_hidden_states (`torch.Tensor` of shape `(batch_size, 1, hidden_size)`, *optional*):
+            Sequence of hidden-states obtained by linearly projecting the audio end hidden states.
     """
 
-    text_hidden_states: torch.Tensor
-    seconds_start_hidden_states: torch.Tensor
-    seconds_end_hidden_states: torch.Tensor
-    attention_mask: Optional[torch.LongTensor] = None
-
+    text_hidden_states: Optional[torch.Tensor] = None
+    seconds_start_hidden_states: Optional[torch.Tensor] = None
+    seconds_end_hidden_states: Optional[torch.Tensor] = None
 
 class StableAudioNumberConditioner(nn.Module):
     """
@@ -144,10 +140,32 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
         self.start_number_conditioner = StableAudioNumberConditioner(conditioning_dim, min_value, max_value)
         self.end_number_conditioner = StableAudioNumberConditioner(conditioning_dim, min_value, max_value)
 
+    def compute_duration_hidden_states(
+        self,
+        start_seconds: List[float],
+        end_seconds: List[float],
+    ):
+        seconds_start_hidden_states = self.start_number_conditioner(start_seconds)
+        seconds_end_hidden_states = self.end_number_conditioner(end_seconds)
+
+        return StableAudioProjectionModelOutput(
+            seconds_start_hidden_states=seconds_start_hidden_states,
+            seconds_end_hidden_states=seconds_end_hidden_states,
+        )
+
+    def compute_text_hidden_states(
+        self,
+        text_hidden_states: Optional[torch.Tensor],
+    ):
+        text_hidden_states = self.text_projection(text_hidden_states)
+
+        return StableAudioProjectionModelOutput(
+            text_hidden_states=text_hidden_states,
+        )
+
     def forward(
         self,
         text_hidden_states: Optional[torch.Tensor],
-        attention_mask: Optional[torch.LongTensor],
         start_seconds: List[float],
         end_seconds: List[float],
     ):
@@ -157,7 +175,6 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
 
         return StableAudioProjectionModelOutput(
             text_hidden_states=text_hidden_states,
-            attention_mask=attention_mask,
             seconds_start_hidden_states=seconds_start_hidden_states,
             seconds_end_hidden_states=seconds_end_hidden_states,
         )

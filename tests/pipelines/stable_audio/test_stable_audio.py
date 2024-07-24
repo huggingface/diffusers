@@ -50,9 +50,8 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "audio_start_in_s",
             "guidance_scale",
             "negative_prompt",
-            "cross_attention_hidden_states",
-            "negative_cross_attention_hidden_states",
-            "global_hidden_states",
+            "prompt_embeds",
+            "negative_prompt_embeds",
             "initial_audio_waveforms",
         ]
     )
@@ -178,24 +177,21 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(torch_device)
         prompt = 3 * [inputs.pop("prompt")]
+        
+        text_inputs = stable_audio_pipe.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=stable_audio_pipe.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        ).to(torch_device)
+        text_input_ids = text_inputs.input_ids
+        attention_mask = text_inputs.attention_mask
 
-        audio_end_in_s = (
-            stable_audio_pipe.transformer.config.sample_size
-            * stable_audio_pipe.vae.hop_length
-            / stable_audio_pipe.vae.config.sampling_rate
-        )
+        prompt_embeds = stable_audio_pipe.text_encoder(text_input_ids, attention_mask=attention_mask,)[0]
 
-        cross_attention_hidden_states, global_hidden_states = stable_audio_pipe.encode_prompt_and_seconds(
-            prompt=prompt,
-            audio_start_in_s=0.0,
-            audio_end_in_s=audio_end_in_s,
-            device="cuda",
-            do_classifier_free_guidance=False,
-            num_waveforms_per_prompt=1,
-        )
-
-        inputs["cross_attention_hidden_states"] = cross_attention_hidden_states
-        inputs["global_hidden_states"] = global_hidden_states
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["attention_mask"] = attention_mask
 
         # forward
         output = stable_audio_pipe(**inputs)
@@ -221,27 +217,35 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         prompt = 3 * [inputs.pop("prompt")]
 
-        audio_end_in_s = (
-            stable_audio_pipe.transformer.config.sample_size
-            * stable_audio_pipe.vae.hop_length
-            / stable_audio_pipe.vae.config.sampling_rate
-        )
+        text_inputs = stable_audio_pipe.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=stable_audio_pipe.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        ).to(torch_device)
+        text_input_ids = text_inputs.input_ids
+        attention_mask = text_inputs.attention_mask
 
-        cross_attention_hidden_states, global_hidden_states = stable_audio_pipe.encode_prompt_and_seconds(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            audio_start_in_s=0.0,
-            audio_end_in_s=audio_end_in_s,
-            device="cuda",
-            do_classifier_free_guidance=True,
-            num_waveforms_per_prompt=1,
-        )
+        prompt_embeds = stable_audio_pipe.text_encoder(text_input_ids, attention_mask=attention_mask,)[0]
 
-        inputs["cross_attention_hidden_states"], inputs["global_hidden_states"] = (
-            cross_attention_hidden_states[:3],
-            global_hidden_states[:3],
-        )
-        inputs["negative_cross_attention_hidden_states"] = cross_attention_hidden_states[3:]
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["attention_mask"] = attention_mask
+        
+        negative_text_inputs = stable_audio_pipe.tokenizer(
+            negative_prompt,
+            padding="max_length",
+            max_length=stable_audio_pipe.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        ).to(torch_device)
+        negative_text_input_ids = negative_text_inputs.input_ids
+        negative_attention_mask = negative_text_inputs.attention_mask
+
+        negative_prompt_embeds = stable_audio_pipe.text_encoder(negative_text_input_ids, attention_mask=negative_attention_mask,)[0]
+
+        inputs["negative_prompt_embeds"] = negative_prompt_embeds
+        inputs["negative_attention_mask"] = negative_attention_mask
 
         # forward
         output = stable_audio_pipe(**inputs)
