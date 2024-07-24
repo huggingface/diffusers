@@ -141,7 +141,6 @@ class Attention(nn.Module):
         self.fused_projections = False
         self.out_dim = out_dim if out_dim is not None else query_dim
         self.context_pre_only = context_pre_only
-        self.kv_heads = heads if kv_heads is None else kv_heads
 
         # we make use of this private variable to know whether this class is loaded
         # with an deprecated state dict so that we can convert it on the fly
@@ -1677,16 +1676,16 @@ class StableAudioAttnProcessor2_0:
         value = attn.to_v(encoder_hidden_states)
 
         head_dim = query.shape[-1] // attn.heads
-        kv_head_dim = key.shape[-1] // attn.kv_heads
+        kv_heads = key.shape[-1] // head_dim
 
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        key = key.view(batch_size, -1, attn.kv_heads, kv_head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.kv_heads, kv_head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
 
-        if attn.kv_heads != attn.heads:
+        if kv_heads != attn.heads:
             # if GQA or MQA, repeat the key/value heads to reach the number of query heads.
-            heads_per_kv_head = attn.heads // attn.kv_heads
+            heads_per_kv_head = attn.heads // kv_heads
             key = torch.repeat_interleave(key, heads_per_kv_head, dim=1)
             value = torch.repeat_interleave(value, heads_per_kv_head, dim=1)
 
