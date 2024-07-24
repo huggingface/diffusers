@@ -454,7 +454,7 @@ class BasicTransformerBlock(nn.Module):
         
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
-        print("num_frames:", hidden_states.shape)
+        # print("num_frames:", hidden_states.shape)
 
         if hidden_states.size(1) == hardcoded_num_frames:
             # new implementation
