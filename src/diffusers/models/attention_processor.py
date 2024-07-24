@@ -13,7 +13,7 @@
 # limitations under the License.
 import inspect
 import math
-from typing import Callable, List, Optional, Union, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -1623,18 +1623,19 @@ class StableAudioAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-        
-    def apply_partial_rotary_emb(self,
+
+    def apply_partial_rotary_emb(
+        self,
         x: torch.Tensor,
         freqs_cis: Tuple[torch.Tensor],
-        ) -> torch.Tensor:
+    ) -> torch.Tensor:
         from .embeddings import apply_rotary_emb
-        
+
         rot_dim = freqs_cis[0].shape[-1]
         x_to_rotate, x_unrotated = x[..., :rot_dim], x[..., rot_dim:]
-        
+
         x_rotated = apply_rotary_emb(x_to_rotate, freqs_cis, use_real=True, use_real_unbind_dim=-2)
-        
+
         out = torch.cat((x_rotated, x_unrotated), dim=-1)
         return out
 

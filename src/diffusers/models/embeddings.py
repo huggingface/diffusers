@@ -398,6 +398,7 @@ def get_1d_rotary_pos_embed(
         freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
         return freqs_cis
 
+
 def apply_rotary_emb(
     x: torch.Tensor,
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],

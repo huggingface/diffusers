@@ -14,24 +14,15 @@
 
 from dataclasses import dataclass
 from math import pi
-from typing import Any, Dict, List, Optional, Union
+from typing import List, Optional
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.attention import FeedForward, _chunked_feed_forward
-from ...models.attention_processor import (
-    Attention,
-    AttentionProcessor,
-    StableAudioAttnProcessor2_0,
-)
 from ...models.modeling_utils import ModelMixin
-from ...models.transformers.transformer_2d import Transformer2DModelOutput
-from ...utils import BaseOutput, is_torch_version, logging
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils import BaseOutput, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -170,5 +161,3 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
             seconds_start_hidden_states=seconds_start_hidden_states,
             seconds_end_hidden_states=seconds_end_hidden_states,
         )
-
-

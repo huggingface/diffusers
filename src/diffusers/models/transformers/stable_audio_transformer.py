@@ -13,9 +13,7 @@
 # limitations under the License.
 
 
-from dataclasses import dataclass
-from math import pi
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import torch
@@ -23,7 +21,7 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.attention import FeedForward, _chunked_feed_forward
+from ...models.attention import FeedForward
 from ...models.attention_processor import (
     Attention,
     AttentionProcessor,
@@ -31,12 +29,11 @@ from ...models.attention_processor import (
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.transformers.transformer_2d import Transformer2DModelOutput
-from ...utils import BaseOutput, is_torch_version, logging
+from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
 
 
 class StableAudioGaussianFourierProjection(nn.Module):
@@ -175,7 +172,6 @@ class StableAudioDiTBlock(nn.Module):
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
         norm_hidden_states = self.norm1(hidden_states)
-
 
         attn_output = self.attn1(
             norm_hidden_states,
