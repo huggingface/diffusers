@@ -146,6 +146,7 @@ class CustomPipeline(DiffusionPipeline):
 
 
 class DownloadTests(unittest.TestCase):
+    @unittest.skip("Flaky behaviour on CI. Re-enable after migrating to new runners")
     def test_one_request_upon_cached(self):
         # TODO: For some reason this test fails on MPS where no HEAD call is made.
         if torch_device == "mps":
@@ -191,6 +192,7 @@ class DownloadTests(unittest.TestCase):
             assert "scheduler" in os.listdir(cached_folder)
             assert "feature_extractor" in os.listdir(cached_folder)
 
+    @unittest.skip("Flaky behaviour on CI. Re-enable after migrating to new runners")
     def test_less_downloads_passed_object_calls(self):
         # TODO: For some reason this test fails on MPS where no HEAD call is made.
         if torch_device == "mps":

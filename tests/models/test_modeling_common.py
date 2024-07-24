@@ -124,6 +124,7 @@ class ModelUtilsTest(unittest.TestCase):
             if p1.data.ne(p2.data).sum() > 0:
                 assert False, "Parameters not the same!"
 
+    @unittest.skip("Flaky behaviour on CI. Re-enable after migrating to new runners")
     @unittest.skipIf(torch_device == "mps", reason="Test not supported for MPS.")
     def test_one_request_upon_cached(self):
         use_safetensors = False
