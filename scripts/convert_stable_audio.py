@@ -66,8 +66,8 @@ def convert_stable_audio_state_dict_to_diffusers(state_dict, num_autoencoder_lay
             .replace("to_cond_embed", "cross_attention_proj")
         )
 
-        # we're using diffusers implementation of timestep_features (GaussianFourierProjection) which creates a 1D tensor
-        if new_key == "timestep_features.weight":
+        # we're using diffusers implementation of time_proj (GaussianFourierProjection) which creates a 1D tensor
+        if new_key == "time_proj.weight":
             model_state_dict[key] = model_state_dict[key].squeeze(1)
 
         if "to_qkv" in new_key:
@@ -239,7 +239,7 @@ with ctx():
         num_attention_heads=model_config["num_heads"],
         out_channels=model_config["io_channels"],
         cross_attention_dim=model_config["cond_token_dim"],
-        timestep_features_dim=256,
+        time_proj_dim=256,
         global_states_input_dim=model_config["global_cond_dim"],
         cross_attention_input_dim=model_config["cond_token_dim"],
     )

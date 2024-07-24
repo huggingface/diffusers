@@ -370,7 +370,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
             The number of heads to use for the key and value states.
         out_channels (`int`, defaults to 64): Number of output channels.
         cross_attention_dim ( `int`, *optional*, defaults to 768): Dimension of the cross-attention projection.
-        timestep_features_dim ( `int`, *optional*, defaults to 256): Dimension of the timestep inner projection.
+        time_proj_dim ( `int`, *optional*, defaults to 256): Dimension of the timestep inner projection.
         global_states_input_dim ( `int`, *optional*, defaults to 1536):
             Input dimension of the global hidden states projection.
         cross_attention_input_dim ( `int`, *optional*, defaults to 768):
@@ -390,7 +390,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         num_key_value_attention_heads: int = 12,
         out_channels: int = 64,
         cross_attention_dim: int = 768,
-        timestep_features_dim: int = 256,
+        time_proj_dim: int = 256,
         global_states_input_dim: int = 1536,
         cross_attention_input_dim: int = 768,
     ):
@@ -399,15 +399,15 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         self.out_channels = out_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.timestep_features = StableAudioGaussianFourierProjection(
-            embedding_size=timestep_features_dim // 2,
+        self.time_proj = StableAudioGaussianFourierProjection(
+            embedding_size=time_proj_dim // 2,
             flip_sin_to_cos=True,
             log=False,
             set_W_to_weight=False,
         )
 
         self.timestep_proj = nn.Sequential(
-            nn.Linear(timestep_features_dim, self.inner_dim, bias=True),
+            nn.Linear(time_proj_dim, self.inner_dim, bias=True),
             nn.SiLU(),
             nn.Linear(self.inner_dim, self.inner_dim, bias=True),
         )
@@ -637,7 +637,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         """
         cross_attention_hidden_states = self.cross_attention_proj(encoder_hidden_states)
         global_hidden_states = self.global_proj(global_hidden_states)
-        time_hidden_states = self.timestep_proj(self.timestep_features(timestep.to(self.dtype)))
+        time_hidden_states = self.timestep_proj(self.time_proj(timestep.to(self.dtype)))
 
         global_hidden_states = global_hidden_states + time_hidden_states.unsqueeze(1)
 

@@ -81,7 +81,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_key_value_attention_heads=2,
             out_channels=6,
             cross_attention_dim=4,
-            timestep_features_dim=8,
+            time_proj_dim=8,
             global_states_input_dim=48,
             cross_attention_input_dim=24,
         )
