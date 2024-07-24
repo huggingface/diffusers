@@ -92,6 +92,10 @@ class KandinskyPipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCase)
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
+        from diffusers.utils.testing_utils import print_tensor_test
+        print_tensor_test(image_slice)
+        print_tensor_test(image_from_tuple_slice)
+
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array([0.0000, 0.0000, 0.6777, 0.1363, 0.3624, 0.7868, 0.3869, 0.3395, 0.5068])
@@ -197,6 +201,10 @@ class KandinskyPipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.Te
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        print_tensor_test(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 
@@ -305,7 +313,13 @@ class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.Te
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
+
+        from diffusers.utils.testing_utils import print_tensor_test 
+        
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+
+        print_tensor_test(image_slice)
+        print(image_from_tuple_slice)
 
         assert image.shape == (1, 64, 64, 3)
 
