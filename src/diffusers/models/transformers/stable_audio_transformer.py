@@ -171,23 +171,16 @@ class StableAudioDiTBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         rotary_embedding: Optional[torch.FloatTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
     ) -> torch.Tensor:
-        if cross_attention_kwargs is not None:
-            if cross_attention_kwargs.get("scale", None) is not None:
-                logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
-
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
         norm_hidden_states = self.norm1(hidden_states)
 
-        cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
 
         attn_output = self.attn1(
             norm_hidden_states,
             attention_mask=attention_mask,
             rotary_emb=rotary_embedding,
-            **cross_attention_kwargs,
         )
 
         hidden_states = attn_output + hidden_states
@@ -201,7 +194,6 @@ class StableAudioDiTBlock(nn.Module):
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=encoder_attention_mask,
-            **cross_attention_kwargs,
         )
         hidden_states = attn_output + hidden_states
 
@@ -423,7 +415,6 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.FloatTensor = None,
         global_hidden_states: torch.FloatTensor = None,
         rotary_embedding: torch.FloatTensor = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
         attention_mask: Optional[torch.LongTensor] = None,
         encoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -442,10 +433,6 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
                Global embeddings that will be prepended to the hidden states.
             rotary_embedding (`torch.Tensor`):
                 The rotary embeddings to apply on query and key tensors during attention calculation.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
@@ -505,7 +492,6 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
                     cross_attention_hidden_states,
                     encoder_attention_mask,
                     rotary_embedding,
-                    cross_attention_kwargs,
                     **ckpt_kwargs,
                 )
 
@@ -516,7 +502,6 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=cross_attention_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
                     rotary_embedding=rotary_embedding,
-                    cross_attention_kwargs=cross_attention_kwargs,
                 )
 
         hidden_states = self.proj_out(hidden_states)
