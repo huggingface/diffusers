@@ -45,6 +45,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import scipy
         >>> import torch
+        >>> import torchaudio
         >>> from diffusers import StableAudioPipeline
 
         >>> repo_id = "ylacombe/stable-audio-1.0"  # TODO (YL): change once set
@@ -67,9 +68,10 @@ EXAMPLE_DOC_STRING = """
         ...     num_waveforms_per_prompt=3,
         ...     generator=generator,
         ... ).audios
-
-        >>> # save the best audio sample (index 0) as a .wav file
-        >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio[0])
+        
+        >>> # Peak normalize, clip, convert to int16, and save to file
+        >>> output = audio[0].to(torch.float32).div(torch.max(torch.abs(audio[0]))).clamp(-1, 1).mul(32767).to(torch.int16).cpu()
+        >>> torchaudio.save("hammer.wav", output, pipe.vae.sampling_rate)
         ```
 """
 
