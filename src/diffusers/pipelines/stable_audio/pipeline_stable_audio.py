@@ -825,7 +825,7 @@ class StableAudioPipeline(DiffusionPipeline):
                     global_hidden_states=global_hidden_states,
                     rotary_embedding=rotary_embedding,
                     return_dict=False,
-                    joint_attention_kwargs=cross_attention_kwargs,
+                    cross_attention_kwargs=cross_attention_kwargs,
                 )[0]
 
                 # perform guidance

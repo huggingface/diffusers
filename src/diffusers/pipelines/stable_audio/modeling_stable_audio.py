@@ -591,7 +591,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.FloatTensor = None,
         global_hidden_states: torch.FloatTensor = None,
         rotary_embedding: torch.FloatTensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
         attention_mask: Optional[torch.LongTensor] = None,
         encoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -610,7 +610,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
                Global embeddings that will be prepended to the hidden states.
             rotary_embedding (`torch.Tensor`):
                 The rotary embeddings to apply on query and key tensors during attention calculation.
-            joint_attention_kwargs (`dict`, *optional*):
+            cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -673,7 +673,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
                     cross_attention_hidden_states,
                     encoder_attention_mask,
                     rotary_embedding,
-                    joint_attention_kwargs,
+                    cross_attention_kwargs,
                     **ckpt_kwargs,
                 )
 
@@ -684,7 +684,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=cross_attention_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
                     rotary_embedding=rotary_embedding,
-                    cross_attention_kwargs=joint_attention_kwargs,
+                    cross_attention_kwargs=cross_attention_kwargs,
                 )
 
         hidden_states = self.proj_out(hidden_states)
