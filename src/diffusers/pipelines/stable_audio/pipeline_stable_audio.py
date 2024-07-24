@@ -278,12 +278,10 @@ class StableAudioPipeline(DiffusionPipeline):
 
             # 2. Text encoder forward
             self.text_encoder.eval()
-            # TODO: (YL) forward is done in fp16 in the original code, whatever the precision is
-            with torch.cuda.amp.autocast(dtype=torch.float16):
-                prompt_embeds = self.text_encoder.to(torch.float16)(
-                    text_input_ids,
-                    attention_mask=attention_mask,
-                )
+            prompt_embeds = self.text_encoder(
+                text_input_ids,
+                attention_mask=attention_mask,
+            )
             prompt_embeds = prompt_embeds[0].to(self.transformer.dtype)
 
             # 3. Project text and seconds
@@ -375,11 +373,10 @@ class StableAudioPipeline(DiffusionPipeline):
 
             # 2. Text encoder forward
             self.text_encoder.eval()
-            with torch.cuda.amp.autocast(dtype=torch.float16):
-                negative_prompt_embeds = self.text_encoder.to(torch.float16)(
-                    uncond_input_ids,
-                    attention_mask=negative_attention_mask,
-                )
+            negative_prompt_embeds = self.text_encoder(
+                uncond_input_ids,
+                attention_mask=negative_attention_mask,
+            )
             negative_prompt_embeds = negative_prompt_embeds[0].to(self.transformer.dtype)
 
             # 3. Project text and seconds
