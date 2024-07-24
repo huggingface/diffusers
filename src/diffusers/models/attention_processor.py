@@ -219,6 +219,7 @@ class Attention(nn.Module):
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
+            self.added_proj_bias = added_proj_bias
             self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_kv_dim, bias=added_proj_bias)
             self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_kv_dim, bias=added_proj_bias)
             if self.context_pre_only is not None:
@@ -685,12 +686,15 @@ class Attention(nn.Module):
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
-            self.to_added_qkv = nn.Linear(in_features, out_features, bias=True, device=device, dtype=dtype)
-            self.to_added_qkv.weight.copy_(concatenated_weights)
-            concatenated_bias = torch.cat(
-                [self.add_q_proj.bias.data, self.add_k_proj.bias.data, self.add_v_proj.bias.data]
+            self.to_added_qkv = nn.Linear(
+                in_features, out_features, bias=self.added_proj_bias, device=device, dtype=dtype
             )
-            self.to_added_qkv.bias.copy_(concatenated_bias)
+            self.to_added_qkv.weight.copy_(concatenated_weights)
+            if self.added_proj_bias:
+                concatenated_bias = torch.cat(
+                    [self.add_q_proj.bias.data, self.add_k_proj.bias.data, self.add_v_proj.bias.data]
+                )
+                self.to_added_qkv.bias.copy_(concatenated_bias)
 
         self.fused_projections = fuse
 
@@ -1357,6 +1361,7 @@ class FusedAuraFlowAttnProcessor2_0:
             return hidden_states, encoder_hidden_states
         else:
             return hidden_states
+
 
 class XFormersAttnAddedKVProcessor:
     r"""

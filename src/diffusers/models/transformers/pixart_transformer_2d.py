@@ -19,7 +19,7 @@ from torch import nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ..attention import BasicTransformerBlock
-from ..attention_processor import Attention, FusedAttnProcessor2_0, AttentionProcessor
+from ..attention_processor import Attention, AttentionProcessor, FusedAttnProcessor2_0
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin

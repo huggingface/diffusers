@@ -22,7 +22,12 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention_processor import Attention, AuraFlowAttnProcessor2_0, FusedAuraFlowAttnProcessor2_0, AttentionProcessor
+from ..attention_processor import (
+    Attention,
+    AttentionProcessor,
+    AuraFlowAttnProcessor2_0,
+    FusedAuraFlowAttnProcessor2_0,
+)
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
