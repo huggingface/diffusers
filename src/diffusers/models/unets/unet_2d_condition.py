@@ -30,6 +30,7 @@ from ..attention_processor import (
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
+    FusedAttnProcessor2_0,
 )
 from ..embeddings import (
     GaussianFourierProjection,
@@ -889,6 +890,8 @@ class UNet2DConditionModel(
         for module in self.modules():
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
+
+        self.set_attn_processor(FusedAttnProcessor2_0())
 
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
