@@ -120,6 +120,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
         )
         scheduler = EulerDiscreteScheduler(prediction_type="sample")
         text_config = CLIPTextConfig(
+            attn_implementation="eager",
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=32,

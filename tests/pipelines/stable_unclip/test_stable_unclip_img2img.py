@@ -84,6 +84,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(
         torch.manual_seed(0)
         text_encoder = CLIPTextModel(
             CLIPTextConfig(
+                attn_implementation="eager",
                 bos_token_id=0,
                 eos_token_id=2,
                 hidden_size=embedder_hidden_size,

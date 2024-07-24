@@ -87,6 +87,7 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
     def dummy_text_encoder(self):
         torch.manual_seed(0)
         config = CLIPTextConfig(
+            attn_implementation="eager",
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=self.text_embedder_hidden_size,

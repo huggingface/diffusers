@@ -86,6 +86,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             out_channels=8,
         )
         clip_text_encoder_config = CLIPTextConfig(
+            attn_implementation="eager",
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=32,

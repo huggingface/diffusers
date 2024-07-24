@@ -63,6 +63,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
+            attn_implementation="eager",
             vocab_size=1000,
             hidden_size=8,
             intermediate_size=8,
