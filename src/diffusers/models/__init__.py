@@ -47,6 +47,7 @@ if is_torch_available():
     _import_structure["transformers.lumina_nextdit2d"] = ["LuminaNextDiT2DModel"]
     _import_structure["transformers.pixart_transformer_2d"] = ["PixArtTransformer2DModel"]
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
+    _import_structure["transformers.stable_audio_transformer"] = ["StableAudioDiTModel"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
@@ -96,6 +97,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtTransformer2DModel,
             PriorTransformer,
             SD3Transformer2DModel,
+            StableAudioDiTModel,
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
