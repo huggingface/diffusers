@@ -283,6 +283,26 @@ class AutoPipelineFastTest(unittest.TestCase):
         pipe = AutoPipelineForInpainting.from_pipe(pipe_pag, enable_pag=False)
         assert pipe.__class__.__name__ == "StableDiffusionXLInpaintPipeline"
 
+    def test_from_pipe_pag_controlnet_inpaint(self):
+        # Initialize base pipeline and controlnet
+        pipe = AutoPipelineForInpainting.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+
+        # Enable PAG with ControlNet
+        pipe_pag = AutoPipelineForInpainting.from_pipe(pipe, controlnet=controlnet, enable_pag=True)
+        assert pipe_pag.__class__.__name__ == "StableDiffusionControlNetPAGInpaintPipeline"
+        assert "controlnet" in pipe_pag.components
+
+        # Disable PAG with ControlNet
+        pipe = AutoPipelineForInpainting.from_pipe(pipe, controlnet=controlnet, enable_pag=False)
+        assert pipe.__class__.__name__ == "StableDiffusionControlNetInpaintPipeline"
+        assert "controlnet" in pipe.components
+
+        # Disable PAG without ControlNet
+        pipe = AutoPipelineForInpainting.from_pipe(pipe, controlnet=None, enable_pag=False)
+        assert pipe.__class__.__name__ == "StableDiffusionInpaintPipeline"
+        assert "controlnet" not in pipe.components
+
     def test_from_pipe_pag_new_task(self):
         # for from_pipe_new_task we only need to make sure it can map to the same pipeline from a different task,
         # i.e. no need to test `enable_pag` + `controlnet` flag because it is already tested in `test_from_pipe_pag_text2img` and `test_from_pipe_pag_inpaint`etc
