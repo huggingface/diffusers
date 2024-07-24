@@ -1182,7 +1182,6 @@ class AuraFlowAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
-        i=0,
         *args,
         **kwargs,
     ) -> torch.FloatTensor:
