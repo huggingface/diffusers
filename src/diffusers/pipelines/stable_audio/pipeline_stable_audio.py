@@ -282,7 +282,7 @@ class StableAudioPipeline(DiffusionPipeline):
                 text_input_ids,
                 attention_mask=attention_mask,
             )
-            prompt_embeds = prompt_embeds[0].to(self.transformer.dtype)
+            prompt_embeds = prompt_embeds[0]
 
             # 3. Project text and seconds
             projection_output = self.projection_model(
@@ -377,7 +377,7 @@ class StableAudioPipeline(DiffusionPipeline):
                 uncond_input_ids,
                 attention_mask=negative_attention_mask,
             )
-            negative_prompt_embeds = negative_prompt_embeds[0].to(self.transformer.dtype)
+            negative_prompt_embeds = negative_prompt_embeds[0]
 
             # 3. Project text and seconds
             negative_projection_output = self.projection_model(
