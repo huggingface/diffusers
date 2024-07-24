@@ -177,7 +177,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(torch_device)
         prompt = 3 * [inputs.pop("prompt")]
-        
+
         text_inputs = stable_audio_pipe.tokenizer(
             prompt,
             padding="max_length",
@@ -188,7 +188,10 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_input_ids = text_inputs.input_ids
         attention_mask = text_inputs.attention_mask
 
-        prompt_embeds = stable_audio_pipe.text_encoder(text_input_ids, attention_mask=attention_mask,)[0]
+        prompt_embeds = stable_audio_pipe.text_encoder(
+            text_input_ids,
+            attention_mask=attention_mask,
+        )[0]
 
         inputs["prompt_embeds"] = prompt_embeds
         inputs["attention_mask"] = attention_mask
@@ -227,11 +230,14 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_input_ids = text_inputs.input_ids
         attention_mask = text_inputs.attention_mask
 
-        prompt_embeds = stable_audio_pipe.text_encoder(text_input_ids, attention_mask=attention_mask,)[0]
+        prompt_embeds = stable_audio_pipe.text_encoder(
+            text_input_ids,
+            attention_mask=attention_mask,
+        )[0]
 
         inputs["prompt_embeds"] = prompt_embeds
         inputs["attention_mask"] = attention_mask
-        
+
         negative_text_inputs = stable_audio_pipe.tokenizer(
             negative_prompt,
             padding="max_length",
@@ -242,7 +248,10 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         negative_text_input_ids = negative_text_inputs.input_ids
         negative_attention_mask = negative_text_inputs.attention_mask
 
-        negative_prompt_embeds = stable_audio_pipe.text_encoder(negative_text_input_ids, attention_mask=negative_attention_mask,)[0]
+        negative_prompt_embeds = stable_audio_pipe.text_encoder(
+            negative_text_input_ids,
+            attention_mask=negative_attention_mask,
+        )[0]
 
         inputs["negative_prompt_embeds"] = negative_prompt_embeds
         inputs["negative_attention_mask"] = negative_attention_mask

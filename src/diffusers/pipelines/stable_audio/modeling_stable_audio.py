@@ -62,6 +62,7 @@ class StableAudioProjectionModelOutput(BaseOutput):
     seconds_start_hidden_states: Optional[torch.Tensor] = None
     seconds_end_hidden_states: Optional[torch.Tensor] = None
 
+
 class StableAudioNumberConditioner(nn.Module):
     """
     A simple linear projection model to map numbers to a latent space.

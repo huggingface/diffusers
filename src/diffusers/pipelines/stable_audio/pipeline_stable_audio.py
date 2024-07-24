@@ -68,9 +68,17 @@ EXAMPLE_DOC_STRING = """
         ...     num_waveforms_per_prompt=3,
         ...     generator=generator,
         ... ).audios
-        
+
         >>> # Peak normalize, clip, convert to int16, and save to file
-        >>> output = audio[0].to(torch.float32).div(torch.max(torch.abs(audio[0]))).clamp(-1, 1).mul(32767).to(torch.int16).cpu()
+        >>> output = (
+        ...     audio[0]
+        ...     .to(torch.float32)
+        ...     .div(torch.max(torch.abs(audio[0])))
+        ...     .clamp(-1, 1)
+        ...     .mul(32767)
+        ...     .to(torch.int16)
+        ...     .cpu()
+        ... )
         >>> torchaudio.save("hammer.wav", output, pipe.vae.sampling_rate)
         ```
 """
@@ -193,7 +201,7 @@ class StableAudioPipeline(DiffusionPipeline):
                 attention_mask=attention_mask,
             )
             prompt_embeds = prompt_embeds[0]
-            
+
         if do_classifier_free_guidance and negative_prompt is not None:
             uncond_tokens: List[str]
             if type(prompt) is not type(negative_prompt):
@@ -231,13 +239,12 @@ class StableAudioPipeline(DiffusionPipeline):
                 attention_mask=negative_attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
-    
+
             if negative_attention_mask is not None:
                 # set the masked tokens to the null embed
                 negative_prompt_embeds = torch.where(
                     negative_attention_mask.to(torch.bool).unsqueeze(2), negative_prompt_embeds, 0.0
                 )
-
 
         # 3. Project prompt_embeds and negative_prompt_embeds
         if do_classifier_free_guidance and negative_prompt_embeds is not None:
@@ -291,7 +298,6 @@ class StableAudioPipeline(DiffusionPipeline):
             seconds_end_hidden_states = torch.cat([seconds_end_hidden_states, seconds_end_hidden_states], dim=0)
 
         return seconds_start_hidden_states, seconds_end_hidden_states
-
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -648,7 +654,6 @@ class StableAudioPipeline(DiffusionPipeline):
                 [negative_text_audio_duration_embeds, text_audio_duration_embeds], dim=0
             )
             audio_duration_embeds = torch.cat([audio_duration_embeds, audio_duration_embeds], dim=0)
-
 
         bs_embed, seq_len, hidden_size = text_audio_duration_embeds.shape
         # duplicate audio_duration_embeds and text_audio_duration_embeds for each generation per prompt, using mps friendly method
