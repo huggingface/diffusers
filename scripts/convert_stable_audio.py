@@ -62,6 +62,7 @@ def convert_stable_audio_state_dict_to_diffusers(state_dict, num_autoencoder_lay
         new_key = (
             new_key.replace("project", "proj")
             .replace("to_timestep_embed", "timestep_proj")
+            .replace("timestep_features","time_proj")
             .replace("to_global_embed", "global_proj")
             .replace("to_cond_embed", "cross_attention_proj")
         )
