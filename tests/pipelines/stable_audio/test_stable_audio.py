@@ -53,7 +53,6 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "cross_attention_hidden_states",
             "negative_cross_attention_hidden_states",
             "global_hidden_states",
-            "cross_attention_kwargs",
             "initial_audio_waveforms",
         ]
     )

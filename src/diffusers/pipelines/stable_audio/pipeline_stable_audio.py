@@ -634,7 +634,6 @@ class StableAudioPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: Optional[int] = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         output_type: Optional[str] = "pt",
     ):
         r"""
@@ -701,9 +700,6 @@ class StableAudioPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
-                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             output_type (`str`, *optional*, defaults to `"pt"`):
                 The output format of the generated audio. Choose between `"np"` to return a NumPy `np.ndarray` or
                 `"pt"` to return a PyTorch `torch.Tensor` object. Set to `"latent"` to return the latent diffusion
@@ -824,7 +820,6 @@ class StableAudioPipeline(DiffusionPipeline):
                     global_hidden_states=global_hidden_states,
                     rotary_embedding=rotary_embedding,
                     return_dict=False,
-                    cross_attention_kwargs=cross_attention_kwargs,
                 )[0]
 
                 # perform guidance
