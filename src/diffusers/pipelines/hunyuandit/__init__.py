@@ -33,6 +33,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_hunyuandit import HunyuanDiTPipeline
+        from .pipeline_hunyuandit_img2img import HunyuanDiTImg2ImgPipeline
 
 else:
     import sys
