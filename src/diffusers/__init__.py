@@ -251,6 +251,7 @@ else:
             "CycleDiffusionPipeline",
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPipeline",
+            "HunyuanDiTImg2ImgPipeline",
             "I2VGenXLPipeline",
             "IFImg2ImgPipeline",
             "IFImg2ImgSuperResolutionPipeline",

@@ -181,7 +181,10 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
-    _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
+    _import_structure["hunyuandit"] = [
+        "HunyuanDiTPipeline",
+        "HunyuanDiTImg2ImgPipeline",
+    ]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
