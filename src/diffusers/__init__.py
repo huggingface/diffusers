@@ -75,6 +75,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["models"].extend(
         [
+            "AnimateDiffTransformer3DModel",
             "AsymmetricAutoencoderKL",
             "AuraFlowTransformer2DModel",
             "AutoencoderKL",
@@ -509,6 +510,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
         from .models import (
+            AnimateDiffTransformer3DModel,
             AsymmetricAutoencoderKL,
             AuraFlowTransformer2DModel,
             AutoencoderKL,

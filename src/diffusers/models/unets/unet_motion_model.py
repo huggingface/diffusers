@@ -35,7 +35,7 @@ from ..attention_processor import (
 )
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
-from ..transformers.transformer_temporal import TransformerTemporalModel
+from ..transformers.animatediff_transformer_3d import AnimateDiffTransformer3DModel
 from .unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unet_2d_condition import UNet2DConditionModel
 from .unet_3d_blocks import (
@@ -79,7 +79,7 @@ class MotionModules(nn.Module):
 
         for i in range(layers_per_block):
             self.motion_modules.append(
-                TransformerTemporalModel(
+                AnimateDiffTransformer3DModel(
                     in_channels=in_channels,
                     num_layers=transformer_layers_per_block[i],
                     norm_num_groups=norm_num_groups,

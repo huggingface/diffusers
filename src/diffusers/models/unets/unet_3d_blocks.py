@@ -27,6 +27,7 @@ from ..resnet import (
     TemporalConvLayer,
     Upsample2D,
 )
+from ..transformers.animatediff_transformer_3d import AnimateDiffTransformer3DModel
 from ..transformers.dual_transformer_2d import DualTransformer2DModel
 from ..transformers.transformer_2d import Transformer2DModel
 from ..transformers.transformer_temporal import (
@@ -1005,7 +1006,7 @@ class DownBlockMotion(nn.Module):
                 )
             )
             motion_modules.append(
-                TransformerTemporalModel(
+                AnimateDiffTransformer3DModel(
                     num_attention_heads=temporal_num_attention_heads[i],
                     in_channels=out_channels,
                     num_layers=temporal_transformer_layers_per_block[i],
@@ -1188,7 +1189,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                 )
 
             motion_modules.append(
-                TransformerTemporalModel(
+                AnimateDiffTransformer3DModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     num_layers=temporal_transformer_layers_per_block[i],
@@ -1398,7 +1399,7 @@ class CrossAttnUpBlockMotion(nn.Module):
                     )
                 )
             motion_modules.append(
-                TransformerTemporalModel(
+                AnimateDiffTransformer3DModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     num_layers=temporal_transformer_layers_per_block[i],
@@ -1569,7 +1570,7 @@ class UpBlockMotion(nn.Module):
             )
 
             motion_modules.append(
-                TransformerTemporalModel(
+                AnimateDiffTransformer3DModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     num_layers=temporal_transformer_layers_per_block[i],
@@ -1773,7 +1774,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                 )
             )
             motion_modules.append(
-                TransformerTemporalModel(
+                AnimateDiffTransformer3DModel(
                     num_attention_heads=temporal_num_attention_heads,
                     attention_head_dim=in_channels // temporal_num_attention_heads,
                     in_channels=in_channels,
