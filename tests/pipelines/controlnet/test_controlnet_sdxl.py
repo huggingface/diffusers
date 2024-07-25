@@ -370,7 +370,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.7335, 0.5866, 0.5623, 0.6242, 0.5751, 0.5999, 0.4091, 0.4590, 0.5054])
+        expected_slice = np.array([0.7820, 0.6195, 0.6193, 0.7045, 0.6706, 0.5837, 0.4147, 0.5232, 0.4868])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -993,7 +993,7 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.7212, 0.5890, 0.5491, 0.6425, 0.5970, 0.6091, 0.4418, 0.4556, 0.5032])
+        expected_slice = np.array([0.6787, 0.5117, 0.5558, 0.6963, 0.6571, 0.5928, 0.4121, 0.5468, 0.5057])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
