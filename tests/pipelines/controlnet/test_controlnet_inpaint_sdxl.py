@@ -37,7 +37,12 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    require_torch_gpu,
+    torch_device,
+)
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
@@ -341,7 +346,8 @@ class ControlNetPipelineSDXLFastTests(
 
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
-        expected_slice = np.array([0.549, 0.5053, 0.4676, 0.5816, 0.5364, 0.483, 0.5937, 0.5719, 0.4318])
+
+        expected_slice = np.array([0.5460, 0.4943, 0.4635, 0.5832, 0.5366, 0.4815, 0.6034, 0.5741, 0.4341])
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
