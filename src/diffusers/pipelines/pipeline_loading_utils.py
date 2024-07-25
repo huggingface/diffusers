@@ -19,7 +19,7 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 import torch
 from huggingface_hub import ModelCard, model_info
@@ -814,7 +814,7 @@ def _maybe_raise_warning_for_inpainting(pipeline_class, pretrained_model_name_or
         deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
 
 
-def _filter_null_components(init_dict: dict, passed_class_objs):
+def _filter_null_components(init_dict: dict, passed_class_objs: dict) -> dict:
     def load_module(name, value):
         if value[0] is None:
             return False
@@ -826,7 +826,7 @@ def _filter_null_components(init_dict: dict, passed_class_objs):
     return init_dict
 
 
-def _determine_current_device_map(device_map: dict, component_name: str):
+def _determine_current_device_map(device_map: dict, component_name: str) -> Tuple[None, dict]:
     current_device_map = None
     if device_map is not None and len(device_map) > 0:
         component_device = device_map.get(component_name, None)
