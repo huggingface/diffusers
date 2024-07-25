@@ -11,6 +11,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     MotionAdapter,
+    StableDiffusionPipeline,
     UNet2DConditionModel,
     UNetMotionModel,
 )
@@ -51,16 +52,19 @@ class AnimateDiffPipelineFastTests(
     )
 
     def get_dummy_components(self):
+        cross_attention_dim = 8
+        block_out_channels = (8, 8)
+
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
+            block_out_channels=block_out_channels,
             layers_per_block=2,
-            sample_size=32,
+            sample_size=8,
             in_channels=4,
             out_channels=4,
             down_block_types=("CrossAttnDownBlock2D", "DownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
+            cross_attention_dim=cross_attention_dim,
             norm_num_groups=2,
         )
         scheduler = DDIMScheduler(
@@ -71,18 +75,19 @@ class AnimateDiffPipelineFastTests(
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 64],
+            block_out_channels=block_out_channels,
             in_channels=3,
             out_channels=3,
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
-            hidden_size=32,
+            hidden_size=cross_attention_dim,
             intermediate_size=37,
             layer_norm_eps=1e-05,
             num_attention_heads=4,
@@ -92,8 +97,9 @@ class AnimateDiffPipelineFastTests(
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        torch.manual_seed(0)
         motion_adapter = MotionAdapter(
-            block_out_channels=(32, 64),
+            block_out_channels=block_out_channels,
             motion_layers_per_block=2,
             motion_norm_num_groups=2,
             motion_num_attention_heads=4,
@@ -126,6 +132,36 @@ class AnimateDiffPipelineFastTests(
         }
         return inputs
 
+    def test_from_pipe_consistent_config(self):
+        assert self.original_pipeline_class == StableDiffusionPipeline
+        original_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"
+        original_kwargs = {"requires_safety_checker": False}
+
+        # create original_pipeline_class(sd)
+        pipe_original = self.original_pipeline_class.from_pretrained(original_repo, **original_kwargs)
+
+        # original_pipeline_class(sd) -> pipeline_class
+        pipe_components = self.get_dummy_components()
+        pipe_additional_components = {}
+        for name, component in pipe_components.items():
+            if name not in pipe_original.components:
+                pipe_additional_components[name] = component
+
+        pipe = self.pipeline_class.from_pipe(pipe_original, **pipe_additional_components)
+
+        # pipeline_class -> original_pipeline_class(sd)
+        original_pipe_additional_components = {}
+        for name, component in pipe_original.components.items():
+            if name not in pipe.components or not isinstance(component, pipe.components[name].__class__):
+                original_pipe_additional_components[name] = component
+
+        pipe_original_2 = self.original_pipeline_class.from_pipe(pipe, **original_pipe_additional_components)
+
+        # compare the config
+        original_config = {k: v for k, v in pipe_original.config.items() if not k.startswith("_")}
+        original_config_2 = {k: v for k, v in pipe_original_2.config.items() if not k.startswith("_")}
+        assert original_config_2 == original_config
+
     def test_motion_unet_loading(self):
         components = self.get_dummy_components()
         pipe = AnimateDiffPipeline(**components)
@@ -141,33 +177,33 @@ class AnimateDiffPipelineFastTests(
         if torch_device == "cpu":
             expected_pipe_slice = np.array(
                 [
-                    0.5541,
-                    0.5802,
-                    0.5074,
-                    0.4583,
-                    0.4729,
-                    0.5374,
-                    0.4051,
-                    0.4495,
-                    0.4480,
-                    0.5292,
-                    0.6322,
-                    0.6265,
-                    0.5455,
-                    0.4771,
-                    0.5795,
-                    0.5845,
-                    0.4172,
-                    0.6066,
-                    0.6535,
-                    0.4113,
-                    0.6833,
-                    0.5736,
-                    0.3589,
-                    0.5730,
-                    0.4205,
-                    0.3786,
-                    0.5323,
+                    0.5216,
+                    0.5620,
+                    0.4927,
+                    0.5082,
+                    0.4786,
+                    0.5932,
+                    0.5125,
+                    0.4514,
+                    0.5315,
+                    0.4694,
+                    0.3276,
+                    0.4863,
+                    0.3920,
+                    0.3684,
+                    0.5745,
+                    0.4499,
+                    0.5081,
+                    0.5414,
+                    0.6014,
+                    0.5062,
+                    0.3630,
+                    0.5296,
+                    0.6018,
+                    0.5098,
+                    0.4948,
+                    0.5101,
+                    0.5620,
                 ]
             )
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
@@ -175,7 +211,7 @@ class AnimateDiffPipelineFastTests(
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
         if torch_device == "cpu":
-            expected_slice = np.array([0.4051, 0.4495, 0.4480, 0.5845, 0.4172, 0.6066, 0.4205, 0.3786, 0.5323])
+            expected_slice = np.array([0.5125, 0.4514, 0.5315, 0.4499, 0.5081, 0.5414, 0.4948, 0.5101, 0.5620])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     def test_inference_batch_single_identical(
@@ -279,7 +315,7 @@ class AnimateDiffPipelineFastTests(
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs.pop("prompt")
-        inputs["prompt_embeds"] = torch.randn((1, 4, 32), device=torch_device)
+        inputs["prompt_embeds"] = torch.randn((1, 4, pipe.text_encoder.config.hidden_size), device=torch_device)
         pipe(**inputs)
 
     def test_free_init(self):
