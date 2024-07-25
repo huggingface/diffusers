@@ -4,10 +4,8 @@ from typing import Any, Dict, Optional
 import torch
 from torch import nn
 
-from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput
 from ..attention import BasicTransformerBlock
-from ..modeling_utils import ModelMixin
 
 
 @dataclass
@@ -136,14 +134,15 @@ class AnimateDiffTransformer3DModel(nn.Module):
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DModelOutput`]
-                instead of a plain tuple.
+                Whether or not to return a
+                [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DModelOutput`] instead of a
+                plain tuple.
 
         Returns:
             [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DModelOutput`] or `tuple`:
                 If `return_dict` is True, an
-                [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DModelOutput`] is returned, otherwise a
-                `tuple` where the first element is the sample tensor.
+                [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DModelOutput`] is returned,
+                otherwise a `tuple` where the first element is the sample tensor.
         """
         # 1. Input
         batch_frames, channel, height, width = hidden_states.shape
