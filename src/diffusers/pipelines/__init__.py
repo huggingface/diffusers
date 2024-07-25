@@ -531,10 +531,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
-        from .stable_audio import (
-            StableAudioPipeline,
-            StableAudioProjectionModel,
-        )
+        from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
         from .stable_cascade import (
             StableCascadeCombinedPipeline,
             StableCascadeDecoderPipeline,

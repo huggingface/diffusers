@@ -170,17 +170,14 @@ class OobleckDiagonalGaussianDistribution(object):
             if other is None:
                 return (self.mean * self.mean + self.var - self.logvar - 1.0).sum(1).mean()
             else:
-                return (
-                    (
-                        torch.pow(self.mean - other.mean, 2) / other.var
-                        + self.var / other.var
-                        - self.logvar
-                        + other.logvar
-                        - 1.0
-                    )
-                    .sum(1)
-                    .mean()
-                )
+                normalized_diff = torch.pow(self.mean - other.mean, 2) / other.var
+                var_ratio = self.var / other.var
+                logvar_diff = self.logvar - other.logvar
+
+                kl = normalized_diff + var_ratio + logvar_diff - 1
+
+                kl = kl.sum(1).mean()
+                return kl
 
     def mode(self) -> torch.Tensor:
         return self.mean
@@ -296,7 +293,8 @@ class OobleckDecoder(nn.Module):
 
 class AutoencoderOobleck(ModelMixin, ConfigMixin):
     r"""
-    An autoencoder for encoding waveforms into latents and decoding latent representations into waveforms.
+    An autoencoder for encoding waveforms into latents and decoding latent representations into waveforms. First
+    introduced in Stable Audio.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).

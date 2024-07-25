@@ -81,15 +81,8 @@ class StableAudioDiTBlock(nn.Module):
         attention_head_dim (`int`): The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        attention_bias (:
-            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
         upcast_attention (`bool`, *optional*):
             Whether to upcast the attention computation to float32. This is useful for mixed precision training.
-        norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
-            Whether to use learnable elementwise affine parameters for normalization.
-        final_dropout (`bool` *optional*, defaults to False):
-            Whether to apply a final dropout after the last feed-forward layer.
     """
 
     def __init__(
@@ -100,33 +93,27 @@ class StableAudioDiTBlock(nn.Module):
         attention_head_dim: int,
         dropout=0.0,
         cross_attention_dim: Optional[int] = None,
-        activation_fn: str = "swiglu",
-        attention_bias: bool = False,
         upcast_attention: bool = False,
-        norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
-        final_dropout: bool = False,
         ff_inner_dim: Optional[int] = None,
-        ff_bias: bool = True,
-        attention_out_bias: bool = False,
     ):
         super().__init__()
         # Define 3 blocks. Each block has its own normalization layer.
         # 1. Self-Attn
-        self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
+        self.norm1 = nn.LayerNorm(dim, elementwise_affine=True, eps=norm_eps)
         self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
             dropout=dropout,
-            bias=attention_bias,
+            bias=False,
             upcast_attention=upcast_attention,
-            out_bias=attention_out_bias,
+            out_bias=False,
             processor=StableAudioAttnProcessor2_0(),
         )
 
         # 2. Cross-Attn
-        self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+        self.norm2 = nn.LayerNorm(dim, norm_eps, True)
 
         self.attn2 = Attention(
             query_dim=dim,
@@ -135,21 +122,21 @@ class StableAudioDiTBlock(nn.Module):
             dim_head=attention_head_dim,
             kv_heads=num_key_value_attention_heads,
             dropout=dropout,
-            bias=attention_bias,
+            bias=False,
             upcast_attention=upcast_attention,
-            out_bias=attention_out_bias,
+            out_bias=False,
             processor=StableAudioAttnProcessor2_0(),
         )  # is self-attn if encoder_hidden_states is none
 
         # 3. Feed-forward
-        self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+        self.norm3 = nn.LayerNorm(dim, norm_eps, True)
         self.ff = FeedForward(
             dim,
             dropout=dropout,
-            activation_fn=activation_fn,
-            final_dropout=final_dropout,
+            activation_fn="swiglu",
+            final_dropout=False,
             inner_dim=ff_inner_dim,
-            bias=ff_bias,
+            bias=True,
         )
 
         # let chunk size default to None
@@ -180,8 +167,6 @@ class StableAudioDiTBlock(nn.Module):
         )
 
         hidden_states = attn_output + hidden_states
-        if hidden_states.ndim == 4:
-            hidden_states = hidden_states.squeeze(1)
 
         # 2. Cross-Attention
         norm_hidden_states = self.norm2(hidden_states)
@@ -198,8 +183,6 @@ class StableAudioDiTBlock(nn.Module):
         ff_output = self.ff(norm_hidden_states)
 
         hidden_states = ff_output + hidden_states
-        if hidden_states.ndim == 4:
-            hidden_states = hidden_states.squeeze(1)
 
         return hidden_states
 
@@ -378,7 +361,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         encoder_attention_mask: Optional[torch.LongTensor] = None,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
-        The [`SD3Transformer2DModel`] forward method.
+        The [`StableAudioDiTModel`] forward method.
 
         Args:
             hidden_states (`torch.FloatTensor` of shape `(batch size, in_channels, sequence_len)`):
