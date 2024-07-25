@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import pi
-from typing import List, Optional
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -143,8 +143,12 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
         start_seconds: Optional[torch.Tensor] = None,
         end_seconds: Optional[torch.Tensor] = None,
     ):
-        text_hidden_states = text_hidden_states if text_hidden_states is None else self.text_projection(text_hidden_states)
-        seconds_start_hidden_states = start_seconds if start_seconds is None else self.start_number_conditioner(start_seconds)
+        text_hidden_states = (
+            text_hidden_states if text_hidden_states is None else self.text_projection(text_hidden_states)
+        )
+        seconds_start_hidden_states = (
+            start_seconds if start_seconds is None else self.start_number_conditioner(start_seconds)
+        )
         seconds_end_hidden_states = end_seconds if end_seconds is None else self.end_number_conditioner(end_seconds)
 
         return StableAudioProjectionModelOutput(

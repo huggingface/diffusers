@@ -260,7 +260,9 @@ class StableAudioPipeline(DiffusionPipeline):
             if attention_mask is not None:
                 attention_mask = torch.cat([negative_attention_mask, attention_mask])
 
-        prompt_embeds = self.projection_model(text_hidden_states=prompt_embeds,).text_hidden_states
+        prompt_embeds = self.projection_model(
+            text_hidden_states=prompt_embeds,
+        ).text_hidden_states
         if attention_mask is not None:
             prompt_embeds = prompt_embeds * attention_mask.unsqueeze(-1).to(prompt_embeds.dtype)
             prompt_embeds = prompt_embeds * attention_mask.unsqueeze(-1).to(prompt_embeds.dtype)
@@ -286,11 +288,14 @@ class StableAudioPipeline(DiffusionPipeline):
         # Cast the inputs to floats
         audio_start_in_s = [float(x) for x in audio_start_in_s]
         audio_start_in_s = torch.tensor(audio_start_in_s).to(device)
-        
+
         audio_end_in_s = [float(x) for x in audio_end_in_s]
         audio_end_in_s = torch.tensor(audio_end_in_s).to(device)
 
-        projection_output = self.projection_model(start_seconds=audio_start_in_s, end_seconds=audio_end_in_s,)
+        projection_output = self.projection_model(
+            start_seconds=audio_start_in_s,
+            end_seconds=audio_end_in_s,
+        )
         seconds_start_hidden_states = projection_output.seconds_start_hidden_states
         seconds_end_hidden_states = projection_output.seconds_end_hidden_states
 
