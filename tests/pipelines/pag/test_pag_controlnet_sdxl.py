@@ -230,9 +230,6 @@ class StableDiffusionXLControlNetPAGPipelineFastTests(
         inputs = self.get_dummy_inputs(device)
         image = pipe_pag(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        from diffusers.utils.testing_utils import print_tensor_test
-
-        print_tensor_test(image_slice)
 
         assert image.shape == (
             1,
@@ -257,9 +254,6 @@ class StableDiffusionXLControlNetPAGPipelineFastTests(
         inputs["guidance_scale"] = 0.0
         image = pipe_pag(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        from diffusers.utils.testing_utils import print_tensor_test
-
-        print_tensor_test(image_slice)
 
         assert image.shape == (
             1,

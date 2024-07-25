@@ -37,7 +37,6 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_image,
-    print_tensor_test,
     require_torch_gpu,
     slow,
     torch_device,
@@ -349,7 +348,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
 
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
-        print_tensor_test(image_slice)
+
         expected_slice = np.array([0.7212, 0.5890, 0.5491, 0.6425, 0.5970, 0.6091, 0.4418, 0.4556, 0.5032])
 
         # make sure that it's equal
@@ -965,10 +964,6 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
 
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
-
-        from diffusers.utils.testing_utils import print_tensor_test
-
-        print_tensor_test(image_slice)
 
         expected_slice = np.array(
             [0.6831671, 0.5702532, 0.5459845, 0.6299793, 0.58563006, 0.6033695, 0.4493941, 0.46132287, 0.5035841]

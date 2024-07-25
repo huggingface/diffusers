@@ -254,10 +254,6 @@ class StableDiffusionXLPAGImg2ImgPipelineFastTests(
         image = pipe_pag(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        from diffusers.utils.testing_utils import print_tensor_test
-
-        print_tensor_test(image_slice)
-
         assert image.shape == (
             1,
             32,

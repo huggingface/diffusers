@@ -311,10 +311,6 @@ class StableDiffusionXLAdapterPipelineFastTests(
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        from diffusers.utils.testing_utils import print_tensor_test
-
-        print_tensor_test(image_slice)
-
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([00.5752, 0.6155, 0.4826, 0.5111, 0.5741, 0.4678, 0.5199, 0.5231, 0.4794])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
@@ -447,10 +443,6 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-
-        from diffusers.utils.testing_utils import print_tensor_test
-
-        print_tensor_test(image_slice)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5617, 0.6081, 0.4807, 0.5071, 0.5665, 0.4614, 0.5165, 0.5164, 0.4786])

@@ -173,10 +173,6 @@ class StableDiffusionXLPipelineFastTests(
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        from diffusers.utils.testing_utils import print_tensor_test
-
-        print_tensor_test(image_slice)
-
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5388, 0.5452, 0.4694, 0.4583, 0.5253, 0.4832, 0.5288, 0.5035, 0.47])
 
