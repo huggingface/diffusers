@@ -74,7 +74,7 @@ pipeline = StableDiffusionPipeline.from_single_file(
 
 [LoRA](https://hf.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) is a lightweight adapter that is fast and easy to train, making them especially popular for generating images in a certain way or style. These adapters are commonly stored in a safetensors file, and are widely popular on model sharing platforms like [civitai](https://civitai.com/).
 
-LoRAs are loaded into a base model with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method.
+LoRAs are loaded into a base model with the [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method.
 
 ```py
 from diffusers import StableDiffusionXLPipeline
