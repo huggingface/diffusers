@@ -801,6 +801,7 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: Optional[int] = 50,
+        timesteps: List[int] = None,
         sigmas: List[float] = None,
         guidance_scale: Optional[float] = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -857,6 +858,10 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter is modulated by `strength`.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
             sigmas (`List[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
@@ -1028,7 +1033,6 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
             num_inference_steps, strength, device
         )
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
-
         # 6. Prepare latent variables
         latents = self.prepare_latents(
             image,
