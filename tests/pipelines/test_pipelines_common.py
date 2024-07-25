@@ -304,6 +304,7 @@ class IPAdapterTesterMixin:
         if expected_pipe_slice is None:
             output_without_adapter = pipe(**inputs)[0]
             from diffusers.utils.testing_utils import print_tensor_test
+
             print_tensor_test(output_without_adapter, limit_to_slices=True)
         else:
             output_without_adapter = expected_pipe_slice

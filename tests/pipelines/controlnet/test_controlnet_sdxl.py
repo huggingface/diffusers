@@ -37,10 +37,10 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_image,
+    print_tensor_test,
     require_torch_gpu,
     slow,
     torch_device,
-    print_tensor_test
 )
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -196,10 +196,9 @@ class StableDiffusionXLControlNetPipelineFastTests(
             expected_pipe_slice = None
             if torch_device == "cpu":
                 expected_pipe_slice = np.array(
-                    [0.7331, 0.5907, 0.5667, 0.6029, 0.5679, 0.5968, 0.4033, 0.4761, 0.5090]
+                    [0.7335, 0.5866, 0.5623, 0.6242, 0.5751, 0.5999, 0.4091, 0.4590, 0.5054]
                 )
-        # TODO: Update with slices.
-        return super().test_ip_adapter_single(expected_pipe_slice=None)
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -351,9 +350,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
         print_tensor_test(image_slice)
-        expected_slice = np.array(
-            [0.7330834, 0.590667, 0.5667336, 0.6029023, 0.5679491, 0.5968194, 0.4032986, 0.47612396, 0.5089609]
-        )
+        expected_slice = np.array([0.7212, 0.5890, 0.5491, 0.6425, 0.5970, 0.6091, 0.4418, 0.4556, 0.5032])
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
@@ -970,6 +967,7 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
         image_slice = output.images[0, -3:, -3:, -1]
 
         from diffusers.utils.testing_utils import print_tensor_test
+
         print_tensor_test(image_slice)
 
         expected_slice = np.array(
@@ -982,9 +980,9 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
     def test_ip_adapter_single(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.6832, 0.5703, 0.5460, 0.6300, 0.5856, 0.6034, 0.4494, 0.4613, 0.5036])
-        # TODO: update after slices
-        return super().test_ip_adapter_single(from_ssd1b=True, expected_pipe_slice=None)
+            expected_pipe_slice = np.array([0.7212, 0.5890, 0.5491, 0.6425, 0.5970, 0.6091, 0.4418, 0.4556, 0.5032])
+
+        return super().test_ip_adapter_single(from_ssd1b=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_controlnet_sdxl_lcm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
