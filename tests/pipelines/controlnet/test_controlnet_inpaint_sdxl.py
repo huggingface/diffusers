@@ -233,12 +233,6 @@ class ControlNetPipelineSDXLFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
-    def test_dict_tuple_outputs_equivalent(self):
-        expected_slice = None
-        if torch_device == "cpu":
-            expected_slice = np.array([0.5490, 0.5053, 0.4676, 0.5816, 0.5364, 0.4830, 0.5937, 0.5719, 0.4318])
-        super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
-
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
