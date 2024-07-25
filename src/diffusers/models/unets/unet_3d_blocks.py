@@ -1532,7 +1532,6 @@ class UpBlockMotion(nn.Module):
         resnet_pre_norm: bool = True,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
-        temporal_norm_num_groups: int = 32,
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
