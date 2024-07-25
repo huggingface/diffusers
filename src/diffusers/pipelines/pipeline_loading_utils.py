@@ -814,12 +814,6 @@ def _maybe_raise_warning_for_inpainting(pipeline_class, pretrained_model_name_or
         deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
 
 
-def _fetch_init_kwargs(init_dict: dict, optional_kwargs: dict, passed_pipe_kwargs: dict, optional_components) -> dict:
-    init_kwargs = {k: init_dict.pop(k) for k in optional_kwargs if k in init_dict and k not in optional_components}
-    init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
-    return init_kwargs
-
-
 def _filter_null_components(init_dict: dict, passed_class_objs):
     def load_module(name, value):
         if value[0] is None:
