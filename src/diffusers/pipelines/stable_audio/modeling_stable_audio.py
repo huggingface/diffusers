@@ -97,12 +97,8 @@ class StableAudioNumberConditioner(nn.Module):
 
     def forward(
         self,
-        floats: List[float],
+        floats: torch.Tensor,
     ):
-        # Cast the inputs to floats
-        floats = [float(x) for x in floats]
-        floats = torch.tensor(floats).to(self.time_positional_embedding[1].weight.device)
-
         floats = floats.clamp(self.min_value, self.max_value)
 
         normalized_floats = (floats - self.min_value) / (self.max_value - self.min_value)
@@ -141,38 +137,15 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
         self.start_number_conditioner = StableAudioNumberConditioner(conditioning_dim, min_value, max_value)
         self.end_number_conditioner = StableAudioNumberConditioner(conditioning_dim, min_value, max_value)
 
-    def compute_duration_hidden_states(
-        self,
-        start_seconds: List[float],
-        end_seconds: List[float],
-    ):
-        seconds_start_hidden_states = self.start_number_conditioner(start_seconds)
-        seconds_end_hidden_states = self.end_number_conditioner(end_seconds)
-
-        return StableAudioProjectionModelOutput(
-            seconds_start_hidden_states=seconds_start_hidden_states,
-            seconds_end_hidden_states=seconds_end_hidden_states,
-        )
-
-    def compute_text_hidden_states(
-        self,
-        text_hidden_states: Optional[torch.Tensor],
-    ):
-        text_hidden_states = self.text_projection(text_hidden_states)
-
-        return StableAudioProjectionModelOutput(
-            text_hidden_states=text_hidden_states,
-        )
-
     def forward(
         self,
-        text_hidden_states: Optional[torch.Tensor],
-        start_seconds: List[float],
-        end_seconds: List[float],
+        text_hidden_states: Optional[torch.Tensor] = None,
+        start_seconds: Optional[torch.Tensor] = None,
+        end_seconds: Optional[torch.Tensor] = None,
     ):
-        text_hidden_states = self.text_projection(text_hidden_states)
-        seconds_start_hidden_states = self.start_number_conditioner(start_seconds)
-        seconds_end_hidden_states = self.end_number_conditioner(end_seconds)
+        text_hidden_states = text_hidden_states if text_hidden_states is None else self.text_projection(text_hidden_states)
+        seconds_start_hidden_states = start_seconds if start_seconds is None else self.start_number_conditioner(start_seconds)
+        seconds_end_hidden_states = end_seconds if end_seconds is None else self.end_number_conditioner(end_seconds)
 
         return StableAudioProjectionModelOutput(
             text_hidden_states=text_hidden_states,
