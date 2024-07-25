@@ -25,6 +25,8 @@ The abstract of the paper is the following:
 | Pipeline | Tasks | Demo
 |---|---|:---:|
 | [AnimateDiffPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff.py) | *Text-to-Video Generation with AnimateDiff* |
+| [AnimateDiffControlNetPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_controlnet.py) | *Controlled Video-to-Video Generation with AnimateDiff* |
+| [AnimateDiffSDXLPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_sdxl.py) | *Controlled Video-to-Video Generation with AnimateDiff* |
 | [AnimateDiffVideoToVideoPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_video2video.py) | *Video-to-Video Generation with AnimateDiff* |
 
 ## Available checkpoints
@@ -155,6 +157,27 @@ video = pipe(
 
 export_to_gif(video, "animatediff_controlnet.gif", fps=8)
 ```
+
+Here are some sample outputs:
+
+<table align="center">
+    <tr>
+      <th align="center">Source Video</th>
+      <th align="center">Output Video</th>
+    </tr>
+    <tr>
+        <td align="center">
+          raccoon playing a guitar
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif" alt="racoon playing a guitar" />
+        </td>
+        <td align="center">
+          a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-controlnet-output.gif" alt="a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality" />
+        </td>
+    </tr>
+</table>
 
 ### AnimateDiffSDXLPipeline
 
