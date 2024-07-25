@@ -75,7 +75,6 @@ from .pipeline_loading_utils import (
     _determine_pipeline_class,
     _ensure_all_expected_modules_presence,
     _fetch_class_library_tuple,
-    _fetch_init_kwargs,
     _filter_null_components,
     _get_custom_pipeline_class,
     _get_final_device_map,
@@ -770,12 +769,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         # define init kwargs and make sure that optional component modules are filtered out
-        init_kwargs = _fetch_init_kwargs(
-            init_dict=init_dict,
-            optional_kwargs=optional_kwargs,
-            passed_pipe_kwargs=passed_pipe_kwargs,
-            optional_components=pipeline_class._optional_components,
-        )
+        init_kwargs = {
+            k: init_dict.pop(k)
+            for k in optional_kwargs
+            if k in init_dict and k not in pipeline_class._optional_components
+        }
+        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
         # remove `null` components
         init_dict = _filter_null_components(init_dict=init_dict, passed_class_objs=passed_class_obj)
