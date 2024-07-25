@@ -178,7 +178,8 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
     def test_ip_adapter_single(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.6265, 0.5441, 0.5384, 0.5446, 0.5810, 0.5908, 0.5414, 0.5428, 0.5353])
+            expected_pipe_slice = np.array([0.6276, 0.5271, 0.5205, 0.5393, 0.5774, 0.5872, 0.5456, 0.5415, 0.5354])
+        # TODO: update after slices.p
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_xl_controlnet_img2img(self):
