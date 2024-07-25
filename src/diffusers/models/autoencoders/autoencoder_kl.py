@@ -26,6 +26,7 @@ from ..attention_processor import (
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
+    FusedAttnProcessor2_0,
 )
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
@@ -62,6 +63,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             If enabled it will force the VAE to run in float32 for high image resolution pipelines, such as SD-XL. VAE
             can be fine-tuned / trained to a lower range without loosing too much precision in which case
             `force_upcast` can be set to `False` - see: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix
+        mid_block_add_attention (`bool`, *optional*, default to `True`):
+            If enabled, the mid_block of the Encoder and Decoder will have attention blocks. If set to false, the
+            mid_block will only have resnet blocks
     """
 
     _supports_gradient_checkpointing = True
@@ -87,6 +91,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         force_upcast: float = True,
         use_quant_conv: bool = True,
         use_post_quant_conv: bool = True,
+        mid_block_add_attention: bool = True,
     ):
         super().__init__()
 
@@ -100,6 +105,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
             double_z=True,
+            mid_block_add_attention=mid_block_add_attention,
         )
 
         # pass init params to Decoder
@@ -111,6 +117,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             layers_per_block=layers_per_block,
             norm_num_groups=norm_num_groups,
             act_fn=act_fn,
+            mid_block_add_attention=mid_block_add_attention,
         )
 
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_quant_conv else None
@@ -360,7 +367,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             for j in range(0, x.shape[3], overlap_size):
                 tile = x[:, :, i : i + self.tile_sample_min_size, j : j + self.tile_sample_min_size]
                 tile = self.encoder(tile)
-                tile = self.quant_conv(tile)
+                if self.config.use_quant_conv:
+                    tile = self.quant_conv(tile)
                 row.append(tile)
             rows.append(row)
         result_rows = []
@@ -409,7 +417,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             row = []
             for j in range(0, z.shape[3], overlap_size):
                 tile = z[:, :, i : i + self.tile_latent_min_size, j : j + self.tile_latent_min_size]
-                tile = self.post_quant_conv(tile)
+                if self.config.use_post_quant_conv:
+                    tile = self.post_quant_conv(tile)
                 decoded = self.decoder(tile)
                 row.append(decoded)
             rows.append(row)
@@ -483,6 +492,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         for module in self.modules():
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
+
+        self.set_attn_processor(FusedAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):

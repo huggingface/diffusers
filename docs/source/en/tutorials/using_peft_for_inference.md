@@ -191,7 +191,7 @@ image
 
 ## Manage active adapters
 
-You have attached multiple adapters in this tutorial, and if you're feeling a bit lost on what adapters have been attached to the pipeline's components, use the [`~diffusers.loaders.LoraLoaderMixin.get_active_adapters`] method to check the list of active adapters:
+You have attached multiple adapters in this tutorial, and if you're feeling a bit lost on what adapters have been attached to the pipeline's components, use the [`~diffusers.loaders.StableDiffusionLoraLoaderMixin.get_active_adapters`] method to check the list of active adapters:
 
 ```py
 active_adapters = pipe.get_active_adapters()
@@ -199,7 +199,7 @@ active_adapters
 ["toy", "pixel"]
 ```
 
-You can also get the active adapters of each pipeline component with [`~diffusers.loaders.LoraLoaderMixin.get_list_adapters`]:
+You can also get the active adapters of each pipeline component with [`~diffusers.loaders.StableDiffusionLoraLoaderMixin.get_list_adapters`]:
 
 ```py
 list_adapters_component_wise = pipe.get_list_adapters()

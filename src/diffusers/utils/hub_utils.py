@@ -271,7 +271,8 @@ if cache_version < 1:
 def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
-        splits = splits[:-1] + [variant] + splits[-1:]
+        split_index = -2 if weights_name.endswith(".index.json") else -1
+        splits = splits[:-split_index] + [variant] + splits[-split_index:]
         weights_name = ".".join(splits)
 
     return weights_name
@@ -286,7 +287,6 @@ def _get_model_file(
     cache_dir: Optional[str] = None,
     force_download: bool = False,
     proxies: Optional[Dict] = None,
-    resume_download: Optional[bool] = None,
     local_files_only: bool = False,
     token: Optional[str] = None,
     user_agent: Optional[Union[Dict, str]] = None,
@@ -324,7 +324,6 @@ def _get_model_file(
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
-                    resume_download=resume_download,
                     local_files_only=local_files_only,
                     token=token,
                     user_agent=user_agent,
@@ -349,7 +348,6 @@ def _get_model_file(
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
-                resume_download=resume_download,
                 local_files_only=local_files_only,
                 token=token,
                 user_agent=user_agent,
@@ -417,7 +415,6 @@ def _get_checkpoint_shard_files(
     index_filename,
     cache_dir=None,
     proxies=None,
-    resume_download=False,
     local_files_only=False,
     token=None,
     user_agent=None,
@@ -455,10 +452,13 @@ def _get_checkpoint_shard_files(
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
     allow_patterns = original_shard_filenames
+    if subfolder is not None:
+        allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
+
     ignore_patterns = ["*.json", "*.md"]
     if not local_files_only:
         # `model_info` call must guarded with the above condition.
-        model_files_info = model_info(pretrained_model_name_or_path)
+        model_files_info = model_info(pretrained_model_name_or_path, revision=revision)
         for shard_file in original_shard_filenames:
             shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
             if not shard_file_present:
@@ -472,7 +472,6 @@ def _get_checkpoint_shard_files(
         cached_folder = snapshot_download(
             pretrained_model_name_or_path,
             cache_dir=cache_dir,
-            resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
             token=token,
@@ -481,6 +480,8 @@ def _get_checkpoint_shard_files(
             ignore_patterns=ignore_patterns,
             user_agent=user_agent,
         )
+        if subfolder is not None:
+            cached_folder = os.path.join(cached_folder, subfolder)
 
     # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
     # we don't have to catch them here. We have also dealt with EntryNotFoundError.
