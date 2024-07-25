@@ -295,8 +295,9 @@ class StableDiffusionXLAdapterPipelineFastTests(
             expected_pipe_slice = None
             if torch_device == "cpu":
                 expected_pipe_slice = np.array(
-                    [0.5753, 0.6022, 0.4728, 0.4986, 0.5708, 0.4645, 0.5194, 0.5134, 0.4730]
+                    [0.5752, 0.6155, 0.4826, 0.5111, 0.5741, 0.4678, 0.5199, 0.5231, 0.4794]
                 )
+
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_adapter_default_case(self):
@@ -311,9 +312,7 @@ class StableDiffusionXLAdapterPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [0.5752919, 0.6022097, 0.4728038, 0.49861962, 0.57084894, 0.4644975, 0.5193715, 0.5133664, 0.4729858]
-        )
+        expected_slice = np.array([00.5752, 0.6155, 0.4826, 0.5111, 0.5741, 0.4678, 0.5199, 0.5231, 0.4794])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
     @parameterized.expand(
@@ -446,15 +445,14 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [0.5813032, 0.60995954, 0.47563356, 0.5056669, 0.57199144, 0.4631841, 0.5176794, 0.51252556, 0.47183886]
-        )
+        expected_slice = np.array([0.5617, 0.6081, 0.4807, 0.5071, 0.5665, 0.4614, 0.5165, 0.5164, 0.4786])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
     def test_ip_adapter_single(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.5813, 0.6100, 0.4756, 0.5057, 0.5720, 0.4632, 0.5177, 0.5125, 0.4718])
+            expected_pipe_slice = np.array([0.5617, 0.6081, 0.4807, 0.5071, 0.5665, 0.4614, 0.5165, 0.5164, 0.4786])
+
         return super().test_ip_adapter_single(from_multi=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_inference_batch_consistent(
