@@ -40,54 +40,54 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter
-        >>> from diffusers.pipelines import DiffusionPipeline
-        >>> from diffusers.schedulers import DPMSolverMultistepScheduler
-        >>> from PIL import Image
+        >>> from diffusers import AnimateDiffControlNetPipeline, AutoencoderKL, ControlNetModel, MotionAdapter, LCMScheduler
+        >>> from diffusers.utils import export_to_gif, load_video
 
-        >>> motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
-        >>> adapter = MotionAdapter.from_pretrained(motion_id)
-        >>> controlnet = ControlNetModel.from_pretrained(
-        ...     "lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16
-        ... )
+        >>> # Additionally, you will need a preprocess videos before they can be used with the ControlNet
+        >>> # HF maintains just the right package for it: `pip install controlnet_aux`
+        >>> from controlnet_aux.processor import ZoeDetector
+
+        >>> # Download controlnets from https://huggingface.co/lllyasviel/ControlNet-v1-1 to use .from_single_file
+        >>> # Download Diffusers-format controlnets, such as https://huggingface.co/lllyasviel/sd-controlnet-depth, to use .from_pretrained()
+        >>> controlnet = ControlNetModel.from_single_file("control_v11f1p_sd15_depth.pth", torch_dtype=torch.float16)
+
+        >>> # We use AnimateLCM for this example but one can use the original motion adapters as well (for example, https://huggingface.co/guoyww/animatediff-motion-adapter-v1-5-3)
+        >>> motion_adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM")
+
         >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
-
-        >>> model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
-        >>> pipe = DiffusionPipeline.from_pretrained(
-        ...     model_id,
-        ...     motion_adapter=adapter,
+        >>> pipe: AnimateDiffControlNetPipeline = AnimateDiffControlNetPipeline.from_pretrained(
+        ...     "SG161222/Realistic_Vision_V5.1_noVAE",
+        ...     motion_adapter=motion_adapter,
         ...     controlnet=controlnet,
         ...     vae=vae,
-        ...     custom_pipeline="pipeline_animatediff_controlnet",
         ... ).to(device="cuda", dtype=torch.float16)
-        >>> pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
-        ...     model_id,
-        ...     subfolder="scheduler",
-        ...     clip_sample=False,
-        ...     timestep_spacing="linspace",
-        ...     steps_offset=1,
-        ...     beta_schedule="linear",
-        ... )
-        >>> pipe.enable_vae_slicing()
+        >>> pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
+        >>> pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora")
+        >>> pipe.set_adapters(["lcm-lora"], [0.8])
 
+        >>> depth_detector = ZoeDetector.from_pretrained("lllyasviel/Annotators").to("cuda")
+        >>> video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
         >>> conditioning_frames = []
-        >>> for i in range(1, 16 + 1):
-        ...     conditioning_frames.append(Image.open(f"frame_{i}.png"))
 
-        >>> prompt = "astronaut in space, dancing"
-        >>> negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
-        >>> result = pipe(
+        >>> with pipe.progress_bar(total=len(video)) as progress_bar:
+        ...     for frame in video:
+        ...         conditioning_frames.append(depth_detector(frame))
+        ...         progress_bar.update()
+
+        >>> prompt = "a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality"
+        >>> negative_prompt = "bad quality, worst quality"
+
+        >>> video = pipe(
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
-        ...     width=512,
-        ...     height=768,
+        ...     num_frames=len(video),
+        ...     num_inference_steps=10,
+        ...     guidance_scale=2.0,
         ...     conditioning_frames=conditioning_frames,
-        ...     num_inference_steps=12,
-        ... )
+        ...     generator=torch.Generator().manual_seed(42),
+        ... ).frames[0]
 
-        >>> from diffusers.utils import export_to_gif
-
-        >>> export_to_gif(result.frames[0], "result.gif")
+        >>> export_to_gif(video, "animatediff_controlnet.gif", fps=8)
         ```
 """
 
