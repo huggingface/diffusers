@@ -71,10 +71,15 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
+    _determine_pipeline_class,
     _fetch_class_library_tuple,
+    _fetch_init_kwargs,
+    _filter_null_components,
     _get_custom_pipeline_class,
     _get_final_device_map,
     _get_pipeline_class,
+    _identify_model_variants,
+    _maybe_raise_warning_for_inpainting,
     _unwrap_model,
     is_safetensors_compatible,
     load_sub_model,
@@ -724,59 +729,28 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 2. Define which model components should load variants
         # We retrieve the information by matching whether variant
         # model checkpoints exist in the subfolders
-        model_variants = {}
-        if variant is not None:
-            for folder in os.listdir(cached_folder):
-                folder_path = os.path.join(cached_folder, folder)
-                is_folder = os.path.isdir(folder_path) and folder in config_dict
-                variant_exists = is_folder and any(
-                    p.split(".")[1].startswith(variant) for p in os.listdir(folder_path)
-                )
-                if variant_exists:
-                    model_variants[folder] = variant
+        model_variants = _identify_model_variants(folder=cached_folder, variant=variant, config=config_dict)
 
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
-        custom_class_name = None
-        if os.path.isfile(os.path.join(cached_folder, f"{custom_pipeline}.py")):
-            custom_pipeline = os.path.join(cached_folder, f"{custom_pipeline}.py")
-        elif isinstance(config_dict["_class_name"], (list, tuple)) and os.path.isfile(
-            os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")
-        ):
-            custom_pipeline = os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")
-            custom_class_name = config_dict["_class_name"][1]
-
-        pipeline_class = _get_pipeline_class(
+        custom_pipeline, pipeline_class = _determine_pipeline_class(
             cls,
-            config_dict,
-            load_connected_pipeline=load_connected_pipeline,
-            custom_pipeline=custom_pipeline,
-            class_name=custom_class_name,
+            folder=cached_folder,
             cache_dir=cache_dir,
-            revision=custom_revision,
+            config=config_dict,
+            custom_revision=custom_revision,
+            custom_pipeline=custom_pipeline,
+            load_connected_pipeline=load_connected_pipeline,
         )
-
         if device_map is not None and pipeline_class._load_connected_pipes:
             raise NotImplementedError("`device_map` is not yet supported for connected pipelines.")
 
         # DEPRECATED: To be removed in 1.0.0
-        if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
-            version.parse(config_dict["_diffusers_version"]).base_version
-        ) <= version.parse("0.5.1"):
-            from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
-
-            pipeline_class = StableDiffusionInpaintPipelineLegacy
-
-            deprecation_message = (
-                "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
-                f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
-                " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
-                " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
-                f" checkpoint {pretrained_model_name_or_path} to the format of"
-                " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
-                " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
-            )
-            deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
+        _maybe_raise_warning_for_inpainting(
+            pipeline_class=pipeline_class,
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            config=config_dict,
+        )  # TODO
 
         # 4. Define expected modules given pipeline signature
         # and define non-None initialized modules (=`init_kwargs`)
@@ -787,26 +761,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
-
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         # define init kwargs and make sure that optional component modules are filtered out
-        init_kwargs = {
-            k: init_dict.pop(k)
-            for k in optional_kwargs
-            if k in init_dict and k not in pipeline_class._optional_components
-        }
-        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
+        init_kwargs = _fetch_init_kwargs(
+            init_dict=init_dict,
+            optional_kwargs=optional_kwargs,
+            passed_pipe_kwargs=passed_pipe_kwargs,
+            optional_components=pipeline_class._optional_components,
+        )
 
         # remove `null` components
-        def load_module(name, value):
-            if value[0] is None:
-                return False
-            if name in passed_class_obj and passed_class_obj[name] is None:
-                return False
-            return True
-
-        init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+        init_dict = _filter_null_components(init_dict=init_dict, passed_class_objs=passed_class_obj)
 
         # Special case: safety_checker must be loaded separately when using `from_flax`
         if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:

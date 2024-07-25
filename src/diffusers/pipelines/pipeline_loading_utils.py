@@ -33,6 +33,7 @@ from ..utils import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    deprecate,
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_peft_available,
@@ -749,3 +750,83 @@ def _fetch_class_library_tuple(module):
     class_name = not_compiled_module.__class__.__name__
 
     return (library, class_name)
+
+
+def _identify_model_variants(folder: str, variant: str, config: dict) -> dict:
+    model_variants = {}
+    if variant is not None:
+        for folder in os.listdir(folder):
+            folder_path = os.path.join(folder, folder)
+            is_folder = os.path.isdir(folder_path) and folder in config
+            variant_exists = is_folder and any(p.split(".")[1].startswith(variant) for p in os.listdir(folder_path))
+            if variant_exists:
+                model_variants[folder] = variant
+    return model_variants
+
+
+def _determine_pipeline_class(
+    cls,
+    folder: str,
+    cache_dir: str,
+    config: dict,
+    custom_revision: str,
+    custom_pipeline: str,
+    load_connected_pipeline: bool,
+) -> tuple:
+    custom_class_name = None
+    if os.path.isfile(os.path.join(folder, f"{custom_pipeline}.py")):
+        custom_pipeline = os.path.join(folder, f"{custom_pipeline}.py")
+    elif isinstance(config["_class_name"], (list, tuple)) and os.path.isfile(
+        os.path.join(folder, f"{config['_class_name'][0]}.py")
+    ):
+        custom_pipeline = os.path.join(folder, f"{config['_class_name'][0]}.py")
+        custom_class_name = config["_class_name"][1]
+
+    pipeline_class = _get_pipeline_class(
+        cls,
+        config,
+        load_connected_pipeline=load_connected_pipeline,
+        custom_pipeline=custom_pipeline,
+        class_name=custom_class_name,
+        cache_dir=cache_dir,
+        revision=custom_revision,
+    )
+    return custom_pipeline, pipeline_class
+
+
+def _maybe_raise_warning_for_inpainting(pipeline_class, pretrained_model_name_or_path: str, config: dict):
+    if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
+        version.parse(config["_diffusers_version"]).base_version
+    ) <= version.parse("0.5.1"):
+        from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
+
+        pipeline_class = StableDiffusionInpaintPipelineLegacy
+
+        deprecation_message = (
+            "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
+            f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
+            " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
+            " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
+            f" checkpoint {pretrained_model_name_or_path} to the format of"
+            " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
+            " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
+        )
+        deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
+
+
+def _fetch_init_kwargs(init_dict: dict, optional_kwargs: dict, passed_pipe_kwargs: dict, optional_components) -> dict:
+    init_kwargs = {k: init_dict.pop(k) for k in optional_kwargs if k in init_dict and k not in optional_components}
+    init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
+    return init_kwargs
+
+
+def _filter_null_components(init_dict: dict, passed_class_objs):
+    def load_module(name, value):
+        if value[0] is None:
+            return False
+        if name in passed_class_objs and passed_class_objs[name] is None:
+            return False
+        return True
+
+    init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+    return init_dict
