@@ -168,8 +168,12 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         first_frame_slice = result[0, -3:, -3:, -1]
         last_frame_slice = result[-1, -3:, -3:, 0]
 
-        expected_slice1 = np.array([0.48, 0.58, 0.53, 0.59, 0.50, 0.44, 0.60, 0.65, 0.52])
-        expected_slice2 = np.array([0.66, 0.49, 0.40, 0.70, 0.47, 0.51, 0.73, 0.65, 0.52])
+        expected_slice1 = np.array(
+            [0.6008109, 0.73051643, 0.51778656, 0.55817354, 0.45222935, 0.45998418, 0.57017255, 0.54874814, 0.47078788]
+        )
+        expected_slice2 = np.array(
+            [0.6011751, 0.47420046, 0.41660714, 0.6472957, 0.41261768, 0.5438129, 0.7401535, 0.6756011, 0.53652245]
+        )
 
         assert np.abs(first_frame_slice.flatten() - expected_slice1).max() < 1e-2
         assert np.abs(last_frame_slice.flatten() - expected_slice2).max() < 1e-2

@@ -76,7 +76,7 @@ def main(correct, fail=None):
 
     done_tests = defaultdict(int)
     for line in correct_lines:
-        file, class_name, test_name, correct_line = line.split(";")
+        file, class_name, test_name, correct_line = line.split("::")
         if test_failures is None or "::".join([file, class_name, test_name]) in test_failures:
             overwrite_file(file, class_name, test_name, correct_line, done_tests)
 
