@@ -468,7 +468,7 @@ class AnimateDiffControlNetPipeline(
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
-        image=None,
+        video=None,
         controlnet_conditioning_scale=1.0,
         control_guidance_start=0.0,
         control_guidance_end=1.0,
@@ -527,20 +527,20 @@ class AnimateDiffControlNetPipeline(
             or is_compiled
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
-            if not isinstance(image, list):
-                raise TypeError(f"For single controlnet, `image` must be of type `list` but got {type(image)}")
-            if len(image) != num_frames:
-                raise ValueError(f"Excepted image to have length {num_frames} but got {len(image)=}")
+            if not isinstance(video, list):
+                raise TypeError(f"For single controlnet, `image` must be of type `list` but got {type(video)}")
+            if len(video) != num_frames:
+                raise ValueError(f"Excepted image to have length {num_frames} but got {len(video)=}")
         elif (
             isinstance(self.controlnet, MultiControlNetModel)
             or is_compiled
             and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
         ):
-            if not isinstance(image, list) or not isinstance(image[0], list):
-                raise TypeError(f"For multiple controlnets: `image` must be type list of lists but got {type(image)=}")
-            if len(image[0]) != num_frames:
-                raise ValueError(f"Expected length of image sublist as {num_frames} but got {len(image[0])=}")
-            if any(len(img) != len(image[0]) for img in image):
+            if not isinstance(video, list) or not isinstance(video[0], list):
+                raise TypeError(f"For multiple controlnets: `image` must be type list of lists but got {type(video)=}")
+            if len(video[0]) != num_frames:
+                raise ValueError(f"Expected length of image sublist as {num_frames} but got {len(video[0])=}")
+            if any(len(img) != len(video[0]) for img in video):
                 raise ValueError("All conditioning frame batches for multicontrolnet must be same size")
         else:
             assert False
@@ -624,36 +624,37 @@ class AnimateDiffControlNetPipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image with control_image_processor->control_video_processor
-    def prepare_image(
+    def prepare_video(
         self,
-        image,
+        video,
         width,
         height,
         batch_size,
-        num_images_per_prompt,
+        num_videos_per_prompt,
         device,
         dtype,
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        image = self.control_video_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
-        image_batch_size = image.shape[0]
+        video = self.control_video_processor.preprocess_video(video, height=height, width=width).to(
+            dtype=torch.float32
+        )
+        video = video.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        video_batch_size = video.shape[0]
 
-        if image_batch_size == 1:
+        if video_batch_size == 1:
             repeat_by = batch_size
         else:
             # image batch size is the same as prompt batch size
-            repeat_by = num_images_per_prompt
+            repeat_by = num_videos_per_prompt
 
-        image = image.repeat_interleave(repeat_by, dim=0)
-
-        image = image.to(device=device, dtype=dtype)
+        video = video.repeat_interleave(repeat_by, dim=0)
+        video = video.to(device=device, dtype=dtype)
 
         if do_classifier_free_guidance and not guess_mode:
-            image = torch.cat([image] * 2)
+            video = torch.cat([video] * 2)
 
-        return image
+        return video
 
     @property
     def guidance_scale(self):
@@ -828,7 +829,7 @@ class AnimateDiffControlNetPipeline(
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            image=conditioning_frames,
+            video=conditioning_frames,
             controlnet_conditioning_scale=controlnet_conditioning_scale,
             control_guidance_start=control_guidance_start,
             control_guidance_end=control_guidance_end,
@@ -889,33 +890,33 @@ class AnimateDiffControlNetPipeline(
             )
 
         if isinstance(controlnet, ControlNetModel):
-            conditioning_frames = self.prepare_image(
-                image=conditioning_frames,
+            conditioning_frames = self.prepare_video(
+                video=conditioning_frames,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_videos_per_prompt * num_frames,
-                num_images_per_prompt=num_videos_per_prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
         elif isinstance(controlnet, MultiControlNetModel):
-            cond_prepared_frames = []
+            cond_prepared_videos = []
             for frame_ in conditioning_frames:
-                prepared_frame = self.prepare_image(
-                    image=frame_,
+                prepared_video = self.prepare_video(
+                    video=frame_,
                     width=width,
                     height=height,
                     batch_size=batch_size * num_videos_per_prompt * num_frames,
-                    num_images_per_prompt=num_videos_per_prompt,
+                    num_videos_per_prompt=num_videos_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
-                cond_prepared_frames.append(prepared_frame)
-            conditioning_frames = cond_prepared_frames
+                cond_prepared_videos.append(prepared_video)
+            conditioning_frames = cond_prepared_videos
         else:
             assert False
 
@@ -942,7 +943,7 @@ class AnimateDiffControlNetPipeline(
 
         # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = (
-            {"image_embeds": ip_adapter_image_embeds}
+            {"image_embeds": image_embeds}
             if ip_adapter_image is not None or ip_adapter_image_embeds is not None
             else None
         )
