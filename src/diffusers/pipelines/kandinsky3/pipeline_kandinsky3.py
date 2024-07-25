@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Optional, Union
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
-from ...loaders import LoraLoaderMixin
+from ...loaders import StableDiffusionLoraLoaderMixin
 from ...models import Kandinsky3UNet, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
@@ -47,7 +47,7 @@ def downscale_height_and_width(height, width, scale_factor=8):
     return new_height * scale_factor, new_width * scale_factor
 
 
-class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
+class Kandinsky3Pipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->unet->movq"
     _callback_tensor_inputs = [
         "latents",

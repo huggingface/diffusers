@@ -21,7 +21,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
@@ -222,7 +222,7 @@ class FabricPipeline(DiffusionPipeline):
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
         if prompt is not None and isinstance(prompt, str):
