@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import torch
-from huggingface_hub import model_info
+from huggingface_hub import ModelCard, model_info
 from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
@@ -830,3 +830,83 @@ def _filter_null_components(init_dict: dict, passed_class_objs):
 
     init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
     return init_dict
+
+
+def _determine_current_device_map(device_map: dict, component_name: str):
+    current_device_map = None
+    if device_map is not None and len(device_map) > 0:
+        component_device = device_map.get(component_name, None)
+        if component_device is not None:
+            current_device_map = {"": component_device}
+    return current_device_map
+
+
+def _update_init_kwargs_with_connected_pipeline(
+    init_kwargs: dict, passed_pipe_kwargs: dict, passed_class_objs: dict, folder: str, **pipeline_loading_kwargs
+) -> dict:
+    from .pipeline_utils import DiffusionPipeline
+
+    modelcard = ModelCard.load(os.path.join(folder, "README.md"))
+    connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
+    load_kwargs = {
+        "cache_dir": pipeline_loading_kwargs.get("cache_dir"),
+        "force_download": pipeline_loading_kwargs.get("force_download"),
+        "proxies": pipeline_loading_kwargs.get("proxies"),
+        "local_files_only": pipeline_loading_kwargs.get("local_files_only"),
+        "token": pipeline_loading_kwargs.get("token"),
+        "revision": pipeline_loading_kwargs.get("revision"),
+        "torch_dtype": pipeline_loading_kwargs.get("torch_dtype"),
+        "custom_pipeline": pipeline_loading_kwargs.get("custom_pipeline"),
+        "custom_revision": pipeline_loading_kwargs.get("custom_revision"),
+        "provider": pipeline_loading_kwargs.get("provider"),
+        "sess_options": pipeline_loading_kwargs.get("sess_options"),
+        "device_map": pipeline_loading_kwargs.get("device_map"),
+        "max_memory": pipeline_loading_kwargs.get("max_memory"),
+        "offload_folder": pipeline_loading_kwargs.get("offload_folder"),
+        "offload_state_dict": pipeline_loading_kwargs.get("offload_state_dict"),
+        "low_cpu_mem_usage": pipeline_loading_kwargs.get("low_cpu_mem_usage"),
+        "variant": pipeline_loading_kwargs.get("variant"),
+        "use_safetensors": pipeline_loading_kwargs.get("use_safetensors"),
+    }
+
+    def get_connected_passed_kwargs(prefix):
+        connected_passed_class_obj = {
+            k.replace(f"{prefix}_", ""): w for k, w in passed_class_objs.items() if k.split("_")[0] == prefix
+        }
+        connected_passed_pipe_kwargs = {
+            k.replace(f"{prefix}_", ""): w for k, w in passed_pipe_kwargs.items() if k.split("_")[0] == prefix
+        }
+
+        connected_passed_kwargs = {**connected_passed_class_obj, **connected_passed_pipe_kwargs}
+        return connected_passed_kwargs
+
+    connected_pipes = {
+        prefix: DiffusionPipeline.from_pretrained(repo_id, **load_kwargs.copy(), **get_connected_passed_kwargs(prefix))
+        for prefix, repo_id in connected_pipes.items()
+        if repo_id is not None
+    }
+
+    for prefix, connected_pipe in connected_pipes.items():
+        # add connected pipes to `init_kwargs` with <prefix>_<component_name>, e.g. "prior_text_encoder"
+        init_kwargs.update(
+            {"_".join([prefix, name]): component for name, component in connected_pipe.components.items()}
+        )
+
+    return init_kwargs
+
+
+def _ensure_all_expected_modules_presence(
+    init_kwargs: dict, passed_class_objs: dict, pipeline_class, expected_modules: list, optional_kwargs: dict
+) -> dict:
+    missing_modules = set(expected_modules) - set(init_kwargs.keys())
+    passed_modules = list(passed_class_objs.keys())
+    optional_modules = pipeline_class._optional_components
+    if len(missing_modules) > 0 and missing_modules <= set(passed_modules + optional_modules):
+        for module in missing_modules:
+            init_kwargs[module] = passed_class_objs.get(module, None)
+    elif len(missing_modules) > 0:
+        passed_modules = set(list(init_kwargs.keys()) + list(passed_class_objs.keys())) - optional_kwargs
+        raise ValueError(
+            f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+        )
+    return init_kwargs

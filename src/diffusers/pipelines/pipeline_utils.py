@@ -71,7 +71,9 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
+    _determine_current_device_map,
     _determine_pipeline_class,
+    _ensure_all_expected_modules_presence,
     _fetch_class_library_tuple,
     _fetch_init_kwargs,
     _filter_null_components,
@@ -81,6 +83,7 @@ from .pipeline_loading_utils import (
     _identify_model_variants,
     _maybe_raise_warning_for_inpainting,
     _unwrap_model,
+    _update_init_kwargs_with_connected_pipeline,
     is_safetensors_compatible,
     load_sub_model,
     maybe_raise_or_warn,
@@ -627,6 +630,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> pipeline.scheduler = scheduler
         ```
         """
+        # Copy the kwargs to re-use during loading connected pipeline.
+        kwargs_copied = kwargs.copy()
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -750,7 +756,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             pipeline_class=pipeline_class,
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             config=config_dict,
-        )  # TODO
+        )
 
         # 4. Define expected modules given pipeline signature
         # and define non-None initialized modules (=`init_kwargs`)
@@ -813,22 +819,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 7. Load each module in the pipeline
         current_device_map = None
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
-            if final_device_map is not None and len(final_device_map) > 0:
-                component_device = final_device_map.get(name, None)
-                if component_device is not None:
-                    current_device_map = {"": component_device}
-                else:
-                    current_device_map = None
+            # 7.1 device_map shenanigans
+            current_device_map = _determine_current_device_map(device_map=final_device_map, component_name=name)
 
-            # 7.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
+            # 7.2 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
-            # 7.2 Define all importable classes
+            # 7.3 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
             importable_classes = ALL_IMPORTABLE_CLASSES
             loaded_sub_model = None
 
-            # 7.3 Use passed sub model or load class_name from library_name
+            # 7.4 Use passed sub model or load class_name from library_name
             if name in passed_class_obj:
                 # if the model is in a pipeline module, then we load it from the pipeline
                 # check that passed_class_obj has correct parent class
@@ -866,67 +868,24 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
+        # 8. Handle connected pipelines.
         if pipeline_class._load_connected_pipes and os.path.isfile(os.path.join(cached_folder, "README.md")):
-            modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
-            connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
-            load_kwargs = {
-                "cache_dir": cache_dir,
-                "force_download": force_download,
-                "proxies": proxies,
-                "local_files_only": local_files_only,
-                "token": token,
-                "revision": revision,
-                "torch_dtype": torch_dtype,
-                "custom_pipeline": custom_pipeline,
-                "custom_revision": custom_revision,
-                "provider": provider,
-                "sess_options": sess_options,
-                "device_map": device_map,
-                "max_memory": max_memory,
-                "offload_folder": offload_folder,
-                "offload_state_dict": offload_state_dict,
-                "low_cpu_mem_usage": low_cpu_mem_usage,
-                "variant": variant,
-                "use_safetensors": use_safetensors,
-            }
-
-            def get_connected_passed_kwargs(prefix):
-                connected_passed_class_obj = {
-                    k.replace(f"{prefix}_", ""): w for k, w in passed_class_obj.items() if k.split("_")[0] == prefix
-                }
-                connected_passed_pipe_kwargs = {
-                    k.replace(f"{prefix}_", ""): w for k, w in passed_pipe_kwargs.items() if k.split("_")[0] == prefix
-                }
-
-                connected_passed_kwargs = {**connected_passed_class_obj, **connected_passed_pipe_kwargs}
-                return connected_passed_kwargs
-
-            connected_pipes = {
-                prefix: DiffusionPipeline.from_pretrained(
-                    repo_id, **load_kwargs.copy(), **get_connected_passed_kwargs(prefix)
-                )
-                for prefix, repo_id in connected_pipes.items()
-                if repo_id is not None
-            }
-
-            for prefix, connected_pipe in connected_pipes.items():
-                # add connected pipes to `init_kwargs` with <prefix>_<component_name>, e.g. "prior_text_encoder"
-                init_kwargs.update(
-                    {"_".join([prefix, name]): component for name, component in connected_pipe.components.items()}
-                )
-
-        # 8. Potentially add passed objects if expected
-        missing_modules = set(expected_modules) - set(init_kwargs.keys())
-        passed_modules = list(passed_class_obj.keys())
-        optional_modules = pipeline_class._optional_components
-        if len(missing_modules) > 0 and missing_modules <= set(passed_modules + optional_modules):
-            for module in missing_modules:
-                init_kwargs[module] = passed_class_obj.get(module, None)
-        elif len(missing_modules) > 0:
-            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys())) - optional_kwargs
-            raise ValueError(
-                f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+            init_kwargs = _update_init_kwargs_with_connected_pipeline(
+                init_kwargs=init_kwargs,
+                passed_pipe_kwargs=passed_pipe_kwargs,
+                passed_class_objs=passed_class_obj,
+                folder=cached_folder,
+                **kwargs_copied,
             )
+
+        # 9. Potentially add passed objects if expected
+        init_kwargs = _ensure_all_expected_modules_presence(
+            init_kwargs=init_kwargs,
+            passed_class_objs=passed_class_obj,
+            pipeline_class=pipeline_class,
+            expected_modules=expected_modules,
+            optional_kwargs=optional_kwargs,
+        )
 
         # 10. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
