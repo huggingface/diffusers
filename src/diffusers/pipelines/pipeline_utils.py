@@ -963,13 +963,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # 10. Instantiate the pipeline
-        model = pipeline_class(**init_kwargs)
+        final_pipeline = pipeline_class(**init_kwargs)
 
         # 11. Save where the model was instantiated from
-        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        final_pipeline.register_to_config(_name_or_path=pretrained_model_name_or_path)
         if device_map is not None:
-            setattr(model, "hf_device_map", final_device_map)
-        return model
+            setattr(final_pipeline, "hf_device_map", final_device_map)
+        return final_pipeline
 
     @property
     def name_or_path(self) -> str:
