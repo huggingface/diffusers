@@ -40,7 +40,13 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import AnimateDiffControlNetPipeline, AutoencoderKL, ControlNetModel, MotionAdapter, LCMScheduler
+        >>> from diffusers import (
+        ...     AnimateDiffControlNetPipeline,
+        ...     AutoencoderKL,
+        ...     ControlNetModel,
+        ...     MotionAdapter,
+        ...     LCMScheduler,
+        ... )
         >>> from diffusers.utils import export_to_gif, load_video
 
         >>> # Additionally, you will need a preprocess videos before they can be used with the ControlNet
@@ -62,11 +68,15 @@ EXAMPLE_DOC_STRING = """
         ...     vae=vae,
         ... ).to(device="cuda", dtype=torch.float16)
         >>> pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
-        >>> pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora")
+        >>> pipe.load_lora_weights(
+        ...     "wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora"
+        ... )
         >>> pipe.set_adapters(["lcm-lora"], [0.8])
 
         >>> depth_detector = ZoeDetector.from_pretrained("lllyasviel/Annotators").to("cuda")
-        >>> video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
+        >>> video = load_video(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif"
+        ... )
         >>> conditioning_frames = []
 
         >>> with pipe.progress_bar(total=len(video)) as progress_bar:
