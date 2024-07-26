@@ -22,6 +22,7 @@ import torch
 import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
+import time
 
 from ..models.embeddings import (
     ImageProjection,
@@ -203,6 +204,7 @@ class UNet2DConditionLoadersMixin:
         if is_custom_diffusion:
             attn_processors = self._process_custom_diffusion(state_dict=state_dict)
         elif is_lora:
+            cur_time = time.time()
             is_model_cpu_offload, is_sequential_cpu_offload = self._process_lora(
                 state_dict=state_dict,
                 unet_identifier_key=self.unet_name,
@@ -210,6 +212,7 @@ class UNet2DConditionLoadersMixin:
                 adapter_name=adapter_name,
                 _pipeline=_pipeline,
             )
+            print(f"Load Time for lora processing inside load_attn_procs: {time.time() - cur_time:.2f}", flush=True)
         else:
             raise ValueError(
                 f"{model_file} does not seem to be in the correct format expected by Custom Diffusion training."
@@ -335,8 +338,9 @@ class UNet2DConditionLoadersMixin:
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
-
+            cur_time = time.time()
             inject_adapter_in_model(lora_config, self, adapter_name=adapter_name)
+            print(f"injectholomew time: {time.time() - cur_time:.2f}", flush=True)
             incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name)
 
             if incompatible_keys is not None:

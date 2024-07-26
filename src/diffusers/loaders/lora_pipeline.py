@@ -16,6 +16,8 @@ from typing import Callable, Dict, List, Optional, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
+from torch import nn
+import time
 
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -97,7 +99,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
-
+        cur_time = time.time()
         self.load_lora_into_unet(
             state_dict,
             network_alphas=network_alphas,
@@ -105,6 +107,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=self,
         )
+        print(f"time spent loading unet: {time.time() - cur_time:.2f}", flush=True)
+        cur_time = time.time()
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=network_alphas,
@@ -115,6 +119,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=self,
         )
+        print(f"time spent loading text encoder: {time.time() - cur_time:.2f}", flush=True)
 
     @classmethod
     @validate_hf_hub_args
@@ -257,9 +262,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         if not only_text_encoder:
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
+            cur_time = time.time()
             unet.load_attn_procs(
                 state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline
             )
+            print(f"time spent loading unet: {time.time() - cur_time:.2f}", flush=True)
 
     @classmethod
     def load_lora_into_text_encoder(
@@ -558,11 +565,15 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
+        
+        cur_time = time.time()
 
         self.load_lora_into_unet(
             state_dict, network_alphas=network_alphas, unet=self.unet, adapter_name=adapter_name, _pipeline=self
         )
+        print(f"Time taken to load LoRA into UNet: {time.time() - cur_time:.2f}", flush=True)
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
+        cur_time = time.time()
         if len(text_encoder_state_dict) > 0:
             self.load_lora_into_text_encoder(
                 text_encoder_state_dict,
@@ -573,8 +584,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 adapter_name=adapter_name,
                 _pipeline=self,
             )
+        print(f"Time taken to load LoRA into Text Encoder: {time.time() - cur_time:.2f}", flush=True)
 
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
+        cur_time = time.time()
         if len(text_encoder_2_state_dict) > 0:
             self.load_lora_into_text_encoder(
                 text_encoder_2_state_dict,
@@ -585,6 +598,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 adapter_name=adapter_name,
                 _pipeline=self,
             )
+        print(f"Time taken to load LoRA into Text Encoder 2: {time.time() - cur_time:.2f}", flush=True)
 
     @classmethod
     @validate_hf_hub_args

@@ -46,7 +46,11 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
         if "text" in layer:
             new_state_dict[layer] = state_dict.pop(layer)
         else:
-            layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
+            try:
+                layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
+            except:
+                state_dict.pop(layer)
+                continue
             if sgm_patterns[0] in layer:
                 input_block_ids.add(layer_id)
             elif sgm_patterns[1] in layer:
@@ -54,7 +58,9 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
             elif sgm_patterns[2] in layer:
                 output_block_ids.add(layer_id)
             else:
-                raise ValueError(f"Checkpoint not supported because layer {layer} not supported.")
+                state_dict.pop(layer)
+                continue
+                # raise ValueError(f"Checkpoint not supported because layer {layer} not supported.")
 
     input_blocks = {
         layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
@@ -75,7 +81,11 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
         layer_in_block_id = (i - 1) % (unet_config.layers_per_block + 1)
 
         for key in input_blocks[i]:
-            inner_block_id = int(key.split(delimiter)[block_slice_pos])
+            try:
+                inner_block_id = int(key.split(delimiter)[block_slice_pos])
+            except:
+                state_dict.pop(key)
+                continue
             inner_block_key = inner_block_map[inner_block_id] if "op" not in key else "downsamplers"
             inner_layers_in_block = str(layer_in_block_id) if "op" not in key else "0"
             new_key = delimiter.join(
