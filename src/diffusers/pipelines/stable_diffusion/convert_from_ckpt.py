@@ -1370,6 +1370,8 @@ def download_from_original_stable_diffusion_ckpt(
 
     if "unet_config" in original_config["model"]["params"]:
         original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
+    elif "network_config" in original_config["model"]["params"]:
+        original_config["model"]["params"]["network_config"]["params"]["in_channels"] = num_in_channels
 
     if (
         "parameterization" in original_config["model"]["params"]
