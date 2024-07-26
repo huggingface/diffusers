@@ -1517,7 +1517,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
                 )
             else:
-                raise ValueError("Invalid `down_block_type` encountered. Must be one of `CrossAttnDownBlockMotion` or `DownBlockMotion`")
+                raise ValueError(
+                    "Invalid `down_block_type` encountered. Must be one of `CrossAttnDownBlockMotion` or `DownBlockMotion`"
+                )
 
             self.down_blocks.append(down_block)
 
@@ -1592,7 +1594,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 self.num_upsamplers += 1
             else:
                 add_upsample = False
-            
+
             if up_block_type == "CrossAttnUpBlockMotion":
                 up_block = CrossAttnUpBlockMotion(
                     in_channels=input_channel,
@@ -1630,7 +1632,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     temporal_transformer_layers_per_block=reverse_temporal_transformer_layers_per_block[i],
                 )
             else:
-                raise ValueError("Invalid `up_block_type` encountered. Must be one of `CrossAttnUpBlockMotion` or `UpBlockMotion`")
+                raise ValueError(
+                    "Invalid `up_block_type` encountered. Must be one of `CrossAttnUpBlockMotion` or `UpBlockMotion`"
+                )
 
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel

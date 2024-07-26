@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from ...utils import deprecate, is_torch_version, logging
+from ...utils import is_torch_version, logging
 from ...utils.torch_utils import apply_freeu
 from ..attention import Attention
 from ..resnet import (
@@ -27,7 +27,6 @@ from ..resnet import (
     TemporalConvLayer,
     Upsample2D,
 )
-from ..transformers.dual_transformer_2d import DualTransformer2DModel
 from ..transformers.transformer_2d import Transformer2DModel
 from ..transformers.transformer_temporal import (
     TransformerSpatioTemporalModel,
