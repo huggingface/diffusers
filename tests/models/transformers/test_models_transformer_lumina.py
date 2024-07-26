@@ -35,7 +35,12 @@ class LuminaNextDiT2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def dummy_input(self):
-
+        '''
+        Args:
+            None
+        Returns:
+            Dict: Dictionary of dummy input tensors
+        '''
         batch_size = 2 # N
         num_channels = 4 # C
         height = width = 16 # H, W
@@ -60,13 +65,32 @@ class LuminaNextDiT2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
+        '''
+        Args: 
+            None
+        Returns:
+            Tuple: (int, int, int)
+        '''
         return (4, 16, 16)
 
     @property
     def output_shape(self):
+        '''
+        Args:
+            None
+        Returns:
+            Tuple: (int, int, int)
+        '''
         return (4, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
+        '''
+        Args:
+            None
+        
+        Returns:
+            Tuple: (Dict, Dict)
+        '''
         init_dict = {
             "sample_size": 16,
             "patch_size": 2,
