@@ -3388,4 +3388,6 @@ AttentionProcessor = Union[
     CustomDiffusionAttnProcessor2_0,
     PAGCFGIdentitySelfAttnProcessor2_0,
     PAGIdentitySelfAttnProcessor2_0,
+    PAGCFGHunyuanAttnProcessor2_0,
+    PAGHunyuanAttnProcessor2_0,
 ]

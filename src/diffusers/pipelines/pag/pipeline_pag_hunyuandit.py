@@ -24,6 +24,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, HunyuanDiT2DModel
+from ...models.attention_processor import PAGCFGHunyuanAttnProcessor2_0, PAGHunyuanAttnProcessor2_0
 from ...models.embeddings import get_2d_rotary_pos_embed
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import DDPMScheduler
@@ -34,7 +35,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .pag_utils import HunyuanDiTPAGMixin
+from .pag_utils import PAGMixin
 
 
 if is_torch_xla_available():
@@ -57,7 +58,7 @@ EXAMPLE_DOC_STRING = """
         ...     "Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers",
         ...     torch_dtype=torch.float16,
         ...     enable_pag=True,
-        ...     pag_applied_layers=[16, 17, 18, 19],
+        ...     pag_applied_layers=[14],
         ... ).to("cuda")
 
         >>> # prompt = "an astronaut riding a horse"
@@ -140,7 +141,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class HunyuanDiTPAGPipeline(DiffusionPipeline, HunyuanDiTPAGMixin):
+class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
     r"""
     Pipeline for English/Chinese-to-image generation using HunyuanDiT and [Perturbed Attention
     Guidance](https://huggingface.co/docs/diffusers/en/using-diffusers/pag).
@@ -243,7 +244,9 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, HunyuanDiTPAGMixin):
             else 128
         )
 
-        self.set_pag_applied_layers(pag_applied_layers)
+        self.set_pag_applied_layers(
+            pag_applied_layers, pag_attn_processors=(PAGCFGHunyuanAttnProcessor2_0(), PAGHunyuanAttnProcessor2_0())
+        )
 
     # Copied from diffusers.pipelines.hunyuandit.pipeline_hunyuandit.HunyuanDiTPipeline.encode_prompt
     def encode_prompt(
