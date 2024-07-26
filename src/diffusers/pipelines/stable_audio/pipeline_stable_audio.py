@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import scipy
         >>> import torch
-        >>> import torchaudio
+        >>> import soundfile as sf
         >>> from diffusers import StableAudioPipeline
 
         >>> repo_id = "ylacombe/stable-audio-1.0"  # TODO (YL): change once set
@@ -69,17 +69,8 @@ EXAMPLE_DOC_STRING = """
         ...     generator=generator,
         ... ).audios
 
-        >>> # Peak normalize, clip, convert to int16, and save to file
-        >>> output = (
-        ...     audio[0]
-        ...     .to(torch.float32)
-        ...     .div(torch.max(torch.abs(audio[0])))
-        ...     .clamp(-1, 1)
-        ...     .mul(32767)
-        ...     .to(torch.int16)
-        ...     .cpu()
-        ... )
-        >>> torchaudio.save("hammer.wav", output, pipe.vae.sampling_rate)
+        >>> output = audio[0].T.float().cpu().numpy()
+        >>> sf.write("hammer.wav", output, pipe.vae.sampling_rate)
         ```
 """
 
