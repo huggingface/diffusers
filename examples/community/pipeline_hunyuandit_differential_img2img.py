@@ -834,6 +834,7 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
         target_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         use_resolution_binning: bool = True,
+        map: torch.Tensor = None,
         original_image: Union[
             torch.Tensor,
             PIL.Image.Image,
