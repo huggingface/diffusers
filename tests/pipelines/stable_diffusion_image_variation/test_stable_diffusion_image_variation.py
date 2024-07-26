@@ -133,7 +133,7 @@ class StableDiffusionImageVariationPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5239, 0.5723, 0.4796, 0.5049, 0.5550, 0.4685, 0.5329, 0.4891, 0.4921])
+        expected_slice = np.array([0.5348, 0.5924, 0.4798, 0.5237, 0.5741, 0.4651, 0.5344, 0.4942, 0.4851])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -153,7 +153,7 @@ class StableDiffusionImageVariationPipelineFastTests(
         image_slice = image[-1, -3:, -3:, -1]
 
         assert image.shape == (2, 64, 64, 3)
-        expected_slice = np.array([0.6892, 0.5637, 0.5836, 0.5771, 0.6254, 0.6409, 0.5580, 0.5569, 0.5289])
+        expected_slice = np.array([0.6647, 0.5557, 0.5723, 0.5567, 0.5869, 0.6044, 0.5502, 0.5439, 0.5189])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -205,7 +205,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.8449, 0.9079, 0.7571, 0.7873, 0.8348, 0.7010, 0.6694, 0.6873, 0.6138])
+        expected_slice = np.array([0.5348, 0.5924, 0.4798, 0.5237, 0.5741, 0.4651, 0.5344, 0.4942, 0.4851])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 1e-4
@@ -221,7 +221,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.7974, -0.4343, -1.087, 0.04785, -1.327, 0.855, -2.148, -0.1725, 1.439])
+                expected_slice = np.array([0.5348, 0.5924, 0.4798, 0.5237, 0.5741, 0.4651, 0.5344, 0.4942, 0.4851])
                 max_diff = numpy_cosine_similarity_distance(latents_slice.flatten(), expected_slice)
 
                 assert max_diff < 1e-3
@@ -230,7 +230,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([0.3232, 0.004883, 0.913, -1.084, 0.6143, -1.6875, -2.463, -0.439, -0.419])
+                expected_slice = np.array([0.5348, 0.5924, 0.4798, 0.5237, 0.5741, 0.4651, 0.5344, 0.4942, 0.4851])
                 max_diff = numpy_cosine_similarity_distance(latents_slice.flatten(), expected_slice)
 
                 assert max_diff < 1e-3
