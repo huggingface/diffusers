@@ -218,8 +218,8 @@ class Attention(nn.Module):
             self.to_k = None
             self.to_v = None
 
+        self.added_proj_bias = added_proj_bias
         if self.added_kv_proj_dim is not None:
-            self.added_proj_bias = added_proj_bias
             self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_kv_dim, bias=added_proj_bias)
             self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_kv_dim, bias=added_proj_bias)
             if self.context_pre_only is not None:
@@ -1279,8 +1279,6 @@ class FusedAuraFlowAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
-        *args,
-        **kwargs,
     ) -> torch.FloatTensor:
         batch_size = hidden_states.shape[0]
 
