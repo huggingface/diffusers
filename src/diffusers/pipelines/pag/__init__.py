@@ -37,7 +37,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_pag_controlnet_sd_xl import StableDiffusionXLControlNetaPAGPipeline
+        from .pipeline_pag_controlnet_sd_xl import StableDiffusionXLControlNetPAGPipeline
         from .pipeline_pag_controlnet_sd_xl_img2img import StableDiffusionXLControlNetPAGImg2ImgPipeline
         from .pipeline_pag_sd import StableDiffusionPAGPipeline
         from .pipeline_pag_sd_xl import StableDiffusionXLPAGPipeline
