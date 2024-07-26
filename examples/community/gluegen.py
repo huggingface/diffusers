@@ -7,7 +7,7 @@ from transformers import AutoModel, AutoTokenizer, CLIPImageProcessor
 
 from diffusers import DiffusionPipeline
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
@@ -194,7 +194,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, LoraLoaderMixin):
+class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionLoraLoaderMixin):
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -290,7 +290,7 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -424,7 +424,7 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, Lo
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
+        if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
             unscale_lora_layers(self.text_encoder, lora_scale)
 
