@@ -55,11 +55,18 @@ _import_structure = {}
 
 if is_torch_available():
     _import_structure["single_file_model"] = ["FromOriginalModelMixin"]
+
     _import_structure["unet"] = ["UNet2DConditionLoadersMixin"]
     _import_structure["utils"] = ["AttnProcsLayers"]
     if is_transformers_available():
         _import_structure["single_file"] = ["FromSingleFileMixin"]
-        _import_structure["lora"] = ["LoraLoaderMixin", "StableDiffusionXLLoraLoaderMixin", "SD3LoraLoaderMixin"]
+        _import_structure["lora_pipeline"] = [
+            "AmusedLoraLoaderMixin",
+            "StableDiffusionLoraLoaderMixin",
+            "SD3LoraLoaderMixin",
+            "StableDiffusionXLLoraLoaderMixin",
+            "LoraLoaderMixin",
+        ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = ["IPAdapterMixin"]
 
@@ -74,7 +81,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 
         if is_transformers_available():
             from .ip_adapter import IPAdapterMixin
-            from .lora import LoraLoaderMixin, SD3LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin
+            from .lora_pipeline import (
+                AmusedLoraLoaderMixin,
+                LoraLoaderMixin,
+                SD3LoraLoaderMixin,
+                StableDiffusionLoraLoaderMixin,
+                StableDiffusionXLLoraLoaderMixin,
+            )
             from .single_file import FromSingleFileMixin
             from .textual_inversion import TextualInversionLoaderMixin
 
