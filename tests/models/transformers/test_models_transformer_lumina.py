@@ -43,7 +43,8 @@ class LuminaNextDiT2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
         sequence_length = 16 # L
 
         hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
-        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
+        encoder_hidden_states = torch.randn(
+            (batch_size, sequence_length, embedding_dim)).to(torch_device)
         timestep = torch.rand(size=(batch_size,)).to(torch_device)
         encoder_mask = torch.randn(size=(batch_size, sequence_length)).to(torch_device)
         image_rotary_emb = torch.randn((384, 384, 4)).to(torch_device)
@@ -85,3 +86,4 @@ class LuminaNextDiT2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
 
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+    
