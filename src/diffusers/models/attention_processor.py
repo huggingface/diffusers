@@ -1279,6 +1279,8 @@ class FusedAuraFlowAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
+        *args,
+        **kwargs
     ) -> torch.FloatTensor:
         batch_size = hidden_states.shape[0]
 
