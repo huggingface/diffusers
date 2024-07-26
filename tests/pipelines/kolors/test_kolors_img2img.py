@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
 import unittest
 
 import numpy as np
@@ -23,10 +24,13 @@ from diffusers import (
     ChatGLMModel,
     ChatGLMTokenizer,
     EulerDiscreteScheduler,
-    KolorsPipeline,
+    KolorsImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+)
 
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
@@ -40,14 +44,15 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KolorsPipeline
+class KolorsPipelineImg2ImgFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = KolorsImg2ImgPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"add_text_embeds", "add_time_ids"})
 
+    # Copied from tests.pipelines.kolors.test_kolors.KolorsPipelineFastTests.get_dummy_components
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -102,17 +107,24 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
+        image = image / 2 + 0.5
+
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
+            "image": image,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "output_type": "np",
+            "strength": 0.8,
         }
+
         return inputs
 
     def test_inference(self):
@@ -129,16 +141,13 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertEqual(image.shape, (1, 64, 64, 3))
         expected_slice = np.array(
-            [0.26413745, 0.4425478, 0.4102801, 0.42693347, 0.52529025, 0.3867405, 0.47512037, 0.41538602, 0.43855375]
+            [0.54823864, 0.43654007, 0.4886489, 0.63072854, 0.53641886, 0.4896852, 0.62123513, 0.5621531, 0.42809626]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
-    def test_save_load_optional_components(self):
-        super().test_save_load_optional_components(expected_max_difference=2e-4)
-
-    def test_save_load_float16(self):
-        super().test_save_load_float16(expected_max_diff=2e-1)
-
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=5e-4)
+        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=3e-3)
+
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=7e-2)
