@@ -266,8 +266,3 @@ class StableDiffusionXLControlNetPAGImg2ImgPipelineFastTests(
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
-    
-
-        
-
-
