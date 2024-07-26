@@ -1641,18 +1641,18 @@ from io import BytesIO
 from PIL import Image
 import torch
 from diffusers import DDIMScheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionImg2ImgPipeline
+from diffusers import DiffusionPipeline
 
 # Use the DDIMScheduler scheduler here instead
 scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
                                             subfolder="scheduler")
 
 
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
-                                                custom_pipeline="stable_diffusion_tensorrt_img2img",
-                                                variant='fp16',
-                                                torch_dtype=torch.float16,
-                                                scheduler=scheduler,)
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
+                                            custom_pipeline="stable_diffusion_tensorrt_img2img",
+                                            variant='fp16',
+                                            torch_dtype=torch.float16,
+                                            scheduler=scheduler,)
 
 # re-use cached folder to save ONNX models and TensorRT Engines
 pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", variant='fp16',)
