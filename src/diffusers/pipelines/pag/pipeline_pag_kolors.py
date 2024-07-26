@@ -47,17 +47,21 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import KolorsPipeline
+        >>> from diffusers import AutoPipelineForText2Image
 
-        >>> pipe = KolorsPipeline.from_pretrained(
-        ...     "Kwai-Kolors/Kolors-diffusers", variant="fp16", torch_dtype=torch.float16
+        >>> pipe = AutoPipelineForText2Image.from_pretrained(
+        ...     "Kwai-Kolors/Kolors-diffusers",
+        ...     variant="fp16",
+        ...     torch_dtype=torch.float16,
+        ...     enable_pag=True,
+        ...     pag_applied_layers=["down.block_2.attentions_1", "up.block_0.attentions_1"],
         ... )
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = (
         ...     "A photo of a ladybug, macro, zoom, high quality, film, holding a wooden sign with the text 'KOLORS'"
         ... )
-        >>> image = pipe(prompt).images[0]
+        >>> image = pipe(prompt, guidance_scale=5.5, pag_scale=1.5).images[0]
         ```
 """
 
@@ -207,6 +211,7 @@ class KolorsPAGPipeline(
 
         self.set_pag_applied_layers(pag_applied_layers)
 
+    # Copied from diffusers.pipelines.kolors.pipeline_kolors.KolorsPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt,
@@ -460,6 +465,7 @@ class KolorsPAGPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.kolors.pipeline_kolors.KolorsPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
