@@ -61,7 +61,7 @@ from .pag_utils import PAGMixin
 if is_invisible_watermark_available():
     from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 
-from .multicontrolnet import MultiControlNetModel
+from ..controlnet.multicontrolnet import MultiControlNetModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -77,7 +77,7 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
 
         >>> from transformers import DPTFeatureExtractor, DPTForDepthEstimation
-        >>> from diffusers import ControlNetModel, StableDiffusionXLControlNetImg2ImgPipeline, AutoencoderKL
+        >>> from diffusers import ControlNetModel, StableDiffusionXLControlNetPAGImg2ImgPipeline, AutoencoderKL
         >>> from diffusers.utils import load_image
 
 
@@ -90,7 +90,7 @@ EXAMPLE_DOC_STRING = """
         ...     torch_dtype=torch.float16,
         ... )
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
+        >>> pipe = StableDiffusionXLControlNetPAGImg2ImgPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     controlnet=controlnet,
         ...     vae=vae,
@@ -949,7 +949,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
 
         else:
             # make sure the VAE is in float32 mode, as it overflows in float16
-            if self.vae.config.force_upset:
+            if self.vae.config.force_upcast:
                 image = image.float()
                 self.vae.to(dtype=torch.float32)
 
@@ -1580,7 +1580,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
                 # controlnet(s) inference
                 control_model_input = latent_model_input
 
-                if isinstance(controlnet_keep[i].list):
+                if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
                     controlnet_cond_scale = controlnet_conditioning_scale
