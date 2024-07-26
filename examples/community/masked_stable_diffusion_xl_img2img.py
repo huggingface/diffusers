@@ -1,21 +1,24 @@
-import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from PIL import Image, ImageFilter
-import torch
-
 import numpy as np
+import torch
+from PIL import Image, ImageFilter
 
+from diffusers.image_processor import PipelineImageInput
+from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img import (
+    StableDiffusionXLImg2ImgPipeline,
+    rescale_noise_cfg,
+    retrieve_latents,
+    retrieve_timesteps,
+)
 from diffusers.utils import (
     deprecate,
     is_torch_xla_available,
     logging,
 )
-from diffusers.image_processor import PipelineImageInput
-from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img import StableDiffusionXLImg2ImgPipeline, retrieve_latents, retrieve_timesteps, rescale_noise_cfg
-from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
-
 from diffusers.utils.torch_utils import randn_tensor
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -29,7 +32,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
-    debug_save = 0 
+    debug_save = 0
 
     @torch.no_grad()
     def __call__(
@@ -79,7 +82,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
             List[Image.Image],
             List[np.ndarray],
         ] = None,
-        blur=24, 
+        blur=24,
         blur_compose=4,
         sample_mode='sample',
         **kwargs
@@ -283,7 +286,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
         )
 
         # mean of the latent distribution
-        # it is multiplied by self.vae.config.scaling_factor 
+        # it is multiplied by self.vae.config.scaling_factor
         non_paint_latents = self.prepare_latents(
                         original_image,
                         latent_timestep,
@@ -292,7 +295,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
                         prompt_embeds.dtype,
                         device,
                         generator,
-                        add_noise=False, 
+                        add_noise=False,
                         sample_mode="argmax")
 
         if self.debug_save:
@@ -398,7 +401,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
 
                 shape = non_paint_latents.shape
                 noise = randn_tensor(shape, generator=generator, device=device, dtype=latents.dtype)
-                # noisy latent code of input image at current step 
+                # noisy latent code of input image at current step
                 orig_latents_t = non_paint_latents
                 orig_latents_t = self.scheduler.add_noise(non_paint_latents, noise, t.unsqueeze(0))
 
@@ -491,7 +494,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
             if self.debug_save:
                 image_gen = self.latents_to_img(latents)
                 image_gen[0].save("from_latent.png")
-                
+
             if latent_mask is not None:
                 # interpolate with latent mask
                 latents = torch.lerp(non_paint_latents, latents, latent_mask)
