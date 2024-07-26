@@ -37,9 +37,9 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
             sample_size=4,
             patch_size=2,
             in_channels=4,
-            hidden_size=8,
+            hidden_size=4,
             num_layers=2,
-            num_attention_heads=2,
+            num_attention_heads=1,
             num_kv_heads=1,
             multiple_of=16,
             ffn_dim_multiplier=None,
@@ -57,10 +57,10 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
 
         torch.manual_seed(0)
         config = GemmaConfig(
-            head_dim=4,
+            head_dim=2,
             hidden_size=8,
             intermediate_size=37,
-            num_attention_heads=1,
+            num_attention_heads=4,
             num_hidden_layers=2,
             num_key_value_heads=4,
         )
