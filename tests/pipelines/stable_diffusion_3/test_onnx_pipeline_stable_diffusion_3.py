@@ -12,7 +12,6 @@ from diffusers.utils.testing_utils import (
     is_onnx_available
 )
 
-
 from ..test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
 if is_onnx_available():
