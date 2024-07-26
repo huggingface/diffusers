@@ -81,7 +81,7 @@ Diffusers 라이브러리와 관련된 모든 질문이나 의견은 [토론 포
 - 이슈가 최신 Diffusers 버전으로 업데이트하면 해결될 수 있는지 확인해주세요. 이슈를 게시하기 전에 `python -c "import diffusers; print(diffusers.__version__)"` 명령을 실행하여 현재 사용 중인 Diffusers 버전이 최신 버전과 일치하거나 더 높은지 확인해주세요.
 - 새로운 이슈를 열 때 투자하는 노력이 많을수록 답변의 품질이 높아지고 Diffusers 이슈 전체의 품질도 향상됩니다.
 
-#### 2.1 재현가능하고 최소한인 버그 리포트 [[21-reproducible-minimal-bug-reports]]
+#### 2.1 재현 가능한 최소한의 버그 리포트 [[21-reproducible-minimal-bug-reports]]
 
 새로운 이슈는 일반적으로 다음과 같은 내용을 포함합니다.
 
