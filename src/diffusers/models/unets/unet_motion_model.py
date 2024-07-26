@@ -1512,7 +1512,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     resnet_groups=norm_num_groups,
                     add_downsample=not is_final_block,
                     downsample_padding=downsample_padding,
-                    temporal_num_attention_heads=motion_num_attention_heads,
+                    temporal_num_attention_heads=motion_num_attention_heads[i],
                     temporal_max_seq_length=motion_max_seq_length,
                     temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
                 )
