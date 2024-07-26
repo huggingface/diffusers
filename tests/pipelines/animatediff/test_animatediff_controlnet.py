@@ -11,6 +11,8 @@ from diffusers import (
     AutoencoderKL,
     ControlNetModel,
     DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    LCMScheduler,
     MotionAdapter,
     StableDiffusionPipeline,
     UNet2DConditionModel,
@@ -360,6 +362,52 @@ class AnimateDiffControlNetPipelineFastTests(
             1e-4,
             "Disabling of FreeInit should lead to results similar to the default pipeline results",
         )
+
+    def test_free_init_with_schedulers(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffControlNetPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        inputs_normal = self.get_dummy_inputs(torch_device)
+        frames_normal = pipe(**inputs_normal).frames[0]
+
+        schedulers_to_test = [
+            DPMSolverMultistepScheduler.from_config(
+                components["scheduler"].config,
+                timestep_spacing="linspace",
+                beta_schedule="linear",
+                algorithm_type="dpmsolver++",
+                steps_offset=1,
+                clip_sample=False,
+            ),
+            LCMScheduler.from_config(
+                components["scheduler"].config,
+                timestep_spacing="linspace",
+                beta_schedule="linear",
+                steps_offset=1,
+                clip_sample=False,
+            ),
+        ]
+        components.pop("scheduler")
+
+        for scheduler in schedulers_to_test:
+            components["scheduler"] = scheduler
+            pipe: AnimateDiffControlNetPipeline = self.pipeline_class(**components)
+            pipe.set_progress_bar_config(disable=None)
+            pipe.to(torch_device)
+
+            pipe.enable_free_init(num_iters=2, use_fast_sampling=False)
+
+            inputs = self.get_dummy_inputs(torch_device)
+            frames_enable_free_init = pipe(**inputs).frames[0]
+            sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_init)).sum()
+
+            self.assertGreater(
+                sum_enabled,
+                1e1,
+                "Enabling of FreeInit should lead to results different from the default pipeline results",
+            )
 
     def test_vae_slicing(self, video_count=2):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
