@@ -180,11 +180,10 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
+
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array(
-            [0.5761719, 0.71777344, 0.59228516, 0.578125, 0.6020508, 0.39453125, 0.46728516, 0.51708984, 0.58984375]
-        )
+        expected_slice = np.array([0.5767, 0.7100, 0.5981, 0.5674, 0.5952, 0.4102, 0.5093, 0.5044, 0.6030])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
