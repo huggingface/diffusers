@@ -41,19 +41,19 @@ image = pipe(
 image.save("kolors_sample.png")
 ```
 
-## IP Adapter
+### IP Adapter
 
-Kolors needs a different IP Adapter to be able to work, also it uses Openai-CLIP-336 as an image encoder.
+Kolors needs a different IP Adapter to work, and it uses [Openai-CLIP-336](https://huggingface.co/openai/clip-vit-large-patch14-336) as an image encoder.
 
 <Tip>
 
-Using an IP Adapter with Kolors needs more than 24GB of VRAM, it is recommended to use `enable_model_cpu_offload()` in consumer GPUs to be able to use it.
+Using an IP Adapter with Kolors requires more than 24GB of VRAM. To use it, we recommend using [`~DiffusionPipeline.enable_model_cpu_offload`] on consumer GPUs.
 
 </Tip>
 
 <Tip>
 
-While the PR is merged, we need to give the revision and load the image encoder separatedly to use the safetensors format. You can still use the main branch of the original repository if you're comfortable loading `pickle` checkpoints.
+While Kolors is integrated in Diffusers, you need to load the image encoder from a revision to use the safetensor files. You can still use the main branch of the original repository if you're comfortable loading pickle checkpoints.
 
 </Tip>
 
