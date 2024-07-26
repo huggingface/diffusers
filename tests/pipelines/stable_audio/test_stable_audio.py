@@ -72,16 +72,16 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = StableAudioDiTModel(
-            sample_size=32,
-            in_channels=6,
+            sample_size=4,
+            in_channels=3,
             num_layers=2,
             attention_head_dim=4,
             num_key_value_attention_heads=2,
-            out_channels=6,
+            out_channels=3,
             cross_attention_dim=4,
             time_proj_dim=8,
-            global_states_input_dim=48,
-            cross_attention_input_dim=24,
+            global_states_input_dim=8,
+            cross_attention_input_dim=4,
         )
         scheduler = EDMDPMSolverMultistepScheduler(
             solver_order=2,
@@ -94,13 +94,13 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         torch.manual_seed(0)
         vae = AutoencoderOobleck(
-            encoder_hidden_size=12,
+            encoder_hidden_size=6,
             downsampling_ratios=[1, 2],
-            decoder_channels=12,
-            decoder_input_channels=6,
+            decoder_channels=3,
+            decoder_input_channels=3,
             audio_channels=2,
             channel_multiples=[2, 4],
-            sampling_rate=32,
+            sampling_rate=4,
         )
         torch.manual_seed(0)
         t5_repo_id = "hf-internal-testing/tiny-random-T5ForConditionalGeneration"
@@ -110,9 +110,9 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         projection_model = StableAudioProjectionModel(
             text_encoder_dim=text_encoder.config.d_model,
-            conditioning_dim=24,
+            conditioning_dim=4,
             min_value=0,
-            max_value=256,
+            max_value=32,
         )
 
         components = {
@@ -159,7 +159,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio = output.audios[0]
 
         assert audio.ndim == 2
-        assert audio.shape == (2, 63)
+        assert audio.shape == (2, 7)
 
     def test_stable_audio_without_prompts(self):
         components = self.get_dummy_components()
@@ -275,7 +275,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio = output.audios[0]
 
         assert audio.ndim == 2
-        assert audio.shape == (2, 63)
+        assert audio.shape == (2, 7)
 
     def test_stable_audio_num_waveforms_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -289,13 +289,13 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # test num_waveforms_per_prompt=1 (default)
         audios = stable_audio_pipe(prompt, num_inference_steps=2).audios
 
-        assert audios.shape == (1, 2, 63)
+        assert audios.shape == (1, 2, 7)
 
         # test num_waveforms_per_prompt=1 (default) for batch of prompts
         batch_size = 2
         audios = stable_audio_pipe([prompt] * batch_size, num_inference_steps=2).audios
 
-        assert audios.shape == (batch_size, 2, 63)
+        assert audios.shape == (batch_size, 2, 7)
 
         # test num_waveforms_per_prompt for single prompt
         num_waveforms_per_prompt = 2
@@ -303,7 +303,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             prompt, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt
         ).audios
 
-        assert audios.shape == (num_waveforms_per_prompt, 2, 63)
+        assert audios.shape == (num_waveforms_per_prompt, 2, 7)
 
         # test num_waveforms_per_prompt for batch of prompts
         batch_size = 2
@@ -311,7 +311,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             [prompt] * batch_size, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt
         ).audios
 
-        assert audios.shape == (batch_size * num_waveforms_per_prompt, 2, 63)
+        assert audios.shape == (batch_size * num_waveforms_per_prompt, 2, 7)
 
     def test_stable_audio_audio_end_in_s(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -331,7 +331,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio = output.audios[0]
 
         assert audio.ndim == 2
-        assert audio.shape[1] / stable_audio_pipe.vae.sampling_rate == 1.1875
+        assert audio.shape[1] / stable_audio_pipe.vae.sampling_rate == 1.0
 
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
@@ -378,7 +378,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             initial_audio_waveforms=initial_audio_waveforms,
             initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate,
         ).audios
-        assert audios.shape == (1, 2, 63)
+        assert audios.shape == (1, 2, 7)
 
         # test works with num_waveforms_per_prompt
         num_waveforms_per_prompt = 2
@@ -390,7 +390,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate,
         ).audios
 
-        assert audios.shape == (num_waveforms_per_prompt, 2, 63)
+        assert audios.shape == (num_waveforms_per_prompt, 2, 7)
 
         # test num_waveforms_per_prompt for batch of prompts and input audio (two channels)
         batch_size = 2
@@ -403,7 +403,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             initial_audio_sampling_rate=stable_audio_pipe.vae.sampling_rate,
         ).audios
 
-        assert audios.shape == (batch_size * num_waveforms_per_prompt, 2, 63)
+        assert audios.shape == (batch_size * num_waveforms_per_prompt, 2, 7)
 
 
 @nightly
