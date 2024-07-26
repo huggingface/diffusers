@@ -15,7 +15,7 @@ specific language governing permissions and limitations under the License.
 
 Diffusion 모델은 이미지나 오디오와 같은 관심 샘플들을 생성하기 위해 랜덤 가우시안 노이즈를 단계별로 제거하도록 학습됩니다. 이로 인해 생성 AI에 대한 관심이 매우 높아졌으며, 인터넷에서 diffusion 생성 이미지의 예를 본 적이 있을 것입니다. 🧨 Diffusers는 누구나 diffusion 모델들을 널리 이용할 수 있도록 하기 위한 라이브러리입니다.
 
-개발자든 일반 사용자든 이 훑어보기를 통해 🧨 diffusers를 소개하고 빠르게 생성할 수 있도록 도와드립니다! 알아야 할 라이브러리의 주요 구성 요소는 크게 세 가지입니다:
+개발자든 일반 사용자든 이 훑어보기를 통해 🧨 Diffusers를 소개하고 빠르게 생성할 수 있도록 도와드립니다! 알아야 할 라이브러리의 주요 구성 요소는 크게 세 가지입니다:
 
 * [`DiffusionPipeline`]은 추론을 위해 사전 학습된 diffusion 모델에서 샘플을 빠르게 생성하도록 설계된 높은 수준의 엔드투엔드 클래스입니다.
 * Diffusion 시스템 생성을 위한 빌딩 블록으로 사용할 수 있는 널리 사용되는 사전 학습된 [model](./api/models) 아키텍처 및 모듈.

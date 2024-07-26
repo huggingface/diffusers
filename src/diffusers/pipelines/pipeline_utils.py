@@ -533,9 +533,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download:
-                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
-                of Diffusers.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -625,7 +623,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```
         """
         cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
@@ -702,7 +699,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             cached_folder = cls.download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
-                resume_download=resume_download,
                 force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
@@ -842,7 +838,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 torch_dtype=torch_dtype,
                 cached_folder=cached_folder,
                 force_download=force_download,
-                resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,
@@ -910,7 +905,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
             load_kwargs = {
                 "cache_dir": cache_dir,
-                "resume_download": resume_download,
                 "force_download": force_download,
                 "proxies": proxies,
                 "local_files_only": local_files_only,
@@ -1216,9 +1210,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download:
-                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
-                of Diffusers.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -1271,7 +1263,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         """
         cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
@@ -1311,7 +1302,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 revision=revision,
                 proxies=proxies,
                 force_download=force_download,
-                resume_download=resume_download,
                 token=token,
             )
 
@@ -1500,7 +1490,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             cached_folder = snapshot_download(
                 pretrained_model_name,
                 cache_dir=cache_dir,
-                resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,
@@ -1523,7 +1512,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 for connected_pipe_repo_id in connected_pipes:
                     download_kwargs = {
                         "cache_dir": cache_dir,
-                        "resume_download": resume_download,
                         "force_download": force_download,
                         "proxies": proxies,
                         "local_files_only": local_files_only,

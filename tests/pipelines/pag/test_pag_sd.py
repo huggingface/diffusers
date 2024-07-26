@@ -157,7 +157,7 @@ class StableDiffusionPAGPipelineFastTests(
         del inputs["pag_scale"]
         assert (
             "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
-        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__calss__.__name__}."
+        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
         out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
 
         # pag disabled with pag_scale=0.0
