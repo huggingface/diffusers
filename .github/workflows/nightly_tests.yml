@@ -111,8 +111,8 @@ jobs:
       run:
         shell: bash
     strategy:
+      max-parallel: 2
       matrix:
-        max-parallel: 2
         module: [models, schedulers, lora, others, single_file, examples]
     steps:
     - name: Checkout diffusers
