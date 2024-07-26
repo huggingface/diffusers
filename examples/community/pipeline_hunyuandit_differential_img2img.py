@@ -18,6 +18,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
+import torchvision
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from transformers import (
     BertModel,
@@ -1042,6 +1043,10 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
 
         # 4. Preprocess image
         image = self.image_processor.preprocess(image)
+        map = torchvision.transforms.Resize(
+            tuple(s // self.vae_scale_factor for s in original_image.shape[2:]),
+            antialias=None,
+        )(map)
 
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
