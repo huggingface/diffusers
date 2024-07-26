@@ -86,6 +86,15 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.safetensors",
         ]
         variant = "fp16"
+        self.assertFalse(is_safetensors_compatible(filenames, variant=variant))
+
+    def test_diffusers_model_is_compatible_variant_mixed(self):
+        # pass variant but use the non-variant filenames
+        filenames = [
+            "unet/diffusion_pytorch_model.bin",
+            "unet/diffusion_pytorch_model.fp16.safetensors",
+        ]
+        variant = "fp16"
         self.assertTrue(is_safetensors_compatible(filenames, variant=variant))
 
     def test_diffusers_model_is_not_compatible_variant(self):
@@ -117,7 +126,7 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "text_encoder/model.safetensors",
         ]
         variant = "fp16"
-        self.assertTrue(is_safetensors_compatible(filenames, variant=variant))
+        self.assertFalse(is_safetensors_compatible(filenames, variant=variant))
 
     def test_transformer_model_is_not_compatible_variant(self):
         filenames = [
@@ -126,9 +135,46 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "vae/diffusion_pytorch_model.fp16.bin",
             "vae/diffusion_pytorch_model.fp16.safetensors",
             "text_encoder/pytorch_model.fp16.bin",
-            # 'text_encoder/model.fp16.safetensors',
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
         variant = "fp16"
         self.assertFalse(is_safetensors_compatible(filenames, variant=variant))
+
+    def test_transformers_is_compatible_sharded(self):
+        filenames = [
+            "text_encoder/pytorch_model.bin",
+            "text_encoder/model-00001-of-00002.safetensors",
+            "text_encoder/model-00002-of-00002.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames, variant=None))
+
+    def test_transformers_is_compatible_variant_sharded(self):
+        filenames = [
+            "text_encoder/pytorch_model.bin",
+            "text_encoder/model.fp16-00001-of-00002.safetensors",
+            "text_encoder/model.fp16-00001-of-00002.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames, variant=None))
+
+    def test_diffusers_is_compatible_sharded(self):
+        filenames = [
+            "unet/diffusion_pytorch_model.bin",
+            "unet/diffusion_pytorch_model-00001-of-00002.safetensors",
+            "unet/diffusion_pytorch_model-00002-of-00002.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames, variant=None))
+
+    def test_diffusers_is_compatible_variant_sharded(self):
+        filenames = [
+            "unet/diffusion_pytorch_model.bin",
+            "unet/diffusion_pytorch_model.fp16-00001-of-00002.safetensors",
+            "unet/diffusion_pytorch_model.fp16-00001-of-00002.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames, variant=None))
+
+    def test_diffusers_is_compatible_only_variants(self):
+        filenames = [
+            "unet/diffusion_pytorch_model.fp16.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames, variant=None))

@@ -101,39 +101,33 @@ def is_safetensors_compatible(filenames, variant=None, passed_components=None) -
     - For models from the transformers library, the filename changes from "pytorch_model" to "model", and the ".bin"
       extension is replaced with ".safetensors"
     """
-    pt_filenames = []
-
-    sf_filenames = set()
-
     passed_components = passed_components or []
 
+    # extract all components of the pipeline and their associated files
+    components = {}
     for filename in filenames:
-        _, extension = os.path.splitext(filename)
-
-        if len(filename.split("/")) == 2 and filename.split("/")[0] in passed_components:
+        if not len(filename.split("/")) == 2:
             continue
 
-        if extension == ".bin":
-            pt_filenames.append(os.path.normpath(filename))
-        elif extension == ".safetensors":
-            sf_filenames.add(os.path.normpath(filename))
+        component, component_filename = filename.split("/")
+        if component in passed_components:
+            continue
 
-    for filename in pt_filenames:
-        #  filename = 'foo/bar/baz.bam' -> path = 'foo/bar', filename = 'baz', extension = '.bam'
-        path, filename = os.path.split(filename)
-        filename, extension = os.path.splitext(filename)
+        components.setdefault(component, [])
+        components[component].append(component_filename)
 
-        if filename.startswith("pytorch_model"):
-            filename = filename.replace("pytorch_model", "model")
-        else:
-            filename = filename
+    # iterate over all files of a component
+    # check if safetensor files exist for that component
+    # if variant is provided check if the variant of the safetensors exists
+    for component, component_filenames in components.items():
+        matches = []
+        for component_filename in component_filenames:
+            filename, extension = os.path.splitext(component_filename)
 
-        expected_sf_filename = os.path.normpath(os.path.join(path, filename))
-        expected_sf_filename = (
-            f"{expected_sf_filename}.{variant}.safetensors" if variant else f"{expected_sf_filename}.safetensors"
-        )
-        if expected_sf_filename not in sf_filenames:
-            logger.warning(f"{expected_sf_filename} not found")
+            match_exists = (variant in filename if variant else True) and extension == ".safetensors"
+            matches.append(match_exists)
+
+        if not any(matches):
             return False
 
     return True
