@@ -38,6 +38,7 @@ RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
     datasets \
     hf-doc-builder \
     huggingface-hub \
+    hf_transfer \
     Jinja2 \
     librosa \
     numpy==1.26.4 \
