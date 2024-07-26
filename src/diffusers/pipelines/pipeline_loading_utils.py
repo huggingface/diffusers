@@ -129,7 +129,9 @@ def is_safetensors_compatible(filenames, variant=None, passed_components=None) -
             filename = filename
 
         expected_sf_filename = os.path.normpath(os.path.join(path, filename))
-        expected_sf_filename = f"{expected_sf_filename}.safetensors"
+        expected_sf_filename = (
+            f"{expected_sf_filename}.{variant}.safetensors" if variant else f"{expected_sf_filename}.safetensors"
+        )
         if expected_sf_filename not in sf_filenames:
             logger.warning(f"{expected_sf_filename} not found")
             return False
