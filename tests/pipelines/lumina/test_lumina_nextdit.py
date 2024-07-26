@@ -34,19 +34,19 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = LuminaNextDiT2DModel(
-            sample_size=16,
+            sample_size=4,
             patch_size=2,
             in_channels=4,
-            hidden_size=24,
+            hidden_size=8,
             num_layers=2,
-            num_attention_heads=3,
+            num_attention_heads=2,
             num_kv_heads=1,
             multiple_of=16,
             ffn_dim_multiplier=None,
             norm_eps=1e-5,
             learn_sigma=True,
             qk_norm=True,
-            cross_attention_dim=32,
+            cross_attention_dim=8,
             scaling_factor=1.0,
         )
         torch.manual_seed(0)
@@ -58,9 +58,9 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
         torch.manual_seed(0)
         config = GemmaConfig(
             head_dim=4,
-            hidden_size=32,
+            hidden_size=8,
             intermediate_size=37,
-            num_attention_heads=4,
+            num_attention_heads=1,
             num_hidden_layers=2,
             num_key_value_heads=4,
         )
