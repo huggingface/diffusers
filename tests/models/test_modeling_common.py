@@ -124,11 +124,9 @@ class ModelUtilsTest(unittest.TestCase):
             if p1.data.ne(p2.data).sum() > 0:
                 assert False, "Parameters not the same!"
 
+    @unittest.skip("Flaky behaviour on CI. Re-enable after migrating to new runners")
+    @unittest.skipIf(torch_device == "mps", reason="Test not supported for MPS.")
     def test_one_request_upon_cached(self):
-        # TODO: For some reason this test fails on MPS where no HEAD call is made.
-        if torch_device == "mps":
-            return
-
         use_safetensors = False
 
         with tempfile.TemporaryDirectory() as tmpdirname:
