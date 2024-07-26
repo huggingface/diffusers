@@ -178,11 +178,11 @@ class StableDiffusionXLDifferentialImg2ImgPipeline(
 
     In addition the pipeline inherits the following loading methods:
         - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
-        - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
+        - *LoRA*: [`loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`]
         - *Ckpt*: [`loaders.FromSingleFileMixin.from_single_file`]
 
     as well as the following saving methods:
-        - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
+        - *LoRA*: [`loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`]
 
     Args:
         vae ([`AutoencoderKL`]):

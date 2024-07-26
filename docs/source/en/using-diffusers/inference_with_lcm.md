@@ -64,7 +64,7 @@ image
 </hfoption>
 <hfoption id="LCM-LoRA">
 
-To use LCM-LoRAs, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual, and pass a text prompt to generate an image in just 4 steps.
+To use LCM-LoRAs, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual, and pass a text prompt to generate an image in just 4 steps.
 
 A couple of notes to keep in mind when using LCM-LoRAs are:
 
@@ -156,7 +156,7 @@ image
 </hfoption>
 <hfoption id="LCM-LoRA">
 
-To use LCM-LoRAs for image-to-image, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual, and pass a text prompt and initial image to generate an image in just 4 steps.
+To use LCM-LoRAs for image-to-image, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual, and pass a text prompt and initial image to generate an image in just 4 steps.
 
 > [!TIP]
 > Experiment with different values for `num_inference_steps`, `strength`, and `guidance_scale` to get the best results.
@@ -207,7 +207,7 @@ image
 
 ## Inpainting
 
-To use LCM-LoRAs for inpainting, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual, and pass a text prompt, initial image, and mask image to generate an image in just 4 steps.
+To use LCM-LoRAs for inpainting, you need to replace the scheduler with the [`LCMScheduler`] and load the LCM-LoRA weights with the [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method. Then you can use the pipeline as usual, and pass a text prompt, initial image, and mask image to generate an image in just 4 steps.
 
 ```py
 import torch
@@ -262,7 +262,7 @@ LCMs are compatible with adapters like LoRA, ControlNet, T2I-Adapter, and Animat
 <hfoptions id="lcm-lora">
 <hfoption id="LCM">
 
-Load the LCM checkpoint for your supported model into [`UNet2DConditionModel`] and replace the scheduler with the [`LCMScheduler`]. Then you can use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LoRA weights into the LCM and generate a styled image in a few steps.
+Load the LCM checkpoint for your supported model into [`UNet2DConditionModel`] and replace the scheduler with the [`LCMScheduler`]. Then you can use the [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method to load the LoRA weights into the LCM and generate a styled image in a few steps.
 
 ```python
 from diffusers import StableDiffusionXLPipeline, UNet2DConditionModel, LCMScheduler
@@ -294,7 +294,7 @@ image
 </hfoption>
 <hfoption id="LCM-LoRA">
 
-Replace the scheduler with the [`LCMScheduler`]. Then you can use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights and the style LoRA you want to use. Combine both LoRA adapters with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method and generate a styled image in a few steps.
+Replace the scheduler with the [`LCMScheduler`]. Then you can use the [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights and the style LoRA you want to use. Combine both LoRA adapters with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method and generate a styled image in a few steps.
 
 ```py
 import torch
@@ -389,7 +389,7 @@ make_image_grid([canny_image, image], rows=1, cols=2)
 </hfoption>
 <hfoption id="LCM-LoRA">
 
-Load a ControlNet model trained on canny images and pass it to the [`ControlNetModel`]. Then you can load a Stable Diffusion v1.5 model into [`StableDiffusionControlNetPipeline`] and replace the scheduler with the [`LCMScheduler`]. Use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights, and pass the canny image to the pipeline and generate an image.
+Load a ControlNet model trained on canny images and pass it to the [`ControlNetModel`]. Then you can load a Stable Diffusion v1.5 model into [`StableDiffusionControlNetPipeline`] and replace the scheduler with the [`LCMScheduler`]. Use the [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights, and pass the canny image to the pipeline and generate an image.
 
 > [!TIP]
 > Experiment with different values for `num_inference_steps`, `controlnet_conditioning_scale`, `cross_attention_kwargs`, and `guidance_scale` to get the best results.
@@ -525,7 +525,7 @@ image = pipe(
 </hfoption>
 <hfoption id="LCM-LoRA">
 
-Load a T2IAdapter trained on canny images and pass it to the [`StableDiffusionXLAdapterPipeline`]. Replace the scheduler with the [`LCMScheduler`], and use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights. Pass the canny image to the pipeline and generate an image.
+Load a T2IAdapter trained on canny images and pass it to the [`StableDiffusionXLAdapterPipeline`]. Replace the scheduler with the [`LCMScheduler`], and use the [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method to load the LCM-LoRA weights. Pass the canny image to the pipeline and generate an image.
 
 ```py
 import torch
