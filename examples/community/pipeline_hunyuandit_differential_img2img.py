@@ -19,7 +19,7 @@ import numpy as np
 import PIL.Image
 import torch
 import torchvision
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from transformers import (
     BertModel,
     BertTokenizer,
