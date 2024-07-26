@@ -745,7 +745,6 @@ class StableAudioPipeline(DiffusionPipeline):
         else:
             return AudioPipelineOutput(audios=latents)
 
-        # TODO (YL): operation not done in the original code -> should we remove it ?
         audio = audio[:, :, waveform_start:waveform_end]
 
         if output_type == "np":
