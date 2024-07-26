@@ -59,11 +59,11 @@ class LuminaNextDiT2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        return (8, 16, 16)
+        return (4, 16, 16)
 
     @property
     def output_shape(self):
-        return (8, 16, 16)
+        return (4, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
@@ -77,7 +77,7 @@ class LuminaNextDiT2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
             "multiple_of": 16,
             "ffn_dim_multiplier": None,
             "norm_eps": 1e-5,
-            "learn_sigma": True,
+            "learn_sigma": False,
             "qk_norm": True,
             "cross_attention_dim": 32,
             "scaling_factor": 1.0,
