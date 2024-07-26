@@ -8,7 +8,6 @@ from torch.onnx import export
 
 from diffusers import StableDiffusion3Pipeline, OnnxStableDiffusion3Pipeline, OnnxRuntimeModel
 from diffusers.utils.testing_utils import (
-    slow,
     torch_device,
     is_onnx_available
 )
