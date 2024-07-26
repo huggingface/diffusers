@@ -96,6 +96,8 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
         return components
 
@@ -132,8 +134,10 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
-    # should skip it but pipe._optional_components = [] so it doesn't
+    # throws AttributeError: property 'eos_token' of 'ChatGLMTokenizer' object has no setter
+    # not sure if it is worth to fix it before integrating it to transformers
     def test_save_load_optional_components(self):
+        # TODO (Alvaro) need to fix later
         pass
 
     # throws AttributeError: property 'eos_token' of 'ChatGLMTokenizer' object has no setter
