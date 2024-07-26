@@ -41,6 +41,64 @@ image = pipe(
 image.save("kolors_sample.png")
 ```
 
+### IP Adapter
+
+Kolors needs a different IP Adapter to work, and it uses [Openai-CLIP-336](https://huggingface.co/openai/clip-vit-large-patch14-336) as an image encoder.
+
+<Tip>
+
+Using an IP Adapter with Kolors requires more than 24GB of VRAM. To use it, we recommend using [`~DiffusionPipeline.enable_model_cpu_offload`] on consumer GPUs.
+
+</Tip>
+
+<Tip>
+
+While Kolors is integrated in Diffusers, you need to load the image encoder from a revision to use the safetensor files. You can still use the main branch of the original repository if you're comfortable loading pickle checkpoints.
+
+</Tip>
+
+```python
+import torch
+from transformers import CLIPVisionModelWithProjection
+
+from diffusers import DPMSolverMultistepScheduler, KolorsPipeline
+from diffusers.utils import load_image
+
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "Kwai-Kolors/Kolors-IP-Adapter-Plus",
+    subfolder="image_encoder",
+    low_cpu_mem_usage=True,
+    torch_dtype=torch.float16,
+    revision="refs/pr/4",
+)
+
+pipe = KolorsPipeline.from_pretrained(
+    "Kwai-Kolors/Kolors-diffusers", image_encoder=image_encoder, torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
+
+pipe.load_ip_adapter(
+    "Kwai-Kolors/Kolors-IP-Adapter-Plus",
+    subfolder="",
+    weight_name="ip_adapter_plus_general.safetensors",
+    revision="refs/pr/4",
+    image_encoder_folder=None,
+)
+pipe.enable_model_cpu_offload()
+
+ipa_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/kolors/cat_square.png")
+
+image = pipe(
+    prompt="best quality, high quality",
+    negative_prompt="",
+    guidance_scale=6.5,
+    num_inference_steps=25,
+    ip_adapter_image=ipa_image,
+).images[0]
+
+image.save("kolors_ipa_sample.png")
+```
+
 ## KolorsPipeline
 
 [[autodoc]] KolorsPipeline
