@@ -53,15 +53,14 @@ def load_image(
 
 
 def load_video(
-    video: Union[str, List[PIL.Image.Image]],
-    convert_method: Optional[Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]]] = None,
+    video: Union[str], convert_method: Optional[Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]]] = None
 ) -> List[PIL.Image.Image]:
     """
     Loads `video` to a list of PIL Image.
 
     Args:
-        video (`str` or `List[PIL.Image.Image]`):
-            The video to convert to a list of PIL Image format.
+        video (`str`):
+            The video URL, or path to local file, to load and convert to a list of PIL Images.
         convert_method (Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]], *optional*):
             A conversion method to apply to the video after loading it. When set to `None` the images will be converted
             to "RGB".
@@ -110,13 +109,8 @@ def load_video(
 
         if was_tempfile_created:
             os.remove(video_path)
-
-    elif isinstance(video, list) and all(isinstance(frame, PIL.Image.Image) for frame in video):
-        pil_images = video
     else:
-        raise ValueError(
-            "Incorrect format used for the video. Should be a URL, a local path, or a list of PIL images."
-        )
+        raise ValueError("Incorrect format used for the video. Expected a URL or a local path.")
 
     if convert_method is not None:
         pil_images = convert_method(pil_images)
