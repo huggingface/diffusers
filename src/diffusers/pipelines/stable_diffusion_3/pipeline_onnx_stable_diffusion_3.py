@@ -259,10 +259,13 @@ class OnnxStableDiffusion3Pipeline(DiffusionPipeline):
                 max_sequence_length=max_sequence_length,
             )
 
-            clip_prompt_embeds = np.pad(
-                clip_prompt_embeds,
-                pad_width=((0, 0), (0, 0), (0, t5_prompt_embed.shape[-1] - clip_prompt_embeds.shape[-1])),
-            )
+            if t5_prompt_embed.shape[-1] > clip_prompt_embeds.shape[-1]:
+                clip_prompt_embeds = np.pad(
+                    clip_prompt_embeds,
+                    pad_width=((0, 0), (0, 0), (0, t5_prompt_embed.shape[-1] - clip_prompt_embeds.shape[-1])),
+                )
+            else:
+                clip_prompt_embeds = clip_prompt_embeds[..., :t5_prompt_embed.shape[-1]]
 
             prompt_embeds = np.concatenate([clip_prompt_embeds, t5_prompt_embed], axis=-2)
             pooled_prompt_embeds = np.concatenate([pooled_prompt_embed, pooled_prompt_2_embed], axis=-1)
@@ -313,10 +316,13 @@ class OnnxStableDiffusion3Pipeline(DiffusionPipeline):
                 max_sequence_length=max_sequence_length,
             )
 
-            negative_clip_prompt_embeds = np.pad(
-                negative_clip_prompt_embeds,
-                pad_width=((0, 0), (0, 0), (0, t5_negative_prompt_embed.shape[-1] - negative_clip_prompt_embeds.shape[-1])),
-            )
+            if t5_negative_prompt_embed.shape[-1] > negative_clip_prompt_embeds.shape[-1]:
+                negative_clip_prompt_embeds = np.pad(
+                    negative_clip_prompt_embeds,
+                    pad_width=((0, 0), (0, 0), (0, t5_negative_prompt_embed.shape[-1] - negative_clip_prompt_embeds.shape[-1])),
+                )
+            else:
+                negative_clip_prompt_embeds = negative_clip_prompt_embeds[..., :t5_negative_prompt_embed.shape[-1]]
 
             negative_prompt_embeds = np.concatenate([negative_clip_prompt_embeds, t5_negative_prompt_embed], axis=-2)
             negative_pooled_prompt_embeds = np.concatenate(
