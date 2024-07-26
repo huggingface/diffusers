@@ -181,7 +181,93 @@ class StableDiffusionXLControlNetPAGImg2ImgPipelineFastTests(
 
         return inputs 
     
+    def test_pag_disable_enable(self):
+        device = "cpu" # ensure determinism for the device-dependent torch.Generator 
+        components = self.get_dummy_components(requires_aesthetics_score=True)
+
+        # base pipeline 
+        pipe_sd = StableDiffusionXLControlNetImg2ImgPipeline(**componets)
+        pipe_sd = pipe_sd.to(device)
+        pipe_sd.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        del inputs["pag_scale"]
+        assert (
+            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
+        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
+
+        # pag disabled with pag_scale=0.0 
+        pipe_pag = self.pipeline_class(**components)
+        pipe_pag = pipe_pag.to(device)
+        pipe_pag.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["pag_scale"] = 0.0 
+        out_pag_disabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
+
+        # pag enable 
+        pipe_pag = self.pipeline_class(**components, pag_applied_layers=["mid", "up", "down"])
+        pipe_pag = pipe_pag.to(device)
+        pipe_pag.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        out_pag_enabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
+
+        assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3 
+        assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3 
+
+    def test_save_load_optional_component(self):
+        self._test_save_load_optional_components()
+
+    def test_pag_cfg(self):
+        device = "cpu" # ensure determinism for the device-dependent torch.Generator 
+        components = self.get_dummy_components()
+
+        pipe_pag = self.pipeline_class(**components, pag_applied_layers=["mid", "up", "down"])
+        pipe_pag = pipe_pag.to(device)
+        pipe_pag.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe_pag(**inputs).images 
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (
+            1,
+            64,
+            64,
+            3,
+        ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
+        expected_slice = np.array([0.7036, 0.5613, 0.5526, 0.6129, 0.5610, 0.5842, 0.4228, 0.4612, 0.5017])
+
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
+
+    def test_pag_uncond(self):
+        device = "cpu" # ensure determinism for the device-dependent torch.Generator 
+        components = self.get_dummy_components()
+
+        pipe_pag = self.pipeline_class(**components, pag_applied_layers=["mid", "up", "down"])
+        pipe_pag = pipe_pag.to(device)
+        pipe_rag.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["guidance_scale"] = 0.0 
+        image = pipe_pag(**inputs).images 
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (
+            1,
+            64,
+            64,
+            3,
+        ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
+        expected_slice = np.array([0.6888, 0.5398, 0.5603, 0.6086, 0.5541, 0.5957, 0.4332, 0.4643, 0.5154])
+
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
     
+
         
 
 
