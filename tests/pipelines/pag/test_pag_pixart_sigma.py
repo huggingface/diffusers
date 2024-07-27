@@ -91,7 +91,6 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            # "pag_applied_layers": [1]
         }
         return components
 
