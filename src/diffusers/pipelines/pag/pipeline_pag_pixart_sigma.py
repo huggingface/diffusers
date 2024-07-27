@@ -55,7 +55,18 @@ if is_ftfy_available():
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        TODO
+        >>> import torch
+        >>> from diffusers import AutoPipelineForText2Image
+
+        >>> pipe = AutoPipelineForText2Image.from_pretrained(
+        ...     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+        ...     torch_dtype=torch.float16,
+        ...     enable_pag=True,
+        ... )
+        >>> pipe = pipe.to("cuda")
+
+        >>> prompt = "A small cactus with a happy face in the Sahara desert"
+        >>> image = pipe(prompt, pag_scale=4.0, guidance_scale=1.0).images[0]
         ```
 """
 
@@ -122,7 +133,8 @@ def retrieve_timesteps(
 
 class PixArtSigmaPAGPipeline(DiffusionPipeline, PixArtPAGMixin):
     r"""
-    Pipeline for text-to-image generation using PixArt-Sigma.
+    [PAG pipeline](https://huggingface.co/docs/diffusers/main/en/using-diffusers/pag) for text-to-image generation
+    using PixArt-Sigma.
     """
 
     bad_punct_regex = re.compile(
@@ -659,7 +671,12 @@ class PixArtSigmaPAGPipeline(DiffusionPipeline, PixArtPAGMixin):
                 `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images, they are resized back to
                 the requested resolution. Useful for generating non-square images.
             max_sequence_length (`int` defaults to 300): Maximum sequence length to use with the `prompt`.
-
+            pag_scale (`float`, *optional*, defaults to 3.0):
+                The scale factor for the perturbed attention guidance. If it is set to 0.0, the perturbed attention
+                guidance will not be used.
+            pag_adaptive_scale (`float`, *optional*, defaults to 0.0):
+                The adaptive scale factor for the perturbed attention guidance. If it is set to 0.0, `pag_scale` is
+                used.
         Examples:
 
         Returns:
