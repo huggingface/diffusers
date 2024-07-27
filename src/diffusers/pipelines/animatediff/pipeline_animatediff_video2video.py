@@ -35,6 +35,7 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..free_init_utils import FreeInitMixin
+from ..free_noise_utils import AnimateDiffFreeNoiseMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
 
@@ -176,6 +177,7 @@ class AnimateDiffVideoToVideoPipeline(
     IPAdapterMixin,
     StableDiffusionLoraLoaderMixin,
     FreeInitMixin,
+    AnimateDiffFreeNoiseMixin,
 ):
     r"""
     Pipeline for video-to-video generation.

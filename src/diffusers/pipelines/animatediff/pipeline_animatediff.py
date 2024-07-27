@@ -42,7 +42,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..free_init_utils import FreeInitMixin
-from ..free_noise_utils import FreeNoiseMixin
+from ..free_noise_utils import AnimateDiffFreeNoiseMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
 
@@ -73,7 +73,7 @@ class AnimateDiffPipeline(
     IPAdapterMixin,
     StableDiffusionLoraLoaderMixin,
     FreeInitMixin,
-    FreeNoiseMixin,
+    AnimateDiffFreeNoiseMixin,
 ):
     r"""
     Pipeline for text-to-video generation.

@@ -38,6 +38,7 @@ from ...utils import (
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ...video_processor import VideoProcessor
 from ..free_init_utils import FreeInitMixin
+from ..free_noise_utils import AnimateDiffFreeNoiseMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
 
@@ -127,6 +128,8 @@ class AnimateDiffSparseControlNetPipeline(
     IPAdapterMixin,
     StableDiffusionLoraLoaderMixin,
     FreeInitMixin,
+    AnimateDiffFreeNoiseMixin,
+    
 ):
     r"""
     Pipeline for controlled text-to-video generation using the method described in [SparseCtrl: Adding Sparse Controls
