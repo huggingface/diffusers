@@ -209,30 +209,6 @@ class JointTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-def get_frame_indices(num_frames: int, context_length: int = 16, context_stride: int = 4):
-    batch_indices = []
-    for i in range(0, num_frames - context_length, context_stride):
-        window_start = i
-        window_end = min(num_frames, i + context_length)
-        batch_indices.append((window_start, window_end))
-    return batch_indices
-
-def get_frame_weights(num_frames: int, weight_type: str = "pyramid"):
-    if weight_type == "pyramid":
-        if num_frames % 2 == 0:
-            # num_frames = 4 => [1, 2, 2, 1]
-            weights = list(range(1, num_frames // 2 + 1))
-            weights = weights + weights[::-1]
-        else:
-            # num_frames = 5 => [1, 2, 3, 2, 1]
-            weights = list(range(1, num_frames // 2 + 1))
-            weights = weights + [num_frames // 2 + 1] + weights[::-1]
-    else:
-        raise ValueError(f"Invalid `weight_type`: {weight_type}")
-
-    return weights
-
-
 @maybe_allow_in_graph
 class BasicTransformerBlock(nn.Module):
     r"""
