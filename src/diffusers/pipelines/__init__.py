@@ -120,6 +120,7 @@ else:
         "AnimateDiffPipeline",
         "AnimateDiffControlNetPipeline",
         "AnimateDiffSDXLPipeline",
+        "AnimateDiffSparseControlNetPipeline",
         "AnimateDiffVideoToVideoPipeline",
     ]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
@@ -418,6 +419,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffControlNetPipeline,
             AnimateDiffPipeline,
             AnimateDiffSDXLPipeline,
+            AnimateDiffSparseControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
         )
         from .audioldm import AudioLDMPipeline
