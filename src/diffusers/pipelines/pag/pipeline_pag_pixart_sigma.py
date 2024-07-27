@@ -61,6 +61,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
         ...     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
         ...     torch_dtype=torch.float16,
+        ...     pag_applied_layers=[14],
         ...     enable_pag=True,
         ... )
         >>> pipe = pipe.to("cuda")
@@ -163,7 +164,7 @@ class PixArtSigmaPAGPipeline(DiffusionPipeline, PixArtPAGMixin):
         vae: AutoencoderKL,
         transformer: PixArtTransformer2DModel,
         scheduler: KarrasDiffusionSchedulers,
-        pag_applied_layers: Union[str, List[str]] = "14",  # 14th transformer block
+        pag_applied_layers: Union[str, List[str]] = "1",  # 1st transformer block
     ):
         super().__init__()
 

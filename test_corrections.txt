@@ -1,0 +1,8 @@
+tests/pipelines/pag/test_pag_pixart_sigma.py::PixArtSigmaPAGPipelineFastTests::test_pag_inference::expected_slice = np.array([0.6499, 0.3250, 0.3572, 0.6780, 0.4453, 0.4582, 0.2770, 0.5168, 0.4594])
+tests/pipelines/pag/test_pag_pixart_sigma.py::PixArtSigmaPAGPipelineFastTests::test_pag_inference::expected_slice = np.array([0.6499, 0.3250, 0.3572, 0.6780, 0.4453, 0.4582, 0.2770, 0.5168, 0.4594])
+tests/pipelines/pag/test_pag_pixart_sigma.py::PixArtSigmaPAGPipelineFastTests::test_pag_inference::expected_slice = np.array([0.6499, 0.3250, 0.3572, 0.6780, 0.4453, 0.4582, 0.2770, 0.5168, 0.4594])
+tests/pipelines/pag/test_pag_pixart_sigma.py::PixArtSigmaPAGPipelineFastTests::test_pag_inference::expected_slice = np.array([0.6499, 0.3250, 0.3572, 0.6780, 0.4453, 0.4582, 0.2770, 0.5168, 0.4594])
+tests/pipelines/pag/test_pag_pixart_sigma.py::PixArtSigmaPAGPipelineFastTests::test_pag_inference::expected_slice = np.array([0.6499, 0.3250, 0.3572, 0.6780, 0.4453, 0.4582, 0.2770, 0.5168, 0.4594])
+tests/pipelines/pag/test_pag_pixart_sigma.py::PixArtSigmaPAGPipelineFastTests::test_pag_inference::expected_slice = np.array([0.6499, 0.3250, 0.3572, 0.6780, 0.4453, 0.4582, 0.2770, 0.5168, 0.4594])
+tests/pipelines/pag/test_pag_pixart_sigma.py::PixArtSigmaPAGPipelineFastTests::test_pag_inference::expected_slice = np.array([0.6499, 0.3250, 0.3572, 0.6780, 0.4453, 0.4582, 0.2770, 0.5168, 0.4594])
+tests/pipelines/pag/test_pag_pixart_sigma.py::PixArtSigmaPAGPipelineFastTests::test_pag_inference::expected_slice = np.array([0.6499, 0.3250, 0.3572, 0.6780, 0.4453, 0.4582, 0.2770, 0.5168, 0.4594])
