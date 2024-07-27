@@ -15,8 +15,6 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
-import PIL.Image
 import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -43,54 +41,64 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter
-        >>> from diffusers.pipelines import DiffusionPipeline
-        >>> from diffusers.schedulers import DPMSolverMultistepScheduler
-        >>> from PIL import Image
-
-        >>> motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
-        >>> adapter = MotionAdapter.from_pretrained(motion_id)
-        >>> controlnet = ControlNetModel.from_pretrained(
-        ...     "lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16
+        >>> from diffusers import (
+        ...     AnimateDiffControlNetPipeline,
+        ...     AutoencoderKL,
+        ...     ControlNetModel,
+        ...     MotionAdapter,
+        ...     LCMScheduler,
         ... )
-        >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+        >>> from diffusers.utils import export_to_gif, load_video
 
-        >>> model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
-        >>> pipe = DiffusionPipeline.from_pretrained(
-        ...     model_id,
-        ...     motion_adapter=adapter,
+        >>> # Additionally, you will need a preprocess videos before they can be used with the ControlNet
+        >>> # HF maintains just the right package for it: `pip install controlnet_aux`
+        >>> from controlnet_aux.processor import ZoeDetector
+
+        >>> # Download controlnets from https://huggingface.co/lllyasviel/ControlNet-v1-1 to use .from_single_file
+        >>> # Download Diffusers-format controlnets, such as https://huggingface.co/lllyasviel/sd-controlnet-depth, to use .from_pretrained()
+        >>> controlnet = ControlNetModel.from_single_file("control_v11f1p_sd15_depth.pth", torch_dtype=torch.float16)
+
+        >>> # We use AnimateLCM for this example but one can use the original motion adapters as well (for example, https://huggingface.co/guoyww/animatediff-motion-adapter-v1-5-3)
+        >>> motion_adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM")
+
+        >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+        >>> pipe: AnimateDiffControlNetPipeline = AnimateDiffControlNetPipeline.from_pretrained(
+        ...     "SG161222/Realistic_Vision_V5.1_noVAE",
+        ...     motion_adapter=motion_adapter,
         ...     controlnet=controlnet,
         ...     vae=vae,
-        ...     custom_pipeline="pipeline_animatediff_controlnet",
         ... ).to(device="cuda", dtype=torch.float16)
-        >>> pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
-        ...     model_id,
-        ...     subfolder="scheduler",
-        ...     clip_sample=False,
-        ...     timestep_spacing="linspace",
-        ...     steps_offset=1,
-        ...     beta_schedule="linear",
+        >>> pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
+        >>> pipe.load_lora_weights(
+        ...     "wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora"
         ... )
-        >>> pipe.enable_vae_slicing()
+        >>> pipe.set_adapters(["lcm-lora"], [0.8])
 
+        >>> depth_detector = ZoeDetector.from_pretrained("lllyasviel/Annotators").to("cuda")
+        >>> video = load_video(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif"
+        ... )
         >>> conditioning_frames = []
-        >>> for i in range(1, 16 + 1):
-        ...     conditioning_frames.append(Image.open(f"frame_{i}.png"))
 
-        >>> prompt = "astronaut in space, dancing"
-        >>> negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
-        >>> result = pipe(
+        >>> with pipe.progress_bar(total=len(video)) as progress_bar:
+        ...     for frame in video:
+        ...         conditioning_frames.append(depth_detector(frame))
+        ...         progress_bar.update()
+
+        >>> prompt = "a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality"
+        >>> negative_prompt = "bad quality, worst quality"
+
+        >>> video = pipe(
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
-        ...     width=512,
-        ...     height=768,
+        ...     num_frames=len(video),
+        ...     num_inference_steps=10,
+        ...     guidance_scale=2.0,
         ...     conditioning_frames=conditioning_frames,
-        ...     num_inference_steps=12,
-        ... )
+        ...     generator=torch.Generator().manual_seed(42),
+        ... ).frames[0]
 
-        >>> from diffusers.utils import export_to_gif
-
-        >>> export_to_gif(result.frames[0], "result.gif")
+        >>> export_to_gif(video, "animatediff_controlnet.gif", fps=8)
         ```
 """
 
@@ -105,15 +113,15 @@ class AnimateDiffControlNetPipeline(
     AnimateDiffFreeNoiseMixin,
 ):
     r"""
-    Pipeline for text-to-video generation.
+    Pipeline for text-to-video generation with ControlNet guidance.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     The pipeline also inherits the following loading methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     Args:
@@ -473,7 +481,7 @@ class AnimateDiffControlNetPipeline(
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
-        image=None,
+        video=None,
         controlnet_conditioning_scale=1.0,
         control_guidance_start=0.0,
         control_guidance_end=1.0,
@@ -532,20 +540,20 @@ class AnimateDiffControlNetPipeline(
             or is_compiled
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
-            if not isinstance(image, list):
-                raise TypeError(f"For single controlnet, `image` must be of type `list` but got {type(image)}")
-            if len(image) != num_frames:
-                raise ValueError(f"Excepted image to have length {num_frames} but got {len(image)=}")
+            if not isinstance(video, list):
+                raise TypeError(f"For single controlnet, `image` must be of type `list` but got {type(video)}")
+            if len(video) != num_frames:
+                raise ValueError(f"Excepted image to have length {num_frames} but got {len(video)=}")
         elif (
             isinstance(self.controlnet, MultiControlNetModel)
             or is_compiled
             and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
         ):
-            if not isinstance(image, list) or not isinstance(image[0], list):
-                raise TypeError(f"For multiple controlnets: `image` must be type list of lists but got {type(image)=}")
-            if len(image[0]) != num_frames:
-                raise ValueError(f"Expected length of image sublist as {num_frames} but got {len(image[0])=}")
-            if any(len(img) != len(image[0]) for img in image):
+            if not isinstance(video, list) or not isinstance(video[0], list):
+                raise TypeError(f"For multiple controlnets: `image` must be type list of lists but got {type(video)=}")
+            if len(video[0]) != num_frames:
+                raise ValueError(f"Expected length of image sublist as {num_frames} but got {len(video[0])=}")
+            if any(len(img) != len(video[0]) for img in video):
                 raise ValueError("All conditioning frame batches for multicontrolnet must be same size")
         else:
             assert False
@@ -603,44 +611,6 @@ class AnimateDiffControlNetPipeline(
             if end > 1.0:
                 raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
-    def check_image(self, image, prompt, prompt_embeds):
-        image_is_pil = isinstance(image, PIL.Image.Image)
-        image_is_tensor = isinstance(image, torch.Tensor)
-        image_is_np = isinstance(image, np.ndarray)
-        image_is_pil_list = isinstance(image, list) and isinstance(image[0], PIL.Image.Image)
-        image_is_tensor_list = isinstance(image, list) and isinstance(image[0], torch.Tensor)
-        image_is_np_list = isinstance(image, list) and isinstance(image[0], np.ndarray)
-
-        if (
-            not image_is_pil
-            and not image_is_tensor
-            and not image_is_np
-            and not image_is_pil_list
-            and not image_is_tensor_list
-            and not image_is_np_list
-        ):
-            raise TypeError(
-                f"image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors, but is {type(image)}"
-            )
-
-        if image_is_pil:
-            image_batch_size = 1
-        else:
-            image_batch_size = len(image)
-
-        if prompt is not None and isinstance(prompt, str):
-            prompt_batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            prompt_batch_size = len(prompt)
-        elif prompt_embeds is not None:
-            prompt_batch_size = prompt_embeds.shape[0]
-
-        if image_batch_size != 1 and image_batch_size != prompt_batch_size:
-            raise ValueError(
-                f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
-            )
-
     # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
@@ -667,36 +637,37 @@ class AnimateDiffControlNetPipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
-    def prepare_image(
+    def prepare_video(
         self,
-        image,
+        video,
         width,
         height,
         batch_size,
-        num_images_per_prompt,
+        num_videos_per_prompt,
         device,
         dtype,
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
-        image_batch_size = image.shape[0]
+        video = self.control_video_processor.preprocess_video(video, height=height, width=width).to(
+            dtype=torch.float32
+        )
+        video = video.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        video_batch_size = video.shape[0]
 
-        if image_batch_size == 1:
+        if video_batch_size == 1:
             repeat_by = batch_size
         else:
             # image batch size is the same as prompt batch size
-            repeat_by = num_images_per_prompt
+            repeat_by = num_videos_per_prompt
 
-        image = image.repeat_interleave(repeat_by, dim=0)
-
-        image = image.to(device=device, dtype=dtype)
+        video = video.repeat_interleave(repeat_by, dim=0)
+        video = video.to(device=device, dtype=dtype)
 
         if do_classifier_free_guidance and not guess_mode:
-            image = torch.cat([image] * 2)
+            video = torch.cat([video] * 2)
 
-        return image
+        return video
 
     @property
     def guidance_scale(self):
@@ -833,8 +804,6 @@ class AnimateDiffControlNetPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            decode_batch_size (`int`, defaults to `16`):
-                The number of frames to decode at a time when calling `decode_latents` method.
 
         Examples:
 
@@ -873,7 +842,7 @@ class AnimateDiffControlNetPipeline(
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            image=conditioning_frames,
+            video=conditioning_frames,
             controlnet_conditioning_scale=controlnet_conditioning_scale,
             control_guidance_start=control_guidance_start,
             control_guidance_end=control_guidance_end,
@@ -934,33 +903,33 @@ class AnimateDiffControlNetPipeline(
             )
 
         if isinstance(controlnet, ControlNetModel):
-            conditioning_frames = self.prepare_image(
-                image=conditioning_frames,
+            conditioning_frames = self.prepare_video(
+                video=conditioning_frames,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_videos_per_prompt * num_frames,
-                num_images_per_prompt=num_videos_per_prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
         elif isinstance(controlnet, MultiControlNetModel):
-            cond_prepared_frames = []
+            cond_prepared_videos = []
             for frame_ in conditioning_frames:
-                prepared_frame = self.prepare_image(
-                    image=frame_,
+                prepared_video = self.prepare_video(
+                    video=frame_,
                     width=width,
                     height=height,
                     batch_size=batch_size * num_videos_per_prompt * num_frames,
-                    num_images_per_prompt=num_videos_per_prompt,
+                    num_videos_per_prompt=num_videos_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
-                cond_prepared_frames.append(prepared_frame)
-            conditioning_frames = cond_prepared_frames
+                cond_prepared_videos.append(prepared_video)
+            conditioning_frames = cond_prepared_videos
         else:
             assert False
 
@@ -987,7 +956,7 @@ class AnimateDiffControlNetPipeline(
 
         # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = (
-            {"image_embeds": ip_adapter_image_embeds}
+            {"image_embeds": image_embeds}
             if ip_adapter_image is not None or ip_adapter_image_embeds is not None
             else None
         )
