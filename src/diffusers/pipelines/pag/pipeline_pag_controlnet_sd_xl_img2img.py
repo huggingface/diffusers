@@ -1408,7 +1408,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
         image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
 
         if isinstance(controlnet, ControlNetModel):
-            image = self.prepare_control_image(
+            control_image = self.prepare_control_image(
                 image=control_image,
                 width=width,
                 height=height,
