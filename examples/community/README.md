@@ -1435,9 +1435,9 @@ import requests
 import torch
 from diffusers import DiffusionPipeline
 from PIL import Image
-from transformers import CLIPFeatureExtractor, CLIPModel
+from transformers import CLIPImageProcessor, CLIPModel
 
-feature_extractor = CLIPFeatureExtractor.from_pretrained(
+feature_extractor = CLIPImageProcessor.from_pretrained(
     "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 )
 clip_model = CLIPModel.from_pretrained(
@@ -2123,7 +2123,7 @@ import torch
 import open_clip
 from open_clip import SimpleTokenizer
 from diffusers import DiffusionPipeline
-from transformers import CLIPFeatureExtractor, CLIPModel
+from transformers import CLIPImageProcessor, CLIPModel
 
 
 def download_image(url):
@@ -2131,7 +2131,7 @@ def download_image(url):
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
 # Loading additional models
-feature_extractor = CLIPFeatureExtractor.from_pretrained(
+feature_extractor = CLIPImageProcessor.from_pretrained(
     "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 )
 clip_model = CLIPModel.from_pretrained(
