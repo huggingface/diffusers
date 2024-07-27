@@ -414,7 +414,7 @@ class AnimateDiffControlNetPipeline(
             image_embeds = ip_adapter_image_embeds
         return image_embeds
 
-    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.AnimateDiffVideoToVideo.decode_latents
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.AnimateDiffPipeline.decode_latents
     def decode_latents(self, latents, decode_batch_size: int = 16):
         latents = 1 / self.vae.config.scaling_factor * latents
 
