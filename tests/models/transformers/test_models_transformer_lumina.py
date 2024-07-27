@@ -35,21 +35,20 @@ class LuminaNextDiT2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def dummy_input(self):
-        '''
+        """
         Args:
             None
         Returns:
             Dict: Dictionary of dummy input tensors
-        '''
-        batch_size = 2 # N
-        num_channels = 4 # C
-        height = width = 16 # H, W
-        embedding_dim = 32 # D
-        sequence_length = 16 # L
+        """
+        batch_size = 2  # N
+        num_channels = 4  # C
+        height = width = 16  # H, W
+        embedding_dim = 32  # D
+        sequence_length = 16  # L
 
         hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
-        encoder_hidden_states = torch.randn(
-            (batch_size, sequence_length, embedding_dim)).to(torch_device)
+        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
         timestep = torch.rand(size=(batch_size,)).to(torch_device)
         encoder_mask = torch.randn(size=(batch_size, sequence_length)).to(torch_device)
         image_rotary_emb = torch.randn((384, 384, 4)).to(torch_device)
@@ -65,32 +64,32 @@ class LuminaNextDiT2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        '''
-        Args: 
+        """
+        Args:
             None
         Returns:
             Tuple: (int, int, int)
-        '''
+        """
         return (4, 16, 16)
 
     @property
     def output_shape(self):
-        '''
+        """
         Args:
             None
         Returns:
             Tuple: (int, int, int)
-        '''
+        """
         return (4, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
-        '''
+        """
         Args:
             None
-        
+
         Returns:
             Tuple: (Dict, Dict)
-        '''
+        """
         init_dict = {
             "sample_size": 16,
             "patch_size": 2,
@@ -110,4 +109,3 @@ class LuminaNextDiT2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
 
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
-    
