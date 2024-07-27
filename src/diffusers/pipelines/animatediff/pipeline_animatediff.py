@@ -401,13 +401,13 @@ class AnimateDiffPipeline(
 
         batch_size, channels, num_frames, height, width = latents.shape
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-        
+
         video = []
         for i in range(0, latents.shape[0], decode_batch_size):
             batch_latents = latents[i : i + decode_batch_size]
             batch_latents = self.vae.decode(batch_latents).sample
             video.append(batch_latents)
-        
+
         video = torch.cat(video)
         video = video[None, :].reshape((batch_size, num_frames, -1) + video.shape[2:]).permute(0, 2, 1, 3, 4)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
@@ -522,22 +522,22 @@ class AnimateDiffPipeline(
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
-        
+
         if self.free_noise_enabled and self._free_noise_shuffle:
             for i in range(self._free_noise_context_length, num_frames, self._free_noise_context_stride):
                 # ensure window is within bounds
                 window_start = max(0, i - self._free_noise_context_length)
                 window_end = min(num_frames, window_start + self._free_noise_context_stride)
                 window_length = window_end - window_start
-                
+
                 if window_length == 0:
                     break
-                
+
                 indices = torch.LongTensor(list(range(window_start, window_end)))
                 shuffled_indices = indices[torch.randperm(window_length, generator=generator)]
 
                 # shuffle latents in every window
-                latents[:, :, window_start : window_end] = latents[:, :, shuffled_indices]
+                latents[:, :, window_start:window_end] = latents[:, :, shuffled_indices]
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma

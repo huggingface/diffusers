@@ -19,7 +19,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, FrozenDict, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, UNet2DConditionLoadersMixin
+from ...loaders import FromOriginalModelMixin, UNet2DConditionLoadersMixin
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward, _chunked_feed_forward
@@ -130,7 +130,7 @@ class FreeNoiseTransformerBlock(nn.Module):
         self.positional_embeddings = positional_embeddings
         self.num_positional_embeddings = num_positional_embeddings
         self.only_cross_attention = only_cross_attention
-        
+
         self.set_free_noise_properties(context_length, context_stride, weighting_scheme)
 
         # We keep these boolean flags for backward-compatibility.
@@ -204,7 +204,7 @@ class FreeNoiseTransformerBlock(nn.Module):
         # let chunk size default to None
         self._chunk_size = None
         self._chunk_dim = 0
-    
+
     def _get_frame_indices(self, num_frames: int) -> List[Tuple[int, int]]:
         frame_indices = []
         for i in range(0, num_frames - self.context_length + 1, self.context_stride):
@@ -212,7 +212,7 @@ class FreeNoiseTransformerBlock(nn.Module):
             window_end = min(num_frames, i + self.context_length)
             frame_indices.append((window_start, window_end))
         return frame_indices
-    
+
     def _get_frame_weights(self, num_frames: int, weighting_scheme: str = "pyramid") -> List[float]:
         if weighting_scheme == "pyramid":
             if num_frames % 2 == 0:
@@ -227,8 +227,10 @@ class FreeNoiseTransformerBlock(nn.Module):
             raise ValueError(f"Unsupported value for weighting_scheme={weighting_scheme}")
 
         return weights
-    
-    def set_free_noise_properties(self, context_length: int, context_stride: int, weighting_scheme: str = "pyramid") -> None:
+
+    def set_free_noise_properties(
+        self, context_length: int, context_stride: int, weighting_scheme: str = "pyramid"
+    ) -> None:
         self.context_length = context_length
         self.context_stride = context_stride
         self.weighting_scheme = weighting_scheme
@@ -251,9 +253,9 @@ class FreeNoiseTransformerBlock(nn.Module):
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
-        
+
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
-        
+
         # hidden_states: [B x H x W, F, C]
         device = hidden_states.device
         dtype = hidden_states.dtype
@@ -262,7 +264,7 @@ class FreeNoiseTransformerBlock(nn.Module):
         frame_indices = self._get_frame_indices(num_frames)
         frame_weights = self._get_frame_weights(self.context_length, self.weighting_scheme)
         frame_weights = torch.tensor(frame_weights, device=device, dtype=dtype).unsqueeze(0).unsqueeze(-1)
-        
+
         num_times_accumulated = torch.zeros((1, num_frames, 1), device=device)
         accumulated_values = torch.zeros_like(hidden_states)
 
@@ -270,10 +272,10 @@ class FreeNoiseTransformerBlock(nn.Module):
             # The reason for slicing here is to ensure that if (frame_end - frame_start) is to handle
             # cases like frame_indices=[(0, 16), (16, 20)], if the user provided a video with 19 frames, or
             # essentially a non-multiple of `context_length`.
-            weights = torch.ones_like(num_times_accumulated[:, frame_start : frame_end])
+            weights = torch.ones_like(num_times_accumulated[:, frame_start:frame_end])
             weights *= frame_weights
 
-            hidden_states_chunk = hidden_states[:, frame_start : frame_end]
+            hidden_states_chunk = hidden_states[:, frame_start:frame_end]
 
             # Notice that normalization is always applied before the real computation in the following blocks.
             # 1. Self-Attention
@@ -308,11 +310,13 @@ class FreeNoiseTransformerBlock(nn.Module):
                     **cross_attention_kwargs,
                 )
                 hidden_states_chunk = attn_output + hidden_states_chunk
-            
-            accumulated_values[:, frame_start : frame_end] += hidden_states_chunk * weights
-            num_times_accumulated[:, frame_start : frame_end] += weights
-        
-        hidden_states = torch.where(num_times_accumulated > 0, accumulated_values / num_times_accumulated, accumulated_values).to(dtype)
+
+            accumulated_values[:, frame_start:frame_end] += hidden_states_chunk * weights
+            num_times_accumulated[:, frame_start:frame_end] += weights
+
+        hidden_states = torch.where(
+            num_times_accumulated > 0, accumulated_values / num_times_accumulated, accumulated_values
+        ).to(dtype)
 
         # 3. Feed-forward
         norm_hidden_states = self.norm3(hidden_states)

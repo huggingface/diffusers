@@ -27,7 +27,7 @@ from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DCon
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unets.unet_motion_model import MotionAdapter
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ...video_processor import VideoProcessor
 from ..controlnet.multicontrolnet import MultiControlNetModel
@@ -35,7 +35,6 @@ from ..free_init_utils import FreeInitMixin
 from ..free_noise_utils import AnimateDiffFreeNoiseMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
-
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -51,7 +50,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
         >>> adapter = MotionAdapter.from_pretrained(motion_id)
-        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
+        >>> controlnet = ControlNetModel.from_pretrained(
+        ...     "lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16
+        ... )
         >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
 
         >>> model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
@@ -63,7 +64,12 @@ EXAMPLE_DOC_STRING = """
         ...     custom_pipeline="pipeline_animatediff_controlnet",
         ... ).to(device="cuda", dtype=torch.float16)
         >>> pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
-        ...     model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1, beta_schedule="linear",
+        ...     model_id,
+        ...     subfolder="scheduler",
+        ...     clip_sample=False,
+        ...     timestep_spacing="linspace",
+        ...     steps_offset=1,
+        ...     beta_schedule="linear",
         ... )
         >>> pipe.enable_vae_slicing()
 
@@ -83,13 +89,20 @@ EXAMPLE_DOC_STRING = """
         ... )
 
         >>> from diffusers.utils import export_to_gif
+
         >>> export_to_gif(result.frames[0], "result.gif")
         ```
 """
 
 
 class AnimateDiffControlNetPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin, FreeInitMixin, AnimateDiffFreeNoiseMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    IPAdapterMixin,
+    LoraLoaderMixin,
+    FreeInitMixin,
+    AnimateDiffFreeNoiseMixin,
 ):
     r"""
     Pipeline for text-to-video generation.
@@ -407,13 +420,13 @@ class AnimateDiffControlNetPipeline(
 
         batch_size, channels, num_frames, height, width = latents.shape
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-        
+
         video = []
         for i in range(0, latents.shape[0], decode_batch_size):
             batch_latents = latents[i : i + decode_batch_size]
             batch_latents = self.vae.decode(batch_latents).sample
             video.append(batch_latents)
-        
+
         video = torch.cat(video)
         video = video[None, :].reshape((batch_size, num_frames, -1) + video.shape[2:]).permute(0, 2, 1, 3, 4)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
@@ -769,17 +782,16 @@ class AnimateDiffControlNetPipeline(
             ip_adapter_image (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
-                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
-                if `do_classifier_free_guidance` is set to `True`.
-                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
+                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
+                contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
             conditioning_frames (`List[PipelineImageInput]`, *optional*):
-                The ControlNet input condition to provide guidance to the `unet` for generation. If multiple ControlNets
-                are specified, images must be passed as a list such that each element of the list can be correctly
-                batched for input to a single ControlNet.
+                The ControlNet input condition to provide guidance to the `unet` for generation. If multiple
+                ControlNets are specified, images must be passed as a list such that each element of the list can be
+                correctly batched for input to a single ControlNet.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated video. Choose between `torch.Tensor`, `PIL.Image` or
-                `np.array`.
+                The output format of the generated video. Choose between `torch.Tensor`, `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] instead
                 of a plain tuple.
@@ -986,7 +998,7 @@ class AnimateDiffControlNetPipeline(
 
             self._num_timesteps = len(timesteps)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        
+
             # 8. Denoising loop
             with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):

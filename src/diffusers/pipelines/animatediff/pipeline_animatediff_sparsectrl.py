@@ -129,7 +129,6 @@ class AnimateDiffSparseControlNetPipeline(
     StableDiffusionLoraLoaderMixin,
     FreeInitMixin,
     AnimateDiffFreeNoiseMixin,
-    
 ):
     r"""
     Pipeline for controlled text-to-video generation using the method described in [SparseCtrl: Adding Sparse Controls
