@@ -96,7 +96,7 @@ Diffusers 라이브러리와 관련된 모든 질문이나 의견은 [토론 포
 
 자세한 내용은 [좋은 이슈 작성 방법](#how-to-write-a-good-issue) 섹션을 참조하세요.
 
-버그 보고서를 열려면 [여기](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=bug&projects=&template=bug-report.yml)를 클릭하세요.
+버그 리포트를 열려면 [여기](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=bug&projects=&template=bug-report.yml)를 클릭하세요.
 
 
 #### 2.2. 기능 요청 [[22-feature-requests]]
