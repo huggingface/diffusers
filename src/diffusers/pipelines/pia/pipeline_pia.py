@@ -409,8 +409,8 @@ class PIAPipeline(
 
             return image_embeds, uncond_image_embeds
 
-    # Copied from diffusers.pipelines.text_to_video_synthesis/pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
-    def decode_latents(self, latents):
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.AnimateDiffVideoToVideo.decode_latents
+    def decode_latents(self, latents, decode_batch_size: int = 16):
         latents = 1 / self.vae.config.scaling_factor * latents
 
         batch_size, channels, num_frames, height, width = latents.shape
@@ -689,6 +689,7 @@ class PIAPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        decode_batch_size: int = 16,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -765,6 +766,8 @@ class PIAPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            decode_batch_size (`int`, defaults to `16`):
+                The number of frames to decode at a time when calling `decode_latents` method.
 
         Examples:
 
@@ -933,7 +936,7 @@ class PIAPipeline(
         if output_type == "latent":
             video = latents
         else:
-            video_tensor = self.decode_latents(latents)
+            video_tensor = self.decode_latents(latents, decode_batch_size)
             video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 10. Offload all models

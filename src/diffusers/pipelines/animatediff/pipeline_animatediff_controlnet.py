@@ -401,6 +401,7 @@ class AnimateDiffControlNetPipeline(
             image_embeds = ip_adapter_image_embeds
         return image_embeds
 
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.AnimateDiffVideoToVideo.decode_latents
     def decode_latents(self, latents, decode_batch_size: int = 16):
         latents = 1 / self.vae.config.scaling_factor * latents
 
@@ -808,6 +809,8 @@ class AnimateDiffControlNetPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            decode_batch_size (`int`, defaults to `16`):
+                The number of frames to decode at a time when calling `decode_latents` method.
 
         Examples:
 
