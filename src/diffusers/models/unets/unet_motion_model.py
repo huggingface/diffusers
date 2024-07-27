@@ -211,6 +211,7 @@ class FreeNoiseTransformerBlock(nn.Module):
             window_start = i
             window_end = min(num_frames, i + self.context_length)
             frame_indices.append((window_start, window_end))
+
         return frame_indices
 
     def _get_frame_weights(self, num_frames: int, weighting_scheme: str = "pyramid") -> List[float]:
@@ -264,11 +265,21 @@ class FreeNoiseTransformerBlock(nn.Module):
         frame_indices = self._get_frame_indices(num_frames)
         frame_weights = self._get_frame_weights(self.context_length, self.weighting_scheme)
         frame_weights = torch.tensor(frame_weights, device=device, dtype=dtype).unsqueeze(0).unsqueeze(-1)
+        is_last_frame_batch_complete = frame_indices[-1][1] == num_frames
+
+        # Handle out-of-bounds case if num_frames isn't perfectly divisible by context_length
+        # For example, num_frames=25, context_length=16, context_stride=4, then we expect the ranges:
+        #    [(0, 16), (4, 20), (8, 24), (10, 26)]
+        if not is_last_frame_batch_complete:
+            if num_frames < self.context_length:
+                raise ValueError(f"Expected {num_frames=} to be greater or equal than {self.context_length=}")
+            last_frame_batch_length = num_frames - frame_indices[-1][1]
+            frame_indices.append((num_frames - self.context_length, num_frames))
 
         num_times_accumulated = torch.zeros((1, num_frames, 1), device=device)
         accumulated_values = torch.zeros_like(hidden_states)
 
-        for frame_start, frame_end in frame_indices:
+        for i, (frame_start, frame_end) in enumerate(frame_indices):
             # The reason for slicing here is to ensure that if (frame_end - frame_start) is to handle
             # cases like frame_indices=[(0, 16), (16, 20)], if the user provided a video with 19 frames, or
             # essentially a non-multiple of `context_length`.
@@ -311,8 +322,14 @@ class FreeNoiseTransformerBlock(nn.Module):
                 )
                 hidden_states_chunk = attn_output + hidden_states_chunk
 
-            accumulated_values[:, frame_start:frame_end] += hidden_states_chunk * weights
-            num_times_accumulated[:, frame_start:frame_end] += weights
+            if i == len(frame_indices) - 1 and not is_last_frame_batch_complete:
+                accumulated_values[:, -last_frame_batch_length:] += (
+                    hidden_states_chunk[:, -last_frame_batch_length:] * weights[:, -last_frame_batch_length:]
+                )
+                num_times_accumulated[:, -last_frame_batch_length:] += weights[:, -last_frame_batch_length]
+            else:
+                accumulated_values[:, frame_start:frame_end] += hidden_states_chunk * weights
+                num_times_accumulated[:, frame_start:frame_end] += weights
 
         hidden_states = torch.where(
             num_times_accumulated > 0, accumulated_values / num_times_accumulated, accumulated_values
