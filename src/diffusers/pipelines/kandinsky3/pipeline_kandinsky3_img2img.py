@@ -7,7 +7,7 @@ import PIL.Image
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
-from ...loaders import LoraLoaderMixin
+from ...loaders import StableDiffusionLoraLoaderMixin
 from ...models import Kandinsky3UNet, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
@@ -62,7 +62,7 @@ def prepare_image(pil_image):
     return image
 
 
-class Kandinsky3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
+class Kandinsky3Img2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->movq->unet->movq"
     _callback_tensor_inputs = [
         "latents",
