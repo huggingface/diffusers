@@ -542,7 +542,6 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
         self,
         prompt,
         image,
-        callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -553,12 +552,6 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
     ):
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
-
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -639,6 +632,7 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
             or is_compiled
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
+            print(controlnet_conditioning_scale)
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
         elif (
@@ -1019,6 +1013,7 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
                 mult * [control_guidance_start],
                 mult * [control_guidance_end],
             )
+        print(controlnet_conditioning_scale)
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
