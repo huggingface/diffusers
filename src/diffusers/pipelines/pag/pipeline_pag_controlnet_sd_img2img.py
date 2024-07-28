@@ -632,7 +632,6 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
             or is_compiled
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
-            print(controlnet_conditioning_scale)
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
         elif (
@@ -1013,7 +1012,6 @@ class StableDiffusionControlNetPAGImg2ImgPipeline(
                 mult * [control_guidance_start],
                 mult * [control_guidance_end],
             )
-        print(controlnet_conditioning_scale)
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
