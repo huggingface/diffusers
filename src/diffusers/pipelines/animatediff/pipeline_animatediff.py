@@ -539,8 +539,15 @@ class AnimateDiffPipeline(
                 shuffled_indices = indices[torch.randperm(window_length, generator=generator)]
 
                 current_start = i
-                current_end = min(num_frames, i + self._free_noise_context_stride)
-                latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
+                current_end = min(num_frames, current_start + window_length)
+                if current_end == current_start + window_length:
+                    # batch of frames perfectly fits the window
+                    latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
+                else:
+                    # handle the case where the last batch of frames does not fit perfectly with the window
+                    prefix_length = current_end - current_start
+                    shuffled_indices = shuffled_indices[:prefix_length]
+                    latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
