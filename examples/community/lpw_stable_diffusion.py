@@ -11,7 +11,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import FromSingleFileMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
@@ -294,7 +294,7 @@ def get_weighted_text_embeddings(
     """
     # set lora scale so that monkey patched LoRA
     # function of text encoder can correctly access it
-    if lora_scale is not None and isinstance(pipe, LoraLoaderMixin):
+    if lora_scale is not None and isinstance(pipe, StableDiffusionLoraLoaderMixin):
         pipe._lora_scale = lora_scale
 
         # dynamically adjust the LoRA scale
@@ -399,7 +399,7 @@ def get_weighted_text_embeddings(
             uncond_embeddings *= (previous_mean / current_mean).unsqueeze(-1).unsqueeze(-1)
 
     if pipe.text_encoder is not None:
-        if isinstance(pipe, LoraLoaderMixin) and USE_PEFT_BACKEND:
+        if isinstance(pipe, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
             unscale_lora_layers(pipe.text_encoder, lora_scale)
 
@@ -450,7 +450,7 @@ def preprocess_mask(mask, batch_size, scale_factor=8):
 
 
 class StableDiffusionLongPromptWeightingPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion without tokens length limit, and support parsing
