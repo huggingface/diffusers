@@ -451,15 +451,15 @@ class AnimateDiffSparseControlNetPipeline(
         return ip_adapter_image_embeds
 
     # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.AnimateDiffPipeline.decode_latents
-    def decode_latents(self, latents, decode_batch_size: int = 16):
+    def decode_latents(self, latents, vae_batch_size: int = 16):
         latents = 1 / self.vae.config.scaling_factor * latents
 
         batch_size, channels, num_frames, height, width = latents.shape
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
         video = []
-        for i in range(0, latents.shape[0], decode_batch_size):
-            batch_latents = latents[i : i + decode_batch_size]
+        for i in range(0, latents.shape[0], vae_batch_size):
+            batch_latents = latents[i : i + vae_batch_size]
             batch_latents = self.vae.decode(batch_latents).sample
             video.append(batch_latents)
 
@@ -762,7 +762,7 @@ class AnimateDiffSparseControlNetPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        decode_batch_size: int = 16,
+        vae_batch_size: int = 16,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -841,7 +841,7 @@ class AnimateDiffSparseControlNetPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            decode_batch_size (`int`, defaults to `16`):
+            vae_batch_size (`int`, defaults to `16`):
                 The number of frames to decode at a time when calling `decode_latents` method.
 
         Examples:
@@ -1033,7 +1033,7 @@ class AnimateDiffSparseControlNetPipeline(
         if output_type == "latent":
             video = latents
         else:
-            video_tensor = self.decode_latents(latents, decode_batch_size)
+            video_tensor = self.decode_latents(latents, vae_batch_size)
             video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 12. Offload all models
