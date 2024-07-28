@@ -18,7 +18,6 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
-import torchvision
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from transformers import (
     BertModel,
@@ -338,6 +337,11 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
             else 8
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor,
+            do_normalize=False,
+            do_convert_grayscale=True,
+        )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
         self.default_sample_size = (
             self.transformer.config.sample_size
@@ -682,55 +686,44 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.prepare_latents
     def prepare_latents(
         self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
         image,
         timestep,
-        batch_size,
-        num_images_per_prompt,
         dtype,
         device,
         generator=None,
     ):
-        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
-            raise ValueError(
-                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
-            )
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
 
         image = image.to(device=device, dtype=dtype)
-
-        batch_size = batch_size * num_images_per_prompt
-
-        if image.shape[1] == 4:
-            init_latents = image
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+        elif isinstance(generator, list):
+            init_latents = [
+                retrieve_latents(
+                    self.vae.encode(image[i : i + 1]), generator=generator[i]
+                )
+                for i in range(batch_size)
+            ]
+            init_latents = torch.cat(init_latents, dim=0)
 
         else:
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
+            init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
-            elif isinstance(generator, list):
-                if image.shape[0] < batch_size and batch_size % image.shape[0] == 0:
-                    image = torch.cat([image] * (batch_size // image.shape[0]), dim=0)
-                elif image.shape[0] < batch_size and batch_size % image.shape[0] != 0:
-                    raise ValueError(
-                        f"Cannot duplicate `image` of batch size {image.shape[0]} to effective batch_size {batch_size} "
-                    )
-
-                init_latents = [
-                    retrieve_latents(
-                        self.vae.encode(image[i : i + 1]), generator=generator[i]
-                    )
-                    for i in range(batch_size)
-                ]
-                init_latents = torch.cat(init_latents, dim=0)
-            else:
-                init_latents = retrieve_latents(
-                    self.vae.encode(image), generator=generator
-                )
-
-            init_latents = self.vae.config.scaling_factor * init_latents
-
+        init_latents = (
+            init_latents - self.vae.config.shift_factor
+        ) * self.vae.config.scaling_factor
         if (
             batch_size > init_latents.shape[0]
             and batch_size % init_latents.shape[0] == 0
@@ -835,15 +828,7 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
         target_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         use_resolution_binning: bool = True,
-        map: torch.Tensor = None,
-        original_image: Union[
-            torch.Tensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.Tensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
+        map: PipelineImageInput = None,
         denoising_start: Optional[float] = None,
     ):
         r"""
@@ -1042,11 +1027,14 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess image
-        image = self.image_processor.preprocess(image)
-        map = torchvision.transforms.Resize(
-            tuple(s // self.vae_scale_factor for s in original_image.shape[2:]),
-            antialias=None,
-        )(map)
+        init_image = self.image_processor.preprocess(
+            image, height=height, width=width
+        ).to(dtype=torch.float32)
+        map = self.mask_processor.preprocess(
+            map,
+            height=height // self.vae_scale_factor,
+            width=width // self.vae_scale_factor,
+        ).to(device)
 
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
@@ -1063,11 +1051,14 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
+        num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
-            image,
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            init_image,
             latent_timestep,
-            batch_size,
-            num_images_per_prompt,
             prompt_embeds.dtype,
             device,
             generator,
@@ -1119,17 +1110,19 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         # preparations for diff diff
         original_with_noise = self.prepare_latents(
-            original_image,
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            init_image,
             timesteps,
-            batch_size,
-            num_images_per_prompt,
             prompt_embeds.dtype,
             device,
             generator,
         )
         thresholds = torch.arange(total_time_steps, dtype=map.dtype) / total_time_steps
         thresholds = thresholds.unsqueeze(1).unsqueeze(1).to(device)
-        masks = map > (thresholds + (denoising_start or 0))
+        masks = map.squeeze() > (thresholds + (denoising_start or 0))
         # end diff diff preparations
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1140,9 +1133,7 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
                 if i == 0 and denoising_start is None:
                     latents = original_with_noise[:1]
                 else:
-                    mask = masks[i].unsqueeze(0)
-                    # cast mask to the same type as latents etc
-                    mask = mask.to(latents.dtype)
+                    mask = masks[i].unsqueeze(0).to(latents.dtype)
                     mask = mask.unsqueeze(1)  # fit shape
                     latents = original_with_noise[i] * mask + latents * (1 - mask)
                 # end diff diff
