@@ -619,7 +619,7 @@ class AnimateDiffSparseControlNetPipeline(
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
 
-    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.AnimateDiffPipeline.prepare_latents
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
@@ -640,6 +640,25 @@ class AnimateDiffSparseControlNetPipeline(
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
+
+        # If FreeNoise is enabled, shuffle latents in every window as described in Equation (7) of
+        # [FreeNoise](https://arxiv.org/abs/2310.15169)
+        if self.free_noise_enabled and self._free_noise_shuffle:
+            for i in range(self._free_noise_context_length, num_frames, self._free_noise_context_stride):
+                # ensure window is within bounds
+                window_start = max(0, i - self._free_noise_context_length)
+                window_end = min(num_frames, window_start + self._free_noise_context_stride)
+                window_length = window_end - window_start
+
+                if window_length == 0:
+                    break
+
+                indices = torch.LongTensor(list(range(window_start, window_end)))
+                shuffled_indices = indices[torch.randperm(window_length, generator=generator)]
+
+                current_start = i
+                current_end = min(num_frames, i + self._free_noise_context_stride)
+                latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma

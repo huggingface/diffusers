@@ -523,6 +523,8 @@ class AnimateDiffPipeline(
         else:
             latents = latents.to(device)
 
+        # If FreeNoise is enabled, shuffle latents in every window as described in Equation (7) of
+        # [FreeNoise](https://arxiv.org/abs/2310.15169)
         if self.free_noise_enabled and self._free_noise_shuffle:
             for i in range(self._free_noise_context_length, num_frames, self._free_noise_context_stride):
                 # ensure window is within bounds
@@ -536,8 +538,9 @@ class AnimateDiffPipeline(
                 indices = torch.LongTensor(list(range(window_start, window_end)))
                 shuffled_indices = indices[torch.randperm(window_length, generator=generator)]
 
-                # shuffle latents in every window
-                latents[:, :, window_start:window_end] = latents[:, :, shuffled_indices]
+                current_start = i
+                current_end = min(num_frames, i + self._free_noise_context_stride)
+                latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
