@@ -242,7 +242,6 @@ def _download_diffusers_model_config_from_hub(
     revision,
     proxies,
     force_download=None,
-    resume_download=None,
     local_files_only=None,
     token=None,
 ):
@@ -253,7 +252,6 @@ def _download_diffusers_model_config_from_hub(
         revision=revision,
         proxies=proxies,
         force_download=force_download,
-        resume_download=resume_download,
         local_files_only=local_files_only,
         token=token,
         allow_patterns=allow_patterns,
@@ -288,9 +286,7 @@ class FromSingleFileMixin:
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download:
-                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
-                of Diffusers.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -352,7 +348,6 @@ class FromSingleFileMixin:
             deprecate("original_config_file", "1.0.0", deprecation_message)
             original_config = original_config_file
 
-        resume_download = kwargs.pop("resume_download", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
@@ -382,7 +377,6 @@ class FromSingleFileMixin:
 
         checkpoint = load_single_file_checkpoint(
             pretrained_model_link_or_path,
-            resume_download=resume_download,
             force_download=force_download,
             proxies=proxies,
             token=token,
@@ -412,7 +406,6 @@ class FromSingleFileMixin:
                     revision=revision,
                     proxies=proxies,
                     force_download=force_download,
-                    resume_download=resume_download,
                     local_files_only=local_files_only,
                     token=token,
                 )
@@ -435,7 +428,6 @@ class FromSingleFileMixin:
                         revision=revision,
                         proxies=proxies,
                         force_download=force_download,
-                        resume_download=resume_download,
                         local_files_only=False,
                         token=token,
                     )
