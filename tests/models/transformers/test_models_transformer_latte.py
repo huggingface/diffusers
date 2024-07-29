@@ -39,7 +39,7 @@ class LatteTransformerTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 4
         num_frames = 1
         height = width = 8
-        embedding_dim = 32
+        embedding_dim = 8
         sequence_length = 8
 
         hidden_states = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
@@ -65,12 +65,12 @@ class LatteTransformerTests(ModelTesterMixin, unittest.TestCase):
         init_dict = {
             "sample_size": 8,
             "num_layers": 1,
-            "patch_size": 1,
-            "attention_head_dim": 8,
-            "num_attention_heads": 3,
-            "caption_channels": 32,
+            "patch_size": 2,
+            "attention_head_dim": 4,
+            "num_attention_heads": 2,
+            "caption_channels": 8,
             "in_channels": 4,
-            "cross_attention_dim": 24,
+            "cross_attention_dim": 8,
             "out_channels": 8,
             "attention_bias": True,
             "activation_fn": "gelu-approximate",
