@@ -321,18 +321,7 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _bitsandbytes_available = False
 
-# Taken from `huggingface_hub`.
-_is_notebook = False
-try:
-    shell_class = get_ipython().__class__  # type: ignore # noqa: F821
-    for parent_class in shell_class.__mro__:  # e.g. "is subclass of"
-        if parent_class.__name__ == "ZMQInteractiveShell":
-            _is_notebook = True  # Jupyter notebook, Google colab or qtconsole
-            break
-except NameError:
-    pass  # Probably standard Python interpreter
-
-_is_google_colab = "google.colab" in sys.modules
+_is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
 
 
 def is_torch_available():
@@ -441,10 +430,6 @@ def is_safetensors_available():
 
 def is_bitsandbytes_available():
     return _bitsandbytes_available
-
-
-def is_notebook():
-    return _is_notebook
 
 
 def is_google_colab():
