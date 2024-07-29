@@ -223,8 +223,7 @@ def get_unweighted_text_embeddings(
                 prompt_embeds = pipe.text_encoder(text_input_chunk.to(pipe.device))
                 text_embedding = prompt_embeds[0]
             else:
-                prompt_embeds = pipe.text_encoder(
-                    text_input_chunk.to(pipe.device), output_hidden_states=True)
+                prompt_embeds = pipe.text_encoder(text_input_chunk.to(pipe.device), output_hidden_states=True)
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
                 # the tuple to access the hidden states from the desired layer.
@@ -368,11 +367,7 @@ def get_weighted_text_embeddings(
 
     # get the embeddings
     text_embeddings = get_unweighted_text_embeddings(
-        pipe,
-        prompt_tokens,
-        pipe.tokenizer.model_max_length,
-        no_boseos_middle=no_boseos_middle,
-        clip_skip=clip_skip
+        pipe, prompt_tokens, pipe.tokenizer.model_max_length, no_boseos_middle=no_boseos_middle, clip_skip=clip_skip
     )
     prompt_weights = torch.tensor(prompt_weights, dtype=text_embeddings.dtype, device=text_embeddings.device)
     if uncond_prompt is not None:
@@ -381,7 +376,7 @@ def get_weighted_text_embeddings(
             uncond_tokens,
             pipe.tokenizer.model_max_length,
             no_boseos_middle=no_boseos_middle,
-            clip_skip=clip_skip
+            clip_skip=clip_skip,
         )
         uncond_weights = torch.tensor(uncond_weights, dtype=uncond_embeddings.dtype, device=uncond_embeddings.device)
 
@@ -450,7 +445,11 @@ def preprocess_mask(mask, batch_size, scale_factor=8):
 
 
 class StableDiffusionLongPromptWeightingPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    StableDiffusionLoraLoaderMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion without tokens length limit, and support parsing
@@ -587,7 +586,7 @@ class StableDiffusionLongPromptWeightingPipeline(
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         clip_skip: Optional[int] = None,
-        lora_scale: Optional[float] = None
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -637,7 +636,7 @@ class StableDiffusionLongPromptWeightingPipeline(
                 uncond_prompt=negative_prompt if do_classifier_free_guidance else None,
                 max_embeddings_multiples=max_embeddings_multiples,
                 clip_skip=clip_skip,
-                lora_scale=lora_scale
+                lora_scale=lora_scale,
             )
             if prompt_embeds is None:
                 prompt_embeds = prompt_embeds1
@@ -948,7 +947,7 @@ class StableDiffusionLongPromptWeightingPipeline(
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-        lora_scale = (cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None)
+        lora_scale = cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
 
         # 3. Encode input prompt
         prompt_embeds = self._encode_prompt(
@@ -961,7 +960,7 @@ class StableDiffusionLongPromptWeightingPipeline(
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             clip_skip=clip_skip,
-            lora_scale=lora_scale
+            lora_scale=lora_scale,
         )
         dtype = prompt_embeds.dtype
 

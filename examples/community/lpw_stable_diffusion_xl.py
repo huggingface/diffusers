@@ -265,7 +265,7 @@ def get_weighted_text_embeddings_sdxl(
     num_images_per_prompt: int = 1,
     device: Optional[torch.device] = None,
     clip_skip: Optional[int] = None,
-    lora_scale: Optional[int] = None
+    lora_scale: Optional[int] = None,
 ):
     """
     This function can process long prompt with weights, no length limitation
@@ -1645,7 +1645,9 @@ class SDXLLongPromptWeightingPipeline(
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 3. Encode input prompt
-        lora_scale = (self._cross_attention_kwargs.get("scale", None) if self._cross_attention_kwargs is not None else None)
+        lora_scale = (
+            self._cross_attention_kwargs.get("scale", None) if self._cross_attention_kwargs is not None else None
+        )
 
         negative_prompt = negative_prompt if negative_prompt is not None else ""
 
@@ -1660,7 +1662,7 @@ class SDXLLongPromptWeightingPipeline(
             neg_prompt=negative_prompt,
             num_images_per_prompt=num_images_per_prompt,
             clip_skip=clip_skip,
-            lora_scale=lora_scale
+            lora_scale=lora_scale,
         )
         dtype = prompt_embeds.dtype
 
