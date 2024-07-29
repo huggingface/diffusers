@@ -43,7 +43,7 @@ from PIL import Image
 from torch.utils.data import default_collate
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, DPTImageProcessor, DPTForDepthEstimation, PretrainedConfig
+from transformers import AutoTokenizer, DPTForDepthEstimation, DPTImageProcessor, PretrainedConfig
 from webdataset.tariterators import (
     base_plus_ext,
     tar_file_expander,
