@@ -97,13 +97,13 @@ class AnimateDiffTransformer3D(nn.Module):
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
         in_channels: Optional[int] = None,
-        out_channels: Optional[int] = None,  # TODO(aryan): seems like unused parameter, do we remove?
+        out_channels: Optional[int] = None,
         num_layers: int = 1,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
         cross_attention_dim: Optional[int] = None,
         attention_bias: bool = False,
-        sample_size: Optional[int] = None,  # TODO(aryan): seems like unused parameter, do we remove?
+        sample_size: Optional[int] = None,
         activation_fn: str = "geglu",
         norm_elementwise_affine: bool = True,
         double_self_attention: bool = True,
@@ -1480,8 +1480,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
 
-            # TODO(aryan): Can we reduce LOC here by creating a dictionary of common arguments and then passing **kwargs?
-            # Many params are repeated here.
             if down_block_type == "CrossAttnDownBlockMotion":
                 down_block = CrossAttnDownBlockMotion(
                     in_channels=input_channel,
