@@ -1663,6 +1663,8 @@ class StableAudioAttnProcessor2_0:
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        from .embeddings import apply_rotary_emb
+
         residual = hidden_states
 
         input_ndim = hidden_states.ndim
@@ -1717,9 +1719,17 @@ class StableAudioAttnProcessor2_0:
             query = query.to(torch.float32)
             key = key.to(torch.float32)
 
-            query = self.apply_partial_rotary_emb(query, rotary_emb)
+            rot_dim = rotary_emb[0].shape[-1]
+            query_to_rotate, query_unrotated = query[..., :rot_dim], query[..., rot_dim:]
+            query_rotated = apply_rotary_emb(query_to_rotate, rotary_emb, use_real=True, use_real_unbind_dim=-2)
+
+            query = torch.cat((query_rotated, query_unrotated), dim=-1)
+
             if not attn.is_cross_attention:
-                key = self.apply_partial_rotary_emb(key, rotary_emb)
+                key_to_rotate, key_unrotated = key[..., :rot_dim], key[..., rot_dim:]
+                key_rotated = apply_rotary_emb(key_to_rotate, rotary_emb, use_real=True, use_real_unbind_dim=-2)
+
+                key = torch.cat((key_rotated, key_unrotated), dim=-1)
 
             query = query.to(query_dtype)
             key = key.to(key_dtype)

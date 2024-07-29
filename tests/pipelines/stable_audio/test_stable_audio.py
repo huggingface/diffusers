@@ -26,7 +26,7 @@ from transformers import (
 
 from diffusers import (
     AutoencoderOobleck,
-    EDMDPMSolverMultistepScheduler,
+    CosineDPMSolverMultistepScheduler,
     StableAudioDiTModel,
     StableAudioPipeline,
     StableAudioProjectionModel,
@@ -83,14 +83,11 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             global_states_input_dim=8,
             cross_attention_input_dim=4,
         )
-        scheduler = EDMDPMSolverMultistepScheduler(
+        scheduler = CosineDPMSolverMultistepScheduler(
             solver_order=2,
             prediction_type="v_prediction",
-            noise_preconditioning_strategy="atan",
             sigma_data=1.0,
-            algorithm_type="sde-dpmsolver++",
             sigma_schedule="exponential",
-            noise_sampling_strategy="brownian_tree",
         )
         torch.manual_seed(0)
         vae = AutoencoderOobleck(
