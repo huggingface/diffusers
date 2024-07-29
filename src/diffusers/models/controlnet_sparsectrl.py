@@ -32,10 +32,7 @@ from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unets.unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unets.unet_2d_condition import UNet2DConditionModel
-from .unets.unet_3d_blocks import (
-    CrossAttnDownBlockMotion,
-    DownBlockMotion,
-)
+from .unets.unet_motion_model import CrossAttnDownBlockMotion, DownBlockMotion
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
