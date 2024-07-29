@@ -376,7 +376,7 @@ class BasicTransformerBlock(nn.Module):
                 "layer_norm",
             )
 
-        elif norm_type in ["ada_norm_zero", "ada_norm", "layer_norm", "ada_norm_continuous"]:
+        elif norm_type in ["ada_norm_zero", "ada_norm", "layer_norm"]:
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
         elif norm_type == "layer_norm_i2vgen":
             self.norm3 = None
