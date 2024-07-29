@@ -267,6 +267,8 @@
       title: HunyuanDiT2DControlNetModel
     - local: api/models/controlnet_sd3
       title: SD3ControlNetModel
+    - local: api/models/controlnet_sparsectrl
+      title: SparseControlNetModel
     title: Models
   - isExpanded: false
     sections:
