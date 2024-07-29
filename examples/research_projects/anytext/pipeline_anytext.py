@@ -259,6 +259,9 @@ class AnyTextPipeline(
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
+    def modify_prompt(self, prompt: str) -> str:
+        return prompt
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
@@ -1119,6 +1122,8 @@ class AnyTextPipeline(
         text_encoder_lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
+        prompt, texts = self.modify_prompt(prompt)
+
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
