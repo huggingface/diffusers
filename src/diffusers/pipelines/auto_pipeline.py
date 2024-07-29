@@ -946,10 +946,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
-                if "controlnet" in kwargs:
-                    orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPAGPipeline")
-                else:
-                    orig_class_name = config["_class_name"].replace("Pipeline", "PAGPipeline")
+                orig_class_name = orig_class_name.replace("Pipeline", "PAGPipeline")
 
         inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
 
