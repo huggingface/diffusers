@@ -51,9 +51,9 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
-class AnimateDiffTransformer3DModelOutput(BaseOutput):
+class AnimateDiffTransformer3DOutput(BaseOutput):
     """
-    The output of [`AnimateDiffTransformer3DModel`].
+    The output of [`AnimateDiffTransformer3D`].
 
     Args:
         sample (`torch.Tensor` of shape `(batch_size * num_frames, num_channels, height, width)`):
@@ -63,7 +63,7 @@ class AnimateDiffTransformer3DModelOutput(BaseOutput):
     sample: torch.Tensor
 
 
-class AnimateDiffTransformer3DModel(nn.Module):
+class AnimateDiffTransformer3D(nn.Module):
     """
     A Transformer model for video-like data.
 
@@ -151,9 +151,9 @@ class AnimateDiffTransformer3DModel(nn.Module):
         num_frames: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> AnimateDiffTransformer3DModelOutput:
+    ) -> AnimateDiffTransformer3DOutput:
         """
-        The [`AnimateDiffTransformer3DModel`] forward method.
+        The [`AnimateDiffTransformer3D`] forward method.
 
         Args:
             hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.Tensor` of shape `(batch size, channel, height, width)` if continuous):
@@ -174,13 +174,13 @@ class AnimateDiffTransformer3DModel(nn.Module):
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a
-                [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DModelOutput`] instead of a
-                plain tuple.
+                [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DOutput`] instead of a plain
+                tuple.
 
         Returns:
-            [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DModelOutput`] or `tuple`:
+            [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DOutput`] or `tuple`:
                 If `return_dict` is True, an
-                [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DModelOutput`] is returned,
+                [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DOutput`] is returned,
                 otherwise a `tuple` where the first element is the sample tensor.
         """
         # 1. Input
@@ -222,7 +222,7 @@ class AnimateDiffTransformer3DModel(nn.Module):
         if not return_dict:
             return (output,)
 
-        return AnimateDiffTransformer3DModelOutput(sample=output)
+        return AnimateDiffTransformer3DOutput(sample=output)
 
 
 class DownBlockMotion(nn.Module):
@@ -283,7 +283,7 @@ class DownBlockMotion(nn.Module):
                 )
             )
             motion_modules.append(
-                AnimateDiffTransformer3DModel(
+                AnimateDiffTransformer3D(
                     num_attention_heads=temporal_num_attention_heads[i],
                     in_channels=out_channels,
                     num_layers=temporal_transformer_layers_per_block[i],
@@ -466,7 +466,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                 )
 
             motion_modules.append(
-                AnimateDiffTransformer3DModel(
+                AnimateDiffTransformer3D(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     num_layers=temporal_transformer_layers_per_block[i],
@@ -676,7 +676,7 @@ class CrossAttnUpBlockMotion(nn.Module):
                     )
                 )
             motion_modules.append(
-                AnimateDiffTransformer3DModel(
+                AnimateDiffTransformer3D(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     num_layers=temporal_transformer_layers_per_block[i],
@@ -847,7 +847,7 @@ class UpBlockMotion(nn.Module):
             )
 
             motion_modules.append(
-                AnimateDiffTransformer3DModel(
+                AnimateDiffTransformer3D(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     num_layers=temporal_transformer_layers_per_block[i],
@@ -1051,7 +1051,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                 )
             )
             motion_modules.append(
-                AnimateDiffTransformer3DModel(
+                AnimateDiffTransformer3D(
                     num_attention_heads=temporal_num_attention_heads,
                     attention_head_dim=in_channels // temporal_num_attention_heads,
                     in_channels=in_channels,
@@ -1165,7 +1165,7 @@ class MotionModules(nn.Module):
 
         for i in range(layers_per_block):
             self.motion_modules.append(
-                AnimateDiffTransformer3DModel(
+                AnimateDiffTransformer3D(
                     in_channels=in_channels,
                     num_layers=transformer_layers_per_block[i],
                     norm_num_groups=norm_num_groups,
