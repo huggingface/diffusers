@@ -35,10 +35,21 @@ def get_timestep_embedding(
     """
     This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal timestep embeddings.
 
-    :param timesteps: a 1-D Tensor of N indices, one per batch element.
-                      These may be fractional.
-    :param embedding_dim: the dimension of the output. :param max_period: controls the minimum frequency of the
-    embeddings. :return: an [N x dim] Tensor of positional embeddings.
+    Args
+        timesteps (torch.Tensor):
+            a 1-D Tensor of N indices, one per batch element. These may be fractional.
+        embedding_dim (int):
+            the dimension of the output.
+        flip_sin_to_cos (bool):
+            Whether the embedding order should be `cos, sin` (if True) or `sin, cos` (if False)
+        downscale_freq_shift (float):
+            Controls the delta between frequencies between dimensions
+        scale (float):
+            Scaling factor applied to the embeddings.
+        max_period (int):
+            Controls the maximum frequency of the embeddings
+    Returns
+        torch.Tensor: an [N x dim] Tensor of positional embeddings.
     """
     assert len(timesteps.shape) == 1, "Timesteps should be a 1d-array"
 
@@ -308,12 +319,16 @@ def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
     assert embed_dim % 4 == 0
 
     # use half of dimensions to encode grid_h
-    emb_h = get_1d_rotary_pos_embed(embed_dim // 2, grid[0].reshape(-1), use_real=use_real)  # (H*W, D/4)
-    emb_w = get_1d_rotary_pos_embed(embed_dim // 2, grid[1].reshape(-1), use_real=use_real)  # (H*W, D/4)
+    emb_h = get_1d_rotary_pos_embed(
+        embed_dim // 2, grid[0].reshape(-1), use_real=use_real
+    )  # (H*W, D/2) if use_real else (H*W, D/4)
+    emb_w = get_1d_rotary_pos_embed(
+        embed_dim // 2, grid[1].reshape(-1), use_real=use_real
+    )  # (H*W, D/2) if use_real else (H*W, D/4)
 
     if use_real:
-        cos = torch.cat([emb_h[0], emb_w[0]], dim=1)  # (H*W, D/2)
-        sin = torch.cat([emb_h[1], emb_w[1]], dim=1)  # (H*W, D/2)
+        cos = torch.cat([emb_h[0], emb_w[0]], dim=1)  # (H*W, D)
+        sin = torch.cat([emb_h[1], emb_w[1]], dim=1)  # (H*W, D)
         return cos, sin
     else:
         emb = torch.cat([emb_h, emb_w], dim=1)  # (H*W, D/2)
@@ -360,6 +375,8 @@ def get_1d_rotary_pos_embed(
     Returns:
         `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
     """
+    assert dim % 2 == 0
+
     if isinstance(pos, int):
         pos = np.arange(pos)
     theta = theta * ntk_factor
@@ -462,11 +479,12 @@ class TimestepEmbedding(nn.Module):
 
 
 class Timesteps(nn.Module):
-    def __init__(self, num_channels: int, flip_sin_to_cos: bool, downscale_freq_shift: float):
+    def __init__(self, num_channels: int, flip_sin_to_cos: bool, downscale_freq_shift: float, scale: int = 1):
         super().__init__()
         self.num_channels = num_channels
         self.flip_sin_to_cos = flip_sin_to_cos
         self.downscale_freq_shift = downscale_freq_shift
+        self.scale = scale
 
     def forward(self, timesteps):
         t_emb = get_timestep_embedding(
@@ -474,6 +492,7 @@ class Timesteps(nn.Module):
             self.num_channels,
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.downscale_freq_shift,
+            scale=self.scale,
         )
         return t_emb
 
