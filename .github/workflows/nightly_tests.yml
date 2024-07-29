@@ -19,7 +19,8 @@ env:
 jobs:
   setup_torch_cuda_pipeline_matrix:
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
-    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
+    runs-on:
+      group: aws-general-8-plus
     container:
       image: diffusers/diffusers-pytorch-cpu
     outputs:
