@@ -1,0 +1,32 @@
+name: Rebase Upstream
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # This runs the job nightly at midnight UTC
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v2
+        with:
+          ref: main
+
+      - name: Fetch upstream changes
+        run: git fetch upstream
+
+      - name: Rebase onto upstream main
+        run: git rebase upstream/main
+
+      - name: Push changes to private main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push origin main --force
