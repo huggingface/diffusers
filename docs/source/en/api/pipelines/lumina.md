@@ -43,6 +43,8 @@ Lumina-T2X has the following components:
 * It uses a Flow-based Large Diffusion Transformer as the backbone
 * It supports different any modalities with one backbone and corresponding encoder, decoder.
 
+This pipeline was contributed by [PommesPeter](https://github.com/PommesPeter). The original codebase can be found [here](https://github.com/Alpha-VLLM/Lumina-T2X). The original weights can be found under [hf.co/Alpha-VLLM](https://huggingface.co/Alpha-VLLM).
+
 <Tip>
 
 Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.md) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading.md#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
