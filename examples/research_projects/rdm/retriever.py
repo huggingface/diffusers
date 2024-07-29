@@ -100,9 +100,7 @@ class Index:
     ):
         if not self.index_initialized:
             model = model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(dtype=torch_dtype)
-            feature_extractor = feature_extractor or CLIPImageProcessor.from_pretrained(
-                self.config.clip_name_or_path
-            )
+            feature_extractor = feature_extractor or CLIPImageProcessor.from_pretrained(self.config.clip_name_or_path)
             self.dataset = get_dataset_with_emb_from_clip_model(
                 self.dataset,
                 model,
