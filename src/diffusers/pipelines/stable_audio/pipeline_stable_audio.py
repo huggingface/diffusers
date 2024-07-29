@@ -26,17 +26,12 @@ from ...models import AutoencoderOobleck, StableAudioDiTModel
 from ...models.embeddings import get_1d_rotary_pos_embed
 from ...schedulers import EDMDPMSolverMultistepScheduler
 from ...utils import (
-    is_librosa_available,
     logging,
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_stable_audio import StableAudioProjectionModel
-
-
-if is_librosa_available():
-    pass
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
