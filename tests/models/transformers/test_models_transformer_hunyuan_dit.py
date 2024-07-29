@@ -96,7 +96,7 @@ class HunyuanDiTTests(ModelTesterMixin, unittest.TestCase):
             "sample_size": 8,
             "patch_size": 2,
             "in_channels": 4,
-            "num_layers": 2,
+            "num_layers": 1,
             "attention_head_dim": 8,
             "num_attention_heads": 2,
             "cross_attention_dim": 8,
