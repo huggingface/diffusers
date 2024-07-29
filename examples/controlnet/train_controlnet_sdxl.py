@@ -1210,7 +1210,8 @@ def main(args):
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                noisy_latents = noise_scheduler.add_noise(
+                    latents.float(), noise.float(), timesteps).to(dtype=weight_dtype)
 
                 # ControlNet conditioning.
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
