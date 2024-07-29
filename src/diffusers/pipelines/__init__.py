@@ -522,8 +522,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .musicldm import MusicLDMPipeline
         from .pag import (
-            StableDiffusionControlNetPAGPipeline,
             StableDiffusionControlNetPAGImg2ImgPipeline,
+            StableDiffusionControlNetPAGPipeline,
             StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGPipeline,
             StableDiffusionXLPAGImg2ImgPipeline,

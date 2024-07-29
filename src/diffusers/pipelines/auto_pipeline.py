@@ -49,8 +49,8 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pag import (
-    StableDiffusionControlNetPAGPipeline,
     StableDiffusionControlNetPAGImg2ImgPipeline,
+    StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGPipeline,
     StableDiffusionXLPAGImg2ImgPipeline,
