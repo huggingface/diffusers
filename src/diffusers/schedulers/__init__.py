@@ -118,7 +118,7 @@ except OptionalDependencyNotAvailable:
     _dummy_modules.update(get_objects_from_module(dummy_torch_and_torchsde_objects))
 
 else:
-    _import_structure["scheduling_cosine_dpmsolver_multistep"] = ["DPMSolverSDEScheduler"]
+    _import_structure["scheduling_cosine_dpmsolver_multistep"] = ["CosineDPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_sde"] = ["DPMSolverSDEScheduler"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
