@@ -64,7 +64,7 @@ class LatteTransformerTests(ModelTesterMixin, unittest.TestCase):
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
             "sample_size": 8,
-            "num_layers": 2,
+            "num_layers": 1,
             "patch_size": 2,
             "attention_head_dim": 4,
             "num_attention_heads": 2,
