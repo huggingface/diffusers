@@ -1416,18 +1416,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if (
                 use_safetensors
                 and not allow_pickle
-                and not is_safetensors_compatible(
-                    model_filenames, variant=variant, passed_components=passed_components
-                )
+                and not is_safetensors_compatible(model_filenames, passed_components=passed_components)
             ):
                 raise EnvironmentError(
                     f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
                 )
             if from_flax:
                 ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
-            elif use_safetensors and is_safetensors_compatible(
-                model_filenames, variant=variant, passed_components=passed_components
-            ):
+            elif use_safetensors and is_safetensors_compatible(model_filenames, passed_components=passed_components):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
                 use_onnx = use_onnx if use_onnx is not None else pipeline_class._is_onnx

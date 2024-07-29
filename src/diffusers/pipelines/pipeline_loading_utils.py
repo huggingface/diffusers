@@ -89,7 +89,7 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
-def is_safetensors_compatible(filenames, variant=None, passed_components=None) -> bool:
+def is_safetensors_compatible(filenames, passed_components=None) -> bool:
     """
     Checking for safetensors compatibility:
     - The model is safetensors compatible only if there is a safetensors file for each model component present in
@@ -123,7 +123,7 @@ def is_safetensors_compatible(filenames, variant=None, passed_components=None) -
         for component_filename in component_filenames:
             filename, extension = os.path.splitext(component_filename)
 
-            match_exists = (variant in filename if variant else True) and extension == ".safetensors"
+            match_exists = extension == ".safetensors"
             matches.append(match_exists)
 
         if not any(matches):
