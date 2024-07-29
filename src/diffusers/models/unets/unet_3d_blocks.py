@@ -966,6 +966,7 @@ class DownBlockMotion(nn.Module):
         temporal_num_attention_heads: Union[int, Tuple[int]] = 1,
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_max_seq_length: int = 32,
+        temporal_double_self_attention: bool = True,
         temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
     ):
         super().__init__()
@@ -1016,6 +1017,7 @@ class DownBlockMotion(nn.Module):
                     positional_embeddings="sinusoidal",
                     num_positional_embeddings=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads[i],
+                    double_self_attention=temporal_double_self_attention,
                 )
             )
 
@@ -1118,6 +1120,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
         temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        temporal_double_self_attention: bool = True,
     ):
         super().__init__()
         resnets = []
@@ -1199,6 +1202,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                     positional_embeddings="sinusoidal",
                     num_positional_embeddings=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
+                    double_self_attention=temporal_double_self_attention,
                 )
             )
 
@@ -1532,7 +1536,6 @@ class UpBlockMotion(nn.Module):
         resnet_pre_norm: bool = True,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
-        temporal_norm_num_groups: int = 32,
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
@@ -1574,7 +1577,7 @@ class UpBlockMotion(nn.Module):
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     num_layers=temporal_transformer_layers_per_block[i],
-                    norm_num_groups=temporal_norm_num_groups,
+                    norm_num_groups=resnet_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
                     attention_bias=False,
                     activation_fn="geglu",
