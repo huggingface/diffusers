@@ -19,6 +19,9 @@ jobs:
         with:
           ref: main
 
+      - name: Add upstream repository
+        run: git remote add upstream https://github.com/huggingface/diffusers.git
+
       - name: Fetch upstream changes
         run: git fetch upstream
 
