@@ -719,9 +719,7 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
 
         else:
             init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
-            init_latents = (
-                init_latents - self.vae.config.shift_factor
-            ) * self.vae.config.scaling_factor
+            init_latents = init_latents * self.vae.config.scaling_factor
         if (
             batch_size > init_latents.shape[0]
             and batch_size % init_latents.shape[0] == 0
