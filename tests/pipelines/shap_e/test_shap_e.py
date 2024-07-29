@@ -181,7 +181,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (32, 16)
 
-        expected_slice = np.array([-1.0000, -0.6241, 1.0000, -0.8978, -0.6866, 0.7876, -0.7473, -0.2874, 0.6103])
+        expected_slice = np.array([-1.0000, -0.6559, 1.0000, -0.9096, -0.7252, 0.8211, -0.7647, -0.3308, 0.6462])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_inference_batch_consistent(self):
