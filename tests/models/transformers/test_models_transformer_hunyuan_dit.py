@@ -22,6 +22,17 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     torch_device,
 )
+from diffusers.models.attention_processor import (
+    AttnProcessor,
+    AttnProcessor2_0, 
+    HunyuanAttnProcessor2_0, 
+    XFormersAttnProcessor,
+)
+from diffusers.utils import  is_xformers_available
+from diffusers.utils.testing_utils import (
+    require_torch_gpu,
+    torch_device,
+)
 
 from ..test_modeling_common import ModelTesterMixin
 
@@ -37,10 +48,10 @@ class HunyuanDiTTests(ModelTesterMixin, unittest.TestCase):
     def dummy_input(self):
         batch_size = 2
         num_channels = 4
-        height = width = 16
-        embedding_dim = 32
-        sequence_length = 77
-        sequence_length_t5 = 256
+        height = width = 8
+        embedding_dim = 8
+        sequence_length = 4
+        sequence_length_t5 = 4
 
         hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
@@ -74,24 +85,26 @@ class HunyuanDiTTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        return (4, 16, 16)
+        return (4, 8, 8)
 
     @property
     def output_shape(self):
-        return (8, 16, 16)
+        return (8, 8, 8)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "sample_size": 16,
+            "sample_size": 8,
             "patch_size": 2,
             "in_channels": 4,
-            "num_layers": 1,
+            "num_layers": 2,
             "attention_head_dim": 8,
-            "num_attention_heads": 3,
-            "cross_attention_dim": 32,
-            "cross_attention_dim_t5": 32,
-            "pooled_projection_dim": 16,
-            "hidden_size": 24,
+            "num_attention_heads": 2,
+            "cross_attention_dim": 8,
+            "cross_attention_dim_t5": 8,
+            "pooled_projection_dim": 4,
+            "hidden_size": 16,
+            "text_len": 4,
+            "text_len_t5": 4,
             "activation_fn": "gelu-approximate",
         }
         inputs_dict = self.dummy_input
