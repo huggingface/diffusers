@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -32,6 +32,8 @@ from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormZero, FP32LayerNorm
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -253,7 +255,7 @@ class AuraFlowJointTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
+class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     A 2D Transformer model as introduced in AuraFlow (https://blog.fal.ai/auraflow/).
 
@@ -451,6 +453,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         height, width = hidden_states.shape[-2:]
@@ -463,7 +466,19 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states = torch.cat(
             [self.register_tokens.repeat(encoder_hidden_states.size(0), 1, 1), encoder_hidden_states], dim=1
         )
-
+        if joint_attention_kwargs is not None:
+            joint_attention_kwargs = joint_attention_kwargs.copy()
+            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
+                )
         # MMDiT blocks.
         for index_block, block in enumerate(self.joint_transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -537,6 +552,10 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         output = hidden_states.reshape(
             shape=(hidden_states.shape[0], out_channels, height * patch_size, width * patch_size)
         )
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)
