@@ -521,7 +521,8 @@ class CogVideoXSpatialNorm3D(SpatialNorm3D):
 # Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
 class CogVideoXUpzSample3D(UpSample3D):
     r"""
-    Add compress_time option to the `UpSample` layer of a variational autoencoder that upsamples its input in CogVideoX Model.
+    Add compress_time option to the `UpSample` layer of a variational autoencoder that upsamples its input in CogVideoX
+    Model.
 
     Args:
         in_channels (`int`, *optional*, defaults to 3):
@@ -572,7 +573,8 @@ class CogVideoXUpzSample3D(UpSample3D):
 # Todo: Create vae_3d.py such as vae.py file?
 class DownSample3D(nn.Module):
     r"""
-    Add compress_time option to the `DownSample` layer of a variational autoencoder that downsamples its input in CogVideoX Model.
+    Add compress_time option to the `DownSample` layer of a variational autoencoder that downsamples its input in
+    CogVideoX Model.
 
     Args:
         in_channels (`int`, *optional*):
