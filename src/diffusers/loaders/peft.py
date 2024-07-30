@@ -30,6 +30,7 @@ from .unet_loader_utils import _maybe_expand_lora_scales
 
 _SET_ADAPTER_SCALE_FN_MAPPING = {
     "UNet2DConditionModel": _maybe_expand_lora_scales,
+    "UNetMotionModel": _maybe_expand_lora_scales,
     "SD3Transformer2DModel": lambda model_cls, weights: weights,
 }
 
