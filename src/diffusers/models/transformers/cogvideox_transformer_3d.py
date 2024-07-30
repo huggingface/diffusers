@@ -372,7 +372,7 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         timestep_cond: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
-        batch_size, channels, num_frames, height, width = sample.shape
+        batch_size, num_frames, channels, height, width = sample.shape
 
         # 1. Time embedding
         timesteps = timestep
@@ -415,11 +415,7 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
 
         # 2. Prepare attention mask
         if attention_mask is None:
-            attention_mask = torch.ones(
-                batch_size,
-                self.num_patches + self.config.max_text_seq_length,
-                self.num_patches + self.config.max_text_seq_length,
-            )
+            attention_mask = torch.ones(batch_size, self.num_patches + self.config.max_text_seq_length)
         attention_mask = attention_mask.to(device=sample.device, dtype=sample.dtype)
 
         # 5. Transformer blocks
@@ -455,13 +451,12 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         shift, scale = self.adaln_out(emb).chunk(2, dim=1)
         hidden_states = self.norm_out(hidden_states)
         hidden_states = self._modulate(hidden_states, shift, scale)
-        hidden_states = self.norm_out(hidden_states)
         hidden_states = self.proj_out(hidden_states)
 
         # 7. Unpatchify
         p = self.config.patch_size
-        output = hidden_states.reshape(-1, height // p, width // p, p, p, self.config.out_channels)
-        output = output.permute(0, 5, 1, 3, 2, 4).flatten(4, 5).flatten(2, 3)
+        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, p, p, self.config.out_channels)
+        output = output.permute(0, 1, 6, 2, 4, 3, 5).flatten(5, 6).flatten(3, 4)
 
         if not return_dict:
             return output
