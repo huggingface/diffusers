@@ -231,7 +231,6 @@ class FreeNoiseTransformerBlock(nn.Module):
             window_start = i
             window_end = min(num_frames, i + self.context_length)
             frame_indices.append((window_start, window_end))
-
         return frame_indices
 
     def _get_frame_weights(self, num_frames: int, weighting_scheme: str = "pyramid") -> List[float]:
