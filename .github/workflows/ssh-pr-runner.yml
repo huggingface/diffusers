@@ -19,7 +19,8 @@ env:
 jobs:
   ssh_runner:
     name: "SSH"
-    runs-on: [self-hosted, intel-cpu, 32-cpu, 256-ram, ci]
+    runs-on:
+      group: aws-highmemory-32-plus
     container:
       image: ${{ github.event.inputs.docker_image }}
       options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --privileged
