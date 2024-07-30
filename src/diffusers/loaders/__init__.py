@@ -64,6 +64,7 @@ if is_torch_available():
             "AmusedLoraLoaderMixin",
             "StableDiffusionLoraLoaderMixin",
             "SD3LoraLoaderMixin",
+            "AuraFlowLoraLoaderMixin",
             "StableDiffusionXLLoraLoaderMixin",
             "LoraLoaderMixin",
         ]
@@ -85,6 +86,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 AmusedLoraLoaderMixin,
                 LoraLoaderMixin,
                 SD3LoraLoaderMixin,
+                AuraFlowLoraLoaderMixin,
                 StableDiffusionLoraLoaderMixin,
                 StableDiffusionXLLoraLoaderMixin,
             )
