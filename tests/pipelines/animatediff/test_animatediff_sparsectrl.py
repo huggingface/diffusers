@@ -1,26 +1,33 @@
-import random
 import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
 from diffusers import (
+    AnimateDiffSparseControlNetPipeline,
     AutoencoderKL,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
     LCMScheduler,
     MotionAdapter,
-    PIAPipeline,
+    SparseControlNetModel,
     StableDiffusionPipeline,
     UNet2DConditionModel,
     UNetMotionModel,
 )
-from diffusers.utils import is_xformers_available, logging
-from diffusers.utils.testing_utils import floats_tensor, torch_device
+from diffusers.utils import logging
+from diffusers.utils.testing_utils import torch_device
 
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineFromPipeTesterMixin, PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineFromPipeTesterMixin,
+    PipelineTesterMixin,
+    SDFunctionTesterMixin,
+)
 
 
 def to_np(tensor):
@@ -30,21 +37,12 @@ def to_np(tensor):
     return tensor
 
 
-class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase):
-    pipeline_class = PIAPipeline
-    params = frozenset(
-        [
-            "prompt",
-            "height",
-            "width",
-            "guidance_scale",
-            "negative_prompt",
-            "prompt_embeds",
-            "negative_prompt_embeds",
-            "cross_attention_kwargs",
-        ]
-    )
-    batch_params = frozenset(["prompt", "image", "generator"])
+class AnimateDiffSparseControlNetPipelineFastTests(
+    IPAdapterTesterMixin, SDFunctionTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase
+):
+    pipeline_class = AnimateDiffSparseControlNetPipeline
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     required_optional_params = frozenset(
         [
             "num_inference_steps",
@@ -79,6 +77,18 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
             clip_sample=False,
         )
         torch.manual_seed(0)
+        controlnet = SparseControlNetModel(
+            block_out_channels=block_out_channels,
+            layers_per_block=2,
+            in_channels=4,
+            conditioning_channels=3,
+            down_block_types=("CrossAttnDownBlockMotion", "DownBlockMotion"),
+            cross_attention_dim=cross_attention_dim,
+            conditioning_embedding_out_channels=(8, 8),
+            norm_num_groups=1,
+            use_simplified_condition_embedding=False,
+        )
+        torch.manual_seed(0)
         vae = AutoencoderKL(
             block_out_channels=block_out_channels,
             in_channels=3,
@@ -102,17 +112,16 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        torch.manual_seed(0)
         motion_adapter = MotionAdapter(
             block_out_channels=block_out_channels,
             motion_layers_per_block=2,
             motion_norm_num_groups=2,
             motion_num_attention_heads=4,
-            conv_in_channels=9,
         )
 
         components = {
             "unet": unet,
+            "controlnet": controlnet,
             "scheduler": scheduler,
             "vae": vae,
             "motion_adapter": motion_adapter,
@@ -123,18 +132,23 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed: int = 0, num_frames: int = 2):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        image = floats_tensor((1, 3, 8, 8), rng=random.Random(seed)).to(device)
+        video_height = 32
+        video_width = 32
+        conditioning_frames = [Image.new("RGB", (video_width, video_height))] * num_frames
+
         inputs = {
-            "image": image,
             "prompt": "A painting of a squirrel eating a burger",
+            "conditioning_frames": conditioning_frames,
+            "controlnet_frame_indices": list(range(num_frames)),
             "generator": generator,
             "num_inference_steps": 2,
+            "num_frames": num_frames,
             "guidance_scale": 7.5,
             "output_type": "pt",
         }
@@ -172,43 +186,37 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
 
     def test_motion_unet_loading(self):
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+        pipe = AnimateDiffSparseControlNetPipeline(**components)
 
         assert isinstance(pipe.unet, UNetMotionModel)
 
+    @unittest.skip("Attention slicing is not enabled in this pipeline")
+    def test_attention_slicing_forward_pass(self):
+        pass
+
     def test_ip_adapter_single(self):
         expected_pipe_slice = None
-
         if torch_device == "cpu":
             expected_pipe_slice = np.array(
                 [
-                    0.5475,
-                    0.5769,
-                    0.4873,
-                    0.5064,
-                    0.4445,
-                    0.5876,
-                    0.5453,
-                    0.4102,
-                    0.5247,
-                    0.5370,
-                    0.3406,
-                    0.4322,
-                    0.3991,
-                    0.3756,
-                    0.5438,
-                    0.4780,
-                    0.5087,
-                    0.5248,
-                    0.6243,
-                    0.5506,
-                    0.3491,
-                    0.5440,
-                    0.6111,
-                    0.5122,
-                    0.5326,
-                    0.5180,
-                    0.5538,
+                    0.6604,
+                    0.4099,
+                    0.4928,
+                    0.5706,
+                    0.5096,
+                    0.5012,
+                    0.6051,
+                    0.5169,
+                    0.5021,
+                    0.4864,
+                    0.4261,
+                    0.5779,
+                    0.5822,
+                    0.4049,
+                    0.5253,
+                    0.6160,
+                    0.4150,
+                    0.5155,
                 ]
             )
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
@@ -216,12 +224,8 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
         if torch_device == "cpu":
-            expected_slice = np.array([0.5476, 0.4092, 0.5289, 0.4755, 0.5092, 0.5186, 0.5403, 0.5287, 0.5467])
+            expected_slice = np.array([0.6051, 0.5169, 0.5021, 0.6160, 0.4150, 0.5155])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
-
-    @unittest.skip("Attention slicing is not enabled in this pipeline")
-    def test_attention_slicing_forward_pass(self):
-        pass
 
     def test_inference_batch_single_identical(
         self,
@@ -230,6 +234,68 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
         additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
         components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for components in pipe.components.values():
+            if hasattr(components, "set_default_attn_processor"):
+                components.set_default_attn_processor()
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs(torch_device)
+        # Reset generator in case it is has been used in self.get_dummy_inputs
+        inputs["generator"] = self.get_generator(0)
+
+        logger = logging.get_logger(pipe.__module__)
+        logger.setLevel(level=diffusers.logging.FATAL)
+
+        # batchify inputs
+        batched_inputs = {}
+        batched_inputs.update(inputs)
+
+        for name in self.batch_params:
+            if name not in inputs:
+                continue
+
+            value = inputs[name]
+            if name == "prompt":
+                len_prompt = len(value)
+                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+                batched_inputs[name][-1] = 100 * "very long"
+
+            else:
+                batched_inputs[name] = batch_size * [value]
+
+        if "generator" in inputs:
+            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
+
+        if "batch_size" in inputs:
+            batched_inputs["batch_size"] = batch_size
+
+        for arg in additional_params_copy_to_batched_inputs:
+            batched_inputs[arg] = inputs[arg]
+
+        output = pipe(**inputs)
+        output_batch = pipe(**batched_inputs)
+
+        assert output_batch[0].shape[0] == batch_size
+
+        max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
+        assert max_diff < expected_max_diff
+
+    def test_inference_batch_single_identical_use_simplified_condition_embedding_true(
+        self,
+        batch_size=2,
+        expected_max_diff=1e-4,
+        additional_params_copy_to_batched_inputs=["num_inference_steps"],
+    ):
+        components = self.get_dummy_components()
+
+        torch.manual_seed(0)
+        old_controlnet = components.pop("controlnet")
+        components["controlnet"] = SparseControlNetModel.from_config(
+            old_controlnet.config, conditioning_channels=4, use_simplified_condition_embedding=True
+        )
+
         pipe = self.pipeline_class(**components)
         for components in pipe.components.values():
             if hasattr(components, "set_default_attn_processor"):
@@ -329,7 +395,7 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
 
     def test_free_init(self):
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+        pipe: AnimateDiffSparseControlNetPipeline = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
         pipe.to(torch_device)
 
@@ -364,7 +430,7 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
 
     def test_free_init_with_schedulers(self):
         components = self.get_dummy_components()
-        pipe: PIAPipeline = self.pipeline_class(**components)
+        pipe: AnimateDiffSparseControlNetPipeline = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
         pipe.to(torch_device)
 
@@ -392,7 +458,7 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
 
         for scheduler in schedulers_to_test:
             components["scheduler"] = scheduler
-            pipe: PIAPipeline = self.pipeline_class(**components)
+            pipe: AnimateDiffSparseControlNetPipeline = self.pipeline_class(**components)
             pipe.set_progress_bar_config(disable=None)
             pipe.to(torch_device)
 
@@ -408,31 +474,5 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
                 "Enabling of FreeInit should lead to results different from the default pipeline results",
             )
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_without_offload = pipe(**inputs).frames[0]
-        output_without_offload = (
-            output_without_offload.cpu() if torch.is_tensor(output_without_offload) else output_without_offload
-        )
-
-        pipe.enable_xformers_memory_efficient_attention()
-        inputs = self.get_dummy_inputs(torch_device)
-        output_with_offload = pipe(**inputs).frames[0]
-        output_with_offload = (
-            output_with_offload.cpu() if torch.is_tensor(output_with_offload) else output_without_offload
-        )
-
-        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
-        self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+    def test_vae_slicing(self):
+        return super().test_vae_slicing(image_count=2)
