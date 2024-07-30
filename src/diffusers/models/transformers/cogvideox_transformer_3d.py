@@ -24,7 +24,6 @@ from ..attention import Attention, FeedForward
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -125,8 +124,7 @@ class CogVideoXBlock(nn.Module):
         self.norm0 = AdaLayerNorm(time_embed_dim, 12 * dim)
 
         # 1. Self Attention
-        # TODO: verify if this should actually be FP32LayerNorm or if nn.LayerNorm is okay
-        self.norm1 = FP32LayerNorm(dim, norm_eps)
+        self.norm1 = nn.LayerNorm(dim, norm_eps)
 
         self.attn1 = Attention(
             query_dim=dim,
@@ -140,7 +138,7 @@ class CogVideoXBlock(nn.Module):
         )
 
         # 2. Feed Forward
-        self.norm2 = FP32LayerNorm(dim, norm_eps, norm_elementwise_affine)
+        self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
 
         self.ff = FeedForward(
             dim,
@@ -348,11 +346,11 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
                 for _ in range(num_layers)
             ]
         )
-        self.norm_final = FP32LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
+        self.norm_final = nn.LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
 
         # 5. Output blocks
         self.adaln_out = AdaLayerNorm(time_embed_dim, 2 * inner_dim)
-        self.norm_out = FP32LayerNorm(inner_dim, 1e-06, norm_elementwise_affine)
+        self.norm_out = nn.LayerNorm(inner_dim, 1e-6, norm_elementwise_affine)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 
         self.gradient_checkpointing = False
@@ -390,7 +388,6 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
-
         t_emb = self.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
