@@ -74,6 +74,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .autoencoders import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
+            AutoencoderKL3D,
             AutoencoderKLTemporalDecoder,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
