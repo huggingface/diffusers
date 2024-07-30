@@ -239,6 +239,8 @@
       title: AsymmetricAutoencoderKL
     - local: api/models/autoencoder_tiny
       title: Tiny AutoEncoder
+    - local: api/models/autoencoder_oobleck
+      title: Oobleck AutoEncoder
     - local: api/models/consistency_decoder_vae
       title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
@@ -259,6 +261,8 @@
       title: TransformerTemporalModel
     - local: api/models/sd3_transformer2d
       title: SD3Transformer2DModel
+    - local: api/models/stable_audio_transformer
+      title: StableAudioDiTModel
     - local: api/models/prior_transformer
       title: PriorTransformer
     - local: api/models/controlnet
@@ -362,6 +366,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/stable_audio
+      title: Stable Audio
     - local: api/pipelines/stable_cascade
       title: Stable Cascade
     - sections:
@@ -425,6 +431,8 @@
       title: CMStochasticIterativeScheduler
     - local: api/schedulers/consistency_decoder
       title: ConsistencyDecoderScheduler
+    - local: api/schedulers/cosine_dpm
+      title: CosineDPMSolverMultistepScheduler
     - local: api/schedulers/ddim_inverse
       title: DDIMInverseScheduler
     - local: api/schedulers/ddim
