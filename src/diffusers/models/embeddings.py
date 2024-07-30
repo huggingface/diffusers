@@ -103,7 +103,7 @@ def get_3d_sincos_pos_embed(
 
     # 1. Spatial
     grid_h = np.arange(spatial_size[1], dtype=np.float32) / spatial_interpolation_scale
-    grid_w = np.arange(spatial_size[0], dtype=np.float32) / temporal_interpolation_scale
+    grid_w = np.arange(spatial_size[0], dtype=np.float32) / spatial_interpolation_scale
     grid = np.meshgrid(grid_w, grid_h)  # here w goes first
     grid = np.stack(grid, axis=0)
 
