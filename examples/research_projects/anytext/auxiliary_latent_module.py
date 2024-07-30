@@ -226,25 +226,25 @@ class AuxiliaryLatentModule(nn.Module):
     ):
         if prompt is None and texts is None:
             raise ValueError("Prompt or texts must be provided!")
-            #return None, -1, "You have input Chinese prompt but the translator is not loaded!", ""
+            # return None, -1, "You have input Chinese prompt but the translator is not loaded!", ""
         n_lines = len(texts)
         if mode in ["text-generation", "gen"]:
             edit_image = np.ones((h, w, 3)) * 127.5  # empty mask image
         elif mode in ["text-editing", "edit"]:
             if draw_pos is None or ori_image is None:
                 raise ValueError("Reference image and position image are needed for text editing!")
-                #return None, -1, "Reference image and position image are needed for text editing!", ""
+                # return None, -1, "Reference image and position image are needed for text editing!", ""
             if isinstance(ori_image, str):
                 ori_image = cv2.imread(ori_image)[..., ::-1]
                 if ori_image is None:
                     raise ValueError(f"Can't read ori_image image from {ori_image}!")
-                #assert ori_image is not None, f"Can't read ori_image image from{ori_image}!"
+                # assert ori_image is not None, f"Can't read ori_image image from{ori_image}!"
             elif isinstance(ori_image, torch.Tensor):
                 ori_image = ori_image.cpu().numpy()
             else:
                 if not isinstance(ori_image, np.ndarray):
                     raise ValueError(f"Unknown format of ori_image: {type(ori_image)}")
-                #assert isinstance(ori_image, np.ndarray), f"Unknown format of ori_image: {type(ori_image)}"
+                # assert isinstance(ori_image, np.ndarray), f"Unknown format of ori_image: {type(ori_image)}"
             edit_image = ori_image.clip(1, 255)  # for mask reason
             edit_image = check_channels(edit_image)
             edit_image = resize_image(
@@ -258,14 +258,14 @@ class AuxiliaryLatentModule(nn.Module):
             draw_pos = cv2.imread(draw_pos)[..., ::-1]
             if draw_pos is None:
                 raise ValueError(f"Can't read draw_pos image from {draw_pos}!")
-            #assert draw_pos is not None, f"Can't read draw_pos image from{draw_pos}!"
+            # assert draw_pos is not None, f"Can't read draw_pos image from{draw_pos}!"
             pos_imgs = 255 - draw_pos
         elif isinstance(draw_pos, torch.Tensor):
             pos_imgs = draw_pos.cpu().numpy()
         else:
             if not isinstance(draw_pos, np.ndarray):
                 raise ValueError(f"Unknown format of draw_pos: {type(draw_pos)}")
-            #assert isinstance(draw_pos, np.ndarray), f"Unknown format of draw_pos: {type(draw_pos)}"
+            # assert isinstance(draw_pos, np.ndarray), f"Unknown format of draw_pos: {type(draw_pos)}"
         if mode in ["text-editing", "edit"]:
             pos_imgs = cv2.resize(pos_imgs, (w, h))
         pos_imgs = pos_imgs[..., 0:1]
@@ -279,7 +279,9 @@ class AuxiliaryLatentModule(nn.Module):
             if n_lines == 1 and texts[0] == " ":
                 pass  # text-to-image without text
             else:
-                raise ValueError(f"Found {len(pos_imgs)} positions that < needed {n_lines} from prompt, check and try again!")
+                raise ValueError(
+                    f"Found {len(pos_imgs)} positions that < needed {n_lines} from prompt, check and try again!"
+                )
         elif len(pos_imgs) > n_lines:
             str_warning = f"Warning: found {len(pos_imgs)} positions that > needed {n_lines} from prompt."
             logger.warning(str_warning)
