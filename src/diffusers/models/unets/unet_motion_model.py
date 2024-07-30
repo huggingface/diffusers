@@ -61,34 +61,54 @@ class FreeNoiseTransformerBlock(nn.Module):
     A FreeNoise Transformer block.
 
     Parameters:
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        num_embeds_ada_norm (:
-            obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
-        attention_bias (:
-            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
-        only_cross_attention (`bool`, *optional*):
+        dim (`int`):
+            The number of channels in the input and output.
+        num_attention_heads (`int`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`):
+            The number of channels in each head.
+        dropout (`float`, *optional*, defaults to 0.0):
+            The dropout probability to use.
+        cross_attention_dim (`int`, *optional*):
+            The size of the encoder_hidden_states vector for cross attention.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`):
+            Activation function to be used in feed-forward.
+        num_embeds_ada_norm (`int`, *optional*):
+            The number of diffusion steps used during training. See `Transformer2DModel`.
+        attention_bias (`bool`, defaults to `False`):
+            Configure if the attentions should contain a bias parameter.
+        only_cross_attention (`bool`, defaults to `False`):
             Whether to use only cross-attention layers. In this case two cross attention layers are used.
-        double_self_attention (`bool`, *optional*):
+        double_self_attention (`bool`, defaults to `False`):
             Whether to use two self-attention layers. In this case no cross attention layers are used.
-        upcast_attention (`bool`, *optional*):
+        upcast_attention (`bool`, defaults to `False`):
             Whether to upcast the attention computation to float32. This is useful for mixed precision training.
-        norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
+        norm_elementwise_affine (`bool`, defaults to `True`):
             Whether to use learnable elementwise affine parameters for normalization.
-        norm_type (`str`, *optional*, defaults to `"layer_norm"`):
+        norm_type (`str`, defaults to `"layer_norm"`):
             The normalization layer to use. Can be `"layer_norm"`, `"ada_norm"` or `"ada_norm_zero"`.
-        final_dropout (`bool` *optional*, defaults to False):
+        final_dropout (`bool` defaults to `False`):
             Whether to apply a final dropout after the last feed-forward layer.
-        attention_type (`str`, *optional*, defaults to `"default"`):
+        attention_type (`str`, defaults to `"default"`):
             The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
-        positional_embeddings (`str`, *optional*, defaults to `None`):
+        positional_embeddings (`str`, *optional*):
             The type of positional embeddings to apply to.
         num_positional_embeddings (`int`, *optional*, defaults to `None`):
             The maximum number of positional embeddings to apply.
+        ff_inner_dim (`int`, *optional*):
+            Hidden dimension of feed-forward MLP.
+        ff_bias (`bool`, defaults to `True`):
+            Whether or not to use bias in feed-forward MLP.
+        attention_out_bias (`bool`, defaults to `True`):
+            Whether or not to use bias in attention output project layer.
+        context_length (`int`, defaults to `16`):
+            The maximum number of frames that the FreeNoise block processes at once.
+        context_stride (`int`, defaults to `4`):
+            The number of frames to be skipped before starting to process a new batch of `context_length` frames.
+        weighting_scheme (`str`, defaults to `"pyramid"`):
+            The weighting scheme to use for weighting averaging of processed latent frames. As described in the
+            Equation 9. of the [FreeNoise](https://arxiv.org/abs/2310.15169) paper, "pyramid" is the default setting
+            used.
     """
 
     def __init__(
@@ -290,7 +310,6 @@ class FreeNoiseTransformerBlock(nn.Module):
 
             # Notice that normalization is always applied before the real computation in the following blocks.
             # 1. Self-Attention
-            # assert self.norm_type == "layer_norm"
             norm_hidden_states = self.norm1(hidden_states_chunk)
 
             if self.pos_embed is not None:
@@ -339,7 +358,6 @@ class FreeNoiseTransformerBlock(nn.Module):
         norm_hidden_states = self.norm3(hidden_states)
 
         if self._chunk_size is not None:
-            # "feed_forward_chunk_size" can be used to save memory
             ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
         else:
             ff_output = self.ff(norm_hidden_states)

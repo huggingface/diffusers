@@ -19,7 +19,6 @@ from ..models.unets.unet_motion_model import (
     CrossAttnDownBlockMotion,
     DownBlockMotion,
     FreeNoiseTransformerBlock,
-    TransformerTemporalModel,
     UpBlockMotion,
 )
 
@@ -31,7 +30,6 @@ class AnimateDiffFreeNoiseMixin:
         r"""Helper function to enable FreeNoise in transformer blocks."""
 
         for motion_module in block.motion_modules:
-            motion_module: TransformerTemporalModel
             num_transformer_blocks = len(motion_module.transformer_blocks)
 
             for i in range(num_transformer_blocks):
@@ -70,7 +68,6 @@ class AnimateDiffFreeNoiseMixin:
         r"""Helper function to disable FreeNoise in transformer blocks."""
 
         for motion_module in block.motion_modules:
-            motion_module: TransformerTemporalModel
             num_transformer_blocks = len(motion_module.transformer_blocks)
 
             for i in range(num_transformer_blocks):
@@ -115,10 +112,15 @@ class AnimateDiffFreeNoiseMixin:
                 windows of size `context_length`. Context stride allows you to specify how many frames to skip between
                 each window. For example, a context length of 16 and context stride of 4 would process 24 frames as:
                     [0, 15], [4, 19], [8, 23] (0-based indexing)
-            weighting_scheme (`str`, defaults to `4`):
-                TODO(aryan)
+            weighting_scheme (`str`, defaults to `pyramid`):
+                Weighting scheme for averaging latents after accumulation in FreeNoise blocks. The following weighting
+                schemes are supported currently:
+                    - "pyramid"
+                        Peforms weighted averaging with a pyramid like weight pattern: [1, 2, 3, 2, 1].
             shuffle (`str`, defaults to `True`):
-                TODO(aryan): decide if this is even needed
+                Shuffling latents is described in Equation 9. of the paper. It is a vital in improving the video
+                consistency. Without shuffling, a random batch of `num_frames` latents are created. With shuffling,
+                only the first `context_length` latents are shuffled and repeated.
         """
         self._free_noise_context_length = context_length or self.motion_adapter.config.motion_max_seq_length
         self._free_noise_context_stride = context_stride
