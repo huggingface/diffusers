@@ -91,12 +91,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 AmusedLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
                 FluxLoraLoaderMixin,
+                AuraFlowLoraLoaderMixin,
                 LoraLoaderMixin,
                 LTXVideoLoraLoaderMixin,
                 Mochi1LoraLoaderMixin,
                 SanaLoraLoaderMixin,
                 SD3LoraLoaderMixin,
-                AuraFlowLoraLoaderMixin,
                 StableDiffusionLoraLoaderMixin,
                 StableDiffusionXLLoraLoaderMixin,
             )

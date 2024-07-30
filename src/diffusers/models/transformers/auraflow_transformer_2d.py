@@ -20,7 +20,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version, logging
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_processor import (
     Attention,
@@ -32,8 +33,6 @@ from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormZero, FP32LayerNorm
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -344,8 +343,8 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
 
         self.gradient_checkpointing = False
 
-    @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
+    @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
@@ -453,7 +452,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         height, width = hidden_states.shape[-2:]
@@ -466,18 +465,18 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         encoder_hidden_states = torch.cat(
             [self.register_tokens.repeat(encoder_hidden_states.size(0), 1, 1), encoder_hidden_states], dim=1
         )
-        if joint_attention_kwargs is not None:
-            joint_attention_kwargs = joint_attention_kwargs.copy()
-            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
         else:
             lora_scale = 1.0
         if USE_PEFT_BACKEND:
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
         else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
                 logger.warning(
-                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
         # MMDiT blocks.
         for index_block, block in enumerate(self.joint_transformer_blocks):
