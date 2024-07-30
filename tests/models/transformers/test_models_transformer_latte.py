@@ -50,7 +50,7 @@ class LatteTransformerTests(ModelTesterMixin, unittest.TestCase):
             "hidden_states": hidden_states,
             "encoder_hidden_states": encoder_hidden_states,
             "timestep": timestep,
-            "enable_temporal_attentions": True
+            "enable_temporal_attentions": True,
         }
 
     @property
