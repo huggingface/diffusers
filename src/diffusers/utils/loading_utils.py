@@ -53,14 +53,15 @@ def load_image(
 
 
 def load_video(
-    video: Union[str], convert_method: Optional[Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]]] = None
+    video: str,
+    convert_method: Optional[Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]]] = None,
 ) -> List[PIL.Image.Image]:
     """
     Loads `video` to a list of PIL Image.
 
     Args:
         video (`str`):
-            The video URL, or path to local file, to load and convert to a list of PIL Images.
+            A URL or Path to a video to convert to a list of PIL Image format.
         convert_method (Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]], *optional*):
             A conversion method to apply to the video after loading it. When set to `None` the images will be converted
             to "RGB".
@@ -69,52 +70,54 @@ def load_video(
         `List[PIL.Image.Image]`:
             The video as a list of PIL images.
     """
-    if isinstance(video, str):
+    is_url = video.startswith("http://") or video.startswith("https://")
+    is_file = os.path.isfile(video)
+
+    if not (is_url or is_file):
+        raise ValueError(
+            f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {video} is not a valid path."
+        )
+
+    if is_url:
         was_tempfile_created = False
 
-        if video.startswith("http://") or video.startswith("https://"):
-            video_data = requests.get(video, stream=True).raw
-            video_path = tempfile.NamedTemporaryFile(suffix=os.path.splitext(video)[1], delete=False).name
-            was_tempfile_created = True
-            with open(video_path, "wb") as f:
-                f.write(video_data.read())
-            video = video_path
-        elif not os.path.isfile(video):
-            raise ValueError(
-                f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {video} is not a valid path."
-            )
+        video_data = requests.get(video, stream=True).raw
+        video_path = tempfile.NamedTemporaryFile(suffix=os.path.splitext(video)[1], delete=False).name
+        was_tempfile_created = True
+        with open(video_path, "wb") as f:
+            f.write(video_data.read())
 
-        if video.endswith(".gif"):
-            pil_images = []
-            gif = PIL.Image.open(video)
-            try:
-                while True:
-                    pil_images.append(gif.copy())
-                    gif.seek(gif.tell() + 1)
-            except EOFError:
-                pass
-        else:
-            if is_opencv_available():
-                import cv2
-            else:
-                raise ImportError(BACKENDS_MAPPING["opencv"][1].format("load_video"))
-            pil_images = []
-            video_capture = cv2.VideoCapture(video)
-            success, frame = video_capture.read()
-            while success:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                pil_images.append(PIL.Image.fromarray(frame))
-                success, frame = video_capture.read()
-            video_capture.release()
+        video = video_path
 
-        if was_tempfile_created:
-            os.remove(video_path)
+    pil_images = []
+    if video.endswith(".gif"):
+        gif = PIL.Image.open(video)
+        try:
+            while True:
+                pil_images.append(gif.copy())
+                gif.seek(gif.tell() + 1)
+        except EOFError:
+            pass
+
     else:
-        raise ValueError("Incorrect format used for the video. Expected a URL or a local path.")
+        if is_opencv_available():
+            import cv2
+        else:
+            raise ImportError(BACKENDS_MAPPING["opencv"][1].format("load_video"))
+
+        video_capture = cv2.VideoCapture(video)
+        success, frame = video_capture.read()
+        while success:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_images.append(PIL.Image.fromarray(frame))
+            success, frame = video_capture.read()
+
+        video_capture.release()
+
+    if was_tempfile_created:
+        os.remove(video_path)
 
     if convert_method is not None:
         pil_images = convert_method(pil_images)
-    else:
-        pil_images = [image.convert("RGB") for image in pil_images]
 
     return pil_images
