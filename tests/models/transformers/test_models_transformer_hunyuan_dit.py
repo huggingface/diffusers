@@ -22,17 +22,6 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     torch_device,
 )
-from diffusers.models.attention_processor import (
-    AttnProcessor,
-    AttnProcessor2_0, 
-    HunyuanAttnProcessor2_0, 
-    XFormersAttnProcessor,
-)
-from diffusers.utils import  is_xformers_available
-from diffusers.utils.testing_utils import (
-    require_torch_gpu,
-    torch_device,
-)
 
 from ..test_modeling_common import ModelTesterMixin
 
@@ -68,7 +57,7 @@ class HunyuanDiTTests(ModelTesterMixin, unittest.TestCase):
         style = torch.zeros(size=(batch_size,), dtype=int).to(torch_device)
         image_rotary_emb = [
             torch.ones(size=(1, 8), dtype=encoder_hidden_states.dtype),
-            torch.zeros(size=(1, 8), dtype=encoder_hidden_states.dtype)
+            torch.zeros(size=(1, 8), dtype=encoder_hidden_states.dtype),
         ]
 
         return {
