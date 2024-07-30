@@ -20,7 +20,6 @@ import PIL.Image
 import torch
 import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTokenizer
-from transformers.modeling_outputs import BaseModelOutputWithPooling
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin
@@ -122,8 +121,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMix
         device, 
         do_classifier_free_guidance, 
         negative_prompt = None,
-        prompt_embeds: Optional[BaseModelOutputWithPooling] = None,
-        negative_prompt_embeds: Optional[BaseModelOutputWithPooling] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         pooled_prompt_embeds: Optional[torch.Tensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         **kwargs,
@@ -154,8 +153,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMix
         device, 
         do_classifier_free_guidance, 
         negative_prompt = None,
-        prompt_embeds: Optional[BaseModelOutputWithPooling] = None,
-        negative_prompt_embeds: Optional[BaseModelOutputWithPooling] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         pooled_prompt_embeds: Optional[torch.Tensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
     ):
