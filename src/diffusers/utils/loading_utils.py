@@ -72,6 +72,7 @@ def load_video(
     """
     is_url = video.startswith("http://") or video.startswith("https://")
     is_file = os.path.isfile(video)
+    was_tempfile_created = False
 
     if not (is_url or is_file):
         raise ValueError(
@@ -79,8 +80,6 @@ def load_video(
         )
 
     if is_url:
-        was_tempfile_created = False
-
         video_data = requests.get(video, stream=True).raw
         video_path = tempfile.NamedTemporaryFile(suffix=os.path.splitext(video)[1], delete=False).name
         was_tempfile_created = True
