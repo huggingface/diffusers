@@ -440,19 +440,19 @@ class AnimateDiffControlNetPipelineFastTests(
         pipe.set_progress_bar_config(disable=None)
         pipe.to(torch_device)
 
-        inputs_normal = self.get_dummy_inputs(torch_device)
+        inputs_normal = self.get_dummy_inputs(torch_device, num_frames=16)
         frames_normal = pipe(**inputs_normal).frames[0]
 
         for context_length in [8, 9]:
             for context_stride in [4, 6]:
                 pipe.enable_free_noise(context_length, context_stride, weighting_scheme="pyramid", shuffle=True)
 
-                inputs_enable_free_noise = self.get_dummy_inputs(torch_device)
+                inputs_enable_free_noise = self.get_dummy_inputs(torch_device, num_frames=16)
                 frames_enable_free_noise = pipe(**inputs_enable_free_noise).frames[0]
 
                 pipe.disable_free_noise()
 
-                inputs_disable_free_noise = self.get_dummy_inputs(torch_device)
+                inputs_disable_free_noise = self.get_dummy_inputs(torch_device, num_frames=16)
                 frames_disable_free_noise = pipe(**inputs_disable_free_noise).frames[0]
 
                 sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_noise)).sum()
