@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import random
-import traceback
 import unittest
 
 import numpy as np
@@ -24,29 +22,14 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
-    AutoencoderTiny,
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    HeunDiscreteScheduler,
     EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
     StableDiffusionLatentUpscalePipeline,
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    is_torch_compile,
-    load_image,
-    load_numpy,
-    nightly,
-    require_torch_2,
-    require_torch_gpu,
-    run_test_in_subprocess,
     skip_mps,
-    slow,
-    torch_device,
 )
 
 from ..pipeline_params import (
@@ -56,8 +39,6 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
 from ..test_pipelines_common import (
-    IPAdapterTesterMixin,
-    PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
 )
@@ -82,24 +63,24 @@ class StableDiffusionLatentUpscalerPipelineFastTests(
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            act_fn= "gelu",
-            block_out_channels=(384,768,768),
+            act_fn="gelu",
+            block_out_channels=(384, 768, 768),
             layers_per_block=1,
             time_cond_proj_dim=896,
             sample_size=None,
             in_channels=8,
             out_channels=5,
-            attention_head_dim= 64,
+            attention_head_dim=64,
             down_block_types=("KDownBlock2D", "KCrossAttnDownBlock2D", "KCrossAttnDownBlock2D"),
-            up_block_types=("KCrossAttnUpBlock2D","KCrossAttnUpBlock2D", "KUpBlock2D"),
-            conv_in_kernel= 1,
-            conv_out_kernel= 1,
+            up_block_types=("KCrossAttnUpBlock2D", "KCrossAttnUpBlock2D", "KUpBlock2D"),
+            conv_in_kernel=1,
+            conv_out_kernel=1,
             mid_block_type=None,
             cross_attention_dim=768,
-            norm_num_groups= None,
-            resnet_time_scale_shift= "scale_shift",
-            time_embedding_type= "fourier",
-            timestep_post_act= "gelu",
+            norm_num_groups=None,
+            resnet_time_scale_shift="scale_shift",
+            time_embedding_type="fourier",
+            timestep_post_act="gelu",
         )
         scheduler = EulerDiscreteScheduler()
         torch.manual_seed(0)
