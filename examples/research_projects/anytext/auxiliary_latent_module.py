@@ -3,11 +3,12 @@
 # position l_p -> position block ->
 
 import cv2
-from diffusers.utils import logging
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
 from torch import nn
+
+from diffusers.utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
