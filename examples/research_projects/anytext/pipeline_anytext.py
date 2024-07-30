@@ -20,6 +20,7 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
+from text_embedding_module import TextEmbeddingModule
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -221,6 +222,7 @@ class AnyTextPipeline(
         requires_safety_checker: bool = True,
     ):
         super().__init__()
+        self.text_embedding_module = TextEmbeddingModule()
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -1124,7 +1126,7 @@ class AnyTextPipeline(
         )
         prompt, texts = self.modify_prompt(prompt)
 
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds = self.text_embedding_module.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
