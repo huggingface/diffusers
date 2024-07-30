@@ -26,7 +26,8 @@ env:
 jobs:
   run_tests:
     name: "Run a test on our runner from a PR"
-    runs-on: [single-gpu, nvidia-gpu, t4, ci]
+    runs-on:
+      group: aws-g4dn-2xlarge
     container:
       image: ${{ github.event.inputs.docker_image }}
       options: --gpus 0 --privileged --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
