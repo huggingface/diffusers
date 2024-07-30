@@ -27,8 +27,8 @@ from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
-    Scheduler coming from Stable Audio Open [1]. Implements a variant of `DPMSolverMultistepScheduler` with
-    `sde-dpmsolver++` solver. It uses different sigma-to-timestamp and noise sampling strategies.
+    Implements a variant of `DPMSolverMultistepScheduler` with cosine schedule, proposed by Nichol and Dhariwal (2021).
+    This scheduler was used in Stable Audio Open [1].
 
     [1] Evans, Parker, et al. "Stable Audio Open" https://arxiv.org/abs/2407.14358
 
