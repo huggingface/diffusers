@@ -22,7 +22,7 @@ class SaveConv3d(torch.nn.Conv3d):
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        memory_count = torch.prod(torch.tensor(input.shape)).item() * 2 / 1024 ** 3
+        memory_count = torch.prod(torch.tensor(input.shape)).item() * 2 / 1024**3
 
         # Set to 2GB, Suit for CuDNN
         if memory_count > 2:
@@ -32,7 +32,7 @@ class SaveConv3d(torch.nn.Conv3d):
 
             if kernel_size > 1:
                 input_chunks = [input_chunks[0]] + [
-                    torch.cat((input_chunks[i - 1][:, :, -kernel_size + 1:], input_chunks[i]), dim=2)
+                    torch.cat((input_chunks[i - 1][:, :, -kernel_size + 1 :], input_chunks[i]), dim=2)
                     for i in range(1, len(input_chunks))
                 ]
 
@@ -52,12 +52,12 @@ class CogVideoXCausalConv3d(nn.Module):
     """
 
     def __init__(
-            self,
-            in_channels: int,
-            out_channels: int,
-            kernel_size: Union[int, Tuple[int, int, int]],
-            pad_mode: str = "constant",
-            **kwargs
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, Tuple[int, int, int]],
+        pad_mode: str = "constant",
+        **kwargs,
     ):
         super().__init__()
 
@@ -89,7 +89,7 @@ class CogVideoXCausalConv3d(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation,
-            **kwargs
+            **kwargs,
         )
 
         self.conv_cache = None
@@ -104,7 +104,7 @@ class CogVideoXCausalConv3d(nn.Module):
             causal_padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
             x = F.pad(x, causal_padding_2d, mode="constant", value=0)
         elif self.pad_mode == "reflect":
-            reflect_x = x[:, :, 1: self.time_pad + 1, :, :].flip(dims=[2])
+            reflect_x = x[:, :, 1 : self.time_pad + 1, :, :].flip(dims=[2])
             if reflect_x.shape[2] < self.time_pad:
                 reflect_x = torch.cat(
                     [torch.zeros_like(x[:, :, :1, :, :])] * (self.time_pad - reflect_x.shape[2]) + [reflect_x], dim=2
@@ -115,7 +115,7 @@ class CogVideoXCausalConv3d(nn.Module):
         else:
             raise ValueError("Invalid pad mode")
         if self.time_pad != 0 and self.conv_cache is None:
-            self.conv_cache = x[:, :, -self.time_pad:].detach().clone().cpu()
+            self.conv_cache = x[:, :, -self.time_pad :].detach().clone().cpu()
             return self.conv(x)
         elif self.time_pad != 0 and self.conv_cache is not None:
             x = torch.cat([self.conv_cache.to(x.device), x], dim=2)
@@ -130,13 +130,13 @@ class CogVideoXCausalConv3d(nn.Module):
 # Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
 class CogVideoXSpatialNorm3D(SpatialNorm3D):
     """
-        Use SaveConv3d instead of nn.Conv3d to avoid OOM in CogVideoX Model
+    Use SaveConv3d instead of nn.Conv3d to avoid OOM in CogVideoX Model
     """
 
     def __init__(
-            self,
-            f_channels: int,
-            zq_channels: int,
+        self,
+        f_channels: int,
+        zq_channels: int,
     ):
         super().__init__(f_channels, zq_channels)
         self.norm_layer = nn.GroupNorm(num_channels=f_channels, num_groups=32, eps=1e-6, affine=True)
@@ -163,31 +163,25 @@ class CogVideoXSpatialNorm3D(SpatialNorm3D):
 # Todo: Create vae_3d.py such as vae.py file?
 class UpSample3D(nn.Module):
     r"""
-        The `UpSample` layer of a variational autoencoder that upsamples its input.
+    The `UpSample` layer of a variational autoencoder that upsamples its input.
 
-        Args:
-            in_channels (`int`, *optional*, defaults to 3):
-                The number of input channels.
-            out_channels (`int`, *optional*, defaults to 3):
-                The number of output channels.
-        """
+    Args:
+        in_channels (`int`, *optional*, defaults to 3):
+            The number of input channels.
+        out_channels (`int`, *optional*, defaults to 3):
+            The number of output channels.
+    """
 
     def __init__(
-            self,
-            in_channels: int,
-            out_channels: int,
+        self,
+        in_channels: int,
+        out_channels: int,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.conv = torch.nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size=3,
-            stride=1,
-            padding=1
-        )
+        self.conv = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         r"""The forward method of the `UpSample` class."""
@@ -208,32 +202,21 @@ class UpSample3D(nn.Module):
 # Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
 class CogVideoXUpzSample3D(UpSample3D):
     r"""
-        Add compress_time option to the `UpSample` layer of a variational autoencoder that upsamples its input in CogVideoX Model.
+    Add compress_time option to the `UpSample` layer of a variational autoencoder that upsamples its input in CogVideoX Model.
 
-        Args:
-            in_channels (`int`, *optional*, defaults to 3):
-                The number of input channels.
-            out_channels (`int`, *optional*, defaults to 3):
-                The number of output channels.
-            compress_time (`bool`, *optional*, defaults to `False`):
-                Whether to compress the time dimension.
-        """
+    Args:
+        in_channels (`int`, *optional*, defaults to 3):
+            The number of input channels.
+        out_channels (`int`, *optional*, defaults to 3):
+            The number of output channels.
+        compress_time (`bool`, *optional*, defaults to `False`):
+            Whether to compress the time dimension.
+    """
 
-    def __init__(
-            self,
-            in_channels: int,
-            out_channels: int,
-            compress_time: bool = False
-    ):
+    def __init__(self, in_channels: int, out_channels: int, compress_time: bool = False):
         super().__init__(in_channels, out_channels)
 
-        self.conv = torch.nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size=3,
-            stride=1,
-            padding=1
-        )
+        self.conv = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
         self.compress_time = compress_time
 
     def forward(self, x):
@@ -270,23 +253,22 @@ class CogVideoXUpzSample3D(UpSample3D):
 # Todo: Create vae_3d.py such as vae.py file?
 class DownSample3D(nn.Module):
     r"""
-           Add compress_time option to the `DownSample` layer of a variational autoencoder that downsamples its input in CogVideoX Model.
+    Add compress_time option to the `DownSample` layer of a variational autoencoder that downsamples its input in CogVideoX Model.
 
-           Args:
-               in_channels (`int`, *optional*):
-                   The number of input channels.
-               out_channels (`int`, *optional*):
-                   The number of output channels.
-               compress_time (`bool`, *optional*, defaults to `False`):
-                   Whether to compress the time dimension.
-           """
+    Args:
+        in_channels (`int`, *optional*):
+            The number of input channels.
+        out_channels (`int`, *optional*):
+            The number of output channels.
+        compress_time (`bool`, *optional*, defaults to `False`):
+            Whether to compress the time dimension.
+    """
 
     def __init__(
-            self,
-            in_channels: int,
-            out_channels: int,
-            compress_time: bool = False,
-
+        self,
+        in_channels: int,
+        out_channels: int,
+        compress_time: bool = False,
     ):
         super(DownSample3D, self).__init__()
 
@@ -295,12 +277,10 @@ class DownSample3D(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.compress_time:
-
             b, c, t, h, w = x.shape
             x = x.permute(0, 3, 4, 1, 2).reshape(b * h * w, c, t)
 
             if x.shape[-1] % 2 == 1:
-
                 # split first frame
                 x_first, x_rest = x[..., 0], x[..., 1:]
 
@@ -325,17 +305,17 @@ class DownSample3D(nn.Module):
 
 class CogVideoXResnetBlock3D(ResnetBlock3D):
     def __init__(
-            self,
-            in_channels: int,
-            out_channels: int,
-            dropout: float = 0.0,
-            temb_channels: int = 512,
-            groups: int = 32,
-            eps: float = 1e-6,
-            non_linearity: str = "swish",
-            conv_shortcut: bool = False,
-            latent_channels: Optional[int] = None,
-            pad_mode: str = "first",
+        self,
+        in_channels: int,
+        out_channels: int,
+        dropout: float = 0.0,
+        temb_channels: int = 512,
+        groups: int = 32,
+        eps: float = 1e-6,
+        non_linearity: str = "swish",
+        conv_shortcut: bool = False,
+        latent_channels: Optional[int] = None,
+        pad_mode: str = "first",
     ):
         super().__init__(
             in_channels=in_channels,
@@ -346,7 +326,7 @@ class CogVideoXResnetBlock3D(ResnetBlock3D):
             eps=eps,
             non_linearity=non_linearity,
             conv_shortcut=conv_shortcut,
-            latent_channels=latent_channels
+            latent_channels=latent_channels,
         )
 
         out_channels = in_channels if out_channels is None else out_channels
@@ -369,73 +349,63 @@ class CogVideoXResnetBlock3D(ResnetBlock3D):
                 zq_channels=latent_channels,
             )
         self.conv1 = CogVideoXCausalConv3d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-            pad_mode=pad_mode
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
         )
         if temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(
-                in_features=temb_channels,
-                out_features=out_channels
-            )
+            self.temb_proj = torch.nn.Linear(in_features=temb_channels, out_features=out_channels)
 
         self.dropout = torch.nn.Dropout(dropout)
 
         self.conv2 = CogVideoXCausalConv3d(
-            in_channels=out_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-            pad_mode=pad_mode
+            in_channels=out_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
         )
 
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
                 self.conv_shortcut = CogVideoXCausalConv3d(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    kernel_size=3,
-                    pad_mode=pad_mode
+                    in_channels=in_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
                 )
             else:
                 self.nin_shortcut = SaveConv3d(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    kernel_size=1,
-                    stride=1,
-                    padding=0)
+                    in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0
+                )
 
-    def forward(self, x, temb, z=None):
-        h = x
-        if z is not None:
-            h = self.norm1(h, z)
+    def forward(
+        self, input_tensor: torch.Tensor, temb: torch.Tensor, zq: torch.Tensor = None, **kwargs
+    ) -> torch.Tensor:
+        hidden_states = input_tensor
+        if zq is not None:
+            hidden_states = self.norm1(hidden_states, zq)
         else:
-            h = self.norm1(h)
-        h = self.act_fn(h)
-        h = self.conv1(h)
+            hidden_states = self.norm1(hidden_states)
+        hidden_states = self.non_linearity(hidden_states)
+        hidden_states = self.conv1(hidden_states)
 
         if temb is not None:
-            h = h + self.temb_proj(self.act_fn(temb))[:, :, None, None, None]
+            hidden_states = hidden_states + self.temb_proj(self.non_linearity(temb))[:, :, None, None, None]
 
-        if z is not None:
-            h = self.norm2(h, z)
+        if zq is not None:
+            hidden_states = self.norm2(hidden_states, zq)
         else:
-            h = self.norm2(h)
-        h = self.act_fn(h)
-        h = self.dropout(h)
-        h = self.conv2(h)
+            hidden_states = self.norm2(hidden_states)
+        hidden_states = self.non_linearity(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.conv2(hidden_states)
 
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
-                x = self.conv_shortcut(x)
+                input_tensor = self.conv_shortcut(input_tensor)
             else:
-                x = self.nin_shortcut(x)
+                input_tensor = self.nin_shortcut(input_tensor)
 
-        return x + h
+        output_tensor = input_tensor + hidden_states
 
-#Todo: Need refactor?@a-r-r-o-w
+        return output_tensor
+
+
+# Todo: Need refactor? @a-r-r-o-w
 class AttnBlock2D(nn.Module):
-    def __init__(self, in_channels, norm_num_groups):
+    def __init__(self, in_channels: int, norm_num_groups: int):
         super().__init__()
 
         self.norm = nn.GroupNorm(num_channels=in_channels, num_groups=norm_num_groups, eps=1e-6)
@@ -479,24 +449,25 @@ class AttnBlock2D(nn.Module):
 
         return h_
 
+
 # Todo: Create vae_3d.py such as vae.py file?
 class Encoder3D(nn.Module):
     def __init__(
-            self,
-            *,
-            in_channels: int = 3,
-            out_channels: int = 16,
-            block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
-            num_res_blocks: int,
-            act_fn: str = "silu",
-            norm_num_groups: int = 32,
-            attn_resolutions=None,
-            dropout: float = 0.0,
-            resolution: int,
-            latent_channels: int,
-            double_z: bool = True,
-            pad_mode: str = "first",
-            temporal_compress_times: int = 4,
+        self,
+        *,
+        in_channels: int = 3,
+        out_channels: int = 16,
+        block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
+        num_res_blocks: int,
+        act_fn: str = "silu",
+        norm_num_groups: int = 32,
+        attn_resolutions=None,
+        dropout: float = 0.0,
+        resolution: int,
+        latent_channels: int,
+        double_z: bool = True,
+        pad_mode: str = "first",
+        temporal_compress_times: int = 4,
     ):
         super(Encoder3D, self).__init__()
         if attn_resolutions is None:
@@ -536,28 +507,15 @@ class Encoder3D(nn.Module):
                 )
                 block_in = block_out
                 if curr_res in attn_resolutions:
-                    attn.append(
-                        AttnBlock2D(
-                            in_channels=block_in,
-                            norm_num_groups=norm_num_groups
-                        )
-                    )
+                    attn.append(AttnBlock2D(in_channels=block_in, norm_num_groups=norm_num_groups))
             down = nn.Module()
             down.block = block
             down.attn = attn
             if i_level != self.num_resolutions - 1:
                 if i_level < self.temporal_compress_level:
-                    down.downsample = DownSample3D(
-                        in_channels=block_in,
-                        out_channels=block_in,
-                        compress_time=True
-                    )
+                    down.downsample = DownSample3D(in_channels=block_in, out_channels=block_in, compress_time=True)
                 else:
-                    down.downsample = DownSample3D(
-                        in_channels=block_in,
-                        out_channels=block_in,
-                        compress_time=False
-                    )
+                    down.downsample = DownSample3D(in_channels=block_in, out_channels=block_in, compress_time=False)
                 curr_res = curr_res // 2
             self.down.append(down)
 
@@ -591,73 +549,76 @@ class Encoder3D(nn.Module):
             block_in, conv_out_channels if double_z else latent_channels, kernel_size=3, pad_mode=pad_mode
         )
 
-    def forward(self, x):
+    def forward(self, sample: torch.Tensor) -> torch.Tensor:
         # timestep embedding
         temb = None
 
         # downsampling
-        h = self.conv_in(x)
+        sample = self.conv_in(sample)
         for i_level in range(self.num_resolutions):
             for i_block in range(self.num_res_blocks):
-                h = self.down[i_level].block[i_block](h, temb)
+                sample = self.down[i_level].block[i_block](sample, temb)
                 if len(self.down[i_level].attn) > 0:
-                    h = self.down[i_level].attn[i_block](h)
+                    sample = self.down[i_level].attn[i_block](sample)
             if i_level != self.num_resolutions - 1:
-                h = self.down[i_level].downsample(h)
+                sample = self.down[i_level].downsample(sample)
 
         # middle
-        h = self.mid.block_1(h, temb)
+        sample = self.mid.block_1(sample, temb)
 
         if len(self.attn_resolutions):
-            h = self.mid.attn_1(h)
-        h = self.mid.block_2(h, temb)
+            sample = self.mid.attn_1(sample)
 
-        # end
-        h = self.norm_out(h)
-        h = self.act_fn(h)
-        h = self.conv_out(h)
-        return h
+        sample = self.mid.block_2(sample, temb)
+
+        # post-process
+        sample = self.norm_out(sample)
+        sample = self.act_fn(sample)
+        sample = self.conv_out(sample)
+
+        return sample
+
 
 # Todo: Create vae_3d.py such as vae.py file?
 class Decoder3D(nn.Module):
     r"""
-   The `Decoder` layer of a variational autoencoder that decodes its latent representation into an output sample.
+    The `Decoder` layer of a variational autoencoder that decodes its latent representation into an output sample.
 
-   Args:
-       in_channels (`int`, *optional*, defaults to 3):
-           The number of input channels.
-       out_channels (`int`, *optional*, defaults to 3):
-           The number of output channels.
-       up_block_types (`Tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
-           The types of up blocks to use. See `~diffusers.models.unet_2d_blocks.get_up_block` for available options.
-       block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
-           The number of output channels for each block.
-       layers_per_block (`int`, *optional*, defaults to 2):
-           The number of layers per block.
-       norm_num_groups (`int`, *optional*, defaults to 32):
-           The number of groups for normalization.
-       act_fn (`str`, *optional*, defaults to `"silu"`):
-           The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
-       norm_type (`str`, *optional*, defaults to `"group"`):
-           The normalization type to use. Can be either `"group"` or `"spatial"`.
-   """
+    Args:
+        in_channels (`int`, *optional*, defaults to 3):
+            The number of input channels.
+        out_channels (`int`, *optional*, defaults to 3):
+            The number of output channels.
+        up_block_types (`Tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+            The types of up blocks to use. See `~diffusers.models.unet_2d_blocks.get_up_block` for available options.
+        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
+            The number of output channels for each block.
+        layers_per_block (`int`, *optional*, defaults to 2):
+            The number of layers per block.
+        norm_num_groups (`int`, *optional*, defaults to 32):
+            The number of groups for normalization.
+        act_fn (`str`, *optional*, defaults to `"silu"`):
+            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
+        norm_type (`str`, *optional*, defaults to `"group"`):
+            The normalization type to use. Can be either `"group"` or `"spatial"`.
+    """
 
     def __init__(
-            self,
-            *,
-            in_channels: int = 16,
-            out_channels: int = 3,
-            block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
-            num_res_blocks: int,
-            attn_resolutions=None,
-            act_fn: str = "silu",
-            dropout: float = 0.0,
-            resolution: int,
-            latent_channels: int,
-            give_pre_end: bool = False,
-            pad_mode: str = "first",
-            temporal_compress_times: int = 4,
-            norm_num_groups=32,
+        self,
+        *,
+        in_channels: int = 16,
+        out_channels: int = 3,
+        block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
+        num_res_blocks: int,
+        attn_resolutions=None,
+        act_fn: str = "silu",
+        dropout: float = 0.0,
+        resolution: int,
+        latent_channels: int,
+        give_pre_end: bool = False,
+        pad_mode: str = "first",
+        temporal_compress_times: int = 4,
+        norm_num_groups=32,
     ):
         super(Decoder3D, self).__init__()
         if attn_resolutions is None:
@@ -695,10 +656,7 @@ class Decoder3D(nn.Module):
             pad_mode=pad_mode,
         )
         if len(attn_resolutions) > 0:
-            self.mid.attn_1 = AttnBlock2D(
-                in_channels=block_in,
-                norm_num_groups=norm_num_groups
-            )
+            self.mid.attn_1 = AttnBlock2D(in_channels=block_in, norm_num_groups=norm_num_groups)
 
         self.mid.block_2 = CogVideoXResnetBlock3D(
             in_channels=block_in,
@@ -733,71 +691,58 @@ class Decoder3D(nn.Module):
                 )
                 block_in = block_out
                 if curr_res in attn_resolutions:
-                    attn.append(
-                        AttnBlock2D(
-                            in_channels=block_in,
-                            norm_num_groups=norm_num_groups
-                        )
-                    )
+                    attn.append(AttnBlock2D(in_channels=block_in, norm_num_groups=norm_num_groups))
             up = nn.Module()
             up.block = block
             up.attn = attn
             if i_level != 0:
                 if i_level < self.num_resolutions - self.temporal_compress_level:
                     up.upsample = CogVideoXUpzSample3D(
-                        in_channels=block_in,
-                        out_channels=block_in,
-                        compress_time=False
+                        in_channels=block_in, out_channels=block_in, compress_time=False
                     )
                 else:
-                    up.upsample = CogVideoXUpzSample3D(
-                        in_channels=block_in,
-                        out_channels=block_in,
-                        compress_time=True
-                    )
+                    up.upsample = CogVideoXUpzSample3D(in_channels=block_in, out_channels=block_in, compress_time=True)
                 curr_res = curr_res * 2
 
             self.up.insert(0, up)
 
-        self.norm_out = CogVideoXSpatialNorm3D(
-            f_channels=block_in,
-            zq_channels=latent_channels
-        )
+        self.norm_out = CogVideoXSpatialNorm3D(f_channels=block_in, zq_channels=latent_channels)
 
         self.conv_out = CogVideoXCausalConv3d(block_in, out_channels, kernel_size=3, pad_mode=pad_mode)
 
-    def forward(self, z):
+    def forward(self, sample: torch.Tensor) -> torch.Tensor:
+        r"""The forward method of the `Decoder` class."""
         # timestep embedding
 
         temb = None
 
-        h = self.conv_in(z)
+        hidden_states = self.conv_in(sample)
 
         # middle
-        h = self.mid.block_1(h, temb, z)
+        hidden_states = self.mid.block_1(hidden_states, temb, sample)
         if len(self.attn_resolutions) > 0:
-            h = self.mid.attn_1(h, z)
-        h = self.mid.block_2(h, temb, z)
+            hidden_states = self.mid.attn_1(hidden_states, sample)
+        hidden_states = self.mid.block_2(hidden_states, temb, sample)
 
         # UpSampling
 
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks + 1):
-                h = self.up[i_level].block[i_block](h, temb, z)
+                hidden_states = self.up[i_level].block[i_block](hidden_states, temb, sample)
                 if len(self.up[i_level].attn) > 0:
-                    h = self.up[i_level].attn[i_block](h, z)
+                    hidden_states = self.up[i_level].attn[i_block](hidden_states, sample)
             if i_level != 0:
-                h = self.up[i_level].upsample(h)
+                hidden_states = self.up[i_level].upsample(hidden_states)
 
         # end
         if self.give_pre_end:
-            return h
+            return hidden_states
 
-        h = self.norm_out(h, z)
-        h = self.act_fn(h)
-        h = self.conv_out(h)
+        hidden_states = self.norm_out(hidden_states, sample)
+        hidden_states = self.act_fn(hidden_states)
+        hidden_states = self.conv_out(hidden_states)
 
-        return h
+        return hidden_states
 
 
 class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):
@@ -840,25 +785,25 @@ class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     @register_to_config
     def __init__(
-            self,
-            in_channels: int = 3,
-            out_channels: int = 3,
-            down_block_types: Tuple[str] = ("DownEncoderBlock3D",),
-            up_block_types: Tuple[str] = ("UpDecoderBlock3D",),
-            block_out_channels: Tuple[int] = (128, 256, 256, 512),
-            layers_per_block: int = 3,
-            act_fn: str = "silu",
-            latent_channels: int = 16,
-            norm_num_groups: int = 32,
-            sample_size: int = 256,
-            scaling_factor: float = 1.15258426,
-            shift_factor: Optional[float] = None,
-            latents_mean: Optional[Tuple[float]] = None,
-            latents_std: Optional[Tuple[float]] = None,
-            force_upcast: float = True,
-            use_quant_conv: bool = False,
-            use_post_quant_conv: bool = False,
-            mid_block_add_attention: bool = True,
+        self,
+        in_channels: int = 3,
+        out_channels: int = 3,
+        down_block_types: Tuple[str] = ("DownEncoderBlock3D",),
+        up_block_types: Tuple[str] = ("UpDecoderBlock3D",),
+        block_out_channels: Tuple[int] = (128, 256, 256, 512),
+        layers_per_block: int = 3,
+        act_fn: str = "silu",
+        latent_channels: int = 16,
+        norm_num_groups: int = 32,
+        sample_size: int = 256,
+        scaling_factor: float = 1.15258426,
+        shift_factor: Optional[float] = None,
+        latents_mean: Optional[Tuple[float]] = None,
+        latents_std: Optional[Tuple[float]] = None,
+        force_upcast: float = True,
+        use_quant_conv: bool = False,
+        use_post_quant_conv: bool = False,
+        mid_block_add_attention: bool = True,
     ):
         super().__init__()
 
@@ -933,7 +878,7 @@ class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     @apply_forward_hook
     def encode(
-            self, x: torch.Tensor, return_dict: bool = True
+        self, x: torch.Tensor, return_dict: bool = True
     ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
@@ -957,7 +902,7 @@ class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     @apply_forward_hook
     def decode(
-            self, z: torch.FloatTensor, return_dict: bool = True, generator=None
+        self, z: torch.FloatTensor, return_dict: bool = True, generator=None
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         """
         Decode a batch of images.
@@ -981,11 +926,11 @@ class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return dec
 
     def forward(
-            self,
-            sample: torch.Tensor,
-            sample_posterior: bool = False,
-            return_dict: bool = True,
-            generator: Optional[torch.Generator] = None,
+        self,
+        sample: torch.Tensor,
+        sample_posterior: bool = False,
+        return_dict: bool = True,
+        generator: Optional[torch.Generator] = None,
     ) -> Union[torch.Tensor, torch.Tensor]:
         x = sample
         posterior = self.encode(x).latent_dist

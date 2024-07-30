@@ -72,24 +72,24 @@ class ResnetBlockCondNorm2D(nn.Module):
     """
 
     def __init__(
-            self,
-            *,
-            in_channels: int,
-            out_channels: Optional[int] = None,
-            conv_shortcut: bool = False,
-            dropout: float = 0.0,
-            temb_channels: int = 512,
-            groups: int = 32,
-            groups_out: Optional[int] = None,
-            eps: float = 1e-6,
-            non_linearity: str = "swish",
-            time_embedding_norm: str = "ada_group",  # ada_group, spatial
-            output_scale_factor: float = 1.0,
-            use_in_shortcut: Optional[bool] = None,
-            up: bool = False,
-            down: bool = False,
-            conv_shortcut_bias: bool = True,
-            conv_2d_out_channels: Optional[int] = None,
+        self,
+        *,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        conv_shortcut: bool = False,
+        dropout: float = 0.0,
+        temb_channels: int = 512,
+        groups: int = 32,
+        groups_out: Optional[int] = None,
+        eps: float = 1e-6,
+        non_linearity: str = "swish",
+        time_embedding_norm: str = "ada_group",  # ada_group, spatial
+        output_scale_factor: float = 1.0,
+        use_in_shortcut: Optional[bool] = None,
+        up: bool = False,
+        down: bool = False,
+        conv_shortcut_bias: bool = True,
+        conv_2d_out_channels: Optional[int] = None,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -218,27 +218,27 @@ class ResnetBlock2D(nn.Module):
     """
 
     def __init__(
-            self,
-            *,
-            in_channels: int,
-            out_channels: Optional[int] = None,
-            conv_shortcut: bool = False,
-            dropout: float = 0.0,
-            temb_channels: int = 512,
-            groups: int = 32,
-            groups_out: Optional[int] = None,
-            pre_norm: bool = True,
-            eps: float = 1e-6,
-            non_linearity: str = "swish",
-            skip_time_act: bool = False,
-            time_embedding_norm: str = "default",  # default, scale_shift,
-            kernel: Optional[torch.Tensor] = None,
-            output_scale_factor: float = 1.0,
-            use_in_shortcut: Optional[bool] = None,
-            up: bool = False,
-            down: bool = False,
-            conv_shortcut_bias: bool = True,
-            conv_2d_out_channels: Optional[int] = None,
+        self,
+        *,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        conv_shortcut: bool = False,
+        dropout: float = 0.0,
+        temb_channels: int = 512,
+        groups: int = 32,
+        groups_out: Optional[int] = None,
+        pre_norm: bool = True,
+        eps: float = 1e-6,
+        non_linearity: str = "swish",
+        skip_time_act: bool = False,
+        time_embedding_norm: str = "default",  # default, scale_shift,
+        kernel: Optional[torch.Tensor] = None,
+        output_scale_factor: float = 1.0,
+        use_in_shortcut: Optional[bool] = None,
+        up: bool = False,
+        down: bool = False,
+        conv_shortcut_bias: bool = True,
+        conv_2d_out_channels: Optional[int] = None,
     ):
         super().__init__()
         if time_embedding_norm == "ada_group":
@@ -375,41 +375,41 @@ class ResnetBlock2D(nn.Module):
 
 class ResnetBlock3D(nn.Module):
     r"""
-     A Resnet3D block.
+    A Resnet3D block.
 
-     Parameters:
-         in_channels (`int`): The number of channels in the input.
-         out_channels (`int`, *optional*, default to be `None`):
-             The number of output channels for the first conv2d layer. If None, same as `in_channels`.
-         dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
-         temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
-         groups (`int`, *optional*, default to `32`): The number of groups to use for the first normalization layer.
-         groups_out (`int`, *optional*, default to None):
-             The number of groups to use for the second normalization layer. if set to None, same as `groups`.
-         eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
-         non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
-         use_in_shortcut (`bool`, *optional*, default to `True`):
-             If `True`, add a 1x1 nn.conv2d layer for skip-connection.
-         up (`bool`, *optional*, default to `False`): If `True`, add an upsample layer.
-         down (`bool`, *optional*, default to `False`): If `True`, add a downsample layer.
-         conv_shortcut_bias (`bool`, *optional*, default to `True`):  If `True`, adds a learnable bias to the
-             `conv_shortcut` output.
-         conv_2d_out_channels (`int`, *optional*, default to `None`): the number of channels in the output.
-             If None, same as `out_channels`.
-     """
+    Parameters:
+        in_channels (`int`): The number of channels in the input.
+        out_channels (`int`, *optional*, default to be `None`):
+            The number of output channels for the first conv2d layer. If None, same as `in_channels`.
+        dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
+        temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
+        groups (`int`, *optional*, default to `32`): The number of groups to use for the first normalization layer.
+        groups_out (`int`, *optional*, default to None):
+            The number of groups to use for the second normalization layer. if set to None, same as `groups`.
+        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
+        non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
+        use_in_shortcut (`bool`, *optional*, default to `True`):
+            If `True`, add a 1x1 nn.conv2d layer for skip-connection.
+        up (`bool`, *optional*, default to `False`): If `True`, add an upsample layer.
+        down (`bool`, *optional*, default to `False`): If `True`, add a downsample layer.
+        conv_shortcut_bias (`bool`, *optional*, default to `True`):  If `True`, adds a learnable bias to the
+            `conv_shortcut` output.
+        conv_2d_out_channels (`int`, *optional*, default to `None`): the number of channels in the output.
+            If None, same as `out_channels`.
+    """
 
     def __init__(
-            self,
-            *,
-            in_channels: int,
-            out_channels: int,
-            dropout: float = 0.0,
-            temb_channels: int = 512,
-            groups: int = 32,
-            eps: float = 1e-6,
-            non_linearity: str = "swish",
-            conv_shortcut: bool = False,
-            latent_channels: Optional[int] = None,
+        self,
+        *,
+        in_channels: int,
+        out_channels: int,
+        dropout: float = 0.0,
+        temb_channels: int = 512,
+        groups: int = 32,
+        eps: float = 1e-6,
+        non_linearity: str = "swish",
+        conv_shortcut: bool = False,
+        latent_channels: Optional[int] = None,
     ):
         super().__init__()
         out_channels = in_channels if out_channels is None else out_channels
@@ -437,10 +437,7 @@ class ResnetBlock3D(nn.Module):
             kernel_size=3,
         )
         if temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(
-                in_features=temb_channels,
-                out_features=out_channels
-            )
+            self.temb_proj = torch.nn.Linear(in_features=temb_channels, out_features=out_channels)
 
         self.dropout = torch.nn.Dropout(dropout)
 
@@ -459,31 +456,34 @@ class ResnetBlock3D(nn.Module):
                 )
             else:
                 self.nin_shortcut = nn.Conv3d(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    kernel_size=1,
-                    stride=1,
-                    padding=0
+                    in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0
                 )
 
-    def forward(self, input_tensor: torch.Tensor, temb: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+    def forward(
+        self, input_tensor: torch.Tensor, temb: torch.Tensor, zq: torch.Tensor = None, **kwargs
+    ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         hidden_states = input_tensor
-
-        hidden_states = self.norm1(hidden_states,*args)
+        if zq is not None:
+            hidden_states = self.norm1(hidden_states, zq)
+        else:
+            hidden_states = self.norm1(hidden_states)
         hidden_states = self.non_linearity(hidden_states)
         hidden_states = self.conv1(hidden_states)
 
         if temb is not None:
             hidden_states = hidden_states + self.temb_proj(self.non_linearity(temb))[:, :, None, None, None]
 
-        hidden_states = self.norm2(hidden_states,*args)
-        input_tensor = self.non_linearity(input_tensor)
-        input_tensor = self.dropout(input_tensor)
-        input_tensor = self.conv2(input_tensor)
+        if zq is not None:
+            hidden_states = self.norm2(hidden_states, zq)
+        else:
+            hidden_states = self.norm2(hidden_states)
+        hidden_states = self.non_linearity(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.conv2(hidden_states)
 
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
@@ -491,7 +491,9 @@ class ResnetBlock3D(nn.Module):
             else:
                 input_tensor = self.nin_shortcut(input_tensor)
 
-        return input_tensor + hidden_states
+        output_tensor = input_tensor + hidden_states
+
+        return output_tensor
 
 
 # unet_rl.py
@@ -519,12 +521,12 @@ class Conv1dBlock(nn.Module):
     """
 
     def __init__(
-            self,
-            inp_channels: int,
-            out_channels: int,
-            kernel_size: Union[int, Tuple[int, int]],
-            n_groups: int = 8,
-            activation: str = "mish",
+        self,
+        inp_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, Tuple[int, int]],
+        n_groups: int = 8,
+        activation: str = "mish",
     ):
         super().__init__()
 
@@ -555,12 +557,12 @@ class ResidualTemporalBlock1D(nn.Module):
     """
 
     def __init__(
-            self,
-            inp_channels: int,
-            out_channels: int,
-            embed_dim: int,
-            kernel_size: Union[int, Tuple[int, int]] = 5,
-            activation: str = "mish",
+        self,
+        inp_channels: int,
+        out_channels: int,
+        embed_dim: int,
+        kernel_size: Union[int, Tuple[int, int]] = 5,
+        activation: str = "mish",
     ):
         super().__init__()
         self.conv_in = Conv1dBlock(inp_channels, out_channels, kernel_size)
@@ -601,11 +603,11 @@ class TemporalConvLayer(nn.Module):
     """
 
     def __init__(
-            self,
-            in_dim: int,
-            out_dim: Optional[int] = None,
-            dropout: float = 0.0,
-            groups: int = 32,
+        self,
+        in_dim: int,
+        out_dim: Optional[int] = None,
+        dropout: float = 0.0,
+        groups: int = 32,
     ):
         super().__init__()
         out_dim = out_dim or in_dim
@@ -673,11 +675,11 @@ class TemporalResnetBlock(nn.Module):
     """
 
     def __init__(
-            self,
-            in_channels: int,
-            out_channels: Optional[int] = None,
-            temb_channels: int = 512,
-            eps: float = 1e-6,
+        self,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        temb_channels: int = 512,
+        eps: float = 1e-6,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -772,15 +774,15 @@ class SpatioTemporalResBlock(nn.Module):
     """
 
     def __init__(
-            self,
-            in_channels: int,
-            out_channels: Optional[int] = None,
-            temb_channels: int = 512,
-            eps: float = 1e-6,
-            temporal_eps: Optional[float] = None,
-            merge_factor: float = 0.5,
-            merge_strategy="learned_with_images",
-            switch_spatial_to_temporal_mix: bool = False,
+        self,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        temb_channels: int = 512,
+        eps: float = 1e-6,
+        temporal_eps: Optional[float] = None,
+        merge_factor: float = 0.5,
+        merge_strategy="learned_with_images",
+        switch_spatial_to_temporal_mix: bool = False,
     ):
         super().__init__()
 
@@ -805,10 +807,10 @@ class SpatioTemporalResBlock(nn.Module):
         )
 
     def forward(
-            self,
-            hidden_states: torch.Tensor,
-            temb: Optional[torch.Tensor] = None,
-            image_only_indicator: Optional[torch.Tensor] = None,
+        self,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        image_only_indicator: Optional[torch.Tensor] = None,
     ):
         num_frames = image_only_indicator.shape[-1]
         hidden_states = self.spatial_res_block(hidden_states, temb)
@@ -852,10 +854,10 @@ class AlphaBlender(nn.Module):
     strategies = ["learned", "fixed", "learned_with_images"]
 
     def __init__(
-            self,
-            alpha: float,
-            merge_strategy: str = "learned_with_images",
-            switch_spatial_to_temporal_mix: bool = False,
+        self,
+        alpha: float,
+        merge_strategy: str = "learned_with_images",
+        switch_spatial_to_temporal_mix: bool = False,
     ):
         super().__init__()
         self.merge_strategy = merge_strategy
@@ -903,10 +905,10 @@ class AlphaBlender(nn.Module):
         return alpha
 
     def forward(
-            self,
-            x_spatial: torch.Tensor,
-            x_temporal: torch.Tensor,
-            image_only_indicator: Optional[torch.Tensor] = None,
+        self,
+        x_spatial: torch.Tensor,
+        x_temporal: torch.Tensor,
+        image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         alpha = self.get_alpha(image_only_indicator, x_spatial.ndim)
         alpha = alpha.to(x_spatial.dtype)
