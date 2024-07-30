@@ -1483,9 +1483,9 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
     _lora_loadable_modules = ["transformer"]
     transformer_name = TRANSFORMER_NAME
-    text_encoder_name = TEXT_ENCODER_NAME
 
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
@@ -1576,6 +1576,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
         return state_dict
 
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
     ):
@@ -1622,6 +1623,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
 
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer
     def load_lora_into_transformer(cls, state_dict, transformer, adapter_name=None, _pipeline=None):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -1700,6 +1702,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             # Unsafe code />
 
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
@@ -1747,6 +1750,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: List[str] = ["transformer"],
@@ -1790,6 +1794,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
