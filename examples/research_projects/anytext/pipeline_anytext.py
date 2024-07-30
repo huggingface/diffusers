@@ -14,12 +14,14 @@
 
 
 import inspect
+import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
+from bert_tokenizer import BasicTokenizer
 from text_embedding_module import TextEmbeddingModule
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
@@ -49,6 +51,10 @@ from diffusers.utils import (
 from diffusers.utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
 
 
+checker = BasicTokenizer()
+
+
+PLACE_HOLDER = "*"
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -261,8 +267,31 @@ class AnyTextPipeline(
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    def modify_prompt(self, prompt: str) -> str:
-        return prompt
+    def modify_prompt(self, prompt):
+        prompt = prompt.replace("“", '"')
+        prompt = prompt.replace("”", '"')
+        p = '"(.*?)"'
+        strs = re.findall(p, prompt)
+        if len(strs) == 0:
+            strs = [" "]
+        else:
+            for s in strs:
+                prompt = prompt.replace(f'"{s}"', f" {PLACE_HOLDER} ", 1)
+        if self.is_chinese(prompt):
+            if self.trans_pipe is None:
+                return None, None
+            old_prompt = prompt
+            prompt = self.trans_pipe(input=prompt + " .")["translation"][:-1]
+            print(f"Translate: {old_prompt} --> {prompt}")
+        return prompt, strs
+
+    def is_chinese(self, text):
+        text = checker._clean_text(text)
+        for char in text:
+            cp = ord(char)
+            if checker._is_chinese_char(cp):
+                return True
+        return False
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -1284,7 +1313,7 @@ class AnyTextPipeline(
                 )
 
                 if guess_mode and self.do_classifier_free_guidance:
-                    # Infered ControlNet only for the conditional batch.
+                    # Inferred ControlNet only for the conditional batch.
                     # To apply the output of ControlNet to both the unconditional and conditional batches,
                     # add 0 to the unconditional batch to keep it unchanged.
                     down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
