@@ -1182,9 +1182,7 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
 
         return audio
 
-    def get_oobleck_vae_model(
-        self, model_id="ylacombe/stable-audio-1.0", fp16=False
-    ):  # TODO (YL): change repo id once moved
+    def get_oobleck_vae_model(self, model_id="stabilityai/stable-audio-open-1.0", fp16=False):
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = AutoencoderOobleck.from_pretrained(
