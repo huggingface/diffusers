@@ -2,8 +2,9 @@ import argparse
 from typing import Any, Dict
 
 import torch
+from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import CogVideoXTransformer3D
+from diffusers import CogVideoXPipeline, CogVideoXTransformer3D, DPMSolverMultistepScheduler
 
 
 def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]):
@@ -86,7 +87,7 @@ def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key:
     state_dict[new_key] = state_dict.pop(old_key)
 
 
-def convert_transformer(ckpt_path: str, output_path: str, fp16: bool = False, push_to_hub: bool = False) -> None:
+def convert_transformer(ckpt_path: str):
     PREFIX_KEY = "model.diffusion_model."
 
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
@@ -105,14 +106,20 @@ def convert_transformer(ckpt_path: str, output_path: str, fp16: bool = False, pu
             handler_fn_inplace(key, original_state_dict)
 
     transformer.load_state_dict(original_state_dict, strict=True)
-    transformer.save_pretrained(output_path)
+    return transformer
+
+
+def convert_vae(ckpt_path: str):
+    # TODO: wait for implementation
+    pass
 
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--transformer_ckpt_path", type=str, default=None, help="Path to original transformercheckpoint"
+        "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
     )
+    parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original vae checkpoint")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--fp16", action="store_true", default=False, help="Whether to save the model weights in fp16")
     parser.add_argument(
@@ -124,5 +131,32 @@ def get_args():
 if __name__ == "__main__":
     args = get_args()
 
+    transformer = None
+    vae = None
+
     if args.transformer_ckpt_path is not None:
-        convert_transformer(args.transformer_ckpt_path, args.output_path, args.fp16, args.push_to_hub)
+        transformer = convert_transformer(args.transformer_ckpt_path)
+    if args.vae_ckpt_path is not None:
+        vae = convert_vae(args.vae_ckpt_path)
+
+    text_encoder_id = "google/t5-v1_1-xxl"
+    tokenizer = T5Tokenizer.from_pretrained(text_encoder_id)
+    text_encoder = T5EncoderModel.from_pretrained(text_encoder_id)
+
+    # TODO: verify with authors
+    scheduler = DPMSolverMultistepScheduler.from_pretrained(
+        "runwayml/stable-diffusion-v1-5",
+        subfolder="scheduler",
+        algorithm_type="sde-dpmsolver++",
+        prediction_type="v_prediction",
+    )
+
+    pipe = CogVideoXPipeline(
+        tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
+    )
+
+    if args.fp16:
+        pipe = pipe.to(dtype=torch.float16)
+
+    variant = "fp16" if args.fp16 else None
+    pipe.save_pretrained(args.output_path, safe_serialization=True, variant=variant, push_to_hub=args.push_to_hub)
