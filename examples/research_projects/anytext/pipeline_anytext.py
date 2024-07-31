@@ -1155,7 +1155,7 @@ class AnyTextPipeline(
         )
         prompt, texts = self.modify_prompt(prompt)
 
-        prompt_embeds, negative_prompt_embeds = self.text_embedding_module.encode_prompt(
+        prompt_embeds, negative_prompt_embeds = self.text_embedding_module(
             prompt,
             device,
             num_images_per_prompt,
