@@ -409,7 +409,6 @@ class ResnetBlock3D(nn.Module):
         eps: float = 1e-6,
         non_linearity: str = "swish",
         conv_shortcut: bool = False,
-        latent_channels: Optional[int] = None,
     ):
         super().__init__()
         out_channels = in_channels if out_channels is None else out_channels
@@ -419,17 +418,17 @@ class ResnetBlock3D(nn.Module):
         self.non_linearity = get_activation(non_linearity)
         self.use_conv_shortcut = conv_shortcut
 
-        if latent_channels is None:
+        if out_channels is None:
             self.norm1 = nn.GroupNorm(num_channels=in_channels, num_groups=groups, eps=eps)
             self.norm2 = nn.GroupNorm(num_channels=out_channels, num_groups=groups, eps=eps)
         else:
             self.norm1 = SpatialNorm3D(
                 f_channels=in_channels,
-                zq_channels=latent_channels,
+                zq_channels=out_channels,
             )
             self.norm2 = SpatialNorm3D(
                 f_channels=out_channels,
-                zq_channels=latent_channels,
+                zq_channels=out_channels,
             )
         self.conv1 = nn.Conv3d(
             in_channels=in_channels,
