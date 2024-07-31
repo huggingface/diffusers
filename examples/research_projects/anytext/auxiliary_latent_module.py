@@ -233,7 +233,6 @@ class AuxiliaryLatentModule(nn.Module):
 
         return guided_hint
 
-
     def encode_first_stage(self, masked_img):
         pass
 
@@ -256,7 +255,6 @@ class AuxiliaryLatentModule(nn.Module):
             image = image[:, :, :3]
         return image
 
-
     def resize_image(self, img, max_length=768):
         height, width = img.shape[:2]
         max_dimension = max(height, width)
@@ -270,7 +268,6 @@ class AuxiliaryLatentModule(nn.Module):
         height, width = img.shape[:2]
         img = cv2.resize(img, (width - (width % 64), height - (height % 64)))
         return img
-
 
     def insert_spaces(self, string, nSpace):
         if nSpace == 0:
