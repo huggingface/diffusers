@@ -2460,6 +2460,44 @@ class SpatialNorm(nn.Module):
         return new_f
 
 
+class SpatialNorm3D(nn.Module):
+    """
+    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002.
+
+    Args:
+        f_channels (`int`):
+            The number of channels for input to group normalization layer, and output of the spatial norm layer.
+        zq_channels (`int`):
+            The number of channels for the quantized vector as described in the paper.
+    """
+
+    def __init__(
+        self,
+        f_channels: int,
+        zq_channels: int,
+    ):
+        super().__init__()
+        self.norm_layer = nn.GroupNorm(num_channels=f_channels, num_groups=32, eps=1e-6, affine=True)
+        self.conv = nn.Conv3d(zq_channels, zq_channels, kernel_size=3, stride=1, padding=0)
+        self.conv_y = nn.Conv3d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
+        self.conv_b = nn.Conv3d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, f: torch.Tensor, zq: torch.Tensor) -> torch.Tensor:
+        if zq.shape[2] > 1:
+            f_first, f_rest = f[:, :, :1], f[:, :, 1:]
+            f_first_size, f_rest_size = f_first.shape[-3:], f_rest.shape[-3:]
+            z_first, z_rest = zq[:, :, :1], zq[:, :, 1:]
+            z_first = torch.nn.functional.interpolate(z_first, size=f_first_size)
+            z_rest = torch.nn.functional.interpolate(z_rest, size=f_rest_size)
+            zq = torch.cat([z_first, z_rest], dim=2)
+        else:
+            zq = torch.nn.functional.interpolate(zq, size=f.shape[-3:])
+            zq = self.conv(zq)
+        norm_f = self.norm_layer(f)
+        new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
+        return new_f
+
+
 class IPAdapterAttnProcessor(nn.Module):
     r"""
     Attention processor for Multiple IP-Adapters.

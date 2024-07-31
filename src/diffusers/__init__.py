@@ -78,6 +78,7 @@ else:
             "AsymmetricAutoencoderKL",
             "AuraFlowTransformer2DModel",
             "AutoencoderKL",
+            "AutoencoderKL3D",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderTiny",
             "CogVideoXTransformer3D",
