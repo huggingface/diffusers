@@ -158,7 +158,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor)
-    
+
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -225,9 +225,8 @@ class CogVideoXPipeline(DiffusionPipeline):
                 less than `1`).
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 Whether to use classifier free guidance or not.
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                Number of video that should be generated per prompt.
-                torch device to place the resulting embeddings on
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                Number of videos that should be generated per prompt. torch device to place the resulting embeddings on
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -247,7 +246,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        
+
         if prompt_embeds is None:
             prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=prompt,
@@ -280,9 +279,8 @@ class CogVideoXPipeline(DiffusionPipeline):
                 device=device,
                 dtype=dtype,
             )
-        
-        return prompt_embeds, negative_prompt_embeds
 
+        return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
