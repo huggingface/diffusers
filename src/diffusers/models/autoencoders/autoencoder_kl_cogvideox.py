@@ -295,9 +295,9 @@ class CogVideoXSpatialNorm3D(nn.Module):
     ):
         super().__init__()
         self.norm_layer = nn.GroupNorm(num_channels=f_channels, num_groups=32, eps=1e-6, affine=True)
-        self.conv = CogVideoXCausalConv3d(zq_channels, zq_channels, kernel_size=3, stride=1, padding=0)
-        self.conv_y = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
-        self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
+        self.conv = CogVideoXCausalConv3d(zq_channels, zq_channels, kernel_size=3, stride=1)
+        self.conv_y = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
+        self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
 
     def forward(self, f: torch.Tensor, zq: torch.Tensor) -> torch.Tensor:
         if zq.shape[2] > 1:
@@ -309,7 +309,7 @@ class CogVideoXSpatialNorm3D(nn.Module):
             zq = torch.cat([z_first, z_rest], dim=2)
         else:
             zq = F.interpolate(zq, size=f.shape[-3:])
-            zq = self.conv(zq)
+
         norm_f = self.norm_layer(f)
         new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
         return new_f
@@ -702,8 +702,6 @@ class Decoder3D(nn.Module):
         block_in = block_out_channels[self.num_resolutions - 1]
         curr_res = resolution // 2 ** (self.num_resolutions - 1)
         self.z_shape = (1, in_channels, curr_res, curr_res)
-        print("Working with z of shape {} = {} dimensions.".format(self.z_shape, np.prod(self.z_shape)))
-
         self.conv_in = CogVideoXCausalConv3d(in_channels, block_in, kernel_size=3, pad_mode=pad_mode)
 
         # middle
