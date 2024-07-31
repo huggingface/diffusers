@@ -166,6 +166,96 @@ from .vae import DecoderOutput, DiagonalGaussianDistribution
 #         return sample
 
 
+class CogVideoXResnetBlock3D(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        dropout: float = 0.0,
+        temb_channels: int = 512,
+        groups: int = 32,
+        eps: float = 1e-6,
+        non_linearity: str = "swish",
+        conv_shortcut: bool = False,
+        spatial_norm_dim: Optional[int] = None,
+        pad_mode: str = "first",
+    ):
+        super().__init__()
+
+        out_channels = out_channels or in_channels
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.non_linearity = get_activation(non_linearity)
+        self.use_conv_shortcut = conv_shortcut
+
+        if spatial_norm_dim is None:
+            self.norm1 = nn.GroupNorm(num_channels=in_channels, num_groups=groups, eps=eps)
+            self.norm2 = nn.GroupNorm(num_channels=out_channels, num_groups=groups, eps=eps)
+        else:
+            self.norm1 = CogVideoXSpatialNorm3D(
+                f_channels=in_channels,
+                zq_channels=spatial_norm_dim,
+            )
+            self.norm2 = CogVideoXSpatialNorm3D(
+                f_channels=out_channels,
+                zq_channels=spatial_norm_dim,
+            )
+        self.conv1 = CogVideoXCausalConv3d(
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
+        )
+        if temb_channels > 0:
+            self.temb_proj = torch.nn.Linear(in_features=temb_channels, out_features=out_channels)
+
+        self.dropout = torch.nn.Dropout(dropout)
+
+        self.conv2 = CogVideoXCausalConv3d(
+            in_channels=out_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
+        )
+
+        if self.in_channels != self.out_channels:
+            if self.use_conv_shortcut:
+                self.conv_shortcut = CogVideoXCausalConv3d(
+                    in_channels=in_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
+                )
+            else:
+                self.nin_shortcut = CogVideoXSaveConv3d(
+                    in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0
+                )
+
+    def forward(
+        self, input_tensor: torch.Tensor, temb: torch.Tensor, zq: torch.Tensor = None, *args, **kwargs
+    ) -> torch.Tensor:
+        hidden_states = input_tensor
+        if zq is not None:
+            hidden_states = self.norm1(hidden_states, zq)
+        else:
+            hidden_states = self.norm1(hidden_states)
+        hidden_states = self.non_linearity(hidden_states)
+        hidden_states = self.conv1(hidden_states)
+
+        if temb is not None:
+            hidden_states = hidden_states + self.temb_proj(self.non_linearity(temb))[:, :, None, None, None]
+
+        if zq is not None:
+            hidden_states = self.norm2(hidden_states, zq)
+        else:
+            hidden_states = self.norm2(hidden_states)
+        hidden_states = self.non_linearity(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.conv2(hidden_states)
+
+        if self.in_channels != self.out_channels:
+            if self.use_conv_shortcut:
+                input_tensor = self.conv_shortcut(input_tensor)
+            else:
+                input_tensor = self.nin_shortcut(input_tensor)
+
+        output_tensor = input_tensor + hidden_states
+
+        return output_tensor
+
+
 class Encoder3D(nn.Module):
     r"""
     The `Encoder3D` layer of a variational autoencoder that encodes its input into a latent representation.
@@ -365,7 +455,7 @@ class Decoder3D(nn.Module):
             temb_channels=0,
             dropout=dropout,
             non_linearity=act_fn,
-            latent_channels=in_channels,
+            spatial_norm_dim=in_channels,
             groups=norm_num_groups,
             pad_mode=pad_mode,
         )
@@ -376,7 +466,7 @@ class Decoder3D(nn.Module):
             temb_channels=0,
             dropout=dropout,
             non_linearity=act_fn,
-            latent_channels=in_channels,
+            spatial_norm_dim=in_channels,
             groups=norm_num_groups,
             pad_mode=pad_mode,
         )
@@ -396,7 +486,7 @@ class Decoder3D(nn.Module):
                         temb_channels=0,
                         non_linearity=act_fn,
                         dropout=dropout,
-                        latent_channels=in_channels,
+                        spatial_norm_dim=in_channels,
                         groups=norm_num_groups,
                         pad_mode=pad_mode,
                     )
@@ -571,8 +661,17 @@ class CogVideoXCausalConv3d(nn.Module):
 
 # Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
 class CogVideoXSpatialNorm3D(nn.Module):
-    """
-    Use CogVideoXSaveConv3d instead of nn.Conv3d to avoid OOM in CogVideoX Model
+    r"""
+    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002. This implementation is specific
+    to 3D-video like data.
+
+    CogVideoXSaveConv3d is used instead of nn.Conv3d to avoid OOM in CogVideoX Model.
+
+    Args:
+        f_channels (`int`):
+            The number of channels for input to group normalization layer, and output of the spatial norm layer.
+        zq_channels (`int`):
+            The number of channels for the quantized vector as described in the paper.
     """
 
     def __init__(
@@ -706,96 +805,6 @@ class DownSample3D(nn.Module):
         x = x.reshape(b, t, x.shape[1], x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
 
         return x
-
-
-class CogVideoXResnetBlock3D(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        dropout: float = 0.0,
-        temb_channels: int = 512,
-        groups: int = 32,
-        eps: float = 1e-6,
-        non_linearity: str = "swish",
-        conv_shortcut: bool = False,
-        latent_channels: Optional[int] = None,
-        pad_mode: str = "first",
-    ):
-        super().__init__()
-
-        out_channels = in_channels if out_channels is None else out_channels
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.non_linearity = get_activation(non_linearity)
-        self.use_conv_shortcut = conv_shortcut
-
-        if latent_channels is None:
-            self.norm1 = nn.GroupNorm(num_channels=in_channels, num_groups=groups, eps=eps)
-            self.norm2 = nn.GroupNorm(num_channels=out_channels, num_groups=groups, eps=eps)
-        else:
-            self.norm1 = CogVideoXSpatialNorm3D(
-                f_channels=in_channels,
-                zq_channels=latent_channels,
-            )
-            self.norm2 = CogVideoXSpatialNorm3D(
-                f_channels=out_channels,
-                zq_channels=latent_channels,
-            )
-        self.conv1 = CogVideoXCausalConv3d(
-            in_channels=in_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
-        )
-        if temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(in_features=temb_channels, out_features=out_channels)
-
-        self.dropout = torch.nn.Dropout(dropout)
-
-        self.conv2 = CogVideoXCausalConv3d(
-            in_channels=out_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
-        )
-
-        if self.in_channels != self.out_channels:
-            if self.use_conv_shortcut:
-                self.conv_shortcut = CogVideoXCausalConv3d(
-                    in_channels=in_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
-                )
-            else:
-                self.nin_shortcut = CogVideoXSaveConv3d(
-                    in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0
-                )
-
-    def forward(
-        self, input_tensor: torch.Tensor, temb: torch.Tensor, zq: torch.Tensor = None, *args, **kwargs
-    ) -> torch.Tensor:
-        hidden_states = input_tensor
-        if zq is not None:
-            hidden_states = self.norm1(hidden_states, zq)
-        else:
-            hidden_states = self.norm1(hidden_states)
-        hidden_states = self.non_linearity(hidden_states)
-        hidden_states = self.conv1(hidden_states)
-
-        if temb is not None:
-            hidden_states = hidden_states + self.temb_proj(self.non_linearity(temb))[:, :, None, None, None]
-
-        if zq is not None:
-            hidden_states = self.norm2(hidden_states, zq)
-        else:
-            hidden_states = self.norm2(hidden_states)
-        hidden_states = self.non_linearity(hidden_states)
-        hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states)
-
-        if self.in_channels != self.out_channels:
-            if self.use_conv_shortcut:
-                input_tensor = self.conv_shortcut(input_tensor)
-            else:
-                input_tensor = self.nin_shortcut(input_tensor)
-
-        output_tensor = input_tensor + hidden_states
-
-        return output_tensor
 
 
 class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):

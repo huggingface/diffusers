@@ -22,7 +22,7 @@ import torch.nn.functional as F
 
 from ..utils import deprecate
 from .activations import get_activation
-from .attention_processor import SpatialNorm, SpatialNorm3D
+from .attention_processor import SpatialNorm
 from .downsampling import (  # noqa
     Downsample1D,
     Downsample2D,
@@ -369,128 +369,6 @@ class ResnetBlock2D(nn.Module):
             input_tensor = self.conv_shortcut(input_tensor)
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
-
-        return output_tensor
-
-
-class ResnetBlock3D(nn.Module):
-    r"""
-    A Resnet3D block.
-
-    Parameters:
-        in_channels (`int`): The number of channels in the input.
-        out_channels (`int`, *optional*, default to be `None`):
-            The number of output channels for the first conv2d layer. If None, same as `in_channels`.
-        dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
-        temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
-        groups (`int`, *optional*, default to `32`): The number of groups to use for the first normalization layer.
-        groups_out (`int`, *optional*, default to None):
-            The number of groups to use for the second normalization layer. if set to None, same as `groups`.
-        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
-        non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
-        use_in_shortcut (`bool`, *optional*, default to `True`):
-            If `True`, add a 1x1 nn.conv2d layer for skip-connection.
-        up (`bool`, *optional*, default to `False`): If `True`, add an upsample layer.
-        down (`bool`, *optional*, default to `False`): If `True`, add a downsample layer.
-        conv_shortcut_bias (`bool`, *optional*, default to `True`):  If `True`, adds a learnable bias to the
-            `conv_shortcut` output.
-        conv_2d_out_channels (`int`, *optional*, default to `None`): the number of channels in the output.
-            If None, same as `out_channels`.
-    """
-
-    def __init__(
-        self,
-        *,
-        in_channels: int,
-        out_channels: int,
-        dropout: float = 0.0,
-        temb_channels: int = 512,
-        groups: int = 32,
-        eps: float = 1e-6,
-        non_linearity: str = "swish",
-        conv_shortcut: bool = False,
-    ):
-        super().__init__()
-        out_channels = in_channels if out_channels is None else out_channels
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.non_linearity = get_activation(non_linearity)
-        self.use_conv_shortcut = conv_shortcut
-
-        if out_channels is None:
-            self.norm1 = nn.GroupNorm(num_channels=in_channels, num_groups=groups, eps=eps)
-            self.norm2 = nn.GroupNorm(num_channels=out_channels, num_groups=groups, eps=eps)
-        else:
-            self.norm1 = SpatialNorm3D(
-                f_channels=in_channels,
-                zq_channels=out_channels,
-            )
-            self.norm2 = SpatialNorm3D(
-                f_channels=out_channels,
-                zq_channels=out_channels,
-            )
-        self.conv1 = nn.Conv3d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-        )
-        if temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(in_features=temb_channels, out_features=out_channels)
-
-        self.dropout = torch.nn.Dropout(dropout)
-
-        self.conv2 = nn.Conv3d(
-            in_channels=out_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-        )
-
-        if self.in_channels != self.out_channels:
-            if self.use_conv_shortcut:
-                self.conv_shortcut = nn.Conv3d(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    kernel_size=3,
-                )
-            else:
-                self.nin_shortcut = nn.Conv3d(
-                    in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0
-                )
-
-    def forward(
-        self, input_tensor: torch.Tensor, temb: torch.Tensor, zq: torch.Tensor = None, *args, **kwargs
-    ) -> torch.Tensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-
-        hidden_states = input_tensor
-        if zq is not None:
-            hidden_states = self.norm1(hidden_states, zq)
-        else:
-            hidden_states = self.norm1(hidden_states)
-        hidden_states = self.non_linearity(hidden_states)
-        hidden_states = self.conv1(hidden_states)
-
-        if temb is not None:
-            hidden_states = hidden_states + self.temb_proj(self.non_linearity(temb))[:, :, None, None, None]
-
-        if zq is not None:
-            hidden_states = self.norm2(hidden_states, zq)
-        else:
-            hidden_states = self.norm2(hidden_states)
-        hidden_states = self.non_linearity(hidden_states)
-        hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states)
-
-        if self.in_channels != self.out_channels:
-            if self.use_conv_shortcut:
-                input_tensor = self.conv_shortcut(input_tensor)
-            else:
-                input_tensor = self.nin_shortcut(input_tensor)
-
-        output_tensor = input_tensor + hidden_states
 
         return output_tensor
 
