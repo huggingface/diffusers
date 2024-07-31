@@ -354,9 +354,9 @@ class CogVideoXResnetBlock3D(nn.Module):
             in_channels=in_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
         )
         if temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(in_features=temb_channels, out_features=out_channels)
+            self.temb_proj = nn.Linear(in_features=temb_channels, out_features=out_channels)
 
-        self.dropout = torch.nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout)
 
         self.conv2 = CogVideoXCausalConv3d(
             in_channels=out_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
@@ -373,7 +373,7 @@ class CogVideoXResnetBlock3D(nn.Module):
                 )
 
     def forward(
-        self, input_tensor: torch.Tensor, temb: torch.Tensor, zq: torch.Tensor = None, *args, **kwargs
+        self, input_tensor: torch.Tensor, temb: torch.Tensor, zq: Optional[torch.Tensor] = None, *args, **kwargs
     ) -> torch.Tensor:
         hidden_states = input_tensor
         if zq is not None:
@@ -403,6 +403,112 @@ class CogVideoXResnetBlock3D(nn.Module):
         output_tensor = input_tensor + hidden_states
 
         return output_tensor
+
+
+# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
+class CogVideoXUpSample3D(nn.Module):
+    r"""
+    Add compress_time option to the `UpSample` layer of a variational autoencoder that upsamples its input in CogVideoX
+    Model.
+
+    Args:
+        in_channels (`int`, *optional*, defaults to 3):
+            The number of input channels.
+        out_channels (`int`, *optional*, defaults to 3):
+            The number of output channels.
+        compress_time (`bool`, *optional*, defaults to `False`):
+            Whether to compress the time dimension.
+    """
+
+    def __init__(self, in_channels: int, out_channels: int, compress_time: bool = False):
+        super().__init__()
+
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.compress_time = compress_time
+
+    def forward(self, x):
+        if self.compress_time:
+            if x.shape[2] > 1 and x.shape[2] % 2 == 1:
+                # split first frame
+                x_first, x_rest = x[:, :, 0], x[:, :, 1:]
+
+                x_first = F.interpolate(x_first, scale_factor=2.0)
+                x_rest = F.interpolate(x_rest, scale_factor=2.0)
+                x_first = x_first[:, :, None, :, :]
+                x = torch.cat([x_first, x_rest], dim=2)
+            elif x.shape[2] > 1:
+                x = F.interpolate(x, scale_factor=2.0)
+            else:
+                x = x.squeeze(2)
+                x = F.interpolate(x, scale_factor=2.0)
+                x = x[:, :, None, :, :]
+        else:
+            # only interpolate 2D
+            b, c, t, h, w = x.shape
+            x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+            x = F.interpolate(x, scale_factor=2.0)
+            x = x.reshape(b, t, c, x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
+
+        b, c, t, h, w = x.shape
+        x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+        x = self.conv(x)
+        x = x.reshape(b, t, x.shape[1], x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
+
+        return x
+
+
+# Todo: Create vae_3d.py such as vae.py file?
+class CogVideoXDownSample3D(nn.Module):
+    r"""
+    Add compress_time option to the `DownSample` layer of a variational autoencoder that downsamples its input in
+    CogVideoX Model.
+
+    Args:
+        in_channels (`int`, *optional*):
+            The number of input channels.
+        out_channels (`int`, *optional*):
+            The number of output channels.
+        compress_time (`bool`, *optional*, defaults to `False`):
+            Whether to compress the time dimension.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        compress_time: bool = False,
+    ):
+        super().__init__()
+
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=0)
+        self.compress_time = compress_time
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.compress_time:
+            b, c, t, h, w = x.shape
+            x = x.permute(0, 3, 4, 1, 2).reshape(b * h * w, c, t)
+
+            if x.shape[-1] % 2 == 1:
+                # split first frame
+                x_first, x_rest = x[..., 0], x[..., 1:]
+
+                if x_rest.shape[-1] > 0:
+                    x_rest = F.avg_pool1d(x_rest, kernel_size=2, stride=2)
+                x = torch.cat([x_first[..., None], x_rest], dim=-1)
+                x = x.reshape(b, h, w, c, x.shape[-1]).permute(0, 3, 4, 1, 2)
+
+            else:
+                x = F.avg_pool1d(x, kernel_size=2, stride=2)
+                x = x.reshape(b, h, w, c, x.shape[-1]).permute(0, 3, 4, 1, 2)
+
+        pad = (0, 1, 0, 1)
+        x = F.pad(x, pad, mode="constant", value=0)
+        b, c, t, h, w = x.shape
+        x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+        x = self.conv(x)
+        x = x.reshape(b, t, x.shape[1], x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
+
+        return x
 
 
 class Encoder3D(nn.Module):
@@ -482,9 +588,13 @@ class Encoder3D(nn.Module):
 
             if i_level != self.num_resolutions - 1:
                 if i_level < self.temporal_compress_level:
-                    down.downsample = DownSample3D(in_channels=block_in, out_channels=block_in, compress_time=True)
+                    down.downsample = CogVideoXDownSample3D(
+                        in_channels=block_in, out_channels=block_in, compress_time=True
+                    )
                 else:
-                    down.downsample = DownSample3D(in_channels=block_in, out_channels=block_in, compress_time=False)
+                    down.downsample = CogVideoXDownSample3D(
+                        in_channels=block_in, out_channels=block_in, compress_time=False
+                    )
                 curr_res = curr_res // 2
             self.down.append(down)
 
@@ -689,115 +799,6 @@ class Decoder3D(nn.Module):
         hidden_states = self.conv_out(hidden_states)
 
         return hidden_states
-
-
-## ====  After this is the special code of CogVideoX  ==== ##
-
-
-# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
-class CogVideoXUpSample3D(nn.Module):
-    r"""
-    Add compress_time option to the `UpSample` layer of a variational autoencoder that upsamples its input in CogVideoX
-    Model.
-
-    Args:
-        in_channels (`int`, *optional*, defaults to 3):
-            The number of input channels.
-        out_channels (`int`, *optional*, defaults to 3):
-            The number of output channels.
-        compress_time (`bool`, *optional*, defaults to `False`):
-            Whether to compress the time dimension.
-    """
-
-    def __init__(self, in_channels: int, out_channels: int, compress_time: bool = False):
-        super().__init__()
-
-        self.conv = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        self.compress_time = compress_time
-
-    def forward(self, x):
-        if self.compress_time:
-            if x.shape[2] > 1 and x.shape[2] % 2 == 1:
-                # split first frame
-                x_first, x_rest = x[:, :, 0], x[:, :, 1:]
-
-                x_first = F.interpolate(x_first, scale_factor=2.0)
-                x_rest = F.interpolate(x_rest, scale_factor=2.0)
-                x_first = x_first[:, :, None, :, :]
-                x = torch.cat([x_first, x_rest], dim=2)
-            elif x.shape[2] > 1:
-                x = F.interpolate(x, scale_factor=2.0)
-            else:
-                x = x.squeeze(2)
-                x = F.interpolate(x, scale_factor=2.0)
-                x = x[:, :, None, :, :]
-        else:
-            # only interpolate 2D
-            b, c, t, h, w = x.shape
-            x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
-            x = F.interpolate(x, scale_factor=2.0)
-            x = x.reshape(b, t, c, x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
-
-        b, c, t, h, w = x.shape
-        x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
-        x = self.conv(x)
-        x = x.reshape(b, t, x.shape[1], x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
-
-        return x
-
-
-# Todo: Create vae_3d.py such as vae.py file?
-class DownSample3D(nn.Module):
-    r"""
-    Add compress_time option to the `DownSample` layer of a variational autoencoder that downsamples its input in
-    CogVideoX Model.
-
-    Args:
-        in_channels (`int`, *optional*):
-            The number of input channels.
-        out_channels (`int`, *optional*):
-            The number of output channels.
-        compress_time (`bool`, *optional*, defaults to `False`):
-            Whether to compress the time dimension.
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        compress_time: bool = False,
-    ):
-        super(DownSample3D, self).__init__()
-
-        self.conv = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=0)
-        self.compress_time = compress_time
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.compress_time:
-            b, c, t, h, w = x.shape
-            x = x.permute(0, 3, 4, 1, 2).reshape(b * h * w, c, t)
-
-            if x.shape[-1] % 2 == 1:
-                # split first frame
-                x_first, x_rest = x[..., 0], x[..., 1:]
-
-                if x_rest.shape[-1] > 0:
-                    x_rest = F.avg_pool1d(x_rest, kernel_size=2, stride=2)
-                x = torch.cat([x_first[..., None], x_rest], dim=-1)
-                x = x.reshape(b, h, w, c, x.shape[-1]).permute(0, 3, 4, 1, 2)
-
-            else:
-                x = F.avg_pool1d(x, kernel_size=2, stride=2)
-                x = x.reshape(b, h, w, c, x.shape[-1]).permute(0, 3, 4, 1, 2)
-
-        pad = (0, 1, 0, 1)
-        x = F.pad(x, pad, mode="constant", value=0)
-        b, c, t, h, w = x.shape
-        x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
-        x = self.conv(x)
-        x = x.reshape(b, t, x.shape[1], x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
-
-        return x
 
 
 class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):
