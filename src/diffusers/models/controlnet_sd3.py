@@ -250,7 +250,10 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             controlnet.pos_embed.load_state_dict(transformer.pos_embed.state_dict())
             controlnet.time_text_embed.load_state_dict(transformer.time_text_embed.state_dict())
             controlnet.context_embedder.load_state_dict(transformer.context_embedder.state_dict())
-            controlnet.transformer_blocks.load_state_dict(transformer.transformer_blocks.state_dict(), strict=False)
+
+            if num_layers is not None:
+                for i in range(num_layers):
+                    controlnet.transformer_blocks[i].load_state_dict(transformer.transformer_blocks[i].state_dict())
 
             controlnet.pos_embed_input = zero_module(controlnet.pos_embed_input)
 
