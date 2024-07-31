@@ -45,17 +45,16 @@ class Encoder3D(nn.Module):
 
     def __init__(
         self,
-        *,
         in_channels: int = 3,
         out_channels: int = 16,
         block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
-        num_res_blocks: int,
+        layers_per_block: int = 3,
         act_fn: str = "silu",
         norm_num_groups: int = 32,
         attn_resolutions=None,
         dropout: float = 0.0,
-        resolution: int,
-        latent_channels: int,
+        resolution: int = 256,
+        latent_channels: int = 16,
         double_z: bool = True,
         pad_mode: str = "first",
         temporal_compress_times: int = 4,
@@ -65,7 +64,7 @@ class Encoder3D(nn.Module):
             attn_resolutions = []
         self.act_fn = get_activation(act_fn)
         self.num_resolutions = len(block_out_channels)
-        self.num_res_blocks = num_res_blocks
+        self.layers_per_block = layers_per_block
         self.resolution = resolution
         self.attn_resolutions = attn_resolutions
 
@@ -84,7 +83,7 @@ class Encoder3D(nn.Module):
             block_in = in_ch_mult[i_level]
             block_out = block_out_channels[i_level]
 
-            for i_block in range(self.num_res_blocks):
+            for i_block in range(self.layers_per_block):
                 block.append(
                     CogVideoXResnetBlock3D(
                         in_channels=block_in,
@@ -148,7 +147,7 @@ class Encoder3D(nn.Module):
         # DownSampling
         sample = self.conv_in(sample)
         for i_level in range(self.num_resolutions):
-            for i_block in range(self.num_res_blocks):
+            for i_block in range(self.layers_per_block):
                 sample = self.down[i_level].block[i_block](sample, temb)
                 if len(self.down[i_level].attn) > 0:
                     sample = self.down[i_level].attn[i_block](sample)
@@ -196,16 +195,15 @@ class Decoder3D(nn.Module):
 
     def __init__(
         self,
-        *,
         in_channels: int = 16,
         out_channels: int = 3,
         block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
-        num_res_blocks: int,
+        layers_per_block: int = 3,
         attn_resolutions=None,
         act_fn: str = "silu",
         dropout: float = 0.0,
-        resolution: int,
-        latent_channels: int,
+        resolution: int = 256,
+        latent_channels: int = 16,
         give_pre_end: bool = False,
         pad_mode: str = "first",
         temporal_compress_times: int = 4,
@@ -216,7 +214,7 @@ class Decoder3D(nn.Module):
             attn_resolutions = []
         self.act_fn = get_activation(act_fn)
         self.num_resolutions = len(block_out_channels)
-        self.num_res_blocks = num_res_blocks
+        self.layers_per_block = layers_per_block
         self.resolution = resolution
         self.give_pre_end = give_pre_end
         self.attn_resolutions = attn_resolutions
@@ -263,7 +261,7 @@ class Decoder3D(nn.Module):
             block = nn.ModuleList()
             attn = nn.ModuleList()
             block_out = block_out_channels[i_level]
-            for i_block in range(self.num_res_blocks + 1):
+            for i_block in range(self.layers_per_block + 1):
                 block.append(
                     CogVideoXResnetBlock3D(
                         in_channels=block_in,
@@ -314,7 +312,7 @@ class Decoder3D(nn.Module):
         # UpSampling
 
         for i_level in reversed(range(self.num_resolutions)):
-            for i_block in range(self.num_res_blocks + 1):
+            for i_block in range(self.layers_per_block + 1):
                 hidden_states = self.up[i_level].block[i_block](hidden_states, temb, sample)
                 if len(self.up[i_level].attn) > 0:
                     hidden_states = self.up[i_level].attn[i_block](hidden_states, sample)
@@ -359,7 +357,7 @@ class UpSample3D(nn.Module):
 
         b, c, t, h, w = x.shape
         x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
-        x = torch.nn.functional.interpolate(x, scale_factor=2.0)
+        x = F.interpolate(x, scale_factor=2.0)
         x = x.reshape(b, t, c, x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
 
         b, c, t, h, w = x.shape
@@ -507,11 +505,11 @@ class CogVideoXSpatialNorm3D(SpatialNorm3D):
             f_first, f_rest = f[:, :, :1], f[:, :, 1:]
             f_first_size, f_rest_size = f_first.shape[-3:], f_rest.shape[-3:]
             z_first, z_rest = zq[:, :, :1], zq[:, :, 1:]
-            z_first = torch.nn.functional.interpolate(z_first, size=f_first_size)
-            z_rest = torch.nn.functional.interpolate(z_rest, size=f_rest_size)
+            z_first = F.interpolate(z_first, size=f_first_size)
+            z_rest = F.interpolate(z_rest, size=f_rest_size)
             zq = torch.cat([z_first, z_rest], dim=2)
         else:
-            zq = torch.nn.functional.interpolate(zq, size=f.shape[-3:])
+            zq = F.interpolate(zq, size=f.shape[-3:])
             zq = self.conv(zq)
         norm_f = self.norm_layer(f)
         new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
@@ -545,21 +543,21 @@ class CogVideoXUpzSample3D(UpSample3D):
                 # split first frame
                 x_first, x_rest = x[:, :, 0], x[:, :, 1:]
 
-                x_first = torch.nn.functional.interpolate(x_first, scale_factor=2.0)
-                x_rest = torch.nn.functional.interpolate(x_rest, scale_factor=2.0)
+                x_first = F.interpolate(x_first, scale_factor=2.0)
+                x_rest = F.interpolate(x_rest, scale_factor=2.0)
                 x_first = x_first[:, :, None, :, :]
                 x = torch.cat([x_first, x_rest], dim=2)
             elif x.shape[2] > 1:
-                x = torch.nn.functional.interpolate(x, scale_factor=2.0)
+                x = F.interpolate(x, scale_factor=2.0)
             else:
                 x = x.squeeze(2)
-                x = torch.nn.functional.interpolate(x, scale_factor=2.0)
+                x = F.interpolate(x, scale_factor=2.0)
                 x = x[:, :, None, :, :]
         else:
             # only interpolate 2D
             b, c, t, h, w = x.shape
             x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
-            x = torch.nn.functional.interpolate(x, scale_factor=2.0)
+            x = F.interpolate(x, scale_factor=2.0)
             x = x.reshape(b, t, c, x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
 
         b, c, t, h, w = x.shape
@@ -606,16 +604,16 @@ class DownSample3D(nn.Module):
                 x_first, x_rest = x[..., 0], x[..., 1:]
 
                 if x_rest.shape[-1] > 0:
-                    x_rest = torch.nn.functional.avg_pool1d(x_rest, kernel_size=2, stride=2)
+                    x_rest = F.avg_pool1d(x_rest, kernel_size=2, stride=2)
                 x = torch.cat([x_first[..., None], x_rest], dim=-1)
                 x = x.reshape(b, h, w, c, x.shape[-1]).permute(0, 3, 4, 1, 2)
 
             else:
-                x = torch.nn.functional.avg_pool1d(x, kernel_size=2, stride=2)
+                x = F.avg_pool1d(x, kernel_size=2, stride=2)
                 x = x.reshape(b, h, w, c, x.shape[-1]).permute(0, 3, 4, 1, 2)
 
         pad = (0, 1, 0, 1)
-        x = torch.nn.functional.pad(x, pad, mode="constant", value=0)
+        x = F.pad(x, pad, mode="constant", value=0)
         b, c, t, h, w = x.shape
         x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
         x = self.conv(x)
@@ -730,50 +728,41 @@ class AttnBlock2D(nn.Module):
         super().__init__()
 
         self.norm = nn.GroupNorm(num_channels=in_channels, num_groups=norm_num_groups, eps=1e-6)
-        self.q = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.k = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.v = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.proj_out = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.to_q = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.to_k = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.to_v = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.proj_out = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
 
-    def forward(self, x):
-        h_ = x
-        h_ = self.norm(h_)
 
-        b, c, t, h, w = h_.shape
-        h_ = h_.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
-
-        q = self.q(h_)
-        k = self.k(h_)
-        v = self.v(h_)
-
-        # compute attention
-        b_t, c, h, w = q.shape
-        q = q.reshape(b_t, c, h * w)
-        q = q.permute(0, 2, 1)  # b_t, hw, c
-        k = k.reshape(b_t, c, h * w)  # b_t, c, hw
-
-        # implement c**-0.5 on q
-        q = q * (int(c) ** (-0.5))
-        w_ = torch.bmm(q, k)  # b_t, hw, hw
-
-        w_ = torch.nn.functional.softmax(w_, dim=2)
-
-        # attend to values
-        v = v.reshape(b_t, c, h * w)
-        w_ = w_.permute(0, 2, 1)  # b_t, hw, hw (first hw of k, second of q)
-        h_ = torch.bmm(v, w_)  # b_t, c, hw (hw of q)
-        h_ = h_.reshape(b_t, c, h, w)
-
-        h_ = self.proj_out(h_)
-
-        h_ = h_.reshape(b, t, c, h, w).permute(0, 2, 1, 3, 4)
-
-        return h_
+def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    hidden_states = self.norm(hidden_states)
+    batch_size, num_channels, num_frames, height, width = hidden_states.shape
+    hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
+    query = self.to_q(hidden_states)
+    key = self.to_k(hidden_states)
+    value = self.to_v(hidden_states)
+    # compute attention
+    batch_frames, num_channels, height, width = query.shape
+    query = query.reshape(batch_frames, num_channels, height * width)
+    query = query.permute(0, 2, 1)  # b_t, hw, c
+    key = key.reshape(batch_frames, num_channels, height * width)  # b_t, c, hw
+    # implement c**-0.5 on q
+    query = query * (int(num_channels) ** (-0.5))
+    context = torch.bmm(query, key)  # b_t, hw, hw
+    context = F.softmax(context, dim=2)
+    # attend to values
+    value = value.reshape(batch_frames, num_channels, height * width)
+    context = context.permute(0, 2, 1)  # b_t, hw, hw (first hw of k, second of q)
+    hidden_states = torch.bmm(value, context)  # b_t, c, hw (hw of q)
+    hidden_states = hidden_states.reshape(batch_frames, num_channels, height, width)
+    hidden_states = self.proj_out(hidden_states)
+    hidden_states = hidden_states.reshape(batch_size, num_frames, num_channels, height, width).permute(0, 2, 1, 3, 4)
+    return hidden_states
 
 
 class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
-    A VAE model with KL loss for encoding images into latents and decoding latent representations into images.
+    A VAE model with KL loss for encodfing images into latents and decoding latent representations into images.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -837,7 +826,7 @@ class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             in_channels=in_channels,
             out_channels=latent_channels,
             block_out_channels=block_out_channels,
-            num_res_blocks=layers_per_block,
+            layers_per_block=layers_per_block,
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
             double_z=True,
@@ -850,7 +839,7 @@ class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             block_out_channels=block_out_channels,
             norm_num_groups=norm_num_groups,
             act_fn=act_fn,
-            num_res_blocks=layers_per_block,
+            layers_per_block=layers_per_block,
             resolution=sample_size,
             latent_channels=latent_channels,
         )
