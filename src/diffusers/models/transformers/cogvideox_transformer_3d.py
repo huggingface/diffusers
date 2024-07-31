@@ -24,6 +24,7 @@ from ..attention import Attention, FeedForward
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from ..normalization import CogVideoXLayerNormZero
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -42,26 +43,6 @@ def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim:
         dim=chunk_dim,
     )
     return ff_output
-
-
-class AdaLayerNorm(nn.Module):
-    r"""
-    Norm layer modified to incorporate timestep embeddings.
-
-    Parameters:
-        embedding_dim (`int`): The size of each embedding vector.
-        num_embeddings (`int`): The size of the embeddings dictionary.
-    """
-
-    def __init__(self, embedding_dim: int, output_dim: int):
-        super().__init__()
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, output_dim)
-
-    def forward(self, emb: torch.Tensor) -> torch.Tensor:
-        x = self.silu(emb.to(torch.float32)).to(emb.dtype)
-        x = self.linear(x)
-        return x
 
 
 @maybe_allow_in_graph
@@ -121,10 +102,8 @@ class CogVideoXBlock(nn.Module):
     ):
         super().__init__()
 
-        self.norm0 = AdaLayerNorm(time_embed_dim, 12 * dim)
-
         # 1. Self Attention
-        self.norm1 = nn.LayerNorm(dim, norm_eps)
+        self.norm1 = CogVideoXLayerNormZero(time_embed_dim, dim, norm_elementwise_affine, norm_eps, bias=True)
 
         self.attn1 = Attention(
             query_dim=dim,
@@ -138,7 +117,7 @@ class CogVideoXBlock(nn.Module):
         )
 
         # 2. Feed Forward
-        self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+        self.norm2 = CogVideoXLayerNormZero(time_embed_dim, dim, norm_elementwise_affine, norm_eps, bias=True)
 
         self.ff = FeedForward(
             dim,
@@ -158,9 +137,6 @@ class CogVideoXBlock(nn.Module):
         self._chunk_size = chunk_size
         self._chunk_dim = dim
 
-    def _modulate(self, x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-        return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -168,59 +144,35 @@ class CogVideoXBlock(nn.Module):
         temb: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        (
-            shift_msa,
-            scale_msa,
-            gate_msa,
-            shift_ff,
-            scale_ff,
-            gate_mlp,
-            enc_shift_msa,
-            enc_scale_msa,
-            enc_gate_msa,
-            enc_shift_ff,
-            enc_scale_ff,
-            enc_gate_mlp,
-        ) = self.norm0(temb).chunk(12, dim=1)
-        gate_msa, gate_mlp, enc_gate_msa, enc_gate_mlp = (
-            gate_msa.unsqueeze(1),
-            gate_mlp.unsqueeze(1),
-            enc_gate_msa.unsqueeze(1),
-            enc_gate_mlp.unsqueeze(1),
-        )
-
-        # norm & modulate
-        norm_hidden_states = self.norm1(hidden_states)
-        norm_encoder_hidden_states = self.norm1(encoder_hidden_states)
-
-        norm_hidden_states = self._modulate(norm_hidden_states, shift_msa, scale_msa)
-        norm_encoder_hidden_states = self._modulate(norm_encoder_hidden_states, enc_shift_msa, enc_scale_msa)
+        norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(hidden_states, encoder_hidden_states, temb)
+        print("norm and modulate 1:", norm_hidden_states.float().sum(), norm_encoder_hidden_states.float().sum())
 
         # attention
         text_length = norm_encoder_hidden_states.size(1)
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
+        print("attention_input:", norm_hidden_states.float().sum())
         attn_output = self.attn1(norm_hidden_states, attention_mask=attention_mask)
+        print("attention_output:", attn_output.float().sum())
 
         hidden_states = hidden_states + gate_msa * attn_output[:, text_length:]
         encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_output[:, :text_length]
 
         # norm & modulate
-        norm_hidden_states = self.norm2(hidden_states)
-        norm_encoder_hidden_states = self.norm2(encoder_hidden_states)
-
-        norm_hidden_states = self._modulate(norm_hidden_states, shift_ff, scale_ff)
-        norm_encoder_hidden_states = self._modulate(norm_encoder_hidden_states, enc_shift_ff, enc_scale_ff)
+        norm_hidden_states, norm_encoder_hidden_states, gate_ff, enc_gate_ff = self.norm2(hidden_states, encoder_hidden_states, temb)
+        print("norm and modulate 2:", norm_hidden_states.float().sum(), norm_encoder_hidden_states.float().sum())
 
         # feed-forward
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
+        print("ff_input:", norm_hidden_states.float().sum())
 
         if self._chunk_size is not None:
             ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
         else:
             ff_output = self.ff(norm_hidden_states)
+        print("ff_output:", ff_output.float().sum())
 
-        hidden_states = hidden_states + gate_mlp * ff_output[:, text_length:]
-        encoder_hidden_states = encoder_hidden_states + enc_gate_mlp * ff_output[:, :text_length]
+        hidden_states = hidden_states + gate_ff * ff_output[:, text_length:]
+        encoder_hidden_states = encoder_hidden_states + enc_gate_ff * ff_output[:, :text_length]
         return hidden_states, encoder_hidden_states
 
 
@@ -317,9 +269,7 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
             temporal_interpolation_scale,
         )
         spatial_pos_embedding = torch.from_numpy(spatial_pos_embedding).flatten(0, 1)
-        pos_embedding = nn.Parameter(
-            torch.zeros(1, max_text_seq_length + self.num_patches, inner_dim), requires_grad=False
-        )
+        pos_embedding = torch.zeros(1, max_text_seq_length + self.num_patches, inner_dim, requires_grad=False)
         pos_embedding.data[:, max_text_seq_length:].copy_(spatial_pos_embedding)
         self.register_buffer("pos_embedding", pos_embedding, persistent=False)
 
@@ -349,17 +299,17 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         self.norm_final = nn.LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
 
         # 5. Output blocks
-        self.adaln_out = AdaLayerNorm(time_embed_dim, 2 * inner_dim)
-        self.norm_out = nn.LayerNorm(inner_dim, 1e-6, norm_elementwise_affine)
+        self.adaln_out = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(time_embed_dim, 2 * inner_dim)
+        )
+        self.norm_out = nn.LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 
         self.gradient_checkpointing = False
 
     def _set_gradient_checkpointing(self, module, value=False):
         self.gradient_checkpointing = value
-
-    def _modulate(self, x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-        return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
     def forward(
         self,
@@ -396,21 +346,30 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         t_emb = t_emb.to(dtype=sample.dtype)
         emb = self.time_embedding(t_emb, timestep_cond)
 
-        # 3. Patch embedding
+        print("temb:", emb.float().sum())
+
+        # 2. Patch embedding
         hidden_states = self.patch_embed(encoder_hidden_states, sample)
 
-        # 4. Position embedding
+        print("hidden_states patch_embeds:", hidden_states.float().sum())
+
+        # 3. Position embedding
         seq_length = height * width * num_frames // (self.config.patch_size**2)
         text_seq_length = encoder_hidden_states.size(1)
 
-        pos_embeds = self.pos_embedding[:, : text_seq_length + seq_length]
+        pos_embeds = self.pos_embedding[:, : self.config.max_text_seq_length + seq_length]
         hidden_states = hidden_states + pos_embeds
         hidden_states = self.embedding_dropout(hidden_states)
+
+        print("hidden_states pos_embeds", hidden_states.float().sum(), pos_embeds.float().sum())
 
         encoder_hidden_states = hidden_states[:, :text_seq_length]
         hidden_states = hidden_states[:, text_seq_length:]
 
-        # 2. Prepare attention mask
+        print("encoder_hidden_states:", encoder_hidden_states.float().sum())
+        print("hidden_states:", hidden_states.float().sum())
+
+        # 4. Prepare attention mask
         if attention_mask is None:
             attention_mask = torch.ones(batch_size, self.num_patches + self.config.max_text_seq_length)
         attention_mask = attention_mask.to(device=sample.device, dtype=sample.dtype)
@@ -442,19 +401,25 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
                     attention_mask=attention_mask,
                 )
 
+                print("loop i:", i, torch.cat([encoder_hidden_states, hidden_states], dim=1).float().sum())
+
         hidden_states = self.norm_final(hidden_states)
+        print("norm_final:", hidden_states.float().sum())
 
         # 6. Final block
         shift, scale = self.adaln_out(emb).chunk(2, dim=1)
-        hidden_states = self.norm_out(hidden_states)
-        hidden_states = self._modulate(hidden_states, shift, scale)
+        print("adaln_out:", shift.float().sum(), scale.float().sum())
+        hidden_states = self.norm_out(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
+        print("modulate out:", hidden_states.float().sum())
         hidden_states = self.proj_out(hidden_states)
+        print("proj_out:", hidden_states.float().sum())
 
         # 7. Unpatchify
         p = self.config.patch_size
         output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, p, p, self.config.out_channels)
         output = output.permute(0, 1, 6, 2, 4, 3, 5).flatten(5, 6).flatten(3, 4)
+        print("output:", output.float().sum())
 
         if not return_dict:
-            return output
+            return (output,)
         return Transformer2DModelOutput(sample=output)
