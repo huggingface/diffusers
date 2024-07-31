@@ -1,13 +1,12 @@
 import argparse
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict
 
 import torch
-import torch.nn as nn
 
 from diffusers import CogVideoXTransformer3D
 
 
-def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]) -> List[Tuple[str, nn.Module]]:
+def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]):
     to_q_key = key.replace("query_key_value", "to_q")
     to_k_key = key.replace("query_key_value", "to_k")
     to_v_key = key.replace("query_key_value", "to_v")
@@ -18,7 +17,7 @@ def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]) -> Li
     state_dict.pop(key)
 
 
-def reassign_query_key_layernorm_inplace(key: str, state_dict: Dict[str, Any]) -> List[Tuple[str, nn.Module]]:
+def reassign_query_key_layernorm_inplace(key: str, state_dict: Dict[str, Any]):
     layer_id, weight_or_bias = key.split(".")[-2:]
 
     if "query" in key:
@@ -29,7 +28,7 @@ def reassign_query_key_layernorm_inplace(key: str, state_dict: Dict[str, Any]) -
     state_dict[new_key] = state_dict.pop(key)
 
 
-def reassign_adaln_norm_inplace(key: str, state_dict: Dict[str, Any]) -> List[Tuple[str, nn.Module]]:
+def reassign_adaln_norm_inplace(key: str, state_dict: Dict[str, Any]):
     layer_id, _, weight_or_bias = key.split(".")[-3:]
 
     weights_or_biases = state_dict[key].chunk(12, dim=0)
