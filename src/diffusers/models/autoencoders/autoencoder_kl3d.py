@@ -166,6 +166,155 @@ from .vae import DecoderOutput, DiagonalGaussianDistribution
 #         return sample
 
 
+# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
+class CogVideoXSaveConv3d(nn.Conv3d):
+    """
+    A 3D convolution layer that splits the input tensor into smaller parts to avoid OOM in CogVideoX Model.
+    """
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        memory_count = torch.prod(torch.tensor(input.shape)).item() * 2 / 1024**3
+
+        # Set to 2GB, suitable for CuDNN
+        if memory_count > 2:
+            kernel_size = self.kernel_size[0]
+            part_num = int(memory_count / 2) + 1
+            input_chunks = torch.chunk(input, part_num, dim=2)
+
+            if kernel_size > 1:
+                input_chunks = [input_chunks[0]] + [
+                    torch.cat((input_chunks[i - 1][:, :, -kernel_size + 1 :], input_chunks[i]), dim=2)
+                    for i in range(1, len(input_chunks))
+                ]
+
+            output_chunks = []
+            for input_chunk in input_chunks:
+                output_chunks.append(super().forward(input_chunk))
+            output = torch.cat(output_chunks, dim=2)
+            return output
+        else:
+            return super().forward(input)
+
+
+# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
+class CogVideoXCausalConv3d(nn.Module):
+    r"""A 3D causal convolution layer that pads the input tensor to ensure causality in CogVideoX Model."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, Tuple[int, int, int]],
+        stride: int = 1,
+        dilation: int = 1,
+        pad_mode: str = "constant",
+    ):
+        super().__init__()
+
+        def cast_tuple(t, length=1):
+            return t if isinstance(t, tuple) else ((t,) * length)
+
+        kernel_size = cast_tuple(kernel_size, 3)
+
+        time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
+
+        self.pad_mode = pad_mode
+        time_pad = dilation * (time_kernel_size - 1) + (1 - stride)
+        height_pad = height_kernel_size // 2
+        width_pad = width_kernel_size // 2
+
+        self.height_pad = height_pad
+        self.width_pad = width_pad
+        self.time_pad = time_pad
+        self.time_causal_padding = (width_pad, width_pad, height_pad, height_pad, time_pad, 0)
+
+        stride = (stride, 1, 1)
+        dilation = (dilation, 1, 1)
+        self.conv = CogVideoXSaveConv3d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            dilation=dilation,
+        )
+
+        self.conv_cache = None
+
+    def forward(self, x):
+        if self.pad_mode == "constant":
+            causal_padding_3d = (self.time_pad, 0, self.width_pad, self.width_pad, self.height_pad, self.height_pad)
+            x = F.pad(x, causal_padding_3d, mode="constant", value=0)
+        elif self.pad_mode == "first":
+            pad_x = torch.cat([x[:, :, :1]] * self.time_pad, dim=2)
+            x = torch.cat([pad_x, x], dim=2)
+            causal_padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
+            x = F.pad(x, causal_padding_2d, mode="constant", value=0)
+        elif self.pad_mode == "reflect":
+            reflect_x = x[:, :, 1 : self.time_pad + 1, :, :].flip(dims=[2])
+            if reflect_x.shape[2] < self.time_pad:
+                reflect_x = torch.cat(
+                    [torch.zeros_like(x[:, :, :1, :, :])] * (self.time_pad - reflect_x.shape[2]) + [reflect_x], dim=2
+                )
+            x = torch.cat([reflect_x, x], dim=2)
+            causal_padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
+            x = F.pad(x, causal_padding_2d, mode="constant", value=0)
+        else:
+            raise ValueError("Invalid pad mode")
+        if self.time_pad != 0 and self.conv_cache is None:
+            self.conv_cache = x[:, :, -self.time_pad :].detach().clone().cpu()
+            return self.conv(x)
+        elif self.time_pad != 0 and self.conv_cache is not None:
+            x = torch.cat([self.conv_cache.to(x.device), x], dim=2)
+            causal_padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
+            x = F.pad(x, causal_padding_2d, mode="constant", value=0)
+            self.conv_cache = None
+            return self.conv(x)
+
+        return self.conv(x)
+
+
+# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
+class CogVideoXSpatialNorm3D(nn.Module):
+    r"""
+    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002. This implementation is specific
+    to 3D-video like data.
+
+    CogVideoXSaveConv3d is used instead of nn.Conv3d to avoid OOM in CogVideoX Model.
+
+    Args:
+        f_channels (`int`):
+            The number of channels for input to group normalization layer, and output of the spatial norm layer.
+        zq_channels (`int`):
+            The number of channels for the quantized vector as described in the paper.
+    """
+
+    def __init__(
+        self,
+        f_channels: int,
+        zq_channels: int,
+    ):
+        super().__init__()
+        self.norm_layer = nn.GroupNorm(num_channels=f_channels, num_groups=32, eps=1e-6, affine=True)
+        self.conv = CogVideoXCausalConv3d(zq_channels, zq_channels, kernel_size=3, stride=1, padding=0)
+        self.conv_y = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
+        self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, f: torch.Tensor, zq: torch.Tensor) -> torch.Tensor:
+        if zq.shape[2] > 1:
+            f_first, f_rest = f[:, :, :1], f[:, :, 1:]
+            f_first_size, f_rest_size = f_first.shape[-3:], f_rest.shape[-3:]
+            z_first, z_rest = zq[:, :, :1], zq[:, :, 1:]
+            z_first = F.interpolate(z_first, size=f_first_size)
+            z_rest = F.interpolate(z_rest, size=f_rest_size)
+            zq = torch.cat([z_first, z_rest], dim=2)
+        else:
+            zq = F.interpolate(zq, size=f.shape[-3:])
+            zq = self.conv(zq)
+        norm_f = self.norm_layer(f)
+        new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
+        return new_f
+
+
 class CogVideoXResnetBlock3D(nn.Module):
     def __init__(
         self,
@@ -498,11 +647,9 @@ class Decoder3D(nn.Module):
 
             if i_level != 0:
                 if i_level < self.num_resolutions - self.temporal_compress_level:
-                    up.upsample = CogVideoXUpzSample3D(
-                        in_channels=block_in, out_channels=block_in, compress_time=False
-                    )
+                    up.upsample = CogVideoXUpSample3D(in_channels=block_in, out_channels=block_in, compress_time=False)
                 else:
-                    up.upsample = CogVideoXUpzSample3D(in_channels=block_in, out_channels=block_in, compress_time=True)
+                    up.upsample = CogVideoXUpSample3D(in_channels=block_in, out_channels=block_in, compress_time=True)
                 curr_res = curr_res * 2
 
             self.up.insert(0, up)
@@ -548,161 +695,7 @@ class Decoder3D(nn.Module):
 
 
 # Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
-class CogVideoXSaveConv3d(nn.Conv3d):
-    """
-    A 3D convolution layer that splits the input tensor into smaller parts to avoid OOM in CogVideoX Model.
-    """
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        memory_count = torch.prod(torch.tensor(input.shape)).item() * 2 / 1024**3
-
-        # Set to 2GB, Suit for CuDNN
-        if memory_count > 2:
-            kernel_size = self.kernel_size[0]
-            part_num = int(memory_count / 2) + 1
-            input_chunks = torch.chunk(input, part_num, dim=2)
-
-            if kernel_size > 1:
-                input_chunks = [input_chunks[0]] + [
-                    torch.cat((input_chunks[i - 1][:, :, -kernel_size + 1 :], input_chunks[i]), dim=2)
-                    for i in range(1, len(input_chunks))
-                ]
-
-            output_chunks = []
-            for input_chunk in input_chunks:
-                output_chunks.append(super(CogVideoXSaveConv3d, self).forward(input_chunk))
-            output = torch.cat(output_chunks, dim=2)
-            return output
-        else:
-            return super(CogVideoXSaveConv3d, self).forward(input)
-
-
-# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
-class CogVideoXCausalConv3d(nn.Module):
-    """
-    A 3D causal convolution layer that pads the input tensor to ensure causality in CogVideoX Model.
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]],
-        pad_mode: str = "constant",
-        **kwargs,
-    ):
-        super().__init__()
-
-        def cast_tuple(t, length=1):
-            return t if isinstance(t, tuple) else ((t,) * length)
-
-        kernel_size = cast_tuple(kernel_size, 3)
-
-        time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
-
-        dilation = kwargs.pop("dilation", 1)
-        stride = kwargs.pop("stride", 1)
-
-        self.pad_mode = pad_mode
-        time_pad = dilation * (time_kernel_size - 1) + (1 - stride)
-        height_pad = height_kernel_size // 2
-        width_pad = width_kernel_size // 2
-
-        self.height_pad = height_pad
-        self.width_pad = width_pad
-        self.time_pad = time_pad
-        self.time_causal_padding = (width_pad, width_pad, height_pad, height_pad, time_pad, 0)
-
-        stride = (stride, 1, 1)
-        dilation = (dilation, 1, 1)
-        self.conv = CogVideoXSaveConv3d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            dilation=dilation,
-            **kwargs,
-        )
-
-        self.conv_cache = None
-
-    def forward(self, x):
-        if self.pad_mode == "constant":
-            causal_padding_3d = (self.time_pad, 0, self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-            x = F.pad(x, causal_padding_3d, mode="constant", value=0)
-        elif self.pad_mode == "first":
-            pad_x = torch.cat([x[:, :, :1]] * self.time_pad, dim=2)
-            x = torch.cat([pad_x, x], dim=2)
-            causal_padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-            x = F.pad(x, causal_padding_2d, mode="constant", value=0)
-        elif self.pad_mode == "reflect":
-            reflect_x = x[:, :, 1 : self.time_pad + 1, :, :].flip(dims=[2])
-            if reflect_x.shape[2] < self.time_pad:
-                reflect_x = torch.cat(
-                    [torch.zeros_like(x[:, :, :1, :, :])] * (self.time_pad - reflect_x.shape[2]) + [reflect_x], dim=2
-                )
-            x = torch.cat([reflect_x, x], dim=2)
-            causal_padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-            x = F.pad(x, causal_padding_2d, mode="constant", value=0)
-        else:
-            raise ValueError("Invalid pad mode")
-        if self.time_pad != 0 and self.conv_cache is None:
-            self.conv_cache = x[:, :, -self.time_pad :].detach().clone().cpu()
-            return self.conv(x)
-        elif self.time_pad != 0 and self.conv_cache is not None:
-            x = torch.cat([self.conv_cache.to(x.device), x], dim=2)
-            causal_padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-            x = F.pad(x, causal_padding_2d, mode="constant", value=0)
-            self.conv_cache = None
-            return self.conv(x)
-
-        return self.conv(x)
-
-
-# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
-class CogVideoXSpatialNorm3D(nn.Module):
-    r"""
-    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002. This implementation is specific
-    to 3D-video like data.
-
-    CogVideoXSaveConv3d is used instead of nn.Conv3d to avoid OOM in CogVideoX Model.
-
-    Args:
-        f_channels (`int`):
-            The number of channels for input to group normalization layer, and output of the spatial norm layer.
-        zq_channels (`int`):
-            The number of channels for the quantized vector as described in the paper.
-    """
-
-    def __init__(
-        self,
-        f_channels: int,
-        zq_channels: int,
-    ):
-        super().__init__()
-        self.norm_layer = nn.GroupNorm(num_channels=f_channels, num_groups=32, eps=1e-6, affine=True)
-        self.conv = CogVideoXCausalConv3d(zq_channels, zq_channels, kernel_size=3, stride=1, padding=0)
-        self.conv_y = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
-        self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
-
-    def forward(self, f: torch.Tensor, zq: torch.Tensor) -> torch.Tensor:
-        if zq.shape[2] > 1:
-            f_first, f_rest = f[:, :, :1], f[:, :, 1:]
-            f_first_size, f_rest_size = f_first.shape[-3:], f_rest.shape[-3:]
-            z_first, z_rest = zq[:, :, :1], zq[:, :, 1:]
-            z_first = F.interpolate(z_first, size=f_first_size)
-            z_rest = F.interpolate(z_rest, size=f_rest_size)
-            zq = torch.cat([z_first, z_rest], dim=2)
-        else:
-            zq = F.interpolate(zq, size=f.shape[-3:])
-            zq = self.conv(zq)
-        norm_f = self.norm_layer(f)
-        new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
-        return new_f
-
-
-# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
-class CogVideoXUpzSample3D(nn.Module):
+class CogVideoXUpSample3D(nn.Module):
     r"""
     Add compress_time option to the `UpSample` layer of a variational autoencoder that upsamples its input in CogVideoX
     Model.
