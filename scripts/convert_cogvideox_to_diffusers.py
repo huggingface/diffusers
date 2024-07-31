@@ -31,8 +31,18 @@ def reassign_query_key_layernorm_inplace(key: str, state_dict: Dict[str, Any]) -
 
 def reassign_adaln_norm_inplace(key: str, state_dict: Dict[str, Any]) -> List[Tuple[str, nn.Module]]:
     layer_id, _, weight_or_bias = key.split(".")[-3:]
-    new_key = f"transformer_blocks.{layer_id}.norm0.linear.{weight_or_bias}"
-    state_dict[new_key] = state_dict.pop(key)
+
+    weights_or_biases = state_dict[key].chunk(12, dim=0)
+    norm1_weights_or_biases = torch.cat(weights_or_biases[0:3] + weights_or_biases[6:9])
+    norm2_weights_or_biases = torch.cat(weights_or_biases[3:6] + weights_or_biases[9:12])
+
+    norm1_key = f"transformer_blocks.{layer_id}.norm1.linear.{weight_or_bias}"
+    state_dict[norm1_key] = norm1_weights_or_biases
+    
+    norm2_key = f"transformer_blocks.{layer_id}.norm2.linear.{weight_or_bias}"
+    state_dict[norm2_key] = norm2_weights_or_biases
+    
+    state_dict.pop(key)
 
 
 TRANSFORMER_KEYS_RENAME_DICT = {
@@ -44,14 +54,14 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "dense_4h_to_h": "2",
     ".layers": "",
     "dense": "to_out.0",
-    "input_layernorm": "norm1",
-    "post_attn1_layernorm": "norm2",
+    "input_layernorm": "norm1.norm",
+    "post_attn1_layernorm": "norm2.norm",
     "time_embed.0": "time_embedding.linear_1",
     "time_embed.2": "time_embedding.linear_2",
     "mixins.patch_embed": "patch_embed",
     "mixins.final_layer.norm_final": "norm_out",
     "mixins.final_layer.linear": "proj_out",
-    "mixins.final_layer.adaLN_modulation.1": "adaln_out.linear",
+    "mixins.final_layer.adaLN_modulation.1": "adaln_out.1",
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {
