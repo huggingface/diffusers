@@ -144,7 +144,9 @@ class CogVideoXBlock(nn.Module):
         temb: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(hidden_states, encoder_hidden_states, temb)
+        norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
+            hidden_states, encoder_hidden_states, temb
+        )
 
         # attention
         text_length = norm_encoder_hidden_states.size(1)
@@ -155,7 +157,9 @@ class CogVideoXBlock(nn.Module):
         encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_output[:, :text_length]
 
         # norm & modulate
-        norm_hidden_states, norm_encoder_hidden_states, gate_ff, enc_gate_ff = self.norm2(hidden_states, encoder_hidden_states, temb)
+        norm_hidden_states, norm_encoder_hidden_states, gate_ff, enc_gate_ff = self.norm2(
+            hidden_states, encoder_hidden_states, temb
+        )
 
         # feed-forward
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
@@ -293,10 +297,7 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         self.norm_final = nn.LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
 
         # 5. Output blocks
-        self.adaln_out = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(time_embed_dim, 2 * inner_dim)
-        )
+        self.adaln_out = nn.Sequential(nn.SiLU(), nn.Linear(time_embed_dim, 2 * inner_dim))
         self.norm_out = nn.LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 

@@ -38,10 +38,10 @@ def reassign_adaln_norm_inplace(key: str, state_dict: Dict[str, Any]) -> List[Tu
 
     norm1_key = f"transformer_blocks.{layer_id}.norm1.linear.{weight_or_bias}"
     state_dict[norm1_key] = norm1_weights_or_biases
-    
+
     norm2_key = f"transformer_blocks.{layer_id}.norm2.linear.{weight_or_bias}"
     state_dict[norm2_key] = norm2_weights_or_biases
-    
+
     state_dict.pop(key)
 
 

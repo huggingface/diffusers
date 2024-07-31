@@ -303,11 +303,17 @@ class CogVideoXLayerNormZero(nn.Module):
         self.silu = nn.SiLU()
         self.linear = nn.Linear(conditioning_dim, 6 * embedding_dim, bias=bias)
         self.norm = nn.LayerNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
-    
-    def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        shift_msa, scale_msa, gate_msa, enc_shift_msa, enc_scale_msa, enc_gate_msa = self.linear(self.silu(temb)).chunk(6, dim=1)
+
+    def forward(
+        self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        shift_msa, scale_msa, gate_msa, enc_shift_msa, enc_scale_msa, enc_gate_msa = self.linear(
+            self.silu(temb)
+        ).chunk(6, dim=1)
         hidden_states = self.norm(hidden_states) * (1 + scale_msa)[:, None, :] + shift_msa[:, None, :]
-        encoder_hidden_states = self.norm(encoder_hidden_states) * (1 + enc_scale_msa)[:, None, :] + enc_shift_msa[:, None, :]
+        encoder_hidden_states = (
+            self.norm(encoder_hidden_states) * (1 + enc_scale_msa)[:, None, :] + enc_shift_msa[:, None, :]
+        )
         return hidden_states, encoder_hidden_states, gate_msa[:, None, :], enc_gate_msa[:, None, :]
 
 
