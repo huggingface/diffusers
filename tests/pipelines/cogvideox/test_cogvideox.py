@@ -1,4 +1,4 @@
-#Todo: Only a Draft
+# Todo: Only a Draft
 
 # coding=utf-8
 # Copyright 2024 The The CogVideoX team, Tsinghua University & ZhipuAI and The HuggingFace Team.
@@ -24,12 +24,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import (
-    AutoencoderKL,
-    DDIMScheduler,
-    CogVideoXPipeline,
-    CogVideoXTransformer3D
-)
+from diffusers import AutoencoderKL, DDIMScheduler, CogVideoXPipeline, CogVideoXTransformer3D
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,

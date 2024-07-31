@@ -167,7 +167,7 @@ from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
 # Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
-class CogVideoXSaveConv3d(nn.Conv3d):
+class CogVideoXSafeConv3d(nn.Conv3d):
     """
     A 3D convolution layer that splits the input tensor into smaller parts to avoid OOM in CogVideoX Model.
     """
@@ -228,9 +228,12 @@ class CogVideoXCausalConv3d(nn.Module):
         self.time_pad = time_pad
         self.time_causal_padding = (width_pad, width_pad, height_pad, height_pad, time_pad, 0)
 
+        self.temporal_dim = 2
+        self.time_kernel_size = time_kernel_size
+
         stride = (stride, 1, 1)
         dilation = (dilation, 1, 1)
-        self.conv = CogVideoXSaveConv3d(
+        self.conv = CogVideoXSafeConv3d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,
@@ -240,37 +243,36 @@ class CogVideoXCausalConv3d(nn.Module):
 
         self.conv_cache = None
 
-    def forward(self, x):
-        if self.pad_mode == "constant":
-            causal_padding_3d = (self.time_pad, 0, self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-            x = F.pad(x, causal_padding_3d, mode="constant", value=0)
-        elif self.pad_mode == "first":
-            pad_x = torch.cat([x[:, :, :1]] * self.time_pad, dim=2)
-            x = torch.cat([pad_x, x], dim=2)
-            causal_padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-            x = F.pad(x, causal_padding_2d, mode="constant", value=0)
-        elif self.pad_mode == "reflect":
-            reflect_x = x[:, :, 1 : self.time_pad + 1, :, :].flip(dims=[2])
-            if reflect_x.shape[2] < self.time_pad:
-                reflect_x = torch.cat(
-                    [torch.zeros_like(x[:, :, :1, :, :])] * (self.time_pad - reflect_x.shape[2]) + [reflect_x], dim=2
-                )
-            x = torch.cat([reflect_x, x], dim=2)
-            causal_padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-            x = F.pad(x, causal_padding_2d, mode="constant", value=0)
-        else:
-            raise ValueError("Invalid pad mode")
-        if self.time_pad != 0 and self.conv_cache is None:
-            self.conv_cache = x[:, :, -self.time_pad :].detach().clone().cpu()
-            return self.conv(x)
-        elif self.time_pad != 0 and self.conv_cache is not None:
-            x = torch.cat([self.conv_cache.to(x.device), x], dim=2)
-            causal_padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-            x = F.pad(x, causal_padding_2d, mode="constant", value=0)
-            self.conv_cache = None
-            return self.conv(x)
+    def fake_cp_pass_from_previous_rank(self, input_):
+        dim = self.temporal_dim
+        kernel_size = self.time_kernel_size
+        if kernel_size == 1:
+            return input_
 
-        return self.conv(x)
+        input_ = input_.transpose(0, dim)
+
+        if self.conv_cache is not None:
+            input_ = torch.cat([self.conv_cache.transpose(0, dim).to(input_.device), input_], dim=0)
+        else:
+            input_ = torch.cat([input_[:1]] * (kernel_size - 1) + [input_], dim=0)
+
+        input_ = input_.transpose(0, dim).contiguous()
+        return input_
+
+    def forward(self, input_, clear_fake_cp_cache=True):
+        input_parallel = self.fake_cp_pass_from_previous_rank(input_)
+
+        del self.conv_cache
+        self.conv_cache = None
+        if not clear_fake_cp_cache:
+            self.conv_cache = input_parallel[:, :, -self.time_kernel_size + 1 :].contiguous().detach().clone().cpu()
+
+        padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
+        input_parallel = F.pad(input_parallel, padding_2d, mode="constant", value=0)
+
+        output_parallel = self.conv(input_parallel)
+        output = output_parallel
+        return output
 
 
 # Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
@@ -279,7 +281,7 @@ class CogVideoXSpatialNorm3D(nn.Module):
     Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002. This implementation is specific
     to 3D-video like data.
 
-    CogVideoXSaveConv3d is used instead of nn.Conv3d to avoid OOM in CogVideoX Model.
+    CogVideoXSafeConv3d is used instead of nn.Conv3d to avoid OOM in CogVideoX Model.
 
     Args:
         f_channels (`int`):
@@ -295,12 +297,11 @@ class CogVideoXSpatialNorm3D(nn.Module):
     ):
         super().__init__()
         self.norm_layer = nn.GroupNorm(num_channels=f_channels, num_groups=32, eps=1e-6, affine=True)
-        self.conv = CogVideoXCausalConv3d(zq_channels, zq_channels, kernel_size=3, stride=1)
         self.conv_y = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
         self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
 
-    def forward(self, f: torch.Tensor, zq: torch.Tensor) -> torch.Tensor:
-        if zq.shape[2] > 1:
+    def forward(self, f: torch.Tensor, zq: torch.Tensor, clear_fake_cp_cache=True) -> torch.Tensor:
+        if f.shape[2] > 1 and f.shape[2] % 2 == 1:
             f_first, f_rest = f[:, :, :1], f[:, :, 1:]
             f_first_size, f_rest_size = f_first.shape[-3:], f_rest.shape[-3:]
             z_first, z_rest = zq[:, :, :1], zq[:, :, 1:]
@@ -368,35 +369,41 @@ class CogVideoXResnetBlock3D(nn.Module):
                     in_channels=in_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
                 )
             else:
-                self.nin_shortcut = CogVideoXSaveConv3d(
+                self.nin_shortcut = CogVideoXSafeConv3d(
                     in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0
                 )
 
     def forward(
-        self, input_tensor: torch.Tensor, temb: torch.Tensor, zq: Optional[torch.Tensor] = None, *args, **kwargs
+        self,
+        input_tensor: torch.Tensor,
+        temb: torch.Tensor,
+        zq: torch.Tensor = None,
+        clear_fake_cp_cache: bool = True,
+        *args,
+        **kwargs,
     ) -> torch.Tensor:
         hidden_states = input_tensor
         if zq is not None:
-            hidden_states = self.norm1(hidden_states, zq)
+            hidden_states = self.norm1(hidden_states, zq, clear_fake_cp_cache=clear_fake_cp_cache)
         else:
             hidden_states = self.norm1(hidden_states)
         hidden_states = self.non_linearity(hidden_states)
-        hidden_states = self.conv1(hidden_states)
+        hidden_states = self.conv1(hidden_states, clear_fake_cp_cache=clear_fake_cp_cache)
 
         if temb is not None:
             hidden_states = hidden_states + self.temb_proj(self.non_linearity(temb))[:, :, None, None, None]
 
         if zq is not None:
-            hidden_states = self.norm2(hidden_states, zq)
+            hidden_states = self.norm2(hidden_states, zq, clear_fake_cp_cache=clear_fake_cp_cache)
         else:
             hidden_states = self.norm2(hidden_states)
         hidden_states = self.non_linearity(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states)
+        hidden_states = self.conv2(hidden_states, clear_fake_cp_cache=clear_fake_cp_cache)
 
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
-                input_tensor = self.conv_shortcut(input_tensor)
+                input_tensor = self.conv_shortcut(input_tensor, clear_fake_cp_cache=clear_fake_cp_cache)
             else:
                 input_tensor = self.nin_shortcut(input_tensor)
 
@@ -626,23 +633,23 @@ class Encoder3D(nn.Module):
             block_in, conv_out_channels if double_z else out_channels, kernel_size=3, pad_mode=pad_mode
         )
 
-    def forward(self, sample: torch.Tensor) -> torch.Tensor:
+    def forward(self, sample: torch.Tensor, clear_fake_cp_cache=True) -> torch.Tensor:
         # timestep embedding
 
         temb = None
 
         # DownSampling
-        sample = self.conv_in(sample)
+        sample = self.conv_in(sample, clear_fake_cp_cache=clear_fake_cp_cache)
         for i_level in range(self.num_resolutions):
             for i_block in range(self.layers_per_block):
-                sample = self.down[i_level].block[i_block](sample, temb)
+                sample = self.down[i_level].block[i_block](sample, temb, clear_fake_cp_cache=clear_fake_cp_cache)
 
             if i_level != self.num_resolutions - 1:
                 sample = self.down[i_level].downsample(sample)
 
         # middle
-        sample = self.mid.block_1(sample, temb)
-        sample = self.mid.block_2(sample, temb)
+        sample = self.mid.block_1(sample, temb, clear_fake_cp_cache=clear_fake_cp_cache)
+        sample = self.mid.block_2(sample, temb, clear_fake_cp_cache=clear_fake_cp_cache)
 
         # post-process
         sample = self.norm_out(sample)
@@ -766,24 +773,26 @@ class Decoder3D(nn.Module):
 
         self.conv_out = CogVideoXCausalConv3d(block_in, out_channels, kernel_size=3, pad_mode=pad_mode)
 
-    def forward(self, sample: torch.Tensor) -> torch.Tensor:
+    def forward(self, sample: torch.Tensor, clear_fake_cp_cache=True) -> torch.Tensor:
         r"""The forward method of the `Decoder` class."""
         # timestep embedding
 
         temb = None
 
-        hidden_states = self.conv_in(sample)
+        hidden_states = self.conv_in(sample, clear_fake_cp_cache=clear_fake_cp_cache)
 
         # middle
-        hidden_states = self.mid.block_1(hidden_states, temb, sample)
+        hidden_states = self.mid.block_1(hidden_states, temb, sample, clear_fake_cp_cache=clear_fake_cp_cache)
 
-        hidden_states = self.mid.block_2(hidden_states, temb, sample)
+        hidden_states = self.mid.block_2(hidden_states, temb, sample, clear_fake_cp_cache=clear_fake_cp_cache)
 
         # UpSampling
 
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.layers_per_block + 1):
-                hidden_states = self.up[i_level].block[i_block](hidden_states, temb, sample)
+                hidden_states = self.up[i_level].block[i_block](
+                    hidden_states, temb, sample, clear_fake_cp_cache=clear_fake_cp_cache
+                )
 
             if i_level != 0:
                 hidden_states = self.up[i_level].upsample(hidden_states)
@@ -792,9 +801,9 @@ class Decoder3D(nn.Module):
         if self.give_pre_end:
             return hidden_states
 
-        hidden_states = self.norm_out(hidden_states, sample)
+        hidden_states = self.norm_out(hidden_states, sample, clear_fake_cp_cache=clear_fake_cp_cache)
         hidden_states = self.act_fn(hidden_states)
-        hidden_states = self.conv_out(hidden_states)
+        hidden_states = self.conv_out(hidden_states, clear_fake_cp_cache=clear_fake_cp_cache)
 
         return hidden_states
 
@@ -880,8 +889,8 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             act_fn=act_fn,
             resolution=sample_size,
         )
-        self.quant_conv = CogVideoXSaveConv3d(2 * out_channels, 2 * out_channels, 1) if use_quant_conv else None
-        self.post_quant_conv = CogVideoXSaveConv3d(out_channels, out_channels, 1) if use_post_quant_conv else None
+        self.quant_conv = CogVideoXSafeConv3d(2 * out_channels, 2 * out_channels, 1) if use_quant_conv else None
+        self.post_quant_conv = CogVideoXSafeConv3d(out_channels, out_channels, 1) if use_post_quant_conv else None
 
         self.use_slicing = False
         self.use_tiling = False
@@ -930,7 +939,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     @apply_forward_hook
     def encode(
-        self, x: torch.Tensor, return_dict: bool = True
+        self, x: torch.Tensor, return_dict: bool = True, fake_cp: bool = False
     ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
@@ -939,12 +948,13 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             x (`torch.Tensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
-
+            fake_cp (`bool`, *optional*, defaults to `True`):
+                If True, the fake context parallel will be used to reduce GPU memory consumption (Only 1 GPU work).
         Returns:
                 The latent representations of the encoded images. If `return_dict` is True, a
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
-        h = self.encoder(x)
+        h = self.encoder(x, clear_fake_cp_cache=not fake_cp)
         if self.quant_conv is not None:
             h = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(h)
@@ -954,7 +964,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     @apply_forward_hook
     def decode(
-        self, z: torch.FloatTensor, return_dict: bool = True, generator=None
+        self, z: torch.FloatTensor, return_dict: bool = True, generator=None, fake_cp: bool = False
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         """
         Decode a batch of images.
@@ -963,7 +973,8 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             z (`torch.Tensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
-
+            fake_cp (`bool`, *optional*, defaults to `True`):
+                If True, the fake context parallel will be used to reduce GPU memory consumption (Only 1 GPU work).
         Returns:
             [`~models.vae.DecoderOutput`] or `tuple`:
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
@@ -972,7 +983,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         """
         if self.post_quant_conv is not None:
             z = self.post_quant_conv(z)
-        dec = self.decoder(z)
+        dec = self.decoder(z, clear_fake_cp_cache=not fake_cp)
         if not return_dict:
             return (dec,)
         return dec
