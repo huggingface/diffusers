@@ -544,6 +544,9 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+
+        latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
+        latents = latents.permute(0, 2, 4, 1, 3, 5)
         latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
 
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
