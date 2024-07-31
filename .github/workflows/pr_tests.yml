@@ -77,7 +77,7 @@ jobs:
         config:
           - name: Fast PyTorch Pipeline CPU tests
             framework: pytorch_pipelines
-            runner: [ self-hosted, intel-cpu, 32-cpu, 256-ram, ci ]
+            runner: aws-highmemory-32-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_pipelines
           - name: Fast PyTorch Models & Schedulers CPU tests
@@ -98,7 +98,8 @@ jobs:
 
     name: ${{ matrix.config.name }}
 
-    runs-on: ${{ matrix.config.runner }}
+    runs-on:
+      group: ${{ matrix.config.runner }}
 
     container:
       image: ${{ matrix.config.image }}

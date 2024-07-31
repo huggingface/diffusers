@@ -130,7 +130,8 @@ jobs:
             report: torch_hub
 
     name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.runner }}
+    runs-on:
+      group: ${{ matrix.config.runner }}
     container:
       image: ${{ matrix.config.image }}
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
