@@ -503,6 +503,20 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
+    def _prepare_latent_image_ids(self, batch_size, height, width, device, dtype):
+        latent_image_ids = torch.zeros(height // 2, width // 2, 3)
+        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
+        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width // 2)[None, :]
+
+        latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
+
+        latent_image_ids = latent_image_ids[None, :].repeat(batch_size, 1, 1, 1)
+        latent_image_ids = latent_image_ids.reshape(
+            batch_size, latent_image_id_height * latent_image_id_width, latent_image_id_channels
+        )
+
+        return latent_image_ids.to(device=device, dtype=dtype)
+
     def prepare_latents(
         self,
         batch_size,
@@ -514,8 +528,14 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         generator,
         latents=None,
     ):
+        height = 2 * (int(height) // self.vae_scale_factor)
+        width = 2 * (int(width) // self.vae_scale_factor)
+
+        shape = (batch_size, num_channels_latents, height, width)
+
         if latents is not None:
-            return latents.to(device=device, dtype=dtype)
+            latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
+            return latents.to(device=device, dtype=dtype), latent_image_ids
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -523,22 +543,10 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        height = 2 * (int(height) // self.vae_scale_factor)
-        width = 2 * (int(width) // self.vae_scale_factor)
-
-        shape = (batch_size, num_channels_latents, height, width)
-
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
 
-        latent_image_ids = torch.zeros(height // 2, width // 2, 3)
-        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
-        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width // 2)[None, :]
-        latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
-        latent_image_ids = latent_image_ids[None, :].repeat(batch_size, 1, 1, 1)
-        latent_image_ids = latent_image_ids.reshape(
-            batch_size, latent_image_id_height * latent_image_id_width, latent_image_id_channels
-        )
+        latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
 
         return latents, latent_image_ids
 
