@@ -27,7 +27,7 @@ from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..embeddings import CombinedTimestepTextProjEmbeddings
+from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
 
 
@@ -257,13 +257,17 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         num_attention_heads: int = 24,
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
+        guidance_embeds: bool = False,
     ):
         super().__init__()
         self.out_channels = in_channels
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
         self.pos_embed = EmbedND(dim=self.inner_dim, theta=10000, axes_dim=[16, 56, 56])
-        self.time_text_embed = CombinedTimestepTextProjEmbeddings(
+        text_time_guidance_cls = (
+            CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
+        )
+        self.time_text_embed = text_time_guidance_cls(
             embedding_dim=self.inner_dim, pooled_projection_dim=self.config.pooled_projection_dim
         )
 
@@ -352,7 +356,12 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
-        temb = self.time_text_embed(timestep, pooled_projections)
+        guidance = guidance * 1000 if guidance is not None else None
+        temb = (
+            self.time_text_embed(timestep, pooled_projections)
+            if guidance is None
+            else self.time_text_embed(timestep, guidance, pooled_projections)
+        )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         ids = torch.cat((txt_ids, img_ids), dim=1)
