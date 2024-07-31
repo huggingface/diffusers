@@ -162,7 +162,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
     _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "negative_pooled_prompt_embeds"]
 
@@ -194,11 +194,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
-        self.default_sample_size = (
-            self.transformer.config.sample_size
-            if hasattr(self, "transformer") and self.transformer is not None
-            else 128
-        )
+        self.default_sample_size = 128
 
     def _get_t5_prompt_embeds(
         self,
@@ -214,7 +210,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
 
-        if self.text_encoder_3 is None:
+        if self.text_encoder_2 is None:
             return torch.zeros(
                 (
                     batch_size * num_images_per_prompt,
@@ -225,7 +221,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
                 dtype=dtype,
             )
 
-        text_inputs = self.tokenizer_3(
+        text_inputs = self.tokenizer_2(
             prompt,
             padding="max_length",
             max_length=max_sequence_length,
@@ -234,18 +230,18 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        untruncated_ids = self.tokenizer_3(prompt, padding="longest", return_tensors="pt").input_ids
+        untruncated_ids = self.tokenizer_2(prompt, padding="longest", return_tensors="pt").input_ids
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.tokenizer_3.batch_decode(untruncated_ids[:, self.tokenizer_max_length - 1 : -1])
+            removed_text = self.tokenizer_2.batch_decode(untruncated_ids[:, self.tokenizer_max_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because `max_sequence_length` is set to "
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder_3(text_input_ids.to(device))[0]
+        prompt_embeds = self.text_encoder_2(text_input_ids.to(device))[0]
 
-        dtype = self.text_encoder_3.dtype
+        dtype = self.text_encoder_2.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
@@ -427,7 +423,6 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
                 clip_skip=None,
-                clip_model_index=0,
             )
             t5_negative_prompt_embed = self._get_t5_prompt_embeds(
                 prompt=negative_prompt_2,
@@ -556,9 +551,8 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         latent_image_ids = torch.zeros(height // 2, width // 2, 3)
         latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
         latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width // 2)[None, :]
-        latent_image_ids = latent_image_ids[None, :].repeat(batch_size, 0)
-
         latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
+        latent_image_ids = latent_image_ids[None, :].repeat(batch_size, 1, 1, 1)
         latent_image_ids = latent_image_ids.reshape(
             batch_size, latent_image_id_height * latent_image_id_width, latent_image_id_channels
         )
@@ -790,11 +784,12 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    t5_hidden_states=t5_prompt_embeds,
-                    text_ids=text_ids,
-                    latent_image_ids=latent_image_ids,
+                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
+                    timestep=timestep/1000, # 
+                    pooled_projections=prompt_embeds,
+                    encoder_hidden_states=t5_prompt_embeds,
+                    txt_ids=text_ids,
+                    img_ids=latent_image_ids,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
