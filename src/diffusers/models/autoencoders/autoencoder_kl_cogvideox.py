@@ -801,7 +801,7 @@ class Decoder3D(nn.Module):
         return hidden_states
 
 
-class AutoencoderKL3D(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encodfing images into latents and decoding latent representations into images.
 
