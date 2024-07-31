@@ -447,12 +447,12 @@ class CogVideoXUpSample3D(nn.Module):
             b, c, t, h, w = x.shape
             x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
             x = F.interpolate(x, scale_factor=2.0)
-            x = x.reshape(b, t, c, x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
+            x = x.reshape(b, t, c, *x.shape[2:]).permute(0, 2, 1, 3, 4)
 
         b, c, t, h, w = x.shape
         x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
         x = self.conv(x)
-        x = x.reshape(b, t, x.shape[1], x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
+        x = x.reshape(b, t, *x.shape[1:]).permute(0, 2, 1, 3, 4)
 
         return x
 
@@ -550,7 +550,7 @@ class Encoder3D(nn.Module):
         pad_mode: str = "first",
         temporal_compress_times: int = 4,
     ):
-        super(Encoder3D, self).__init__()
+        super().__init__()
         self.act_fn = get_activation(act_fn)
         self.num_resolutions = len(block_out_channels)
         self.layers_per_block = layers_per_block
@@ -689,7 +689,7 @@ class Decoder3D(nn.Module):
         temporal_compress_times: int = 4,
         norm_num_groups=32,
     ):
-        super(Decoder3D, self).__init__()
+        super().__init__()
 
         self.act_fn = get_activation(act_fn)
         self.num_resolutions = len(block_out_channels)
