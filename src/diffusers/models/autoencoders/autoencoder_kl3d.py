@@ -9,10 +9,8 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
-from ..attention_processor import SpatialNorm3D
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from ..resnet import ResnetBlock3D
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
@@ -456,49 +454,11 @@ class Decoder3D(nn.Module):
         return hidden_states
 
 
-class UpSample3D(nn.Module):
-    r"""
-    The `UpSample` layer of a variational autoencoder that upsamples its input.
-
-    Args:
-        in_channels (`int`, *optional*, defaults to 3):
-            The number of input channels.
-        out_channels (`int`, *optional*, defaults to 3):
-            The number of output channels.
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-    ) -> None:
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-
-        self.conv = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        r"""The forward method of the `UpSample` class."""
-
-        b, c, t, h, w = x.shape
-        x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
-        x = F.interpolate(x, scale_factor=2.0)
-        x = x.reshape(b, t, c, x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
-
-        b, c, t, h, w = x.shape
-        x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
-        x = self.conv(x)
-        x = x.reshape(b, t, x.shape[1], x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
-
-        return x
-
-
 ## ====  After this is the special code of CogVideoX  ==== ##
 
 
 # Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
-class CogVideoXSaveConv3d(torch.nn.Conv3d):
+class CogVideoXSaveConv3d(nn.Conv3d):
     """
     A 3D convolution layer that splits the input tensor into smaller parts to avoid OOM in CogVideoX Model.
     """
@@ -610,7 +570,7 @@ class CogVideoXCausalConv3d(nn.Module):
 
 
 # Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
-class CogVideoXSpatialNorm3D(SpatialNorm3D):
+class CogVideoXSpatialNorm3D(nn.Module):
     """
     Use CogVideoXSaveConv3d instead of nn.Conv3d to avoid OOM in CogVideoX Model
     """
@@ -620,7 +580,7 @@ class CogVideoXSpatialNorm3D(SpatialNorm3D):
         f_channels: int,
         zq_channels: int,
     ):
-        super().__init__(f_channels, zq_channels)
+        super().__init__()
         self.norm_layer = nn.GroupNorm(num_channels=f_channels, num_groups=32, eps=1e-6, affine=True)
         self.conv = CogVideoXCausalConv3d(zq_channels, zq_channels, kernel_size=3, stride=1, padding=0)
         self.conv_y = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1, padding=0)
@@ -643,7 +603,7 @@ class CogVideoXSpatialNorm3D(SpatialNorm3D):
 
 
 # Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
-class CogVideoXUpzSample3D(UpSample3D):
+class CogVideoXUpzSample3D(nn.Module):
     r"""
     Add compress_time option to the `UpSample` layer of a variational autoencoder that upsamples its input in CogVideoX
     Model.
@@ -658,7 +618,7 @@ class CogVideoXUpzSample3D(UpSample3D):
     """
 
     def __init__(self, in_channels: int, out_channels: int, compress_time: bool = False):
-        super().__init__(in_channels, out_channels)
+        super().__init__()
 
         self.conv = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
         self.compress_time = compress_time
@@ -748,7 +708,7 @@ class DownSample3D(nn.Module):
         return x
 
 
-class CogVideoXResnetBlock3D(ResnetBlock3D):
+class CogVideoXResnetBlock3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -762,22 +722,13 @@ class CogVideoXResnetBlock3D(ResnetBlock3D):
         latent_channels: Optional[int] = None,
         pad_mode: str = "first",
     ):
-        super().__init__(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            dropout=dropout,
-            temb_channels=temb_channels,
-            groups=groups,
-            eps=eps,
-            non_linearity=non_linearity,
-            conv_shortcut=conv_shortcut,
-        )
+        super().__init__()
 
         out_channels = in_channels if out_channels is None else out_channels
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.act_fn = get_activation(non_linearity)
+        self.non_linearity = get_activation(non_linearity)
         self.use_conv_shortcut = conv_shortcut
 
         if latent_channels is None:
