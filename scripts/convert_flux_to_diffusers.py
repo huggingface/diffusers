@@ -1,13 +1,14 @@
 import argparse
 from contextlib import nullcontext
 
+import safetensors.torch
 import torch
 from accelerate import init_empty_weights
+from huggingface_hub import hf_hub_download
 
 from diffusers import FluxTransformer2DModel
 from diffusers.utils.import_utils import is_accelerate_available
-import safetensors.torch
-from huggingface_hub import hf_hub_download
+
 
 """
 python scripts/convert_flux_to_diffusers.py  \
@@ -26,13 +27,14 @@ parser.add_argument("--dtype", type=str, default="bf16")
 args = parser.parse_args()
 dtype = torch.bfloat16 if args.dtype == "bf16" else torch.float32
 
+
 def load_original_checkpoint(args):
     if args.original_state_dict_repo_id is not None:
         ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename="flux.safetensors")
     elif args.checkpoint_path is not None:
         ckpt_path = args.checkpoint_path
     else:
-        raise ValueError(f" please provide either `original_state_dict_repo_id` or a local `checkpoint_path`")
+        raise ValueError(" please provide either `original_state_dict_repo_id` or a local `checkpoint_path`")
 
     original_state_dict = safetensors.torch.load_file(ckpt_path)
     return original_state_dict

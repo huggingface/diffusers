@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from transformers import (
-    CLIPTextModelWithProjection,
+    CLIPTextModel,
     CLIPTokenizer,
     T5EncoderModel,
     T5TokenizerFast,
@@ -168,13 +168,13 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
 
     def __init__(
         self,
-        transformer: FluxTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKL,
-        text_encoder: CLIPTextModelWithProjection,
+        text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         text_encoder_2: T5EncoderModel,
         tokenizer_2: T5TokenizerFast,
+        transformer: FluxTransformer2DModel = None,
     ):
         super().__init__()
 
@@ -200,7 +200,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         self,
         prompt: Union[str, List[str]] = None,
         num_images_per_prompt: int = 1,
-        max_sequence_length: int = 256,
+        max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -226,7 +226,8 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             padding="max_length",
             max_length=max_sequence_length,
             truncation=True,
-            add_special_tokens=True,
+            return_length=False,
+            return_overflowing_tokens=False,
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
@@ -239,7 +240,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder_2(text_input_ids.to(device))[0]
+        prompt_embeds = self.text_encoder_2(text_input_ids.to(device), output_hidden_states=False)[0]
 
         dtype = self.text_encoder_2.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
@@ -257,7 +258,6 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         prompt: Union[str, List[str]],
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
-        clip_skip: Optional[int] = None,
     ):
         device = device or self._execution_device
 
@@ -269,6 +269,8 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             padding="max_length",
             max_length=self.tokenizer_max_length,
             truncation=True,
+            return_overflowing_tokens=False,
+            return_length=False,
             return_tensors="pt",
         )
 
@@ -280,19 +282,15 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer_max_length} tokens: {removed_text}"
             )
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), output_hidden_states=True)
+        prompt_embeds = self.text_encoder(text_input_ids.to(device), output_hidden_states=False)
 
-        if clip_skip is None:
-            prompt_embeds = prompt_embeds.hidden_states[-2]
-        else:
-            prompt_embeds = prompt_embeds.hidden_states[-(clip_skip + 2)]
-
+        # Use pooled output of CLIPTextModel
+        prompt_embeds = prompt_embeds.pooler_output
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
-        _, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, -1)
 
         return prompt_embeds
 
@@ -307,10 +305,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        clip_skip: Optional[int] = None,
-        max_sequence_length: int = 256,
+        max_sequence_length: int = 512,
         lora_scale: Optional[float] = None,
     ):
         r"""
@@ -387,7 +382,6 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
                 prompt=prompt,
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
-                clip_skip=clip_skip,
             )
             t5_prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=prompt_2,
@@ -422,7 +416,6 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
                 negative_prompt,
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
-                clip_skip=None,
             )
             t5_negative_prompt_embed = self._get_t5_prompt_embeds(
                 prompt=negative_prompt_2,
@@ -535,18 +528,19 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
 
-        height = 2 * (int(height) // self.vae_scale_factor)
-        width = 2 * (int(width) // self.vae_scale_factor)
-
-        shape = (batch_size, num_channels_latents, height, width)
-
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
+        height = 2 * (int(height) // self.vae_scale_factor)
+        width = 2 * (int(width) // self.vae_scale_factor)
+
+        shape = (batch_size, num_channels_latents, height, width)
+
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
 
         latent_image_ids = torch.zeros(height // 2, width // 2, 3)
         latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
@@ -607,10 +601,9 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        max_sequence_length: int = 256,
+        max_sequence_length: int = 512,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -711,7 +704,6 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         )
 
         self._guidance_scale = guidance_scale
-        self._clip_skip = clip_skip
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
 
@@ -743,7 +735,6 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             device=device,
-            clip_skip=self.clip_skip,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
             lora_scale=lora_scale,
@@ -785,7 +776,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
-                    timestep=timestep/1000, # 
+                    timestep=timestep / 1000,  #
                     pooled_projections=prompt_embeds,
                     encoder_hidden_states=t5_prompt_embeds,
                     txt_ids=text_ids,
