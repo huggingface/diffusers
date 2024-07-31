@@ -606,7 +606,7 @@ class TemporalConvLayer(nn.Module):
         in_dim: int,
         out_dim: Optional[int] = None,
         dropout: float = 0.0,
-        groups: int = 32,
+        norm_num_groups: int = 32,
     ):
         super().__init__()
         out_dim = out_dim or in_dim
@@ -615,24 +615,24 @@ class TemporalConvLayer(nn.Module):
 
         # conv layers
         self.conv1 = nn.Sequential(
-            nn.GroupNorm(groups, in_dim),
+            nn.GroupNorm(norm_num_groups, in_dim),
             nn.SiLU(),
             nn.Conv3d(in_dim, out_dim, (3, 1, 1), padding=(1, 0, 0)),
         )
         self.conv2 = nn.Sequential(
-            nn.GroupNorm(groups, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
         )
         self.conv3 = nn.Sequential(
-            nn.GroupNorm(groups, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
         )
         self.conv4 = nn.Sequential(
-            nn.GroupNorm(groups, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
