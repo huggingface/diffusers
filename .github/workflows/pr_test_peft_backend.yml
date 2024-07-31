@@ -71,7 +71,8 @@ jobs:
 
     name: LoRA - ${{ matrix.lib-versions }}
 
-    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
+    runs-on:
+      group: aws-general-8-plus
 
     container:
       image: diffusers/diffusers-pytorch-cpu

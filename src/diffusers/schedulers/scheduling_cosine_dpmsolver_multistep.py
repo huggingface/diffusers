@@ -21,55 +21,39 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils.torch_utils import randn_tensor
+from .scheduling_dpmsolver_sde import BrownianTreeNoiseSampler
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
-class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
+class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
-    Implements DPMSolverMultistepScheduler in EDM formulation as presented in Karras et al. 2022 [1].
-    `EDMDPMSolverMultistepScheduler` is a fast dedicated high-order solver for diffusion ODEs.
+    Implements a variant of `DPMSolverMultistepScheduler` with cosine schedule, proposed by Nichol and Dhariwal (2021).
+    This scheduler was used in Stable Audio Open [1].
 
-    [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
-    https://arxiv.org/abs/2206.00364
+    [1] Evans, Parker, et al. "Stable Audio Open" https://arxiv.org/abs/2407.14358
 
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
 
     Args:
-        sigma_min (`float`, *optional*, defaults to 0.002):
-            Minimum noise magnitude in the sigma schedule. This was set to 0.002 in the EDM paper [1]; a reasonable
-            range is [0, 10].
-        sigma_max (`float`, *optional*, defaults to 80.0):
-            Maximum noise magnitude in the sigma schedule. This was set to 80.0 in the EDM paper [1]; a reasonable
-            range is [0.2, 80.0].
-        sigma_data (`float`, *optional*, defaults to 0.5):
-            The standard deviation of the data distribution. This is set to 0.5 in the EDM paper [1].
-        sigma_schedule (`str`, *optional*, defaults to `karras`):
+        sigma_min (`float`, *optional*, defaults to 0.3):
+            Minimum noise magnitude in the sigma schedule. This was set to 0.3 in Stable Audio Open [1].
+        sigma_max (`float`, *optional*, defaults to 500):
+            Maximum noise magnitude in the sigma schedule. This was set to 500 in Stable Audio Open [1].
+        sigma_data (`float`, *optional*, defaults to 1.0):
+            The standard deviation of the data distribution. This is set to 1.0 in Stable Audio Open [1].
+        sigma_schedule (`str`, *optional*, defaults to `exponential`):
             Sigma schedule to compute the `sigmas`. By default, we the schedule introduced in the EDM paper
             (https://arxiv.org/abs/2206.00364). Other acceptable value is "exponential". The exponential schedule was
             incorporated in this model: https://huggingface.co/stabilityai/cosxl.
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
         solver_order (`int`, defaults to 2):
-            The DPMSolver order which can be `1` or `2` or `3`. It is recommended to use `solver_order=2` for guided
-            sampling, and `solver_order=3` for unconditional sampling.
-        prediction_type (`str`, defaults to `epsilon`, *optional*):
+            The DPMSolver order which can be `1` or `2`. It is recommended to use `solver_order=2`.
+        prediction_type (`str`, defaults to `v_prediction`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
             Video](https://imagen.research.google/video/paper.pdf) paper).
-        thresholding (`bool`, defaults to `False`):
-            Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
-            as Stable Diffusion.
-        dynamic_thresholding_ratio (`float`, defaults to 0.995):
-            The ratio for the dynamic thresholding method. Valid only when `thresholding=True`.
-        sample_max_value (`float`, defaults to 1.0):
-            The threshold value for dynamic thresholding. Valid only when `thresholding=True` and
-            `algorithm_type="dpmsolver++"`.
-        algorithm_type (`str`, defaults to `dpmsolver++`):
-            Algorithm type for the solver; can be `dpmsolver++` or `sde-dpmsolver++`. The `dpmsolver++` type implements
-            the algorithms in the [DPMSolver++](https://huggingface.co/papers/2211.01095) paper. It is recommended to
-            use `dpmsolver++` or `sde-dpmsolver++` with `solver_order=2` for guided sampling like in Stable Diffusion.
         solver_type (`str`, defaults to `midpoint`):
             Solver type for the second-order solver; can be `midpoint` or `heun`. The solver type slightly affects the
             sample quality, especially for a small number of steps. It is recommended to use `midpoint` solvers.
@@ -91,40 +75,24 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        sigma_min: float = 0.002,
-        sigma_max: float = 80.0,
-        sigma_data: float = 0.5,
-        sigma_schedule: str = "karras",
+        sigma_min: float = 0.3,
+        sigma_max: float = 500,
+        sigma_data: float = 1.0,
+        sigma_schedule: str = "exponential",
         num_train_timesteps: int = 1000,
-        prediction_type: str = "epsilon",
-        rho: float = 7.0,
         solver_order: int = 2,
-        thresholding: bool = False,
-        dynamic_thresholding_ratio: float = 0.995,
-        sample_max_value: float = 1.0,
-        algorithm_type: str = "dpmsolver++",
+        prediction_type: str = "v_prediction",
+        rho: float = 7.0,
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
         euler_at_final: bool = False,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
     ):
-        # settings for DPM-Solver
-        if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"]:
-            if algorithm_type == "deis":
-                self.register_to_config(algorithm_type="dpmsolver++")
-            else:
-                raise NotImplementedError(f"{algorithm_type} is not implemented for {self.__class__}")
-
         if solver_type not in ["midpoint", "heun"]:
             if solver_type in ["logrho", "bh1", "bh2"]:
                 self.register_to_config(solver_type="midpoint")
             else:
                 raise NotImplementedError(f"{solver_type} is not implemented for {self.__class__}")
-
-        if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"] and final_sigmas_type == "zero":
-            raise ValueError(
-                f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithm_type` {algorithm_type}. Please choose `sigma_min` instead."
-            )
 
         ramp = torch.linspace(0, 1, num_train_timesteps)
         if sigma_schedule == "karras":
@@ -180,14 +148,11 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         scaled_sample = sample * c_in
         return scaled_sample
 
-    # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_noise
     def precondition_noise(self, sigma):
         if not isinstance(sigma, torch.Tensor):
             sigma = torch.tensor([sigma])
 
-        c_noise = 0.25 * torch.log(sigma)
-
-        return c_noise
+        return sigma.atan() / math.pi * 2
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_outputs
     def precondition_outputs(self, sample, model_output, sigma):
@@ -273,6 +238,9 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
+        # if a noise sampler is used, reinitialise it
+        self.noise_sampler = None
+
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._compute_karras_sigmas
     def _compute_karras_sigmas(self, ramp, sigma_min=None, sigma_max=None) -> torch.Tensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
@@ -295,40 +263,6 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigma_max = sigma_max or self.config.sigma_max
         sigmas = torch.linspace(math.log(sigma_min), math.log(sigma_max), len(ramp)).exp().flip(0)
         return sigmas
-
-    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
-    def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
-        """
-        "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
-        prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
-        s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
-        pixels from saturation at each step. We find that dynamic thresholding results in significantly better
-        photorealism as well as better image-text alignment, especially when using very large guidance weights."
-
-        https://arxiv.org/abs/2205.11487
-        """
-        dtype = sample.dtype
-        batch_size, channels, *remaining_dims = sample.shape
-
-        if dtype not in (torch.float32, torch.float64):
-            sample = sample.float()  # upcast for quantile calculation, and clamp not implemented for cpu half
-
-        # Flatten sample for doing quantile calculation along each image
-        sample = sample.reshape(batch_size, channels * np.prod(remaining_dims))
-
-        abs_sample = sample.abs()  # "a certain percentile absolute pixel value"
-
-        s = torch.quantile(abs_sample, self.config.dynamic_thresholding_ratio, dim=1)
-        s = torch.clamp(
-            s, min=1, max=self.config.sample_max_value
-        )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
-        s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
-        sample = torch.clamp(sample, -s, s) / s  # "we threshold xt0 to the range [-s, s] and then divide by s"
-
-        sample = sample.reshape(batch_size, channels, *remaining_dims)
-        sample = sample.to(dtype)
-
-        return sample
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
@@ -390,9 +324,6 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigma = self.sigmas[self.step_index]
         x0_pred = self.precondition_outputs(sample, model_output, sigma)
 
-        if self.config.thresholding:
-            x0_pred = self._threshold_sample(x0_pred)
-
         return x0_pred
 
     def dpm_solver_first_order_update(
@@ -421,15 +352,12 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         lambda_s = torch.log(alpha_s) - torch.log(sigma_s)
 
         h = lambda_t - lambda_s
-        if self.config.algorithm_type == "dpmsolver++":
-            x_t = (sigma_t / sigma_s) * sample - (alpha_t * (torch.exp(-h) - 1.0)) * model_output
-        elif self.config.algorithm_type == "sde-dpmsolver++":
-            assert noise is not None
-            x_t = (
-                (sigma_t / sigma_s * torch.exp(-h)) * sample
-                + (alpha_t * (1 - torch.exp(-2.0 * h))) * model_output
-                + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-            )
+        assert noise is not None
+        x_t = (
+            (sigma_t / sigma_s * torch.exp(-h)) * sample
+            + (alpha_t * (1 - torch.exp(-2.0 * h))) * model_output
+            + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
+        )
 
         return x_t
 
@@ -471,89 +399,22 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         h, h_0 = lambda_t - lambda_s0, lambda_s0 - lambda_s1
         r0 = h_0 / h
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
-        if self.config.algorithm_type == "dpmsolver++":
-            # See https://arxiv.org/abs/2211.01095 for detailed derivations
-            if self.config.solver_type == "midpoint":
-                x_t = (
-                    (sigma_t / sigma_s0) * sample
-                    - (alpha_t * (torch.exp(-h) - 1.0)) * D0
-                    - 0.5 * (alpha_t * (torch.exp(-h) - 1.0)) * D1
-                )
-            elif self.config.solver_type == "heun":
-                x_t = (
-                    (sigma_t / sigma_s0) * sample
-                    - (alpha_t * (torch.exp(-h) - 1.0)) * D0
-                    + (alpha_t * ((torch.exp(-h) - 1.0) / h + 1.0)) * D1
-                )
-        elif self.config.algorithm_type == "sde-dpmsolver++":
-            assert noise is not None
-            if self.config.solver_type == "midpoint":
-                x_t = (
-                    (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                    + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                    + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
-                    + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-                )
-            elif self.config.solver_type == "heun":
-                x_t = (
-                    (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                    + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
-                    + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
-                )
 
-        return x_t
-
-    def multistep_dpm_solver_third_order_update(
-        self,
-        model_output_list: List[torch.Tensor],
-        sample: torch.Tensor = None,
-    ) -> torch.Tensor:
-        """
-        One step for the third-order multistep DPMSolver.
-
-        Args:
-            model_output_list (`List[torch.Tensor]`):
-                The direct outputs from learned diffusion model at current and latter timesteps.
-            sample (`torch.Tensor`):
-                A current instance of a sample created by diffusion process.
-
-        Returns:
-            `torch.Tensor`:
-                The sample tensor at the previous timestep.
-        """
-        sigma_t, sigma_s0, sigma_s1, sigma_s2 = (
-            self.sigmas[self.step_index + 1],
-            self.sigmas[self.step_index],
-            self.sigmas[self.step_index - 1],
-            self.sigmas[self.step_index - 2],
-        )
-
-        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
-        alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
-        alpha_s1, sigma_s1 = self._sigma_to_alpha_sigma_t(sigma_s1)
-        alpha_s2, sigma_s2 = self._sigma_to_alpha_sigma_t(sigma_s2)
-
-        lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
-        lambda_s0 = torch.log(alpha_s0) - torch.log(sigma_s0)
-        lambda_s1 = torch.log(alpha_s1) - torch.log(sigma_s1)
-        lambda_s2 = torch.log(alpha_s2) - torch.log(sigma_s2)
-
-        m0, m1, m2 = model_output_list[-1], model_output_list[-2], model_output_list[-3]
-
-        h, h_0, h_1 = lambda_t - lambda_s0, lambda_s0 - lambda_s1, lambda_s1 - lambda_s2
-        r0, r1 = h_0 / h, h_1 / h
-        D0 = m0
-        D1_0, D1_1 = (1.0 / r0) * (m0 - m1), (1.0 / r1) * (m1 - m2)
-        D1 = D1_0 + (r0 / (r0 + r1)) * (D1_0 - D1_1)
-        D2 = (1.0 / (r0 + r1)) * (D1_0 - D1_1)
-        if self.config.algorithm_type == "dpmsolver++":
-            # See https://arxiv.org/abs/2206.00927 for detailed derivations
+        # sde-dpmsolver++
+        assert noise is not None
+        if self.config.solver_type == "midpoint":
             x_t = (
-                (sigma_t / sigma_s0) * sample
-                - (alpha_t * (torch.exp(-h) - 1.0)) * D0
-                + (alpha_t * ((torch.exp(-h) - 1.0) / h + 1.0)) * D1
-                - (alpha_t * ((torch.exp(-h) - 1.0 + h) / h**2 - 0.5)) * D2
+                (sigma_t / sigma_s0 * torch.exp(-h)) * sample
+                + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
+                + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
+                + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
+            )
+        elif self.config.solver_type == "heun":
+            x_t = (
+                (sigma_t / sigma_s0 * torch.exp(-h)) * sample
+                + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
+                + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
+                + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
             )
 
         return x_t
@@ -644,19 +505,23 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
 
-        if self.config.algorithm_type == "sde-dpmsolver++":
-            noise = randn_tensor(
-                model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
+        if self.noise_sampler is None:
+            seed = None
+            if generator is not None:
+                seed = (
+                    [g.initial_seed() for g in generator] if isinstance(generator, list) else generator.initial_seed()
+                )
+            self.noise_sampler = BrownianTreeNoiseSampler(
+                model_output, sigma_min=self.config.sigma_min, sigma_max=self.config.sigma_max, seed=seed
             )
-        else:
-            noise = None
+        noise = self.noise_sampler(self.sigmas[self.step_index], self.sigmas[self.step_index + 1]).to(
+            model_output.device
+        )
 
         if self.config.solver_order == 1 or self.lower_order_nums < 1 or lower_order_final:
             prev_sample = self.dpm_solver_first_order_update(model_output, sample=sample, noise=noise)
         elif self.config.solver_order == 2 or self.lower_order_nums < 2 or lower_order_second:
             prev_sample = self.multistep_dpm_solver_second_order_update(self.model_outputs, sample=sample, noise=noise)
-        else:
-            prev_sample = self.multistep_dpm_solver_third_order_update(self.model_outputs, sample=sample)
 
         if self.lower_order_nums < self.config.solver_order:
             self.lower_order_nums += 1
