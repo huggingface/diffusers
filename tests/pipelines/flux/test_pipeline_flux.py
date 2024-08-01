@@ -224,7 +224,7 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 @require_torch_gpu
 class FluxPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
-    repo_id = ""
+    repo_id = "black-forest-labs/FLUX.1-schnell"
 
     def setUp(self):
         super().setUp()
@@ -250,8 +250,10 @@ class FluxPipelineSlowTests(unittest.TestCase):
             "generator": generator,
         }
 
-    def test_sd3_inference(self):
-        pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
+    # TODO: Dhruv. Move large model tests to a dedicated runner)
+    @unittest.skip("We cannot run inference on this model with the current CI hardware")
+    def test_flux_inference(self):
+        pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.bfloat16)
         pipe.enable_model_cpu_offload()
 
         inputs = self.get_inputs(torch_device)
