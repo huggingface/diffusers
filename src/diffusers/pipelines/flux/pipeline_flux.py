@@ -15,6 +15,7 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as np
 import torch
 from transformers import (
     CLIPTextModel,
@@ -174,7 +175,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         tokenizer: CLIPTokenizer,
         text_encoder_2: T5EncoderModel,
         tokenizer_2: T5TokenizerFast,
-        transformer: FluxTransformer2DModel = None,
+        transformer: FluxTransformer2DModel,
     ):
         super().__init__()
 
@@ -758,7 +759,10 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, timesteps, sigmas
+        )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
