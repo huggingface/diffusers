@@ -940,10 +940,12 @@ class AnyTextPipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
+        mode: Optional[str] = "generate",
+        draw_pos: Optional[Union[str, torch.Tensor]] = None,
+        ori_image: Optional[Union[str, torch.Tensor]] = None,
         timesteps: List[int] = None,
         sigmas: List[float] = None,
         guidance_scale: float = 7.5,
@@ -1115,7 +1117,7 @@ class AnyTextPipeline(
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            image,
+            # image,
             callback_steps,
             negative_prompt,
             prompt_embeds,
@@ -1184,45 +1186,63 @@ class AnyTextPipeline(
                 self.do_classifier_free_guidance,
             )
 
+        # 3.5 Optionally get Guidance Scale Embedding
+        timestep_cond = None
+        if self.unet.config.time_cond_proj_dim is not None:
+            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+            timestep_cond = self.get_guidance_scale_embedding(
+                guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
+            ).to(device=device, dtype=latents.dtype)
+
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):
-            image = self.prepare_image(
-                image=image,
-                width=width,
-                height=height,
-                batch_size=batch_size * num_images_per_prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                device=device,
-                dtype=controlnet.dtype,
-                do_classifier_free_guidance=self.do_classifier_free_guidance,
-                guess_mode=guess_mode,
+            # image = self.prepare_image(
+            #     image=image,
+            #     width=width,
+            #     height=height,
+            #     batch_size=batch_size * num_images_per_prompt,
+            #     num_images_per_prompt=num_images_per_prompt,
+            #     device=device,
+            #     dtype=controlnet.dtype,
+            #     do_classifier_free_guidance=self.do_classifier_free_guidance,
+            #     guess_mode=guess_mode,
+            # )
+            # height, width = image.shape[-2:]
+            guided_hint = self.auxiliary_latent_module(
+                emb=timestep_cond,
+                context=prompt_embeds,
+                mode=mode,
+                texts=texts,
+                prompt=prompt,
+                draw_pos=draw_pos,
+                ori_image=ori_image,
+                img_count=len(prompt),
             )
-            height, width = image.shape[-2:]
-        elif isinstance(controlnet, MultiControlNetModel):
-            images = []
+        # elif isinstance(controlnet, MultiControlNetModel):
+        #     images = []
 
-            # Nested lists as ControlNet condition
-            if isinstance(image[0], list):
-                # Transpose the nested image list
-                image = [list(t) for t in zip(*image)]
+        #     # Nested lists as ControlNet condition
+        #     if isinstance(image[0], list):
+        #         # Transpose the nested image list
+        #         image = [list(t) for t in zip(*image)]
 
-            for image_ in image:
-                image_ = self.prepare_image(
-                    image=image_,
-                    width=width,
-                    height=height,
-                    batch_size=batch_size * num_images_per_prompt,
-                    num_images_per_prompt=num_images_per_prompt,
-                    device=device,
-                    dtype=controlnet.dtype,
-                    do_classifier_free_guidance=self.do_classifier_free_guidance,
-                    guess_mode=guess_mode,
-                )
+        #     for image_ in image:
+        #         image_ = self.prepare_image(
+        #             image=image_,
+        #             width=width,
+        #             height=height,
+        #             batch_size=batch_size * num_images_per_prompt,
+        #             num_images_per_prompt=num_images_per_prompt,
+        #             device=device,
+        #             dtype=controlnet.dtype,
+        #             do_classifier_free_guidance=self.do_classifier_free_guidance,
+        #             guess_mode=guess_mode,
+        #         )
 
-                images.append(image_)
+        #         images.append(image_)
 
-            image = images
-            height, width = image[0].shape[-2:]
+        #     image = images
+        #     height, width = image[0].shape[-2:]
         else:
             assert False
 
@@ -1244,14 +1264,6 @@ class AnyTextPipeline(
             generator,
             latents,
         )
-
-        # 6.5 Optionally get Guidance Scale Embedding
-        timestep_cond = None
-        if self.unet.config.time_cond_proj_dim is not None:
-            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
-            timestep_cond = self.get_guidance_scale_embedding(
-                guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
-            ).to(device=device, dtype=latents.dtype)
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -1309,7 +1321,7 @@ class AnyTextPipeline(
                     control_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=image,
+                    guided_hint=guided_hint,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     return_dict=False,
