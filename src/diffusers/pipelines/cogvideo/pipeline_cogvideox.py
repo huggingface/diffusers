@@ -118,6 +118,7 @@ class CogVideoXPipelineOutput(BaseOutput):
             denoised PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
             `(batch_size, num_frames, channels, height, width)`.
     """
+
     frames: torch.Tensor
 
 
@@ -611,9 +612,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                     continue
 
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
