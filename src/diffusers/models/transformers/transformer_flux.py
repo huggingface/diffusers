@@ -36,14 +36,18 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # YiYi to-do: refactor rope related functions/classes
 def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
-    from einops import rearrange
+    assert dim % 2 == 0, "The dimension must be even."
 
-    assert dim % 2 == 0
     scale = torch.arange(0, dim, 2, dtype=torch.float64, device=pos.device) / dim
     omega = 1.0 / (theta**scale)
+
+    batch_size, seq_length = pos.shape
     out = torch.einsum("...n,d->...nd", pos, omega)
-    out = torch.stack([torch.cos(out), -torch.sin(out), torch.sin(out), torch.cos(out)], dim=-1)
-    out = rearrange(out, "b n d (i j) -> b n d i j", i=2, j=2)
+    cos_out = torch.cos(out)
+    sin_out = torch.sin(out)
+
+    stacked_out = torch.stack([cos_out, -sin_out, sin_out, cos_out], dim=-1)
+    out = stacked_out.view(batch_size, -1, dim // 2, 2, 2)
     return out.float()
 
 
