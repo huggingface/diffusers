@@ -28,6 +28,7 @@ class TextEmbeddingModule(nn.Module):
         self.linear = nn.Linear()
         self.frozen_CLIP_embedder_t3 = FrozenCLIPEmbedderT3()
 
+    @torch.no_grad()
     def forward(self, texts, prompt, device, num_images_per_prompt, do_classifier_free_guidance):
         glyph_lines = self.create_glyph_lines(texts)
         ocr_output = self.ocr(glyph_lines)

@@ -21,6 +21,7 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
+from auxiliary_latent_module import AuxiliaryLatentModule
 from bert_tokenizer import BasicTokenizer
 from text_embedding_module import TextEmbeddingModule
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -226,9 +227,11 @@ class AnyTextPipeline(
         feature_extractor: CLIPImageProcessor,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
+        font_path: str = None,
     ):
         super().__init__()
-        self.text_embedding_module = TextEmbeddingModule()
+        self.text_embedding_module = TextEmbeddingModule(text_encoder, tokenizer)
+        self.auxiliary_latent_module = AuxiliaryLatentModule(font_path)
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(

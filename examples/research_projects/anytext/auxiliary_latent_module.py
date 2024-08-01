@@ -36,10 +36,13 @@ def zero_module(module: nn.Module) -> nn.Module:
 
 
 class AuxiliaryLatentModule(nn.Module):
-    def __init__(self, dims, model_channels, glyph_channels, position_channels, font_path, **kwargs):
+    def __init__(self, font_path, dims=2, glyph_channels=256, position_channels=64, model_channels=256, **kwargs):
         super().__init__()
+        if font_path is None:
+            raise ValueError("font_path must be provided!")
         self.font = ImageFont.truetype(font_path, 60)
         self.use_fp16 = kwargs.get("use_fp16", False)
+        self.device = kwargs.get("device", "cpu")
         self.glyph_block = nn.Sequential(
             conv_nd(dims, glyph_channels, 8, 3, padding=1),
             nn.SiLU(),
@@ -80,6 +83,7 @@ class AuxiliaryLatentModule(nn.Module):
 
         self.fuse_block = zero_module(conv_nd(dims, 256 + 64 + 4, model_channels, 3, padding=1))
 
+    @torch.no_grad()
     def forward(
         self,
         emb,
@@ -349,3 +353,10 @@ class AuxiliaryLatentModule(nn.Module):
         img.paste(rotated_layer, (x_offset, y_offset), rotated_layer)
         img = np.expand_dims(np.array(img.convert("1")), axis=2).astype(np.float64)
         return img
+
+    def to(self, device):
+        self.device = device
+        self.glyph_block = self.glyph_block.to(device)
+        self.position_block = self.position_block.to(device)
+        self.fuse_block = self.fuse_block.to(device)
+        return self
