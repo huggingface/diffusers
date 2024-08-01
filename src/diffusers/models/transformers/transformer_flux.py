@@ -225,23 +225,20 @@ class FluxTransformerBlock(nn.Module):
 
 class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     """
-    The Transformer model introduced in Stable Diffusion 3.
+    The Transformer model introduced in Flux.
 
-    Reference: https://arxiv.org/abs/2403.03206
+    Reference: TODO
 
     Parameters:
-        sample_size (`int`): The width of the latent images. This is fixed during training since
-            it is used to learn a number of position embeddings.
         patch_size (`int`): Patch size to turn the input data into small patches.
         in_channels (`int`, *optional*, defaults to 16): The number of channels in the input.
-        num_layers (`int`, *optional*, defaults to 18): The number of layers of Transformer blocks to use.
+        num_layers (`int`, *optional*, defaults to 18): The number of layers of MMDiT blocks to use.
+        num_single_layers (`int`, *optional*, defaults to 18): The number of layers of single DiT blocks to use.
         attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
         num_attention_heads (`int`, *optional*, defaults to 18): The number of heads to use for multi-head attention.
-        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        caption_projection_dim (`int`): Number of dimensions to use when projecting the `encoder_hidden_states`.
+        joint_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
         pooled_projection_dim (`int`): Number of dimensions to use when projecting the `pooled_projections`.
-        out_channels (`int`, defaults to 16): Number of output channels.
-
+        guidance_embeds (`bool`, defaults to False): Whether to use guidance embeddings.
     """
 
     _supports_gradient_checkpointing = True
@@ -357,7 +354,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
         timestep = timestep.to(hidden_states.dtype) * 1000
         if guidance is not None:
-            guidance = guidance.to(hidden_states.dtype) * 1000 
+            guidance = guidance.to(hidden_states.dtype) * 1000
         else:
             guidance = None
         temb = (
