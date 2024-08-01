@@ -681,7 +681,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             self.scheduler.config.base_image_seq_len,
             self.scheduler.config.max_image_seq_len,
             self.scheduler.config.base_shift,
-            self.scheduler.max_shift,
+            self.scheduler.config.max_shift,
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
