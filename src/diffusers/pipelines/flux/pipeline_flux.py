@@ -144,6 +144,10 @@ def retrieve_timesteps(
 
 class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
     r"""
+    The Flux pipeline for text-to-image generation.
+
+    Reference: https://blackforestlabs.ai/2024/07/31/announcing-black-forest-labs/
+
     Args:
         transformer ([`SD3Transformer2DModel`]):
             Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
