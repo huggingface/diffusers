@@ -529,14 +529,14 @@ class CogVideoXPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(
                     latent_model_input, t
-                )  # TODO: check if this is needed
+                )
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
                 # predict noise model_output
                 noise_pred = self.transformer(
-                    latent_model_input,
+                    hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
                     return_dict=False,

@@ -307,14 +307,17 @@ class CogVideoXLayerNormZero(nn.Module):
     def forward(
         self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        shift_msa, scale_msa, gate_msa, enc_shift_msa, enc_scale_msa, enc_gate_msa = self.linear(
+        shift, scale, gate, enc_shift, enc_scale, enc_gate = self.linear(
             self.silu(temb)
         ).chunk(6, dim=1)
-        hidden_states = self.norm(hidden_states) * (1 + scale_msa)[:, None, :] + shift_msa[:, None, :]
+        print("adaln debug:", shift.sum(), scale.sum(), gate.sum(), enc_shift.sum(), enc_scale.sum(), enc_gate.sum())
+        hidden_states = self.norm(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
+        print("hidden_states adaln:", hidden_states.sum())
         encoder_hidden_states = (
-            self.norm(encoder_hidden_states) * (1 + enc_scale_msa)[:, None, :] + enc_shift_msa[:, None, :]
+            self.norm(encoder_hidden_states) * (1 + enc_scale)[:, None, :] + enc_shift[:, None, :]
         )
-        return hidden_states, encoder_hidden_states, gate_msa[:, None, :], enc_gate_msa[:, None, :]
+        print("encoder_hidden_states adaln:", encoder_hidden_states.sum())
+        return hidden_states, encoder_hidden_states, gate[:, None, :], enc_gate[:, None, :]
 
 
 if is_torch_version(">=", "2.1.0"):

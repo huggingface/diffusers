@@ -748,7 +748,7 @@ class CogVideoXDecoder3D(nn.Module):
                 hidden_states = up_block(hidden_states, temb, sample, clear_fake_cp_cache)
 
         # 3. Post-process
-        hidden_states = self.norm_out(hidden_states, sample, clear_fake_cp_cache=clear_fake_cp_cache)
+        hidden_states = self.norm_out(hidden_states, sample)
         hidden_states = self.conv_act(hidden_states)
         hidden_states = self.conv_out(hidden_states, clear_fake_cp_cache=clear_fake_cp_cache)
         return hidden_states
