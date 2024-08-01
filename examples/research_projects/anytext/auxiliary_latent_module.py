@@ -102,9 +102,9 @@ class AuxiliaryLatentModule(nn.Module):
         if prompt is None and texts is None:
             raise ValueError("Prompt or texts must be provided!")
         n_lines = len(texts)
-        if mode in ["text-generation", "gen"]:
+        if mode  == "generate":
             edit_image = np.ones((h, w, 3)) * 127.5  # empty mask image
-        elif mode in ["text-editing", "edit"]:
+        elif mode == "edit":
             if draw_pos is None or ori_image is None:
                 raise ValueError("Reference image and position image are needed for text editing!")
             if isinstance(ori_image, str):
@@ -135,7 +135,7 @@ class AuxiliaryLatentModule(nn.Module):
         else:
             if not isinstance(draw_pos, np.ndarray):
                 raise ValueError(f"Unknown format of draw_pos: {type(draw_pos)}")
-        if mode in ["text-editing", "edit"]:
+        if mode == "edit":
             pos_imgs = cv2.resize(pos_imgs, (w, h))
         pos_imgs = pos_imgs[..., 0:1]
         pos_imgs = cv2.convertScaleAbs(pos_imgs)
