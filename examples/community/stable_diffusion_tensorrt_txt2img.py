@@ -60,7 +60,7 @@ from diffusers.utils.torch_utils import randn_tensor
 """
 Installation instructions
 python3 -m pip install --upgrade transformers diffusers>=0.16.0
-python3 -m pip install --upgrade tensorrt-cu12==10.2.0
+python3 -m pip install --upgrade tensorrt~=10.2.0
 python3 -m pip install --upgrade polygraphy>=0.47.0 onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 python3 -m pip install onnxruntime
 """
