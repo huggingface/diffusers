@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-import inspect
-from functools import partial
 from typing import Any, Dict, List, Optional, Union
 
 import torch
@@ -23,7 +21,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention import JointTransformerBlock
-from ...models.attention_processor import Attention, AttentionProcessor
+from ...models.attention_processor import Attention, AttentionProcessor, FusedJointAttnProcessor2_0
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
@@ -211,7 +209,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections with FusedAttnProcessor2_0->FusedJointAttnProcessor2_0
     def fuse_qkv_projections(self):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
@@ -235,6 +233,8 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
+        self.set_attn_processor(FusedJointAttnProcessor2_0())
+
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
@@ -252,47 +252,6 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
-
-    def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for `fuse_lora()`.")
-
-        self.lora_scale = lora_scale
-        self._safe_fusing = safe_fusing
-        self.apply(partial(self._fuse_lora_apply, adapter_names=adapter_names))
-
-    def _fuse_lora_apply(self, module, adapter_names=None):
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        merge_kwargs = {"safe_merge": self._safe_fusing}
-
-        if isinstance(module, BaseTunerLayer):
-            if self.lora_scale != 1.0:
-                module.scale_layer(self.lora_scale)
-
-            # For BC with prevous PEFT versions, we need to check the signature
-            # of the `merge` method to see if it supports the `adapter_names` argument.
-            supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
-            if "adapter_names" in supported_merge_kwargs:
-                merge_kwargs["adapter_names"] = adapter_names
-            elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
-                raise ValueError(
-                    "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
-                    " to the latest version of PEFT. `pip install -U peft`"
-                )
-
-            module.merge(**merge_kwargs)
-
-    def unfuse_lora(self):
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for `unfuse_lora()`.")
-        self.apply(self._unfuse_lora_apply)
-
-    def _unfuse_lora_apply(self, module):
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        if isinstance(module, BaseTunerLayer):
-            module.unmerge()
 
     def forward(
         self,
