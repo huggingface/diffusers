@@ -25,7 +25,7 @@ from transformers import (
 )
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin
+from ...loaders import SD3LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -142,14 +142,14 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
+class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
     r"""
     The Flux pipeline for text-to-image generation.
 
     Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
 
     Args:
-        transformer ([`SD3Transformer2DModel`]):
+        transformer ([`FluxTransformer2DModel`]):
             Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
@@ -165,19 +165,12 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             specifically the
             [laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)
             variant.
-        text_encoder_3 ([`T5EncoderModel`]):
-            Frozen text-encoder. Stable Diffusion 3 uses
-            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
-            [t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         tokenizer_2 (`CLIPTokenizer`):
             Second Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        tokenizer_3 (`T5TokenizerFast`):
-            Tokenizer of class
-            [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
@@ -212,7 +205,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
-        self.default_sample_size = 128
+        self.default_sample_size = 64
 
     def _get_t5_prompt_embeds(
         self,
