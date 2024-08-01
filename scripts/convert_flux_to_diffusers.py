@@ -20,6 +20,7 @@ CTX = init_empty_weights if is_accelerate_available else nullcontext
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--original_state_dict_repo_id", default=None, type=str)
+parser.add_argument("--filename", default="flux.safetensors", type=str)
 parser.add_argument("--checkpoint_path", default=None, type=str)
 parser.add_argument("--output_path", type=str)
 parser.add_argument("--dtype", type=str, default="bf16")
@@ -30,7 +31,7 @@ dtype = torch.bfloat16 if args.dtype == "bf16" else torch.float32
 
 def load_original_checkpoint(args):
     if args.original_state_dict_repo_id is not None:
-        ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename="flux.safetensors")
+        ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename=args.filename)
     elif args.checkpoint_path is not None:
         ckpt_path = args.checkpoint_path
     else:
@@ -80,6 +81,22 @@ def convert_flux_transformer_checkpoint_to_diffusers(
     converted_state_dict["time_text_embed.text_embedder.linear_2.bias"] = original_state_dict.pop(
         "vector_in.out_layer.bias"
     )
+
+    # guidance
+    has_guidance = any("guidance" in k for k in original_state_dict)
+    if has_guidance:
+        converted_state_dict["time_text_embed.guidance_embedder.linear_1.weight"] = original_state_dict.pop(
+            "guidance_in.in_layer.weight"
+        )
+        converted_state_dict["time_text_embed.guidance_embedder.linear_1.bias"] = original_state_dict.pop(
+            "guidance_in.in_layer.bias"
+        )
+        converted_state_dict["time_text_embed.guidance_embedder.linear_2.weight"] = original_state_dict.pop(
+            "guidance_in.out_layer.weight"
+        )
+        converted_state_dict["time_text_embed.guidance_embedder.linear_2.bias"] = original_state_dict.pop(
+            "guidance_in.out_layer.bias"
+        )
 
     # context_embedder
     converted_state_dict["context_embedder.weight"] = original_state_dict.pop("txt_in.weight")
@@ -238,6 +255,8 @@ def convert_flux_transformer_checkpoint_to_diffusers(
 
 def main(args):
     original_ckpt = load_original_checkpoint(args)
+    has_guidance = any("guidance" in k for k in original_ckpt)
+
     num_layers = 19
     num_single_layers = 38
     inner_dim = 3072
@@ -245,10 +264,12 @@ def main(args):
     converted_transformer_state_dict = convert_flux_transformer_checkpoint_to_diffusers(
         original_ckpt, num_layers, num_single_layers, inner_dim, mlp_ratio=mlp_ratio
     )
-    transformer = FluxTransformer2DModel()
+    transformer = FluxTransformer2DModel(guidance_embeds=has_guidance)
     transformer.load_state_dict(converted_transformer_state_dict, strict=True)
 
-    print("Saving Flux Transformer in Diffusers format.")
+    print(
+        f"Saving Flux Transformer in Diffusers format. Variant: {'guidance-distilled' if has_guidance else 'timestep-distilled'}"
+    )
     transformer.to(dtype).save_pretrained(f"{args.output_path}/transformer")
 
 

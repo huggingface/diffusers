@@ -27,7 +27,7 @@ from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..embeddings import CombinedTimestepTextProjEmbeddings
+from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
 
 
@@ -225,23 +225,20 @@ class FluxTransformerBlock(nn.Module):
 
 class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     """
-    The Transformer model introduced in Stable Diffusion 3.
+    The Transformer model introduced in Flux.
 
-    Reference: https://arxiv.org/abs/2403.03206
+    Reference: https://blackforestlabs.ai/2024/07/31/announcing-black-forest-labs/
 
     Parameters:
-        sample_size (`int`): The width of the latent images. This is fixed during training since
-            it is used to learn a number of position embeddings.
         patch_size (`int`): Patch size to turn the input data into small patches.
         in_channels (`int`, *optional*, defaults to 16): The number of channels in the input.
-        num_layers (`int`, *optional*, defaults to 18): The number of layers of Transformer blocks to use.
+        num_layers (`int`, *optional*, defaults to 18): The number of layers of MMDiT blocks to use.
+        num_single_layers (`int`, *optional*, defaults to 18): The number of layers of single DiT blocks to use.
         attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
         num_attention_heads (`int`, *optional*, defaults to 18): The number of heads to use for multi-head attention.
-        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        caption_projection_dim (`int`): Number of dimensions to use when projecting the `encoder_hidden_states`.
+        joint_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
         pooled_projection_dim (`int`): Number of dimensions to use when projecting the `pooled_projections`.
-        out_channels (`int`, defaults to 16): Number of output channels.
-
+        guidance_embeds (`bool`, defaults to False): Whether to use guidance embeddings.
     """
 
     _supports_gradient_checkpointing = True
@@ -257,13 +254,17 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         num_attention_heads: int = 24,
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
+        guidance_embeds: bool = False,
     ):
         super().__init__()
         self.out_channels = in_channels
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
         self.pos_embed = EmbedND(dim=self.inner_dim, theta=10000, axes_dim=[16, 56, 56])
-        self.time_text_embed = CombinedTimestepTextProjEmbeddings(
+        text_time_guidance_cls = (
+            CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
+        )
+        self.time_text_embed = text_time_guidance_cls(
             embedding_dim=self.inner_dim, pooled_projection_dim=self.config.pooled_projection_dim
         )
 
@@ -351,8 +352,16 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                 )
         hidden_states = self.x_embedder(hidden_states)
 
-        timestep = timestep * 1000
-        temb = self.time_text_embed(timestep, pooled_projections)
+        timestep = timestep.to(hidden_states.dtype) * 1000
+        if guidance is not None:
+            guidance = guidance.to(hidden_states.dtype) * 1000
+        else:
+            guidance = None
+        temb = (
+            self.time_text_embed(timestep, pooled_projections)
+            if guidance is None
+            else self.time_text_embed(timestep, guidance, pooled_projections)
+        )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         ids = torch.cat((txt_ids, img_ids), dim=1)
