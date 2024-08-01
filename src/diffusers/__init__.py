@@ -70,7 +70,8 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils import dummy_pt_objects  # noqa F403
 
-    _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
+    _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")
+    ]
 
 else:
     _import_structure["models"].extend(
@@ -207,8 +208,7 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils import dummy_torch_and_torchsde_objects  # noqa F403
 
-    _import_structure["utils.dummy_torch_and_torchsde_objects"] = [
-        name for name in dir(dummy_torch_and_torchsde_objects) if not name.startswith("_")
+    _import_structure["utils.dummy_torch_and_torchsde_objects"] = [name for name in dir(dummy_torch_and_torchsde_objects) if not name.startswith("_")
     ]
 
 else:
@@ -220,8 +220,7 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils import dummy_torch_and_transformers_objects  # noqa F403
 
-    _import_structure["utils.dummy_torch_and_transformers_objects"] = [
-        name for name in dir(dummy_torch_and_transformers_objects) if not name.startswith("_")
+    _import_structure["utils.dummy_torch_and_transformers_objects"] = [name for name in dir(dummy_torch_and_transformers_objects) if not name.startswith("_")
     ]
 
 else:
@@ -251,6 +250,7 @@ else:
             "CycleDiffusionPipeline",
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPipeline",
+            "HunyuanDiTImg2ImgPipeline",
             "I2VGenXLPipeline",
             "IFImg2ImgPipeline",
             "IFImg2ImgSuperResolutionPipeline",
@@ -370,7 +370,8 @@ else:
     )
 
 try:
-    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
+    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()
+    ):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils import dummy_torch_and_transformers_and_k_diffusion_objects  # noqa F403
@@ -380,7 +381,9 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
-    _import_structure["pipelines"].extend(["StableDiffusionKDiffusionPipeline", "StableDiffusionXLKDiffusionPipeline"])
+    _import_structure["pipelines"].extend(
+        ["StableDiffusionKDiffusionPipeline", "StableDiffusionXLKDiffusionPipeline"]
+    )
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
@@ -670,6 +673,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CLIPImageProjection,
             CycleDiffusionPipeline,
             HunyuanDiTControlNetPipeline,
+            HunyuanDiTImg2ImgPipeline,
             HunyuanDiTPipeline,
             I2VGenXLPipeline,
             IFImg2ImgPipeline,

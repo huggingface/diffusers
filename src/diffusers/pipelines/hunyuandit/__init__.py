@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_hunyuandit"] = ["HunyuanDiTPipeline"]
+    _import_structure["pipeline_hunyuandit_img2img"] = ["HunyuanDiTImg2ImgPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_hunyuandit import HunyuanDiTPipeline
+        from .pipeline_hunyuandit_img2img import HunyuanDiTImg2ImgPipeline
 
 else:
     import sys
