@@ -102,7 +102,7 @@ class AuxiliaryLatentModule(nn.Module):
         if prompt is None and texts is None:
             raise ValueError("Prompt or texts must be provided!")
         n_lines = len(texts)
-        if mode  == "generate":
+        if mode == "generate":
             edit_image = np.ones((h, w, 3)) * 127.5  # empty mask image
         elif mode == "edit":
             if draw_pos is None or ori_image is None:
