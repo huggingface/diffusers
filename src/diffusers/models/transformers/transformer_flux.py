@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -49,7 +49,7 @@ def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
 
 # YiYi to-do: refactor rope related functions/classes
 class EmbedND(nn.Module):
-    def __init__(self, dim: int, theta: int, axes_dim: list[int]):
+    def __init__(self, dim: int, theta: int, axes_dim: List[int]):
         super().__init__()
         self.dim = dim
         self.theta = theta
