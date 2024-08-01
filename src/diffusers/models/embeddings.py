@@ -362,7 +362,7 @@ class CogVideoXPatchEmbed(nn.Module):
         text_embeds = self.text_proj(text_embeds)
 
         B, F, C, H, W = image_embeds.shape
-        image_embeds = image_embeds.view(-1, C, H, W)
+        image_embeds = image_embeds.reshape(-1, C, H, W)
         image_embeds = self.proj(image_embeds)
         image_embeds = image_embeds.view(B, F, *image_embeds.shape[1:])
         image_embeds = image_embeds.flatten(3).transpose(2, 3)  # [B, F, H x W, C]

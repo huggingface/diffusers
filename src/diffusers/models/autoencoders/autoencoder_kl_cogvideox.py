@@ -470,9 +470,9 @@ class CogVideoXUpBlock3D(nn.Module):
         return hidden_states
 
 
-class Encoder3D(nn.Module):
+class CogVideoXEncoder3D(nn.Module):
     r"""
-    The `Encoder3D` layer of a variational autoencoder that encodes its input into a latent representation.
+    The `CogVideoXEncoder3D` layer of a variational autoencoder that encodes its input into a latent representation.
 
     Args:
         in_channels (`int`, *optional*, defaults to 3):
@@ -572,7 +572,7 @@ class Encoder3D(nn.Module):
     def forward(
         self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = True
     ) -> torch.Tensor:
-        r"""The forward method of the `Encoder3D` class."""
+        r"""The forward method of the `CogVideoXEncoder3D` class."""
         hidden_states = self.conv_in(sample, clear_fake_cp_cache=clear_fake_cp_cache)
 
         if self.training and self.gradient_checkpointing:
@@ -608,9 +608,10 @@ class Encoder3D(nn.Module):
         return hidden_states
 
 
-class Decoder3D(nn.Module):
+class CogVideoXDecoder3D(nn.Module):
     r"""
-    The `Decoder3D` layer of a variational autoencoder that decodes its latent representation into an output sample.
+    The `CogVideoXDecoder3D` layer of a variational autoencoder that decodes its latent representation into an output
+    sample.
 
     Args:
         in_channels (`int`, *optional*, defaults to 3):
@@ -718,7 +719,7 @@ class Decoder3D(nn.Module):
     def forward(
         self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = True
     ) -> torch.Tensor:
-        r"""The forward method of the `Decoder3D` class."""
+        r"""The forward method of the `CogVideoXDecoder3D` class."""
         hidden_states = self.conv_in(sample, clear_fake_cp_cache=clear_fake_cp_cache)
 
         if self.training and self.gradient_checkpointing:
@@ -827,7 +828,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     ):
         super().__init__()
 
-        self.encoder = Encoder3D(
+        self.encoder = CogVideoXEncoder3D(
             in_channels=in_channels,
             out_channels=latent_channels,
             down_block_types=down_block_types,
@@ -838,7 +839,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             norm_num_groups=norm_num_groups,
             temporal_compression_ratio=temporal_compression_ratio,
         )
-        self.decoder = Decoder3D(
+        self.decoder = CogVideoXDecoder3D(
             in_channels=latent_channels,
             out_channels=out_channels,
             up_block_types=up_block_types,
@@ -865,7 +866,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.tile_overlap_factor = 0.25
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (Encoder3D, Decoder3D)):
+        if isinstance(module, (CogVideoXEncoder3D, CogVideoXDecoder3D)):
             module.gradient_checkpointing = value
 
     def enable_tiling(self, use_tiling: bool = True):
@@ -910,6 +911,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
             fake_cp (`bool`, *optional*, defaults to `True`):
                 If True, the fake context parallel will be used to reduce GPU memory consumption (Only 1 GPU work).
+
         Returns:
                 The latent representations of the encoded images. If `return_dict` is True, a
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
@@ -935,6 +937,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 Whether to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
             fake_cp (`bool`, *optional*, defaults to `True`):
                 If True, the fake context parallel will be used to reduce GPU memory consumption (Only 1 GPU work).
+
         Returns:
             [`~models.vae.DecoderOutput`] or `tuple`:
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
@@ -946,7 +949,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         dec = self.decoder(z, clear_fake_cp_cache=not fake_cp)
         if not return_dict:
             return (dec,)
-        return dec
+        return DecoderOutput(sample=dec)
 
     def forward(
         self,

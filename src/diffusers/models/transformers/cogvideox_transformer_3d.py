@@ -308,41 +308,41 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        sample: torch.Tensor,
+        hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.LongTensor],
         attention_mask: Optional[Union[int, torch.Tensor]] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
-        batch_size, num_frames, channels, height, width = sample.shape
+        batch_size, num_frames, channels, height, width = hidden_states.shape
 
         # 1. Time embedding
         timesteps = timestep
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
+            is_mps = hidden_states.device.type == "mps"
             if isinstance(timestep, float):
                 dtype = torch.float32 if is_mps else torch.float64
             else:
                 dtype = torch.int32 if is_mps else torch.int64
-            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+            timesteps = torch.tensor([timesteps], dtype=dtype, device=hidden_states.device)
         elif len(timesteps.shape) == 0:
-            timesteps = timesteps[None].to(sample.device)
+            timesteps = timesteps[None].to(hidden_states.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        timesteps = timesteps.expand(sample.shape[0])
+        timesteps = timesteps.expand(hidden_states.shape[0])
         t_emb = self.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
-        t_emb = t_emb.to(dtype=sample.dtype)
+        t_emb = t_emb.to(dtype=hidden_states.dtype)
         emb = self.time_embedding(t_emb, timestep_cond)
 
         # 2. Patch embedding
-        hidden_states = self.patch_embed(encoder_hidden_states, sample)
+        hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
 
         # 3. Position embedding
         seq_length = height * width * num_frames // (self.config.patch_size**2)
@@ -358,7 +358,7 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         # 4. Prepare attention mask
         if attention_mask is None:
             attention_mask = torch.ones(batch_size, self.num_patches + self.config.max_text_seq_length)
-        attention_mask = attention_mask.to(device=sample.device, dtype=sample.dtype)
+        attention_mask = attention_mask.to(device=hidden_states.device, dtype=hidden_states.dtype)
 
         # 5. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
