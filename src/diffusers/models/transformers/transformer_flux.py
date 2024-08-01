@@ -351,7 +351,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                 )
         hidden_states = self.x_embedder(hidden_states)
 
-        timestep = timestep * 1000
+        timestep = timestep.to(hidden_states.dtype) * 1000
         temb = self.time_text_embed(timestep, pooled_projections)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
