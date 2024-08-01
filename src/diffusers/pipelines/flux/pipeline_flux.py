@@ -1,4 +1,4 @@
-# TODO: Add orgs
+# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -63,6 +63,8 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
+        >>> # Depending on the variant being used, the pipeline call will slightly vary.
+        >>> # Refer to the pipeline documentation for more details.
         >>> image = pipe(prompt).images[0]
         >>> image.save("sd3.png")
         ```
@@ -686,7 +688,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+            max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
 
         Examples:
 
