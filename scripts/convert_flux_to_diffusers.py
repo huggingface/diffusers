@@ -6,14 +6,29 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 
-from diffusers import FluxTransformer2DModel
+from diffusers import AutoencoderKL, FluxTransformer2DModel
+from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
 from diffusers.utils.import_utils import is_accelerate_available
 
 
 """
+# Transformer
+
 python scripts/convert_flux_to_diffusers.py  \
---original_state_dict_repo_id "diffusers-internal-dev/dummy-model-2" \
---output_path "flux"
+--original_state_dict_repo_id "black-forest-labs/FLUX.1-schnell" \
+--filename "flux1-schnell.sft"
+--output_path "flux-schnell" \
+--transformer
+"""
+
+"""
+# VAE
+
+python scripts/convert_flux_to_diffusers.py  \
+--original_state_dict_repo_id "black-forest-labs/FLUX.1-schnell" \
+--filename "ae.sft"
+--output_path "flux-schnell" \
+--vae
 """
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
@@ -22,6 +37,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--original_state_dict_repo_id", default=None, type=str)
 parser.add_argument("--filename", default="flux.safetensors", type=str)
 parser.add_argument("--checkpoint_path", default=None, type=str)
+parser.add_argument("--vae", action="store_true")
+parser.add_argument("--transformer", action="store_true")
 parser.add_argument("--output_path", type=str)
 parser.add_argument("--dtype", type=str, default="bf16")
 
@@ -257,20 +274,29 @@ def main(args):
     original_ckpt = load_original_checkpoint(args)
     has_guidance = any("guidance" in k for k in original_ckpt)
 
-    num_layers = 19
-    num_single_layers = 38
-    inner_dim = 3072
-    mlp_ratio = 4.0
-    converted_transformer_state_dict = convert_flux_transformer_checkpoint_to_diffusers(
-        original_ckpt, num_layers, num_single_layers, inner_dim, mlp_ratio=mlp_ratio
-    )
-    transformer = FluxTransformer2DModel(guidance_embeds=has_guidance)
-    transformer.load_state_dict(converted_transformer_state_dict, strict=True)
+    if args.transformer:
+        num_layers = 19
+        num_single_layers = 38
+        inner_dim = 3072
+        mlp_ratio = 4.0
+        converted_transformer_state_dict = convert_flux_transformer_checkpoint_to_diffusers(
+            original_ckpt, num_layers, num_single_layers, inner_dim, mlp_ratio=mlp_ratio
+        )
+        transformer = FluxTransformer2DModel(guidance_embeds=has_guidance)
+        transformer.load_state_dict(converted_transformer_state_dict, strict=True)
 
-    print(
-        f"Saving Flux Transformer in Diffusers format. Variant: {'guidance-distilled' if has_guidance else 'timestep-distilled'}"
-    )
-    transformer.to(dtype).save_pretrained(f"{args.output_path}/transformer")
+        print(
+            f"Saving Flux Transformer in Diffusers format. Variant: {'guidance-distilled' if has_guidance else 'timestep-distilled'}"
+        )
+        transformer.to(dtype).save_pretrained(f"{args.output_path}/transformer")
+
+    if args.vae:
+        config = AutoencoderKL.load_config("stabilityai/stable-diffusion-3-medium-diffusers", subfolder="vae")
+        vae = AutoencoderKL.from_config(config, scaling_factor=0.3611, shift_factor=0.1159).to(torch.bfloat16)
+
+        converted_vae_state_dict = convert_ldm_vae_checkpoint(original_ckpt, vae.config)
+        vae.load_state_dict(converted_vae_state_dict, strict=True)
+        vae.to(dtype).save_pretrained(f"{args.output_path}/vae")
 
 
 if __name__ == "__main__":
