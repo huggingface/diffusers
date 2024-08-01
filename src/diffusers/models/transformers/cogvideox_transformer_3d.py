@@ -149,14 +149,11 @@ class CogVideoXBlock(nn.Module):
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
         )
-        print("norm 1:", norm_hidden_states.sum(), norm_encoder_hidden_states.sum(), gate_msa.sum(), enc_gate_msa.sum())
 
         # attention
         text_length = norm_encoder_hidden_states.size(1)
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
-        print("norm concat attn:", norm_hidden_states.sum())
         attn_output = self.attn1(norm_hidden_states, attention_mask=attention_mask)
-        print("attn output:", attn_output.sum())
 
         hidden_states = hidden_states + gate_msa * attn_output[:, text_length:]
         encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_output[:, :text_length]
@@ -165,21 +162,17 @@ class CogVideoXBlock(nn.Module):
         norm_hidden_states, norm_encoder_hidden_states, gate_ff, enc_gate_ff = self.norm2(
             hidden_states, encoder_hidden_states, temb
         )
-        print("norm 2:", norm_hidden_states.sum(), norm_encoder_hidden_states.sum(), gate_ff.sum(), enc_gate_ff.sum())
 
         # feed-forward
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
-        print("norm concat mlp:", norm_hidden_states.sum())
 
         if self._chunk_size is not None:
             ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
         else:
             ff_output = self.ff(norm_hidden_states)
-        print("ff:", ff_output.sum())
 
         hidden_states = hidden_states + gate_ff * ff_output[:, text_length:]
         encoder_hidden_states = encoder_hidden_states + enc_gate_ff * ff_output[:, :text_length]
-        print("block output:", hidden_states.sum(), encoder_hidden_states.sum())
         return hidden_states, encoder_hidden_states
 
 
@@ -349,20 +342,16 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=hidden_states.dtype)
         emb = self.time_embedding(t_emb, timestep_cond)
-        print("emb:", emb.sum())
 
         # 2. Patch embedding
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
-        print("hidden_states patch_embed:", hidden_states.sum())
 
         # 3. Position embedding
         seq_length = height * width * num_frames // (self.config.patch_size**2)
 
         pos_embeds = self.pos_embedding[:, : self.config.max_text_seq_length + seq_length]
-        print("pos_embeds:", pos_embeds.sum())
         hidden_states = hidden_states + pos_embeds
         hidden_states = self.embedding_dropout(hidden_states)
-        print("hidden_states embedding:", hidden_states.sum())
 
         encoder_hidden_states = hidden_states[:, : self.config.max_text_seq_length]
         hidden_states = hidden_states[:, self.config.max_text_seq_length :]
@@ -398,26 +387,18 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
                     temb=emb,
                     attention_mask=attention_mask,
                 )
-            
-            print("hidden_states loop:", i, hidden_states.sum())
-            print("encoder_hidden_states loop:", i, encoder_hidden_states.sum())
 
         hidden_states = self.norm_final(hidden_states)
-        print("hidden_states norm_final:", hidden_states.sum())
 
         # 6. Final block
         shift, scale = self.adaln_out(emb).chunk(2, dim=1)
-        print("adaln shift scale:", shift.sum(), scale.sum())
         hidden_states = self.norm_out(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
-        print("hidden_states norm_out:", hidden_states.sum())
         hidden_states = self.proj_out(hidden_states)
-        print("hidden_states proj_out:", hidden_states.sum())
 
         # 7. Unpatchify
         p = self.config.patch_size
         output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, p, p, channels)
         output = output.permute(0, 1, 6, 2, 4, 3, 5).flatten(5, 6).flatten(3, 4)
-        print("output:", output.sum())
 
         if not return_dict:
             return (output,)

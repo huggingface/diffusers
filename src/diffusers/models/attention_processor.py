@@ -2091,11 +2091,9 @@ class CogVideoXAttnProcessor2_0:
             # (batch, heads, source_length, target_length)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
-        print("attention hidden states:", hidden_states.sum())
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
-        print("attention proj:", query.sum(), key.sum(), value.sum())
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -2109,14 +2107,12 @@ class CogVideoXAttnProcessor2_0:
             query = attn.norm_q(query)
         if attn.norm_k is not None:
             key = attn.norm_k(key)
-        print("attention norm:", query.sum(), key.sum(), value.sum())
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
-        print("attn hidden_states:", hidden_states.sum())
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -2125,7 +2121,6 @@ class CogVideoXAttnProcessor2_0:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
-        print("attn to_out:", hidden_states.sum())
 
         if input_ndim == 4:
             hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)

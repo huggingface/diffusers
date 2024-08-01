@@ -310,13 +310,10 @@ class CogVideoXLayerNormZero(nn.Module):
         shift, scale, gate, enc_shift, enc_scale, enc_gate = self.linear(
             self.silu(temb)
         ).chunk(6, dim=1)
-        print("adaln debug:", shift.sum(), scale.sum(), gate.sum(), enc_shift.sum(), enc_scale.sum(), enc_gate.sum())
         hidden_states = self.norm(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
-        print("hidden_states adaln:", hidden_states.sum())
         encoder_hidden_states = (
             self.norm(encoder_hidden_states) * (1 + enc_scale)[:, None, :] + enc_shift[:, None, :]
         )
-        print("encoder_hidden_states adaln:", encoder_hidden_states.sum())
         return hidden_states, encoder_hidden_states, gate[:, None, :], enc_gate[:, None, :]
 
 
