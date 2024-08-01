@@ -58,13 +58,11 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import FluxPipeline
 
-        >>> pipe = FluxPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
-        ... )
+        >>> pipe = FluxPipeline.from_pretrained("", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> image = pipe(prompt).images[0]
-        >>> image.save("sd3.png")
+        >>> image.save("flux.png")
         ```
 """
 
@@ -189,7 +187,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             scheduler=scheduler,
         )
         self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 16
+            2 ** (len(self.vae.config.block_out_channels)) if hasattr(self, "vae") and self.vae is not None else 16
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.tokenizer_max_length = (
@@ -504,7 +502,8 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
-    def _prepare_latent_image_ids(self, batch_size, height, width, device, dtype):
+    @staticmethod
+    def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
         latent_image_ids = torch.zeros(height // 2, width // 2, 3)
         latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
         latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width // 2)[None, :]
@@ -517,6 +516,28 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
         )
 
         return latent_image_ids.to(device=device, dtype=dtype)
+
+    @staticmethod
+    def _pack_latents(latents, batch_size, num_channels_latents, height, width):
+        latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
+        latents = latents.permute(0, 2, 4, 1, 3, 5)
+        latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
+
+        return latents
+
+    @staticmethod
+    def _unpack_latents(latents, height, width, vae_scale_factor):
+        batch_size, num_patches, channels = latents.shape
+
+        height = height // vae_scale_factor
+        width = width // vae_scale_factor
+
+        latents = latents.view(batch_size, height, width, channels // 4, 2, 2)
+        latents = latents.permute(0, 3, 1, 4, 2, 5)
+
+        latents = latents.reshape(batch_size, channels // (2 * 2), height * 2, width * 2)
+
+        return latents
 
     def prepare_latents(
         self,
@@ -545,10 +566,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-
-        latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
-        latents = latents.permute(0, 2, 4, 1, 3, 5)
-        latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
+        latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
 
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
 
@@ -837,6 +855,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
             image = latents
 
         else:
+            latents = self._unpack_latents(latents, height, width, self.vae_scale_factor)
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
 
             image = self.vae.decode(latents, return_dict=False)[0]
