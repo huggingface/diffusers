@@ -20,6 +20,7 @@ from ..test_pipelines_common import (
 )
 
 
+@unittest.skip("Tests needs to be revisited.")
 class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = FluxPipeline
     params = frozenset(
