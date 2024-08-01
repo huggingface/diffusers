@@ -700,20 +700,18 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
                 if self.interrupt:
                     continue
 
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
+                timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
                 # handle guidance
                 if self.transformer.config.guidance_embeds:
                     guidance = torch.tensor([guidance_scale])
-                    guidance = guidance.expand(latent_model_input.shape[0])
+                    guidance = guidance.expand(latents.shape[0])
                 else:
                     guidance = None
 
                 noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
+                    hidden_states=latents,
                     # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
                     timestep=timestep / 1000,
                     guidance=guidance,
