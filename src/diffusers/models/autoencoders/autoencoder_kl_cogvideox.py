@@ -201,14 +201,15 @@ class CogVideoXResnetBlock3D(nn.Module):
                 f_channels=out_channels,
                 zq_channels=spatial_norm_dim,
             )
+
         self.conv1 = CogVideoXCausalConv3d(
             in_channels=in_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
         )
+
         if temb_channels > 0:
             self.temb_proj = nn.Linear(in_features=temb_channels, out_features=out_channels)
 
         self.dropout = nn.Dropout(dropout)
-
         self.conv2 = CogVideoXCausalConv3d(
             in_channels=out_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
         )
@@ -225,12 +226,12 @@ class CogVideoXResnetBlock3D(nn.Module):
 
     def forward(
         self,
-        input_tensor: torch.Tensor,
+        inputs: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
         clear_fake_cp_cache: bool = True,
     ) -> torch.Tensor:
-        hidden_states = input_tensor
+        hidden_states = inputs
         if zq is not None:
             hidden_states = self.norm1(hidden_states, zq)
         else:
@@ -245,18 +246,18 @@ class CogVideoXResnetBlock3D(nn.Module):
             hidden_states = self.norm2(hidden_states, zq)
         else:
             hidden_states = self.norm2(hidden_states)
+
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states, clear_fake_cp_cache=clear_fake_cp_cache)
 
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
-                input_tensor = self.conv_shortcut(input_tensor, clear_fake_cp_cache=clear_fake_cp_cache)
+                inputs = self.conv_shortcut(inputs, clear_fake_cp_cache=clear_fake_cp_cache)
             else:
-                input_tensor = self.conv_shortcut(input_tensor)
+                inputs = self.conv_shortcut(inputs)
 
-        output_tensor = input_tensor + hidden_states
-
+        output_tensor = inputs + hidden_states
         return output_tensor
 
 
@@ -657,8 +658,6 @@ class CogVideoXDecoder3D(nn.Module):
 
         reversed_block_out_channels = list(reversed(block_out_channels))
 
-        resolution = block_out_channels[-1] // 2 ** (len(block_out_channels) - 1)
-        self.z_shape = (1, in_channels, resolution, resolution)
         self.conv_in = CogVideoXCausalConv3d(
             in_channels, reversed_block_out_channels[0], kernel_size=3, pad_mode=pad_mode
         )

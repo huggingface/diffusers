@@ -45,7 +45,7 @@ def reassign_adaln_norm_inplace(key: str, state_dict: Dict[str, Any]):
     state_dict.pop(key)
 
 
-def remove_loss_keys_inplace(key: str, state_dict: Dict[str, Any]):
+def remove_keys_inplace(key: str, state_dict: Dict[str, Any]):
     state_dict.pop(key)
 
 
@@ -85,6 +85,7 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "query_layernorm_list": reassign_query_key_layernorm_inplace,
     "key_layernorm_list": reassign_query_key_layernorm_inplace,
     "adaln_layer.adaLN_modulations": reassign_adaln_norm_inplace,
+    "embed_tokens": remove_keys_inplace,
 }
 
 VAE_KEYS_RENAME_DICT = {
@@ -100,7 +101,7 @@ VAE_KEYS_RENAME_DICT = {
 }
 
 VAE_SPECIAL_KEYS_REMAP = {
-    "loss": remove_loss_keys_inplace,
+    "loss": remove_keys_inplace,
     "up.": replace_up_keys_inplace,
 }
 
@@ -137,12 +138,6 @@ def convert_transformer(ckpt_path: str):
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
-
-    # remove incompatible key
-
-    incompatible_key = '0.transformer_blocks.encoder.embed_tokens.weight'
-    if incompatible_key in original_state_dict.keys():
-        original_state_dict.pop(incompatible_key)
 
     transformer.load_state_dict(original_state_dict, strict=True)
     return transformer
