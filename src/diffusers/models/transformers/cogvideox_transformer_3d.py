@@ -232,7 +232,7 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         sample_height: int = 60,
         sample_frames: int = 49,
         patch_size: int = 2,
-        time_compression: int = 4,
+        temporal_compression_ratio: int = 4,
         max_text_seq_length: int = 225,
         activation_fn: str = "gelu-approximate",
         timestep_activation_fn: str = "silu",
@@ -251,7 +251,7 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
 
         post_patch_height = sample_height // patch_size
         post_patch_width = sample_width // patch_size
-        post_time_compression_frames = (sample_frames - 1) // time_compression + 1
+        post_time_compression_frames = (sample_frames - 1) // temporal_compression_ratio + 1
         self.num_patches = post_patch_height * post_patch_width * post_time_compression_frames
 
         # 1. Patch embedding
