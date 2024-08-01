@@ -253,6 +253,8 @@
       title: HunyuanDiT2DModel
     - local: api/models/aura_flow_transformer2d
       title: AuraFlowTransformer2DModel
+    - local: api/models/flux_transformer
+      title: FluxTransformer2DModel
     - local: api/models/latte_transformer3d
       title: LatteTransformer3DModel
     - local: api/models/lumina_nextdit2d
@@ -320,6 +322,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/flux
+      title: Flux
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
     - local: api/pipelines/i2vgenxl
