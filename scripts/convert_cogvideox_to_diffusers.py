@@ -105,6 +105,8 @@ VAE_SPECIAL_KEYS_REMAP = {
     "up.": replace_up_keys_inplace,
 }
 
+TOKENIZER_MAX_LENGTH = 226
+
 
 def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
     state_dict = saved_dict
@@ -189,7 +191,7 @@ if __name__ == "__main__":
         vae = convert_vae(args.vae_ckpt_path)
 
     text_encoder_id = "google/t5-v1_1-xxl"
-    tokenizer = T5Tokenizer.from_pretrained(text_encoder_id)
+    tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id)
 
     # TODO: verify with authors

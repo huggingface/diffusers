@@ -346,14 +346,13 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
 
         # 3. Position embedding
         seq_length = height * width * num_frames // (self.config.patch_size**2)
-        text_seq_length = encoder_hidden_states.size(1)
 
         pos_embeds = self.pos_embedding[:, : self.config.max_text_seq_length + seq_length]
         hidden_states = hidden_states + pos_embeds
         hidden_states = self.embedding_dropout(hidden_states)
 
-        encoder_hidden_states = hidden_states[:, :text_seq_length]
-        hidden_states = hidden_states[:, text_seq_length:]
+        encoder_hidden_states = hidden_states[:, : self.config.max_text_seq_length]
+        hidden_states = hidden_states[:, self.config.max_text_seq_length :]
 
         # 4. Prepare attention mask
         if attention_mask is None:
