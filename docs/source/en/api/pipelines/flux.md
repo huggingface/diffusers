@@ -12,9 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Flux
 
-TODO
+Flux is a series of text-to-image generation models based on diffusion transformers. To know more about Flux, check out the original [blog post](https://blackforestlabs.ai/2024/07/31/announcing-black-forest-labs/) by the creators of Flux, Black Forest Labs. 
 
-Original model checkpoints and code for Flux can be found [here](https://huggingface.co/black-forest-labs). 
+Original model checkpoints for Flux can be found [here](https://huggingface.co/black-forest-labs). Original inference code can be found [here](https://github.com/black-forest-labs/flux).
 
 <Tip>
 
@@ -39,7 +39,7 @@ Both checkpoints have slightly difference usage which we detail below.
 import torch
 from diffusers import  FluxPipeline
 
-pipe = FluxPipeline.from_pretrained("todo", torch_dtype=torch.bfloat16)
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
 
 prompt = "A cat holding a sign that says hello world"
@@ -63,7 +63,7 @@ out.save("image.png")
 import torch
 from diffusers import  FluxPipeline
 
-pipe = FluxPipeline.from_pretrained("todo", torch_dtype=torch.bfloat16)
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
 
 prompt = "a tiny astronaut hatching from an egg on the moon"
