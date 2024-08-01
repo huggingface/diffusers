@@ -54,22 +54,21 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import (
-        ...     EulerDiscreteScheduler,
-        ...     MotionAdapter,
-        ...     PIAPipeline,
-        ... )
+        >>> from diffusers import EulerDiscreteScheduler, MotionAdapter, PIAPipeline
         >>> from diffusers.utils import export_to_gif, load_image
 
-        >>> adapter = MotionAdapter.from_pretrained("../checkpoints/pia-diffusers")
-        >>> pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter)
+        >>> adapter = MotionAdapter.from_pretrained("openmmlab/PIA-condition-adapter")
+        >>> pipe = PIAPipeline.from_pretrained(
+        ...     "SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter, torch_dtype=torch.float16
+        ... )
+
         >>> pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
         ... )
         >>> image = image.resize((512, 512))
         >>> prompt = "cat in a hat"
-        >>> negative_prompt = "wrong white balance, dark, sketches,worst quality,low quality, deformed, distorted, disfigured, bad eyes, wrong lips,weird mouth, bad teeth, mutated hands and fingers, bad anatomy,wrong anatomy, amputation, extra limb, missing limb, floating,limbs, disconnected limbs, mutation, ugly, disgusting, bad_pictures, negative_hand-neg"
+        >>> negative_prompt = "wrong white balance, dark, sketches, worst quality, low quality, deformed, distorted"
         >>> generator = torch.Generator("cpu").manual_seed(0)
         >>> output = pipe(image=image, prompt=prompt, negative_prompt=negative_prompt, generator=generator)
         >>> frames = output.frames[0]
