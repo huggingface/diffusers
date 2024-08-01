@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # FluxTransformer2DModel
 
-A Transformer model for image-like data from [Flux](https://blackforestlabs.ai/2024/07/31/announcing-black-forest-labs/).
+A Transformer model for image-like data from [Flux](https://blackforestlabs.ai/announcing-black-forest-labs/).
 
 ## FluxTransformer2DModel
 

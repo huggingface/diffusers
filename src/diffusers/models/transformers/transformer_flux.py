@@ -227,7 +227,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
     """
     The Transformer model introduced in Flux.
 
-    Reference: https://blackforestlabs.ai/2024/07/31/announcing-black-forest-labs/
+    Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
 
     Parameters:
         patch_size (`int`): Patch size to turn the input data into small patches.

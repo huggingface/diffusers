@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Flux
 
-Flux is a series of text-to-image generation models based on diffusion transformers. To know more about Flux, check out the original [blog post](https://blackforestlabs.ai/2024/07/31/announcing-black-forest-labs/) by the creators of Flux, Black Forest Labs. 
+Flux is a series of text-to-image generation models based on diffusion transformers. To know more about Flux, check out the original [blog post](https://blackforestlabs.ai/announcing-black-forest-labs/) by the creators of Flux, Black Forest Labs. 
 
 Original model checkpoints for Flux can be found [here](https://huggingface.co/black-forest-labs). Original inference code can be found [here](https://github.com/black-forest-labs/flux).
 
