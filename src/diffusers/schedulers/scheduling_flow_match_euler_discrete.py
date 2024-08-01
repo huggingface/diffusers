@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
@@ -65,12 +66,19 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_train_timesteps: int = 1000,
         shift: float = 1.0,
+        use_dynamic_shifting=False,
+        base_shift: Optional[float] = 0.5,
+        max_shift: Optional[float] = 1.15,
+        base_image_seq_len: Optional[int] = 256,
+        max_image_seq_len: Optional[int] = 4096,
     ):
         timesteps = np.linspace(1, num_train_timesteps, num_train_timesteps, dtype=np.float32)[::-1].copy()
         timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
 
         sigmas = timesteps / num_train_timesteps
-        sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)
+        if not use_dynamic_shifting:
+            # when use_dynamic_shifting is True, we apply the timestep shifting on the fly based on the image resolution
+            sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)
 
         self.timesteps = sigmas * num_train_timesteps
 
@@ -157,11 +165,15 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def _sigma_to_t(self, sigma):
         return sigma * self.config.num_train_timesteps
 
+    def time_shift(self, mu: float, sigma: float, t: torch.Tensor):
+        return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
+
     def set_timesteps(
         self,
         num_inference_steps: int = None,
         device: Union[str, torch.device] = None,
         sigmas: Optional[List[float]] = None,
+        mu: Optional[float] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -173,6 +185,9 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
 
+        if self.config.use_dynamic_shifting and mu is None:
+            raise ValueError(" you have a pass a value for `mu` when `use_dynamic_shifting` is set to be `True`")
+
         if sigmas is None:
             self.num_inference_steps = num_inference_steps
             timesteps = np.linspace(
@@ -180,6 +195,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
             sigmas = timesteps / self.config.num_train_timesteps
+
+        if self.config.use_dynamic_shifting:
+            sigmas = self.time_shift(mu, 1.0, sigmas)
+        else:
             sigmas = self.config.shift * sigmas / (1 + (self.config.shift - 1) * sigmas)
 
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
