@@ -53,7 +53,7 @@ def replace_up_keys_inplace(key: str, state_dict: Dict[str, Any]):
     key_split = key.split(".")
     layer_index = int(key_split[2])
     replace_layer_index = 4 - 1 - layer_index
-    
+
     key_split[1] = "up_blocks"
     key_split[2] = str(replace_layer_index)
     new_key = ".".join(key_split)
@@ -157,7 +157,7 @@ def convert_vae(ckpt_path: str):
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
-    
+
     vae.load_state_dict(original_state_dict, strict=True)
     return vae
 

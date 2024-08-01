@@ -374,7 +374,7 @@ class Upsample3D(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int = 1,
-        compress_time: bool = False
+        compress_time: bool = False,
     ) -> None:
         super().__init__()
 

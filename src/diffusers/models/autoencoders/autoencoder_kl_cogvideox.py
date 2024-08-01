@@ -262,7 +262,7 @@ class CogVideoXResnetBlock3D(nn.Module):
 
 class CogVideoXDownBlock3D(nn.Module):
     _supports_gradient_checkpointing = True
-    
+
     def __init__(
         self,
         in_channels: int,
@@ -298,40 +298,46 @@ class CogVideoXDownBlock3D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
         self.downsamplers = None
-        
+
         if add_downsample:
-            self.downsamplers = nn.ModuleList([
-                Downsample3D(out_channels, out_channels, padding=downsample_padding, compress_time=compress_time)
-            ])
-        
+            self.downsamplers = nn.ModuleList(
+                [Downsample3D(out_channels, out_channels, padding=downsample_padding, compress_time=compress_time)]
+            )
+
         self.gradient_checkpointing = False
-    
-    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, zq: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = False) -> torch.Tensor:
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        zq: Optional[torch.Tensor] = None,
+        clear_fake_cp_cache: bool = False,
+    ) -> torch.Tensor:
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
-                
+
                 def create_custom_forward(module):
                     def create_forward(*inputs):
                         return module(*inputs)
-                    
+
                     return create_forward
-                
+
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet), hidden_states, temb, zq, clear_fake_cp_cache
                 )
             else:
                 hidden_states = resnet(hidden_states, temb, zq, clear_fake_cp_cache)
-        
+
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
-        
+
         return hidden_states
 
 
 class CogVideoXMidBlock3D(nn.Module):
     _supports_gradient_checkpointing = True
-    
+
     def __init__(
         self,
         in_channels: int,
@@ -362,25 +368,31 @@ class CogVideoXMidBlock3D(nn.Module):
                 )
             )
         self.resnets = nn.ModuleList(resnets)
-        
+
         self.gradient_checkpointing = False
-    
-    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, zq: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = False) -> torch.Tensor:
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        zq: Optional[torch.Tensor] = None,
+        clear_fake_cp_cache: bool = False,
+    ) -> torch.Tensor:
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
-                
+
                 def create_custom_forward(module):
                     def create_forward(*inputs):
                         return module(*inputs)
-                    
+
                     return create_forward
-                
+
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet), hidden_states, temb, zq, clear_fake_cp_cache
                 )
             else:
                 hidden_states = resnet(hidden_states, temb, zq, clear_fake_cp_cache)
-        
+
         return hidden_states
 
 
@@ -424,31 +436,37 @@ class CogVideoXUpBlock3D(nn.Module):
         self.upsamplers = None
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([
-                Upsample3D(out_channels, out_channels, padding=upsample_padding, compress_time=compress_time)
-            ])
-    
-    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, zq: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = False) -> torch.Tensor:
+            self.upsamplers = nn.ModuleList(
+                [Upsample3D(out_channels, out_channels, padding=upsample_padding, compress_time=compress_time)]
+            )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        zq: Optional[torch.Tensor] = None,
+        clear_fake_cp_cache: bool = False,
+    ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXUpBlock3D` class."""
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
-                
+
                 def create_custom_forward(module):
                     def create_forward(*inputs):
                         return module(*inputs)
-                    
+
                     return create_forward
-                
+
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet), hidden_states, temb, zq, clear_fake_cp_cache
                 )
             else:
                 hidden_states = resnet(hidden_states, temb, zq, clear_fake_cp_cache)
-        
+
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states)
-        
+
         return hidden_states
 
 
@@ -482,7 +500,12 @@ class Encoder3D(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 16,
-        down_block_types: Tuple[str, ...] = ("CogVideoXDownBlock3D", "CogVideoXDownBlock3D", "CogVideoXDownBlock3D", "CogVideoXDownBlock3D",),
+        down_block_types: Tuple[str, ...] = (
+            "CogVideoXDownBlock3D",
+            "CogVideoXDownBlock3D",
+            "CogVideoXDownBlock3D",
+            "CogVideoXDownBlock3D",
+        ),
         block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
         layers_per_block: int = 3,
         act_fn: str = "silu",
@@ -493,7 +516,7 @@ class Encoder3D(nn.Module):
         temporal_compression_ratio: float = 4,
     ):
         super().__init__()
-        
+
         # log2 of temporal_compress_times
         temporal_compress_level = int(np.log2(temporal_compression_ratio))
 
@@ -522,10 +545,8 @@ class Encoder3D(nn.Module):
                     compress_time=compress_time,
                 )
             else:
-                raise ValueError(
-                    "Invalid `down_block_type` encountered. Must be `CogVideoXDownBlock3D`"
-                )
-        
+                raise ValueError("Invalid `down_block_type` encountered. Must be `CogVideoXDownBlock3D`")
+
             self.down_blocks.append(down_block)
 
         # mid block
@@ -548,23 +569,26 @@ class Encoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = True) -> torch.Tensor:
+    def forward(
+        self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = True
+    ) -> torch.Tensor:
         r"""The forward method of the `Encoder3D` class."""
         hidden_states = self.conv_in(sample, clear_fake_cp_cache=clear_fake_cp_cache)
 
         if self.training and self.gradient_checkpointing:
+
             def create_custom_forward(module):
                 def custom_forward(*inputs):
                     return module(*inputs)
 
                 return custom_forward
-            
+
             # 1. Down
             for down_block in self.down_blocks:
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(down_block), hidden_states, temb, None, clear_fake_cp_cache
                 )
-            
+
             # 2. Mid
             hidden_states = torch.utils.checkpoint.checkpoint(
                 create_custom_forward(self.mid_block), hidden_states, temb, None, clear_fake_cp_cache
@@ -573,7 +597,7 @@ class Encoder3D(nn.Module):
             # 1. Down
             for down_block in self.down_blocks:
                 hidden_states = down_block(hidden_states, temb, None, clear_fake_cp_cache)
-            
+
             # 2. Mid
             hidden_states = self.mid_block(hidden_states, temb, None, clear_fake_cp_cache)
 
@@ -613,7 +637,12 @@ class Decoder3D(nn.Module):
         self,
         in_channels: int = 16,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = ("CogVideoXUpBlock3D", "CogVideoXUpBlock3D", "CogVideoXUpBlock3D", "CogVideoXUpBlock3D",),
+        up_block_types: Tuple[str, ...] = (
+            "CogVideoXUpBlock3D",
+            "CogVideoXUpBlock3D",
+            "CogVideoXUpBlock3D",
+            "CogVideoXUpBlock3D",
+        ),
         block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
         layers_per_block: int = 3,
         act_fn: str = "silu",
@@ -629,7 +658,9 @@ class Decoder3D(nn.Module):
 
         resolution = block_out_channels[-1] // 2 ** (len(block_out_channels) - 1)
         self.z_shape = (1, in_channels, resolution, resolution)
-        self.conv_in = CogVideoXCausalConv3d(in_channels, reversed_block_out_channels[0], kernel_size=3, pad_mode=pad_mode)
+        self.conv_in = CogVideoXCausalConv3d(
+            in_channels, reversed_block_out_channels[0], kernel_size=3, pad_mode=pad_mode
+        )
 
         # mid block
         self.mid_block = CogVideoXMidBlock3D(
@@ -645,7 +676,7 @@ class Decoder3D(nn.Module):
 
         # up blocks
         self.up_blocks = nn.ModuleList([])
-        
+
         output_channel = reversed_block_out_channels[0]
         temporal_compress_level = int(np.log2(temporal_compression_ratio))
 
@@ -672,23 +703,26 @@ class Decoder3D(nn.Module):
                 )
                 prev_output_channel = output_channel
             else:
-                raise ValueError(
-                    "Invalid `up_block_type` encountered. Must be `CogVideoXUpBlock3D`"
-                )
-            
+                raise ValueError("Invalid `up_block_type` encountered. Must be `CogVideoXUpBlock3D`")
+
             self.up_blocks.append(up_block)
 
         self.norm_out = CogVideoXSpatialNorm3D(reversed_block_out_channels[-1], in_channels)
         self.conv_act = nn.SiLU()
-        self.conv_out = CogVideoXCausalConv3d(reversed_block_out_channels[-1], out_channels, kernel_size=3, pad_mode=pad_mode)
+        self.conv_out = CogVideoXCausalConv3d(
+            reversed_block_out_channels[-1], out_channels, kernel_size=3, pad_mode=pad_mode
+        )
 
         self.gradient_checkpointing = False
 
-    def forward(self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = True) -> torch.Tensor:
+    def forward(
+        self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = True
+    ) -> torch.Tensor:
         r"""The forward method of the `Decoder3D` class."""
         hidden_states = self.conv_in(sample, clear_fake_cp_cache=clear_fake_cp_cache)
 
         if self.training and self.gradient_checkpointing:
+
             def create_custom_forward(module):
                 def custom_forward(*inputs):
                     return module(*inputs)
@@ -712,7 +746,7 @@ class Decoder3D(nn.Module):
             # 2. Up
             for up_block in self.up_blocks:
                 hidden_states = up_block(hidden_states, temb, sample, clear_fake_cp_cache)
-        
+
         # 3. Post-process
         hidden_states = self.norm_out(hidden_states, sample)
         hidden_states = self.conv_act(hidden_states)
@@ -762,8 +796,18 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str] = ("CogVideoXDownBlock3D", "CogVideoXDownBlock3D", "CogVideoXDownBlock3D", "CogVideoXDownBlock3D"),
-        up_block_types: Tuple[str] = ("CogVideoXUpBlock3D", "CogVideoXUpBlock3D", "CogVideoXUpBlock3D", "CogVideoXUpBlock3D",),
+        down_block_types: Tuple[str] = (
+            "CogVideoXDownBlock3D",
+            "CogVideoXDownBlock3D",
+            "CogVideoXDownBlock3D",
+            "CogVideoXDownBlock3D",
+        ),
+        up_block_types: Tuple[str] = (
+            "CogVideoXUpBlock3D",
+            "CogVideoXUpBlock3D",
+            "CogVideoXUpBlock3D",
+            "CogVideoXUpBlock3D",
+        ),
         block_out_channels: Tuple[int] = (128, 256, 256, 512),
         latent_channels: int = 16,
         layers_per_block: int = 3,
