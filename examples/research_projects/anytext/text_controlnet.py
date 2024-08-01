@@ -19,7 +19,6 @@ import torch
 
 from diffusers.configuration_utils import register_to_config
 from diffusers.models.controlnet import (
-    ControlNetConditioningEmbedding,
     ControlNetModel,
     ControlNetOutput,
 )
@@ -175,19 +174,14 @@ class TextControlNetModel(ControlNetModel):
             global_pool_conditions,
             addition_embed_type_num_heads,
         )
-        self.controlnet_query_cond_embedding = ControlNetConditioningEmbedding(
-            conditioning_embedding_channels=block_out_channels[0],
-            block_out_channels=conditioning_embedding_out_channels,
-            conditioning_channels=3,
-        )
+        self.controlnet_cond_embedding = None  # This part is computed inside AuxiliaryLatentModel
 
     def forward(
         self,
         sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        controlnet_cond: torch.Tensor,
-        controlnet_query_cond: torch.Tensor,
+        guided_hint: torch.Tensor,
         conditioning_scale: float = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
@@ -207,10 +201,8 @@ class TextControlNetModel(ControlNetModel):
                 The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.
-            controlnet_cond (`torch.Tensor`):
-                The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
-            controlnet_query_cond (`torch.Tensor`):
-                The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            #controlnet_cond (`torch.Tensor`):
+            #    The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
             conditioning_scale (`float`, defaults to `1.0`):
                 The scale factor for ControlNet outputs.
             class_labels (`torch.Tensor`, *optional*, defaults to `None`):
@@ -244,8 +236,8 @@ class TextControlNetModel(ControlNetModel):
         if channel_order == "rgb":
             # in rgb order by default
             ...
-        elif channel_order == "bgr":
-            controlnet_cond = torch.flip(controlnet_cond, dims=[1])
+        # elif channel_order == "bgr":
+        #    controlnet_cond = torch.flip(controlnet_cond, dims=[1])
         else:
             raise ValueError(f"unknown `controlnet_conditioning_channel_order`: {channel_order}")
 
@@ -318,9 +310,8 @@ class TextControlNetModel(ControlNetModel):
         # 2. pre-process
         sample = self.conv_in(sample)
 
-        controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
-        controlnet_query_cond = self.controlnet_query_cond_embedding(controlnet_query_cond)
-        sample = sample + controlnet_cond + controlnet_query_cond
+        # controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
+        sample = sample + guided_hint
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -352,7 +343,6 @@ class TextControlNetModel(ControlNetModel):
                 sample = self.mid_block(sample, emb)
 
         # 5. Control net blocks
-
         controlnet_down_block_res_samples = ()
 
         for down_block_res_sample, controlnet_block in zip(down_block_res_samples, self.controlnet_down_blocks):
