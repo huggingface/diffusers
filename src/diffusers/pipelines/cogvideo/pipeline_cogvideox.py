@@ -158,7 +158,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             self.vae.config.temporal_compression_ratio if hasattr(self, "vae") and self.vae is not None else 4
         )
         self.tokenizer_max_length = (
-            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 225
+            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 226
         )
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
@@ -167,7 +167,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         num_videos_per_prompt: int = 1,
-        max_sequence_length: int = 225,
+        max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -213,7 +213,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        max_sequence_length: int = 225,
+        max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):

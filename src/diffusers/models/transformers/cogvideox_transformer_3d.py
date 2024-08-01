@@ -233,7 +233,7 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         sample_frames: int = 49,
         patch_size: int = 2,
         temporal_compression_ratio: int = 4,
-        max_text_seq_length: int = 225,
+        max_text_seq_length: int = 226,
         activation_fn: str = "gelu-approximate",
         timestep_activation_fn: str = "silu",
         norm_type: str = "layer_norm",
