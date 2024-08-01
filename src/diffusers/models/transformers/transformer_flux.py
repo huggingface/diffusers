@@ -356,7 +356,10 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
-        guidance = guidance * 1000 if guidance is not None else None
+        if guidance is not None:
+            guidance = guidance.to(hidden_states.dtype) * 1000 
+        else:
+            guidance = None
         temb = (
             self.time_text_embed(timestep, pooled_projections)
             if guidance is None
