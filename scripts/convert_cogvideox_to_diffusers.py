@@ -138,6 +138,12 @@ def convert_transformer(ckpt_path: str):
                 continue
             handler_fn_inplace(key, original_state_dict)
 
+    # remove incompatible key
+
+    incompatible_key = '0.transformer_blocks.encoder.embed_tokens.weight'
+    if incompatible_key in original_state_dict.keys():
+        original_state_dict.pop(incompatible_key)
+
     transformer.load_state_dict(original_state_dict, strict=True)
     return transformer
 
