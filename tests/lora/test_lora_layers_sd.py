@@ -81,8 +81,8 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
         "latent_channels": 4,
     }
-    text_encoder = CLIPTextModel.from_pretrained("peft-internal-testing/tiny-clip-text-2")
-    tokenizer = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
+    text_encoder_cls, text_encoder_id = CLIPTextModel, "peft-internal-testing/tiny-clip-text-2"
+    tokenizer_cls, tokenizer_id = CLIPTokenizer, "peft-internal-testing/tiny-clip-text-2"
 
     @property
     def output_shape(self):

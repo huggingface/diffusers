@@ -75,12 +75,12 @@ class PeftLoraLoaderMixinTests:
 
     has_two_text_encoders = False
     has_three_text_encoders = False
-    text_encoder = None
-    text_encoder_2 = None
-    text_encoder_3 = None
-    tokenizer = None
-    tokenizer_2 = None
-    tokenizer_3 = None
+    text_encoder_cls, text_encoder_id = None, None
+    text_encoder_2_cls, text_encoder_2_id = None, None
+    text_encoder_3_cls, text_encoder_3_id = None, None
+    tokenizer_cls, tokenizer_id = None, None
+    tokenizer_2_cls, tokenizer_2_id = None, None
+    tokenizer_3_cls, tokenizer_3_id = None, None
 
     unet_kwargs = None
     transformer_cls = None
@@ -93,7 +93,6 @@ class PeftLoraLoaderMixinTests:
         if self.has_two_text_encoders and self.has_three_text_encoders:
             raise ValueError("Both `has_two_text_encoders` and `has_three_text_encoders` cannot be True.")
 
-        print(f"{scheduler_cls=}")
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else scheduler_cls
         rank = 4
 
@@ -107,6 +106,17 @@ class PeftLoraLoaderMixinTests:
 
         torch.manual_seed(0)
         vae = AutoencoderKL(**self.vae_kwargs)
+
+        text_encoder = self.text_encoder_cls.from_pretrained(self.text_encoder_id)
+        tokenizer = self.tokenizer_cls.from_pretrained(self.tokenizer_id)
+
+        if self.text_encoder_2_cls is not None:
+            text_encoder_2 = self.text_encoder_2_cls.from_pretrained(self.text_encoder_2_id)
+            tokenizer_2 = self.tokenizer_2_cls.from_pretrained(self.tokenizer_2_id)
+
+        if self.text_encoder_3_cls is not None:
+            text_encoder_3 = self.text_encoder_3_cls.from_pretrained(self.text_encoder_3_id)
+            tokenizer_3 = self.tokenizer_3_cls.from_pretrained(self.tokenizer_3_id)
 
         text_lora_config = LoraConfig(
             r=rank,
@@ -127,8 +137,8 @@ class PeftLoraLoaderMixinTests:
         pipeline_components = {
             "scheduler": scheduler,
             "vae": vae,
-            "text_encoder": self.text_encoder,
-            "tokenizer": self.tokenizer,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
         }
         # Denoiser
         if self.unet_kwargs is not None:
@@ -137,10 +147,10 @@ class PeftLoraLoaderMixinTests:
             pipeline_components.update({"transformer": transformer})
 
         # Remaining text encoders.
-        if self.tokenizer_2 is not None:
-            pipeline_components.update({"tokenizer_2": self.tokenizer_2, "text_encoder_2": self.text_encoder_2})
-        if self.tokenizer_3 is not None:
-            pipeline_components.update({"tokenizer_3": self.tokenizer_3, "text_encoder_3": self.text_encoder_3})
+        if self.text_encoder_2_cls is not None:
+            pipeline_components.update({"tokenizer_2": tokenizer_2, "text_encoder_2": text_encoder_2})
+        if self.text_encoder_3_cls is not None:
+            pipeline_components.update({"tokenizer_3": tokenizer_3, "text_encoder_3": text_encoder_3})
 
         # Remaining stuff
         init_params = inspect.signature(self.pipeline_class.__init__).parameters
@@ -633,42 +643,23 @@ class PeftLoraLoaderMixinTests:
                 else:
                     denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
 
+                saving_kwargs = {
+                    "save_directory": tmpdirname,
+                    "text_encoder_lora_layers": text_encoder_state_dict,
+                    "safe_serialization": False,
+                }
+
+                if self.unet_kwargs is not None:
+                    saving_kwargs.update({"unet_lora_layers": denoiser_state_dict})
+                else:
+                    saving_kwargs.update({"transformer_lora_layers": denoiser_state_dict})
+
                 if self.has_two_text_encoders or self.has_three_text_encoders:
                     if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
                         text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+                        saving_kwargs.update({"text_encoder_2_lora_layers": text_encoder_2_state_dict})
 
-                    if self.unet_kwargs is not None:
-                        self.pipeline_class.save_lora_weights(
-                            save_directory=tmpdirname,
-                            text_encoder_lora_layers=text_encoder_state_dict,
-                            text_encoder_2_lora_layers=text_encoder_2_state_dict,
-                            unet_lora_layers=denoiser_state_dict,
-                            safe_serialization=False,
-                        )
-                    else:
-                        if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-                            self.pipeline_class.save_lora_weights(
-                                save_directory=tmpdirname,
-                                text_encoder_lora_layers=text_encoder_state_dict,
-                                text_encoder_2_lora_layers=text_encoder_2_state_dict,
-                                transformer_lora_layers=denoiser_state_dict,
-                                safe_serialization=False,
-                            )
-                else:
-                    if self.unet_kwargs is not None:
-                        self.pipeline_class.save_lora_weights(
-                            save_directory=tmpdirname,
-                            text_encoder_lora_layers=text_encoder_state_dict,
-                            unet_lora_layers=denoiser_state_dict,
-                            safe_serialization=False,
-                        )
-                    else:
-                        self.pipeline_class.save_lora_weights(
-                            save_directory=tmpdirname,
-                            text_encoder_lora_layers=text_encoder_state_dict,
-                            transformer_lora_layers=denoiser_state_dict,
-                            safe_serialization=False,
-                        )
+                self.pipeline_class.save_lora_weights(**saving_kwargs)
 
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
                 pipe.unload_lora_weights()

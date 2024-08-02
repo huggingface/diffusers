@@ -62,10 +62,10 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "scaling_factor": 1.5035,
     }
     has_two_text_encoders = True
-    tokenizer = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
-    tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
-    text_encoder = CLIPTextModel.from_pretrained("peft-internal-testing/tiny-clip-text-2")
-    text_encoder_2 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+    tokenizer_cls, tokenizer_id = CLIPTokenizer, "peft-internal-testing/tiny-clip-text-2"
+    tokenizer_2_cls, tokenizer_2_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
+    text_encoder_cls, text_encoder_id = CLIPTextModel, "peft-internal-testing/tiny-clip-text-2"
+    text_encoder_2_cls, text_encoder_2_id = T5EncoderModel, "hf-internal-testing/tiny-random-t5"
 
     @property
     def output_shape(self):
