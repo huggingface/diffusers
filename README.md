@@ -209,7 +209,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
 - https://github.com/deep-floyd/IF
 - https://github.com/bentoml/BentoML
 - https://github.com/bmaltais/kohya_ss
-- +14.000 other amazing GitHub repositories 💪
+- +14,000 other amazing GitHub repositories 💪
 
 Thank you for using us ❤️.
 
