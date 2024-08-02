@@ -40,7 +40,7 @@ from ..pixart_alpha.pipeline_pixart_alpha import (
     ASPECT_RATIO_1024_BIN,
 )
 from ..pixart_alpha.pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN
-from .pag_utils import PixArtPAGMixin
+from .pag_utils import PAGMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -132,7 +132,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class PixArtSigmaPAGPipeline(DiffusionPipeline, PixArtPAGMixin):
+class PixArtSigmaPAGPipeline(DiffusionPipeline, PAGMixin):
     r"""
     [PAG pipeline](https://huggingface.co/docs/diffusers/main/en/using-diffusers/pag) for text-to-image generation
     using PixArt-Sigma.
