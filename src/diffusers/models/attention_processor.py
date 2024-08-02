@@ -1290,7 +1290,7 @@ class FluxSingleAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("FluxSingleAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,

@@ -1,4 +1,4 @@
-# Copyright 2024 Stability AI, The HuggingFace Team and The InstantX Team. All rights reserved.
+# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -356,7 +356,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                 )
         hidden_states = self.x_embedder(hidden_states)
 
-        timestep = timestep.to(hidden_states.dtype) * 1000
+        timestep = timestep.to(hidden_states.dtype)
         if guidance is not None:
             guidance = guidance.to(hidden_states.dtype) * 1000
         else:
