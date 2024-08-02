@@ -28,6 +28,7 @@ from .controlnet import (
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
+from .flux import FluxPipeline
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -101,6 +102,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("pixart-sigma-pag", PixArtSigmaPAGPipeline),
         ("auraflow", AuraFlowPipeline),
         ("kolors", KolorsPipeline),
+        ("flux", FluxPipeline),
     ]
 )
 

@@ -13,39 +13,25 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
-import PIL
 import torch
+import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput
-from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
+from ...loaders import IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unets.unet_motion_model import MotionAdapter
-from ...schedulers import (
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-)
-from ...utils import (
-    USE_PEFT_BACKEND,
-    BaseOutput,
-    logging,
-    replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
-)
-from ...utils.torch_utils import randn_tensor
+from ...schedulers import KarrasDiffusionSchedulers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ...video_processor import VideoProcessor
+from ..controlnet.multicontrolnet import MultiControlNetModel
 from ..free_init_utils import FreeInitMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from .pipeline_output import AnimateDiffPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -54,85 +40,78 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import EulerDiscreteScheduler, MotionAdapter, PIAPipeline
-        >>> from diffusers.utils import export_to_gif, load_image
-
-        >>> adapter = MotionAdapter.from_pretrained("openmmlab/PIA-condition-adapter")
-        >>> pipe = PIAPipeline.from_pretrained(
-        ...     "SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter, torch_dtype=torch.float16
+        >>> from diffusers import (
+        ...     AnimateDiffControlNetPipeline,
+        ...     AutoencoderKL,
+        ...     ControlNetModel,
+        ...     MotionAdapter,
+        ...     LCMScheduler,
         ... )
+        >>> from diffusers.utils import export_to_gif, load_video
 
-        >>> pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
+        >>> # Additionally, you will need a preprocess videos before they can be used with the ControlNet
+        >>> # HF maintains just the right package for it: `pip install controlnet_aux`
+        >>> from controlnet_aux.processor import ZoeDetector
+
+        >>> # Download controlnets from https://huggingface.co/lllyasviel/ControlNet-v1-1 to use .from_single_file
+        >>> # Download Diffusers-format controlnets, such as https://huggingface.co/lllyasviel/sd-controlnet-depth, to use .from_pretrained()
+        >>> controlnet = ControlNetModel.from_single_file("control_v11f1p_sd15_depth.pth", torch_dtype=torch.float16)
+
+        >>> # We use AnimateLCM for this example but one can use the original motion adapters as well (for example, https://huggingface.co/guoyww/animatediff-motion-adapter-v1-5-3)
+        >>> motion_adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM")
+
+        >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+        >>> pipe: AnimateDiffControlNetPipeline = AnimateDiffControlNetPipeline.from_pretrained(
+        ...     "SG161222/Realistic_Vision_V5.1_noVAE",
+        ...     motion_adapter=motion_adapter,
+        ...     controlnet=controlnet,
+        ...     vae=vae,
+        ... ).to(device="cuda", dtype=torch.float16)
+        >>> pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
+        >>> pipe.load_lora_weights(
+        ...     "wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora"
         ... )
-        >>> image = image.resize((512, 512))
-        >>> prompt = "cat in a hat"
-        >>> negative_prompt = "wrong white balance, dark, sketches, worst quality, low quality, deformed, distorted"
-        >>> generator = torch.Generator("cpu").manual_seed(0)
-        >>> output = pipe(image=image, prompt=prompt, negative_prompt=negative_prompt, generator=generator)
-        >>> frames = output.frames[0]
-        >>> export_to_gif(frames, "pia-animation.gif")
+        >>> pipe.set_adapters(["lcm-lora"], [0.8])
+
+        >>> depth_detector = ZoeDetector.from_pretrained("lllyasviel/Annotators").to("cuda")
+        >>> video = load_video(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif"
+        ... )
+        >>> conditioning_frames = []
+
+        >>> with pipe.progress_bar(total=len(video)) as progress_bar:
+        ...     for frame in video:
+        ...         conditioning_frames.append(depth_detector(frame))
+        ...         progress_bar.update()
+
+        >>> prompt = "a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality"
+        >>> negative_prompt = "bad quality, worst quality"
+
+        >>> video = pipe(
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     num_frames=len(video),
+        ...     num_inference_steps=10,
+        ...     guidance_scale=2.0,
+        ...     conditioning_frames=conditioning_frames,
+        ...     generator=torch.Generator().manual_seed(42),
+        ... ).frames[0]
+
+        >>> export_to_gif(video, "animatediff_controlnet.gif", fps=8)
         ```
 """
 
-RANGE_LIST = [
-    [1.0, 0.9, 0.85, 0.85, 0.85, 0.8],  # 0 Small Motion
-    [1.0, 0.8, 0.8, 0.8, 0.79, 0.78, 0.75],  # Moderate Motion
-    [1.0, 0.8, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.6, 0.5, 0.5],  # Large Motion
-    [1.0, 0.9, 0.85, 0.85, 0.85, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.85, 0.85, 0.9, 1.0],  # Loop
-    [1.0, 0.8, 0.8, 0.8, 0.79, 0.78, 0.75, 0.75, 0.75, 0.75, 0.75, 0.78, 0.79, 0.8, 0.8, 1.0],  # Loop
-    [1.0, 0.8, 0.7, 0.7, 0.7, 0.7, 0.6, 0.5, 0.5, 0.6, 0.7, 0.7, 0.7, 0.7, 0.8, 1.0],  # Loop
-    [0.5, 0.4, 0.4, 0.4, 0.35, 0.3],  # Style Transfer Candidate Small Motion
-    [0.5, 0.4, 0.4, 0.4, 0.35, 0.35, 0.3, 0.25, 0.2],  # Style Transfer Moderate Motion
-    [0.5, 0.2],  # Style Transfer Large Motion
-]
 
-
-def prepare_mask_coef_by_statistics(num_frames: int, cond_frame: int, motion_scale: int):
-    assert num_frames > 0, "video_length should be greater than 0"
-
-    assert num_frames > cond_frame, "video_length should be greater than cond_frame"
-
-    range_list = RANGE_LIST
-
-    assert motion_scale < len(range_list), f"motion_scale type{motion_scale} not implemented"
-
-    coef = range_list[motion_scale]
-    coef = coef + ([coef[-1]] * (num_frames - len(coef)))
-
-    order = [abs(i - cond_frame) for i in range(num_frames)]
-    coef = [coef[order[i]] for i in range(num_frames)]
-
-    return coef
-
-
-@dataclass
-class PIAPipelineOutput(BaseOutput):
-    r"""
-    Output class for PIAPipeline.
-
-    Args:
-        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
-            Nested list of length `batch_size` with denoised PIL image sequences of length `num_frames`, NumPy array of
-            shape `(batch_size, num_frames, channels, height, width, Torch tensor of shape `(batch_size, num_frames,
-            channels, height, width)`.
-    """
-
-    frames: Union[torch.Tensor, np.ndarray, List[List[PIL.Image.Image]]]
-
-
-class PIAPipeline(
+class AnimateDiffControlNetPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
     StableDiffusionLoraLoaderMixin,
-    FromSingleFileMixin,
     FreeInitMixin,
 ):
     r"""
-    Pipeline for text-to-video generation.
+    Pipeline for text-to-video generation with ControlNet guidance.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -159,8 +138,8 @@ class PIAPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
 
-    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
-    _optional_components = ["feature_extractor", "image_encoder", "motion_adapter"]
+    model_cpu_offload_seq = "text_encoder->unet->vae"
+    _optional_components = ["feature_extractor", "image_encoder"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -169,21 +148,18 @@ class PIAPipeline(
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: Union[UNet2DConditionModel, UNetMotionModel],
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
-        motion_adapter: Optional[MotionAdapter] = None,
-        feature_extractor: CLIPImageProcessor = None,
-        image_encoder: CLIPVisionModelWithProjection = None,
+        motion_adapter: MotionAdapter,
+        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
+        scheduler: KarrasDiffusionSchedulers,
+        feature_extractor: Optional[CLIPImageProcessor] = None,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
     ):
         super().__init__()
         if isinstance(unet, UNet2DConditionModel):
             unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
+
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = MultiControlNetModel(controlnet)
 
         self.register_modules(
             vae=vae,
@@ -191,12 +167,16 @@ class PIAPipeline(
             tokenizer=tokenizer,
             unet=unet,
             motion_adapter=motion_adapter,
+            controlnet=controlnet,
             scheduler=scheduler,
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.video_processor = VideoProcessor(do_resize=False, vae_scale_factor=self.vae_scale_factor)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.control_video_processor = VideoProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
     def encode_prompt(
@@ -406,100 +386,6 @@ class PIAPipeline(
 
             return image_embeds, uncond_image_embeds
 
-    # Copied from diffusers.pipelines.text_to_video_synthesis/pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
-    def decode_latents(self, latents):
-        latents = 1 / self.vae.config.scaling_factor * latents
-
-        batch_size, channels, num_frames, height, width = latents.shape
-        latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-
-        image = self.vae.decode(latents).sample
-        video = image[None, :].reshape((batch_size, num_frames, -1) + image.shape[2:]).permute(0, 2, 1, 3, 4)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        video = video.float()
-        return video
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
-    def prepare_extra_step_kwargs(self, generator, eta):
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
-
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_step_kwargs = {}
-        if accepts_eta:
-            extra_step_kwargs["eta"] = eta
-
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
-        return extra_step_kwargs
-
-    def check_inputs(
-        self,
-        prompt,
-        height,
-        width,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
-        ip_adapter_image=None,
-        ip_adapter_image_embeds=None,
-        callback_on_step_end_tensor_inputs=None,
-    ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
-
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if negative_prompt is not None and negative_prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-            )
-
-        if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
-
-        if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
-            raise ValueError(
-                "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
-            )
-
-        if ip_adapter_image_embeds is not None:
-            if not isinstance(ip_adapter_image_embeds, list):
-                raise ValueError(
-                    f"`ip_adapter_image_embeds` has to be of type `list` but is {type(ip_adapter_image_embeds)}"
-                )
-            elif ip_adapter_image_embeds[0].ndim not in [3, 4]:
-                raise ValueError(
-                    f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
-                )
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
         self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
@@ -546,6 +432,182 @@ class PIAPipeline(
 
         return ip_adapter_image_embeds
 
+    def decode_latents(self, latents, decode_batch_size: int = 16):
+        latents = 1 / self.vae.config.scaling_factor * latents
+
+        batch_size, channels, num_frames, height, width = latents.shape
+        latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
+
+        video = []
+        for i in range(0, latents.shape[0], decode_batch_size):
+            batch_latents = latents[i : i + decode_batch_size]
+            batch_latents = self.vae.decode(batch_latents).sample
+            video.append(batch_latents)
+
+        video = torch.cat(video)
+        video = video[None, :].reshape((batch_size, num_frames, -1) + video.shape[2:]).permute(0, 2, 1, 3, 4)
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        video = video.float()
+        return video
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
+    def prepare_extra_step_kwargs(self, generator, eta):
+        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
+        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
+        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # and should be between [0, 1]
+
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        extra_step_kwargs = {}
+        if accepts_eta:
+            extra_step_kwargs["eta"] = eta
+
+        # check if the scheduler accepts generator
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        if accepts_generator:
+            extra_step_kwargs["generator"] = generator
+        return extra_step_kwargs
+
+    def check_inputs(
+        self,
+        prompt,
+        height,
+        width,
+        num_frames,
+        negative_prompt=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
+        video=None,
+        controlnet_conditioning_scale=1.0,
+        control_guidance_start=0.0,
+        control_guidance_end=1.0,
+    ):
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+
+        # `prompt` needs more sophisticated handling when there are multiple
+        # conditionings.
+        if isinstance(self.controlnet, MultiControlNetModel):
+            if isinstance(prompt, list):
+                logger.warning(
+                    f"You have {len(self.controlnet.nets)} ControlNets and you have passed {len(prompt)}"
+                    " prompts. The conditionings will be fixed across the prompts."
+                )
+
+        # Check `image`
+        is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
+            self.controlnet, torch._dynamo.eval_frame.OptimizedModule
+        )
+        if (
+            isinstance(self.controlnet, ControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+        ):
+            if not isinstance(video, list):
+                raise TypeError(f"For single controlnet, `image` must be of type `list` but got {type(video)}")
+            if len(video) != num_frames:
+                raise ValueError(f"Excepted image to have length {num_frames} but got {len(video)=}")
+        elif (
+            isinstance(self.controlnet, MultiControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+        ):
+            if not isinstance(video, list) or not isinstance(video[0], list):
+                raise TypeError(f"For multiple controlnets: `image` must be type list of lists but got {type(video)=}")
+            if len(video[0]) != num_frames:
+                raise ValueError(f"Expected length of image sublist as {num_frames} but got {len(video[0])=}")
+            if any(len(img) != len(video[0]) for img in video):
+                raise ValueError("All conditioning frame batches for multicontrolnet must be same size")
+        else:
+            assert False
+
+        # Check `controlnet_conditioning_scale`
+        if (
+            isinstance(self.controlnet, ControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+        ):
+            if not isinstance(controlnet_conditioning_scale, float):
+                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
+        elif (
+            isinstance(self.controlnet, MultiControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+        ):
+            if isinstance(controlnet_conditioning_scale, list):
+                if any(isinstance(i, list) for i in controlnet_conditioning_scale):
+                    raise ValueError("A single batch of multiple conditionings are supported at the moment.")
+            elif isinstance(controlnet_conditioning_scale, list) and len(controlnet_conditioning_scale) != len(
+                self.controlnet.nets
+            ):
+                raise ValueError(
+                    "For multiple controlnets: When `controlnet_conditioning_scale` is specified as `list`, it must have"
+                    " the same length as the number of controlnets"
+                )
+        else:
+            assert False
+
+        if not isinstance(control_guidance_start, (tuple, list)):
+            control_guidance_start = [control_guidance_start]
+
+        if not isinstance(control_guidance_end, (tuple, list)):
+            control_guidance_end = [control_guidance_end]
+
+        if len(control_guidance_start) != len(control_guidance_end):
+            raise ValueError(
+                f"`control_guidance_start` has {len(control_guidance_start)} elements, but `control_guidance_end` has {len(control_guidance_end)} elements. Make sure to provide the same number of elements to each list."
+            )
+
+        if isinstance(self.controlnet, MultiControlNetModel):
+            if len(control_guidance_start) != len(self.controlnet.nets):
+                raise ValueError(
+                    f"`control_guidance_start`: {control_guidance_start} has {len(control_guidance_start)} elements but there are {len(self.controlnet.nets)} controlnets available. Make sure to provide {len(self.controlnet.nets)}."
+                )
+
+        for start, end in zip(control_guidance_start, control_guidance_end):
+            if start >= end:
+                raise ValueError(
+                    f"control guidance start: {start} cannot be larger or equal to control guidance end: {end}."
+                )
+            if start < 0.0:
+                raise ValueError(f"control guidance start: {start} can't be smaller than 0.")
+            if end > 1.0:
+                raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
+
     # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
@@ -572,68 +634,37 @@ class PIAPipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def prepare_masked_condition(
+    def prepare_video(
         self,
-        image,
-        batch_size,
-        num_channels_latents,
-        num_frames,
-        height,
+        video,
         width,
-        dtype,
+        height,
+        batch_size,
+        num_videos_per_prompt,
         device,
-        generator,
-        motion_scale=0,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
     ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            num_frames,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
+        video = self.control_video_processor.preprocess_video(video, height=height, width=width).to(
+            dtype=torch.float32
         )
-        _, _, _, scaled_height, scaled_width = shape
+        video = video.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        video_batch_size = video.shape[0]
 
-        image = self.video_processor.preprocess(image)
-        image = image.to(device, dtype)
-
-        if isinstance(generator, list):
-            image_latent = [
-                self.vae.encode(image[k : k + 1]).latent_dist.sample(generator[k]) for k in range(batch_size)
-            ]
-            image_latent = torch.cat(image_latent, dim=0)
+        if video_batch_size == 1:
+            repeat_by = batch_size
         else:
-            image_latent = self.vae.encode(image).latent_dist.sample(generator)
+            # image batch size is the same as prompt batch size
+            repeat_by = num_videos_per_prompt
 
-        image_latent = image_latent.to(device=device, dtype=dtype)
-        image_latent = torch.nn.functional.interpolate(image_latent, size=[scaled_height, scaled_width])
-        image_latent_padding = image_latent.clone() * self.vae.config.scaling_factor
+        video = video.repeat_interleave(repeat_by, dim=0)
+        video = video.to(device=device, dtype=dtype)
 
-        mask = torch.zeros((batch_size, 1, num_frames, scaled_height, scaled_width)).to(device=device, dtype=dtype)
-        mask_coef = prepare_mask_coef_by_statistics(num_frames, 0, motion_scale)
-        masked_image = torch.zeros(batch_size, 4, num_frames, scaled_height, scaled_width).to(
-            device=device, dtype=self.unet.dtype
-        )
-        for f in range(num_frames):
-            mask[:, :, f, :, :] = mask_coef[f]
-            masked_image[:, :, f, :, :] = image_latent_padding.clone()
+        if do_classifier_free_guidance and not guess_mode:
+            video = torch.cat([video] * 2)
 
-        mask = torch.cat([mask] * 2) if self.do_classifier_free_guidance else mask
-        masked_image = torch.cat([masked_image] * 2) if self.do_classifier_free_guidance else masked_image
-
-        return mask, masked_image
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, strength, device):
-        # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
-
-        t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-        if hasattr(self.scheduler, "set_begin_index"):
-            self.scheduler.set_begin_index(t_start * self.scheduler.order)
-
-        return timesteps, num_inference_steps - t_start
+        return video
 
     @property
     def guidance_scale(self):
@@ -659,12 +690,9 @@ class PIAPipeline(
         return self._num_timesteps
 
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: PipelineImageInput,
         prompt: Union[str, List[str]] = None,
-        strength: float = 1.0,
         num_frames: Optional[int] = 16,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -678,25 +706,26 @@ class PIAPipeline(
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
-        motion_scale: int = 0,
+        ip_adapter_image_embeds: Optional[PipelineImageInput] = None,
+        conditioning_frames: Optional[List[PipelineImageInput]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
+        guess_mode: bool = False,
+        control_guidance_start: Union[float, List[float]] = 0.0,
+        control_guidance_end: Union[float, List[float]] = 1.0,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        decode_batch_size: int = 16,
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
-            image (`PipelineImageInput`):
-                The input image to be used for video generation.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            strength (`float`, *optional*, defaults to 1.0):
-                Indicates extent to transform the reference `image`. Must be between 0 and 1.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated video.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -730,18 +759,17 @@ class PIAPipeline(
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            ip_adapter_image: (`PipelineImageInput`, *optional*):
+            ip_adapter_image (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
                 Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
                 IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
                 contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
                 provided, embeddings are computed from the `ip_adapter_image` input argument.
-            motion_scale: (`int`, *optional*, defaults to 0):
-                Parameter that controls the amount and type of motion that is added to the image. Increasing the value
-                increases the amount of motion, while specific ranges of values control the type of motion that is
-                added. Must be between 0 and 8. Set between 0-2 to only increase the amount of motion. Set between 3-5
-                to create looping motion. Set between 6-8 to perform motion with image style transfer.
+            conditioning_frames (`List[PipelineImageInput]`, *optional*):
+                The ControlNet input condition to provide guidance to the `unet` for generation. If multiple
+                ControlNets are specified, images must be passed as a list such that each element of the list can be
+                correctly batched for input to a single ControlNet.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video. Choose between `torch.Tensor`, `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -750,6 +778,17 @@ class PIAPipeline(
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
+                the corresponding scale as a list.
+            guess_mode (`bool`, *optional*, defaults to `False`):
+                The ControlNet encoder tries to recognize the content of the input image even if you remove all
+                prompts. A `guidance_scale` value between 3.0 and 5.0 is recommended.
+            control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
+                The percentage of total steps at which the ControlNet starts applying.
+            control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The percentage of total steps at which the ControlNet stops applying.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
@@ -766,10 +805,24 @@ class PIAPipeline(
         Examples:
 
         Returns:
-            [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] is returned, otherwise a
-                `tuple` is returned where the first element is a list with the generated frames.
+            [`~pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] is
+                returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
+        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
+
+        # align format for control guidance
+        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
+            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
+        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
+            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
+
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -778,15 +831,18 @@ class PIAPipeline(
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt,
-            height,
-            width,
-            negative_prompt,
-            prompt_embeds,
-            negative_prompt_embeds,
-            ip_adapter_image,
-            ip_adapter_image_embeds,
-            callback_on_step_end_tensor_inputs,
+            prompt=prompt,
+            height=height,
+            width=width,
+            num_frames=num_frames,
+            negative_prompt=negative_prompt,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            video=conditioning_frames,
+            controlnet_conditioning_scale=controlnet_conditioning_scale,
+            control_guidance_start=control_guidance_start,
+            control_guidance_end=control_guidance_end,
         )
 
         self._guidance_scale = guidance_scale
@@ -803,9 +859,19 @@ class PIAPipeline(
 
         device = self._execution_device
 
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+
+        global_pool_conditions = (
+            controlnet.config.global_pool_conditions
+            if isinstance(controlnet, ControlNetModel)
+            else controlnet.nets[0].config.global_pool_conditions
+        )
+        guess_mode = guess_mode or global_pool_conditions
+
         # 3. Encode input prompt
         text_encoder_lora_scale = (
-            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
@@ -833,39 +899,54 @@ class PIAPipeline(
                 self.do_classifier_free_guidance,
             )
 
+        if isinstance(controlnet, ControlNetModel):
+            conditioning_frames = self.prepare_video(
+                video=conditioning_frames,
+                width=width,
+                height=height,
+                batch_size=batch_size * num_videos_per_prompt * num_frames,
+                num_videos_per_prompt=num_videos_per_prompt,
+                device=device,
+                dtype=controlnet.dtype,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+                guess_mode=guess_mode,
+            )
+        elif isinstance(controlnet, MultiControlNetModel):
+            cond_prepared_videos = []
+            for frame_ in conditioning_frames:
+                prepared_video = self.prepare_video(
+                    video=frame_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_videos_per_prompt * num_frames,
+                    num_videos_per_prompt=num_videos_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=self.do_classifier_free_guidance,
+                    guess_mode=guess_mode,
+                )
+                cond_prepared_videos.append(prepared_video)
+            conditioning_frames = cond_prepared_videos
+        else:
+            assert False
+
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
-        latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
-        self._num_timesteps = len(timesteps)
+        timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
-            4,
+            num_channels_latents,
             num_frames,
             height,
             width,
             prompt_embeds.dtype,
             device,
             generator,
-            latents=latents,
+            latents,
         )
-        mask, masked_image = self.prepare_masked_condition(
-            image,
-            batch_size * num_videos_per_prompt,
-            4,
-            num_frames=num_frames,
-            height=height,
-            width=width,
-            dtype=self.unet.dtype,
-            device=device,
-            generator=generator,
-            motion_scale=motion_scale,
-        )
-        if strength < 1.0:
-            noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=latents.dtype)
-            latents = self.scheduler.add_noise(masked_image[0], noise, latent_timestep)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -877,7 +958,15 @@ class PIAPipeline(
             else None
         )
 
-        # 8. Denoising loop
+        # 7.1 Create tensor stating which controlnets to keep
+        controlnet_keep = []
+        for i in range(len(timesteps)):
+            keeps = [
+                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
+                for s, e in zip(control_guidance_start, control_guidance_end)
+            ]
+            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
+
         num_free_init_iters = self._free_init_num_iters if self.free_init_enabled else 1
         for free_init_iter in range(num_free_init_iters):
             if self.free_init_enabled:
@@ -888,20 +977,55 @@ class PIAPipeline(
             self._num_timesteps = len(timesteps)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
+            # 8. Denoising loop
             with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                    latent_model_input = torch.cat([latent_model_input, mask, masked_image], dim=1)
+
+                    if guess_mode and self.do_classifier_free_guidance:
+                        # Infer ControlNet only for the conditional batch.
+                        control_model_input = latents
+                        control_model_input = self.scheduler.scale_model_input(control_model_input, t)
+                        controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+                    else:
+                        control_model_input = latent_model_input
+                        controlnet_prompt_embeds = prompt_embeds
+                    controlnet_prompt_embeds = controlnet_prompt_embeds.repeat_interleave(num_frames, dim=0)
+
+                    if isinstance(controlnet_keep[i], list):
+                        cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+                    else:
+                        controlnet_cond_scale = controlnet_conditioning_scale
+                        if isinstance(controlnet_cond_scale, list):
+                            controlnet_cond_scale = controlnet_cond_scale[0]
+                        cond_scale = controlnet_cond_scale * controlnet_keep[i]
+
+                    control_model_input = torch.transpose(control_model_input, 1, 2)
+                    control_model_input = control_model_input.reshape(
+                        (-1, control_model_input.shape[2], control_model_input.shape[3], control_model_input.shape[4])
+                    )
+
+                    down_block_res_samples, mid_block_res_sample = self.controlnet(
+                        control_model_input,
+                        t,
+                        encoder_hidden_states=controlnet_prompt_embeds,
+                        controlnet_cond=conditioning_frames,
+                        conditioning_scale=cond_scale,
+                        guess_mode=guess_mode,
+                        return_dict=False,
+                    )
 
                     # predict the noise residual
                     noise_pred = self.unet(
                         latent_model_input,
                         t,
                         encoder_hidden_states=prompt_embeds,
-                        cross_attention_kwargs=cross_attention_kwargs,
+                        cross_attention_kwargs=self.cross_attention_kwargs,
                         added_cond_kwargs=added_cond_kwargs,
+                        down_block_additional_residuals=down_block_res_samples,
+                        mid_block_additional_residual=mid_block_res_sample,
                     ).sample
 
                     # perform guidance
@@ -930,7 +1054,7 @@ class PIAPipeline(
         if output_type == "latent":
             video = latents
         else:
-            video_tensor = self.decode_latents(latents)
+            video_tensor = self.decode_latents(latents, decode_batch_size)
             video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 10. Offload all models
@@ -939,4 +1063,4 @@ class PIAPipeline(
         if not return_dict:
             return (video,)
 
-        return PIAPipelineOutput(frames=video)
+        return AnimateDiffPipelineOutput(frames=video)
