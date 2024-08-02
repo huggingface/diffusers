@@ -442,6 +442,8 @@ def infer_diffusers_model_type(checkpoint):
     ):
         if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
             model_type = "inpainting_v2"
+        elif CHECKPOINT_KEY_NAMES["xl_base"] in checkpoint:
+            model_type = "xl_inpaint"
         else:
             model_type = "inpainting"
 
