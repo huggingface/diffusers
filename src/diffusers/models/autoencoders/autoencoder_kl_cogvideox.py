@@ -410,7 +410,7 @@ class CogVideoXUpBlock3D(nn.Module):
         resnet_groups: int = 32,
         spatial_norm_dim: int = 16,
         add_upsample: bool = True,
-        upsample_padding: int = 0,
+        upsample_padding: int = 1,
         compress_time: bool = False,
         pad_mode: str = "first",
     ):
