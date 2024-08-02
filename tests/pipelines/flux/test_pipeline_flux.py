@@ -33,7 +33,6 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             num_attention_heads=2,
             joint_attention_dim=32,
             pooled_projection_dim=32,
-            out_channels=4,
         )
         clip_text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
