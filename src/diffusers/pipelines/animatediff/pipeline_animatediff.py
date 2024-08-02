@@ -507,7 +507,9 @@ class AnimateDiffPipeline(
     ):
         # If FreeNoise is enabled, generate latents as described in Equation (7) of [FreeNoise](https://arxiv.org/abs/2310.15169)
         if self.free_noise_enabled:
-            latents = self._prepare_latents_free_noise(batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents)
+            latents = self._prepare_latents_free_noise(
+                batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents
+            )
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -522,7 +524,7 @@ class AnimateDiffPipeline(
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
-        
+
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:

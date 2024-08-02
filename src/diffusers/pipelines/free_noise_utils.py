@@ -98,15 +98,28 @@ class AnimateDiffFreeNoiseMixin:
                     motion_module.transformer_blocks[i].load_state_dict(
                         free_noise_transfomer_block.state_dict(), strict=True
                     )
-    
-    def _prepare_latents_free_noise(self, batch_size: int, num_channels_latents: int, num_frames: int, height: int, width: int, dtype: torch.dtype, device: torch.device, generator: Optional[torch.Generator] = None, latents: Optional[torch.Tensor] = None):
+
+    def _prepare_latents_free_noise(
+        self,
+        batch_size: int,
+        num_channels_latents: int,
+        num_frames: int,
+        height: int,
+        width: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        generator: Optional[torch.Generator] = None,
+        latents: Optional[torch.Tensor] = None,
+    ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        context_num_frames = self._free_noise_context_length if self._free_noise_context_length == "repeat_context" else num_frames
+        context_num_frames = (
+            self._free_noise_context_length if self._free_noise_context_length == "repeat_context" else num_frames
+        )
 
         shape = (
             batch_size,
@@ -124,9 +137,11 @@ class AnimateDiffFreeNoiseMixin:
             if latents.size(2) == num_frames:
                 return latents
             elif latents.size(2) != self._free_noise_context_length:
-                raise ValueError(f"You have passed `latents` as a parameter to FreeNoise. The expected number of frames is either {num_frames} or {self._free_noise_context_length}, but found {latents.size(2)}")
+                raise ValueError(
+                    f"You have passed `latents` as a parameter to FreeNoise. The expected number of frames is either {num_frames} or {self._free_noise_context_length}, but found {latents.size(2)}"
+                )
             latents = latents.to(device)
-        
+
         if self._free_noise_noise_type == "shuffle_context":
             for i in range(self._free_noise_context_length, num_frames, self._free_noise_context_stride):
                 # ensure window is within bounds
@@ -150,14 +165,13 @@ class AnimateDiffFreeNoiseMixin:
                     prefix_length = current_end - current_start
                     shuffled_indices = shuffled_indices[:prefix_length]
                     latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
-        
+
         elif self._free_noise_noise_type == "repeat_context":
             num_repeats = (num_frames + self._free_noise_context_length - 1) // self._free_noise_context_length
             latents = torch.cat([latents] * num_repeats, dim=2)
-        
+
         latents = latents[:, :, :num_frames]
         return latents
-
 
     def enable_free_noise(
         self,
@@ -192,9 +206,13 @@ class AnimateDiffFreeNoiseMixin:
         allowed_noise_type = ["shuffle_context", "repeat_context", "random"]
 
         if context_length > self.motion_adapter.config.motion_max_seq_length:
-            logger.warning(f"You have set {context_length=} which is greater than {self.motion_adapter.config.motion_max_seq_length=}. This can lead to bad generation results.")
+            logger.warning(
+                f"You have set {context_length=} which is greater than {self.motion_adapter.config.motion_max_seq_length=}. This can lead to bad generation results."
+            )
         if weighting_scheme not in allowed_weighting_scheme:
-            raise ValueError(f"The parameter `weighting_scheme` must be one of {allowed_weighting_scheme}, but got {weighting_scheme=}")
+            raise ValueError(
+                f"The parameter `weighting_scheme` must be one of {allowed_weighting_scheme}, but got {weighting_scheme=}"
+            )
         if noise_type not in allowed_noise_type:
             raise ValueError(f"The parameter `noise_type` must be one of {allowed_noise_type}, but got {noise_type=}")
 
