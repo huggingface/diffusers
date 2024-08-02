@@ -21,10 +21,13 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
+from ..attention_processor import CogVideoXAttnProcessor2_0
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import CogVideoXLayerNormZero
+
+from einops import rearrange
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -114,6 +117,7 @@ class CogVideoXBlock(nn.Module):
             eps=1e-6,
             bias=attention_bias,
             out_bias=attention_out_bias,
+            processor=CogVideoXAttnProcessor2_0(),
         )
 
         # 2. Feed Forward
@@ -141,7 +145,7 @@ class CogVideoXBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
+        temb: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
@@ -232,8 +236,8 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         sample_height: int = 60,
         sample_frames: int = 49,
         patch_size: int = 2,
-        time_compression: int = 4,
-        max_text_seq_length: int = 225,
+        temporal_compression_ratio: int = 4,
+        max_text_seq_length: int = 226,
         activation_fn: str = "gelu-approximate",
         timestep_activation_fn: str = "silu",
         norm_type: str = "layer_norm",
@@ -251,7 +255,7 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
 
         post_patch_height = sample_height // patch_size
         post_patch_width = sample_width // patch_size
-        post_time_compression_frames = (sample_frames - 1) // time_compression + 1
+        post_time_compression_frames = (sample_frames - 1) // temporal_compression_ratio + 1
         self.num_patches = post_patch_height * post_patch_width * post_time_compression_frames
 
         # 1. Patch embedding
@@ -308,57 +312,56 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        sample: torch.Tensor,
+        hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.LongTensor],
         attention_mask: Optional[Union[int, torch.Tensor]] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
-        batch_size, num_frames, channels, height, width = sample.shape
+        batch_size, num_frames, channels, height, width = hidden_states.shape
 
         # 1. Time embedding
         timesteps = timestep
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
+            is_mps = hidden_states.device.type == "mps"
             if isinstance(timestep, float):
                 dtype = torch.float32 if is_mps else torch.float64
             else:
                 dtype = torch.int32 if is_mps else torch.int64
-            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+            timesteps = torch.tensor([timesteps], dtype=dtype, device=hidden_states.device)
         elif len(timesteps.shape) == 0:
-            timesteps = timesteps[None].to(sample.device)
+            timesteps = timesteps[None].to(hidden_states.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        timesteps = timesteps.expand(sample.shape[0])
+        timesteps = timesteps.expand(hidden_states.shape[0])
         t_emb = self.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
-        t_emb = t_emb.to(dtype=sample.dtype)
+        t_emb = t_emb.to(dtype=hidden_states.dtype)
         emb = self.time_embedding(t_emb, timestep_cond)
 
         # 2. Patch embedding
-        hidden_states = self.patch_embed(encoder_hidden_states, sample)
+        hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
 
         # 3. Position embedding
         seq_length = height * width * num_frames // (self.config.patch_size**2)
-        text_seq_length = encoder_hidden_states.size(1)
 
         pos_embeds = self.pos_embedding[:, : self.config.max_text_seq_length + seq_length]
         hidden_states = hidden_states + pos_embeds
         hidden_states = self.embedding_dropout(hidden_states)
 
-        encoder_hidden_states = hidden_states[:, :text_seq_length]
-        hidden_states = hidden_states[:, text_seq_length:]
+        encoder_hidden_states = hidden_states[:, : self.config.max_text_seq_length]
+        hidden_states = hidden_states[:, self.config.max_text_seq_length :]
 
         # 4. Prepare attention mask
         if attention_mask is None:
             attention_mask = torch.ones(batch_size, self.num_patches + self.config.max_text_seq_length)
-        attention_mask = attention_mask.to(device=sample.device, dtype=sample.dtype)
+        attention_mask = attention_mask.to(device=hidden_states.device, dtype=hidden_states.dtype)
 
         # 5. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
@@ -396,8 +399,8 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
 
         # 7. Unpatchify
         p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, p, p, self.config.out_channels)
-        output = output.permute(0, 1, 6, 2, 4, 3, 5).flatten(5, 6).flatten(3, 4)
+        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, channels, p, p)
+        output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
 
         if not return_dict:
             return (output,)

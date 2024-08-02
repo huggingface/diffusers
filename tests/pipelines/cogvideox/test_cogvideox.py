@@ -24,7 +24,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKL, DDIMScheduler, CogVideoXPipeline, CogVideoXTransformer3D
+from diffusers import AutoencoderKL, CogVideoXPipeline, CogVideoXTransformer3D, DDIMScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,

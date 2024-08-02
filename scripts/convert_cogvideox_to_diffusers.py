@@ -4,7 +4,7 @@ from typing import Any, Dict
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import CogVideoXPipeline, CogVideoXTransformer3D, DPMSolverMultistepScheduler
+from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3D, CogVideoXDDIMScheduler
 
 
 def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]):
@@ -45,6 +45,22 @@ def reassign_adaln_norm_inplace(key: str, state_dict: Dict[str, Any]):
     state_dict.pop(key)
 
 
+def remove_keys_inplace(key: str, state_dict: Dict[str, Any]):
+    state_dict.pop(key)
+
+
+def replace_up_keys_inplace(key: str, state_dict: Dict[str, Any]):
+    key_split = key.split(".")
+    layer_index = int(key_split[2])
+    replace_layer_index = 4 - 1 - layer_index
+
+    key_split[1] = "up_blocks"
+    key_split[2] = str(replace_layer_index)
+    new_key = ".".join(key_split)
+
+    state_dict[new_key] = state_dict.pop(key)
+
+
 TRANSFORMER_KEYS_RENAME_DICT = {
     "transformer.final_layernorm": "norm_final",
     "transformer": "transformer_blocks",
@@ -69,7 +85,27 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "query_layernorm_list": reassign_query_key_layernorm_inplace,
     "key_layernorm_list": reassign_query_key_layernorm_inplace,
     "adaln_layer.adaLN_modulations": reassign_adaln_norm_inplace,
+    "embed_tokens": remove_keys_inplace,
 }
+
+VAE_KEYS_RENAME_DICT = {
+    "block.": "resnets.",
+    "down.": "down_blocks.",
+    "downsample": "downsamplers.0",
+    "upsample": "upsamplers.0",
+    "nin_shortcut": "conv_shortcut",
+    "encoder.mid.block_1": "encoder.mid_block.resnets.0",
+    "encoder.mid.block_2": "encoder.mid_block.resnets.1",
+    "decoder.mid.block_1": "decoder.mid_block.resnets.0",
+    "decoder.mid.block_2": "decoder.mid_block.resnets.1",
+}
+
+VAE_SPECIAL_KEYS_REMAP = {
+    "loss": remove_keys_inplace,
+    "up.": replace_up_keys_inplace,
+}
+
+TOKENIZER_MAX_LENGTH = 226
 
 
 def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -110,8 +146,23 @@ def convert_transformer(ckpt_path: str):
 
 
 def convert_vae(ckpt_path: str):
-    # TODO: wait for implementation
-    pass
+    original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
+    vae = AutoencoderKLCogVideoX()
+
+    for key in list(original_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in VAE_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        update_state_dict_inplace(original_state_dict, key, new_key)
+
+    for key in list(original_state_dict.keys()):
+        for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, original_state_dict)
+
+    vae.load_state_dict(original_state_dict, strict=True)
+    return vae
 
 
 def get_args():
@@ -140,16 +191,21 @@ if __name__ == "__main__":
         vae = convert_vae(args.vae_ckpt_path)
 
     text_encoder_id = "google/t5-v1_1-xxl"
-    tokenizer = T5Tokenizer.from_pretrained(text_encoder_id)
+    tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id)
 
-    # TODO: verify with authors
-    scheduler = DPMSolverMultistepScheduler.from_pretrained(
-        "runwayml/stable-diffusion-v1-5",
-        subfolder="scheduler",
-        algorithm_type="sde-dpmsolver++",
-        prediction_type="v_prediction",
-    )
+    scheduler = CogVideoXDDIMScheduler.from_config({
+        "snr_shift_scale": 3.0,
+        "beta_end": 0.012,
+        "beta_schedule": "scaled_linear",
+        "beta_start": 0.00085,
+        "clip_sample": False,
+        "num_train_timesteps": 1000,
+        "prediction_type": "v_prediction",
+        "rescale_betas_zero_snr": True,
+        "set_alpha_to_one": True,
+        "timestep_spacing": "linspace"
+    })
 
     pipe = CogVideoXPipeline(
         tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
