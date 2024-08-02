@@ -14,6 +14,8 @@
 
 from typing import Optional, Union
 
+import torch
+
 from ..models.attention import BasicTransformerBlock
 from ..models.unets.unet_motion_model import (
     CrossAttnDownBlockMotion,
@@ -21,6 +23,11 @@ from ..models.unets.unet_motion_model import (
     FreeNoiseTransformerBlock,
     UpBlockMotion,
 )
+from ..utils import logging
+from ..utils.torch_utils import randn_tensor
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class AnimateDiffFreeNoiseMixin:
@@ -91,13 +98,73 @@ class AnimateDiffFreeNoiseMixin:
                     motion_module.transformer_blocks[i].load_state_dict(
                         free_noise_transfomer_block.state_dict(), strict=True
                     )
+    
+    def _prepare_latents_free_noise(self, batch_size: int, num_channels_latents: int, num_frames: int, height: int, width: int, dtype: torch.dtype, device: torch.device, generator: Optional[torch.Generator] = None, latents: Optional[torch.Tensor] = None):
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        context_num_frames = self._free_noise_context_length if self._free_noise_context_length == "repeat_context" else num_frames
+
+        shape = (
+            batch_size,
+            num_channels_latents,
+            context_num_frames,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
+
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            if self._free_noise_noise_type == "random":
+                return latents
+        else:
+            if latents.size(2) == num_frames:
+                return latents
+            elif latents.size(2) != self._free_noise_context_length:
+                raise ValueError(f"You have passed `latents` as a parameter to FreeNoise. The expected number of frames is either {num_frames} or {self._free_noise_context_length}, but found {latents.size(2)}")
+            latents = latents.to(device)
+        
+        if self._free_noise_noise_type == "shuffle_context":
+            for i in range(self._free_noise_context_length, num_frames, self._free_noise_context_stride):
+                # ensure window is within bounds
+                window_start = max(0, i - self._free_noise_context_length)
+                window_end = min(num_frames, window_start + self._free_noise_context_stride)
+                window_length = window_end - window_start
+
+                if window_length == 0:
+                    break
+
+                indices = torch.LongTensor(list(range(window_start, window_end)))
+                shuffled_indices = indices[torch.randperm(window_length, generator=generator)]
+
+                current_start = i
+                current_end = min(num_frames, current_start + window_length)
+                if current_end == current_start + window_length:
+                    # batch of frames perfectly fits the window
+                    latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
+                else:
+                    # handle the case where the last batch of frames does not fit perfectly with the window
+                    prefix_length = current_end - current_start
+                    shuffled_indices = shuffled_indices[:prefix_length]
+                    latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
+        
+        elif self._free_noise_noise_type == "repeat_context":
+            num_repeats = (num_frames + self._free_noise_context_length - 1) // self._free_noise_context_length
+            latents = torch.cat([latents] * num_repeats, dim=2)
+        
+        latents = latents[:, :, :num_frames]
+        return latents
+
 
     def enable_free_noise(
         self,
         context_length: Optional[int] = 16,
         context_stride: int = 4,
         weighting_scheme: str = "pyramid",
-        shuffle: bool = True,
+        noise_type: str = "shuffle_context",
     ) -> None:
         r"""
         Enable long video generation using FreeNoise.
@@ -117,15 +184,24 @@ class AnimateDiffFreeNoiseMixin:
                 schemes are supported currently:
                     - "pyramid"
                         Peforms weighted averaging with a pyramid like weight pattern: [1, 2, 3, 2, 1].
-            shuffle (`str`, defaults to `True`):
-                Shuffling latents is described in Equation 9. of the paper. It is a vital in improving the video
-                consistency. Without shuffling, a random batch of `num_frames` latents are created. With shuffling,
-                only the first `context_length` latents are shuffled and repeated.
+            noise_type (`str`, defaults to "shuffle_context"):
+                TODO
         """
+
+        allowed_weighting_scheme = ["pyramid"]
+        allowed_noise_type = ["shuffle_context", "repeat_context", "random"]
+
+        if context_length > self.motion_adapter.config.motion_max_seq_length:
+            logger.warning(f"You have set {context_length=} which is greater than {self.motion_adapter.config.motion_max_seq_length=}. This can lead to bad generation results.")
+        if weighting_scheme not in allowed_weighting_scheme:
+            raise ValueError(f"The parameter `weighting_scheme` must be one of {allowed_weighting_scheme}, but got {weighting_scheme=}")
+        if noise_type not in allowed_noise_type:
+            raise ValueError(f"The parameter `noise_type` must be one of {allowed_noise_type}, but got {noise_type=}")
+
         self._free_noise_context_length = context_length or self.motion_adapter.config.motion_max_seq_length
         self._free_noise_context_stride = context_stride
         self._free_noise_weighting_scheme = weighting_scheme
-        self._free_noise_shuffle = shuffle
+        self._free_noise_noise_type = noise_type
 
         blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
         for block in blocks:

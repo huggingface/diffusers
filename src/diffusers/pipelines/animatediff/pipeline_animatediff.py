@@ -505,6 +505,16 @@ class AnimateDiffPipeline(
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
+        # If FreeNoise is enabled, generate latents as described in Equation (7) of [FreeNoise](https://arxiv.org/abs/2310.15169)
+        if self.free_noise_enabled:
+            latents = self._prepare_latents_free_noise(batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents)
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
         shape = (
             batch_size,
             num_channels_latents,
@@ -512,42 +522,11 @@ class AnimateDiffPipeline(
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
+        
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
-
-        # If FreeNoise is enabled, shuffle latents in every window as described in Equation (7) of
-        # [FreeNoise](https://arxiv.org/abs/2310.15169)
-        if self.free_noise_enabled and self._free_noise_shuffle:
-            for i in range(self._free_noise_context_length, num_frames, self._free_noise_context_stride):
-                # ensure window is within bounds
-                window_start = max(0, i - self._free_noise_context_length)
-                window_end = min(num_frames, window_start + self._free_noise_context_stride)
-                window_length = window_end - window_start
-
-                if window_length == 0:
-                    break
-
-                indices = torch.LongTensor(list(range(window_start, window_end)))
-                shuffled_indices = indices[torch.randperm(window_length, generator=generator)]
-
-                current_start = i
-                current_end = min(num_frames, current_start + window_length)
-                if current_end == current_start + window_length:
-                    # batch of frames perfectly fits the window
-                    latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
-                else:
-                    # handle the case where the last batch of frames does not fit perfectly with the window
-                    prefix_length = current_end - current_start
-                    shuffled_indices = shuffled_indices[:prefix_length]
-                    latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
