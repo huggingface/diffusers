@@ -303,6 +303,10 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         self.gradient_checkpointing = False
 
+    def _set_gradient_checkpointing(self, module, value=False):
+        if hasattr(module, "gradient_checkpointing"):
+            module.gradient_checkpointing = value
+
     def forward(
         self,
         hidden_states: torch.Tensor,
