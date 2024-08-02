@@ -23,7 +23,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3D
 from ...pipelines.pipeline_utils import DiffusionPipeline
-from ...schedulers import KarrasDiffusionSchedulers
+from ...schedulers import CogVideoXDDIMScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -160,14 +160,13 @@ class CogVideoXPipeline(DiffusionPipeline):
         text_encoder: T5EncoderModel,
         vae: AutoencoderKLCogVideoX,
         transformer: CogVideoXTransformer3D,
-        scheduler: KarrasDiffusionSchedulers,
+        scheduler: CogVideoXDDIMScheduler,
     ):
         super().__init__()
 
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
-
         self.vae_scale_factor_spatial = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )

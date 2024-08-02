@@ -155,6 +155,7 @@ else:
         [
             "AmusedScheduler",
             "CMStochasticIterativeScheduler",
+            "CogVideoXDDIMScheduler",
             "DDIMInverseScheduler",
             "DDIMParallelScheduler",
             "DDIMScheduler",
