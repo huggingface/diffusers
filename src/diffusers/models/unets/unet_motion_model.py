@@ -44,7 +44,6 @@ from ..transformers.dual_transformer_2d import DualTransformer2DModel
 from ..transformers.transformer_2d import Transformer2DModel
 from .unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unet_2d_condition import UNet2DConditionModel
-from .unet_3d_condition import UNet3DConditionOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -58,6 +57,19 @@ class AnimateDiffTransformer3DOutput(BaseOutput):
     Args:
         sample (`torch.Tensor` of shape `(batch_size * num_frames, num_channels, height, width)`):
             The hidden states output conditioned on `encoder_hidden_states` input.
+    """
+
+    sample: torch.Tensor
+
+
+@dataclass
+class UNetMotionOutput(BaseOutput):
+    """
+    The output of [`UNetMotionOutput`].
+
+    Args:
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, num_frames, height, width)`):
+            The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
     """
 
     sample: torch.Tensor
@@ -2083,7 +2095,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
         down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[UNet3DConditionOutput, Tuple[torch.Tensor]]:
+    ) -> Union[UNetMotionOutput, Tuple[torch.Tensor]]:
         r"""
         The [`UNetMotionModel`] forward method.
 
@@ -2109,12 +2121,12 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
             mid_block_additional_residual: (`torch.Tensor`, *optional*):
                 A tensor that if specified is added to the residual of the middle unet block.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.unets.unet_motion_model.UNetMotionOutput`] instead of a plain
                 tuple.
 
         Returns:
-            [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unets.unet_3d_condition.UNet3DConditionOutput`] is returned,
+            [`~models.unets.unet_motion_model.UNetMotionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_motion_model.UNetMotionOutput`] is returned,
                 otherwise a `tuple` is returned where the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
@@ -2298,4 +2310,4 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
         if not return_dict:
             return (sample,)
 
-        return UNet3DConditionOutput(sample=sample)
+        return UNetMotionOutput(sample=sample)

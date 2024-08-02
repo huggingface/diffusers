@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from ...utils import is_torch_version, logging
+from ...utils import deprecate, is_torch_version, logging
 from ...utils.torch_utils import apply_freeu
 from ..attention import Attention
 from ..resnet import (
@@ -32,9 +32,51 @@ from ..transformers.transformer_temporal import (
     TransformerSpatioTemporalModel,
     TransformerTemporalModel,
 )
+from .unet_motion_model import (
+    CrossAttnDownBlockMotion,
+    CrossAttnUpBlockMotion,
+    DownBlockMotion,
+    UNetMidBlockCrossAttnMotion,
+    UpBlockMotion,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class DownBlockMotion(DownBlockMotion):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "Importing `DownBlockMotion` from `diffusers.models.unets.unet_3d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_motion_model import DownBlockMotion` instead."
+        deprecate("DownBlockMotion", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class CrossAttnDownBlockMotion(CrossAttnDownBlockMotion):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "Importing `CrossAttnDownBlockMotion` from `diffusers.models.unets.unet_3d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_motion_model import CrossAttnDownBlockMotion` instead."
+        deprecate("CrossAttnDownBlockMotion", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class UpBlockMotion(UpBlockMotion):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "Importing `UpBlockMotion` from `diffusers.models.unets.unet_3d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_motion_model import UpBlockMotion` instead."
+        deprecate("UpBlockMotion", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class CrossAttnUpBlockMotion(CrossAttnUpBlockMotion):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "Importing `CrossAttnUpBlockMotion` from `diffusers.models.unets.unet_3d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_motion_model import CrossAttnUpBlockMotion` instead."
+        deprecate("CrossAttnUpBlockMotion", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class UNetMidBlockCrossAttnMotion(UNetMidBlockCrossAttnMotion):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "Importing `UNetMidBlockCrossAttnMotion` from `diffusers.models.unets.unet_3d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_motion_model import UNetMidBlockCrossAttnMotion` instead."
+        deprecate("UNetMidBlockCrossAttnMotion", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
 
 
 def get_down_block(
