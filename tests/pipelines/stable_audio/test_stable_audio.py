@@ -439,9 +439,7 @@ class StableAudioPipelineIntegrationTests(unittest.TestCase):
         return inputs
 
     def test_stable_audio(self):
-        stable_audio_pipe = StableAudioPipeline.from_pretrained(
-            "ylacombe/stable-audio-1.0"
-        )  # TODO (YL): change once changed
+        stable_audio_pipe = StableAudioPipeline.from_pretrained("stabilityai/stable-audio-open-1.0")
         stable_audio_pipe = stable_audio_pipe.to(torch_device)
         stable_audio_pipe.set_progress_bar_config(disable=None)
 
