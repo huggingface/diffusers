@@ -2,19 +2,16 @@ from torch import nn
 
 
 class CTCHead(nn.Module):
-    def __init__(self,
-                 in_channels,
-                 out_channels=6625,
-                 fc_decay=0.0004,
-                 mid_channels=None,
-                 return_feats=False,
-                 **kwargs):
+    def __init__(
+        self, in_channels, out_channels=6625, fc_decay=0.0004, mid_channels=None, return_feats=False, **kwargs
+    ):
         super(CTCHead, self).__init__()
         if mid_channels is None:
             self.fc = nn.Linear(
                 in_channels,
                 out_channels,
-                bias=True,)
+                bias=True,
+            )
         else:
             self.fc1 = nn.Linear(
                 in_channels,
@@ -39,9 +36,9 @@ class CTCHead(nn.Module):
             predicts = self.fc2(x)
 
         if self.return_feats:
-            result = dict()
-            result['ctc'] = predicts
-            result['ctc_neck'] = x
+            result = {}
+            result["ctc"] = predicts
+            result["ctc_neck"] = x
         else:
             result = predicts
 
