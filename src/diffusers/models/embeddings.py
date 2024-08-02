@@ -360,7 +360,6 @@ class CogVideoXPatchEmbed(nn.Module):
                 Input image embeddings. Expected shape: (batch_size, num_frames, channels, height, width).
         """
         text_embeds = self.text_proj(text_embeds)
-        print("patch text_embeds:", text_embeds.sum())
 
         B, F, C, H, W = image_embeds.shape
         image_embeds = image_embeds.reshape(-1, C, H, W)
@@ -368,10 +367,8 @@ class CogVideoXPatchEmbed(nn.Module):
         image_embeds = image_embeds.view(B, F, *image_embeds.shape[1:])
         image_embeds = image_embeds.flatten(3).transpose(2, 3)  # [B, F, H x W, C]
         image_embeds = image_embeds.flatten(1, 2)  # [B, F x H x W, C]
-        print("patch image_embeds:", image_embeds.sum())
 
         embeds = torch.cat([text_embeds, image_embeds], dim=1).contiguous()  # [B, S + F x H x W, C]
-        print("patch concat:", embeds.sum())
         return embeds
 
 
