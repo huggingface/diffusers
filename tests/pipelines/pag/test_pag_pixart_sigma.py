@@ -127,7 +127,7 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         out = pipe(**inputs).images[0, -3:, -3:, -1]
 
         # pag disabled with pag_scale=0.0
-        components["pag_applied_layers"] = [1]
+        components["pag_applied_layers"] = ["1"]
         pipe_pag = self.pipeline_class(**components)
         pipe_pag = pipe_pag.to(device)
         pipe_pag.set_progress_bar_config(disable=None)
@@ -158,7 +158,7 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # "attn1" should apply to all self-attention layers.
         all_self_attn_layers = [k for k in pipe.transformer.attn_processors.keys() if "attn1" in k]
-        pag_layers = [0, 1]
+        pag_layers = ["0", "1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_layers)
 
@@ -228,7 +228,7 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, pag_applied_layers=[1])
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, pag_applied_layers=["1"])
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
@@ -282,7 +282,7 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:
-                pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, pag_applied_layers=[1])
+                pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, pag_applied_layers=["1"])
 
             for name in pipe_loaded.components.keys():
                 if name not in pipe_loaded._optional_components:
