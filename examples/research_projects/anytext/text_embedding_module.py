@@ -7,6 +7,7 @@ from typing import List, Optional
 import cv2
 import numpy as np
 import torch
+from easydict import EasyDict as edict
 from PIL import Image, ImageDraw, ImageFont
 from torch import nn
 
@@ -14,19 +15,45 @@ from diffusers.loaders import StableDiffusionLoraLoaderMixin, TextualInversionLo
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 
+from .embedding_manager import EmbeddingManager
 from .frozen_clip_embedder_t3 import FrozenCLIPEmbedderT3
+from .recognizer import TextRecognizer, create_predictor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class TextEmbeddingModule(nn.Module):
-    def __init__(self, font_path):
+    def __init__(self, font_path, device):
         super().__init__()
+        self.device = device
         self.font = ImageFont.truetype(font_path, 60)
         self.ocr_model = ...
         self.linear = nn.Linear()
-        self.frozen_CLIP_embedder_t3 = FrozenCLIPEmbedderT3()
+        self.frozen_CLIP_embedder_t3 = FrozenCLIPEmbedderT3(device=self.device)
+        self.embedding_manager_config = {
+            "valid": True,
+            "emb_type": "ocr",
+            "glyph_channels": 1,
+            "position_channels": 1,
+            "add_pos": False,
+            "placeholder_string": "*",
+        }
+        self.embedding_manager = EmbeddingManager(self.frozen_CLIP_embedder_t3, **self.embedding_manager_config)
+        # TODO: Understand the reason of param.requires_grad = True
+        for param in self.embedding_manager.embedding_parameters():
+            param.requires_grad = True
+        rec_model_dir = "./ocr_weights/ppv3_rec.pth"
+        self.text_predictor = create_predictor(rec_model_dir).eval()
+        args = edict()
+        args.rec_image_shape = "3, 48, 320"
+        args.rec_batch_num = 6
+        args.rec_char_dict_path = "./ocr_recog/ppocr_keys_v1.txt"
+        args.use_fp16 = self.use_fp16
+        self.cn_recognizer = TextRecognizer(args, self.text_predictor)
+        for param in self.text_predictor.parameters():
+            param.requires_grad = False
+        self.embedding_manager.recog = self.cn_recognizer
 
     @torch.no_grad()
     def forward(self, texts, prompt, device, num_images_per_prompt, do_classifier_free_guidance):
