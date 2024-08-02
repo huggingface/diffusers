@@ -13,30 +13,19 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
-import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput
-from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unets.unet_motion_model import MotionAdapter
-from ...schedulers import (
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-)
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
-    BaseOutput,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -44,8 +33,10 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
+from ..animatediff.pipeline_output import AnimateDiffPipelineOutput
 from ..free_init_utils import FreeInitMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from .pag_utils import PAGMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -54,85 +45,50 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import EulerDiscreteScheduler, MotionAdapter, PIAPipeline
-        >>> from diffusers.utils import export_to_gif, load_image
+        >>> from diffusers import AnimateDiffPAGPipeline, MotionAdapter, DDIMScheduler
+        >>> from diffusers.utils import export_to_gif
 
-        >>> adapter = MotionAdapter.from_pretrained("openmmlab/PIA-condition-adapter")
-        >>> pipe = PIAPipeline.from_pretrained(
-        ...     "SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter, torch_dtype=torch.float16
+        >>> model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+        >>> motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-2"
+        >>> motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id)
+        >>> scheduler = DDIMScheduler.from_pretrained(
+        ...     model_id, subfolder="scheduler", beta_schedule="linear", steps_offset=1, clip_sample=False
         ... )
+        >>> pipe = AnimateDiffPAGPipeline.from_pretrained(
+        ...     model_id,
+        ...     motion_adapter=motion_adapter,
+        ...     scheduler=scheduler,
+        ...     pag_applied_layers=["mid"],
+        ...     torch_dtype=torch.float16,
+        ... ).to("cuda")
 
-        >>> pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
-        ... )
-        >>> image = image.resize((512, 512))
-        >>> prompt = "cat in a hat"
-        >>> negative_prompt = "wrong white balance, dark, sketches, worst quality, low quality, deformed, distorted"
-        >>> generator = torch.Generator("cpu").manual_seed(0)
-        >>> output = pipe(image=image, prompt=prompt, negative_prompt=negative_prompt, generator=generator)
-        >>> frames = output.frames[0]
-        >>> export_to_gif(frames, "pia-animation.gif")
+        >>> video = pipe(
+        ...     prompt="car, futuristic cityscape with neon lights, street, no human",
+        ...     negative_prompt="low quality, bad quality",
+        ...     num_inference_steps=25,
+        ...     guidance_scale=6.0,
+        ...     pag_scale=3.0,
+        ...     generator=torch.Generator().manual_seed(42),
+        ... ).frames[0]
+
+        >>> export_to_gif(video, "animatediff_pag.gif")
         ```
 """
 
-RANGE_LIST = [
-    [1.0, 0.9, 0.85, 0.85, 0.85, 0.8],  # 0 Small Motion
-    [1.0, 0.8, 0.8, 0.8, 0.79, 0.78, 0.75],  # Moderate Motion
-    [1.0, 0.8, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.6, 0.5, 0.5],  # Large Motion
-    [1.0, 0.9, 0.85, 0.85, 0.85, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.85, 0.85, 0.9, 1.0],  # Loop
-    [1.0, 0.8, 0.8, 0.8, 0.79, 0.78, 0.75, 0.75, 0.75, 0.75, 0.75, 0.78, 0.79, 0.8, 0.8, 1.0],  # Loop
-    [1.0, 0.8, 0.7, 0.7, 0.7, 0.7, 0.6, 0.5, 0.5, 0.6, 0.7, 0.7, 0.7, 0.7, 0.8, 1.0],  # Loop
-    [0.5, 0.4, 0.4, 0.4, 0.35, 0.3],  # Style Transfer Candidate Small Motion
-    [0.5, 0.4, 0.4, 0.4, 0.35, 0.35, 0.3, 0.25, 0.2],  # Style Transfer Moderate Motion
-    [0.5, 0.2],  # Style Transfer Large Motion
-]
 
-
-def prepare_mask_coef_by_statistics(num_frames: int, cond_frame: int, motion_scale: int):
-    assert num_frames > 0, "video_length should be greater than 0"
-
-    assert num_frames > cond_frame, "video_length should be greater than cond_frame"
-
-    range_list = RANGE_LIST
-
-    assert motion_scale < len(range_list), f"motion_scale type{motion_scale} not implemented"
-
-    coef = range_list[motion_scale]
-    coef = coef + ([coef[-1]] * (num_frames - len(coef)))
-
-    order = [abs(i - cond_frame) for i in range(num_frames)]
-    coef = [coef[order[i]] for i in range(num_frames)]
-
-    return coef
-
-
-@dataclass
-class PIAPipelineOutput(BaseOutput):
-    r"""
-    Output class for PIAPipeline.
-
-    Args:
-        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
-            Nested list of length `batch_size` with denoised PIL image sequences of length `num_frames`, NumPy array of
-            shape `(batch_size, num_frames, channels, height, width, Torch tensor of shape `(batch_size, num_frames,
-            channels, height, width)`.
-    """
-
-    frames: Union[torch.Tensor, np.ndarray, List[List[PIL.Image.Image]]]
-
-
-class PIAPipeline(
+class AnimateDiffPAGPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
     StableDiffusionLoraLoaderMixin,
-    FromSingleFileMixin,
     FreeInitMixin,
+    PAGMixin,
 ):
     r"""
-    Pipeline for text-to-video generation.
+    Pipeline for text-to-video generation using
+    [AnimateDiff](https://huggingface.co/docs/diffusers/en/api/pipelines/animatediff) and [Perturbed Attention
+    Guidance](https://huggingface.co/docs/diffusers/en/using-diffusers/pag).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -169,17 +125,11 @@ class PIAPipeline(
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: Union[UNet2DConditionModel, UNetMotionModel],
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
-        motion_adapter: Optional[MotionAdapter] = None,
+        motion_adapter: MotionAdapter,
+        scheduler: KarrasDiffusionSchedulers,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
+        pag_applied_layers: Union[str, List[str]] = "mid",  # ["mid"], ["down.block_1"], ["up.block_0.attentions_0"]
     ):
         super().__init__()
         if isinstance(unet, UNet2DConditionModel):
@@ -197,6 +147,8 @@ class PIAPipeline(
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.video_processor = VideoProcessor(do_resize=False, vae_scale_factor=self.vae_scale_factor)
+
+        self.set_pag_applied_layers(pag_applied_layers)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
     def encode_prompt(
@@ -406,6 +358,52 @@ class PIAPipeline(
 
             return image_embeds, uncond_image_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
+    def prepare_ip_adapter_image_embeds(
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
+    ):
+        image_embeds = []
+        if do_classifier_free_guidance:
+            negative_image_embeds = []
+        if ip_adapter_image_embeds is None:
+            if not isinstance(ip_adapter_image, list):
+                ip_adapter_image = [ip_adapter_image]
+
+            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
+                raise ValueError(
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
+                )
+
+            for single_ip_adapter_image, image_proj_layer in zip(
+                ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
+            ):
+                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
+                single_image_embeds, single_negative_image_embeds = self.encode_image(
+                    single_ip_adapter_image, device, 1, output_hidden_state
+                )
+
+                image_embeds.append(single_image_embeds[None, :])
+                if do_classifier_free_guidance:
+                    negative_image_embeds.append(single_negative_image_embeds[None, :])
+        else:
+            for single_image_embeds in ip_adapter_image_embeds:
+                if do_classifier_free_guidance:
+                    single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
+                    negative_image_embeds.append(single_negative_image_embeds)
+                image_embeds.append(single_image_embeds)
+
+        ip_adapter_image_embeds = []
+        for i, single_image_embeds in enumerate(image_embeds):
+            single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
+            if do_classifier_free_guidance:
+                single_negative_image_embeds = torch.cat([negative_image_embeds[i]] * num_images_per_prompt, dim=0)
+                single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
+
+            single_image_embeds = single_image_embeds.to(device=device)
+            ip_adapter_image_embeds.append(single_image_embeds)
+
+        return ip_adapter_image_embeds
+
     # Copied from diffusers.pipelines.text_to_video_synthesis/pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -437,6 +435,7 @@ class PIAPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.pia.pipeline_pia.PIAPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -500,52 +499,6 @@ class PIAPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
-    def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
-    ):
-        image_embeds = []
-        if do_classifier_free_guidance:
-            negative_image_embeds = []
-        if ip_adapter_image_embeds is None:
-            if not isinstance(ip_adapter_image, list):
-                ip_adapter_image = [ip_adapter_image]
-
-            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
-                raise ValueError(
-                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
-                )
-
-            for single_ip_adapter_image, image_proj_layer in zip(
-                ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
-            ):
-                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
-                single_image_embeds, single_negative_image_embeds = self.encode_image(
-                    single_ip_adapter_image, device, 1, output_hidden_state
-                )
-
-                image_embeds.append(single_image_embeds[None, :])
-                if do_classifier_free_guidance:
-                    negative_image_embeds.append(single_negative_image_embeds[None, :])
-        else:
-            for single_image_embeds in ip_adapter_image_embeds:
-                if do_classifier_free_guidance:
-                    single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
-                    negative_image_embeds.append(single_negative_image_embeds)
-                image_embeds.append(single_image_embeds)
-
-        ip_adapter_image_embeds = []
-        for i, single_image_embeds in enumerate(image_embeds):
-            single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
-            if do_classifier_free_guidance:
-                single_negative_image_embeds = torch.cat([negative_image_embeds[i]] * num_images_per_prompt, dim=0)
-                single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
-
-            single_image_embeds = single_image_embeds.to(device=device)
-            ip_adapter_image_embeds.append(single_image_embeds)
-
-        return ip_adapter_image_embeds
-
     # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
@@ -571,69 +524,6 @@ class PIAPipeline(
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-
-    def prepare_masked_condition(
-        self,
-        image,
-        batch_size,
-        num_channels_latents,
-        num_frames,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-        motion_scale=0,
-    ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            num_frames,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-        )
-        _, _, _, scaled_height, scaled_width = shape
-
-        image = self.video_processor.preprocess(image)
-        image = image.to(device, dtype)
-
-        if isinstance(generator, list):
-            image_latent = [
-                self.vae.encode(image[k : k + 1]).latent_dist.sample(generator[k]) for k in range(batch_size)
-            ]
-            image_latent = torch.cat(image_latent, dim=0)
-        else:
-            image_latent = self.vae.encode(image).latent_dist.sample(generator)
-
-        image_latent = image_latent.to(device=device, dtype=dtype)
-        image_latent = torch.nn.functional.interpolate(image_latent, size=[scaled_height, scaled_width])
-        image_latent_padding = image_latent.clone() * self.vae.config.scaling_factor
-
-        mask = torch.zeros((batch_size, 1, num_frames, scaled_height, scaled_width)).to(device=device, dtype=dtype)
-        mask_coef = prepare_mask_coef_by_statistics(num_frames, 0, motion_scale)
-        masked_image = torch.zeros(batch_size, 4, num_frames, scaled_height, scaled_width).to(
-            device=device, dtype=self.unet.dtype
-        )
-        for f in range(num_frames):
-            mask[:, :, f, :, :] = mask_coef[f]
-            masked_image[:, :, f, :, :] = image_latent_padding.clone()
-
-        mask = torch.cat([mask] * 2) if self.do_classifier_free_guidance else mask
-        masked_image = torch.cat([masked_image] * 2) if self.do_classifier_free_guidance else masked_image
-
-        return mask, masked_image
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, strength, device):
-        # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
-
-        t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-        if hasattr(self.scheduler, "set_begin_index"):
-            self.scheduler.set_begin_index(t_start * self.scheduler.order)
-
-        return timesteps, num_inference_steps - t_start
 
     @property
     def guidance_scale(self):
@@ -662,9 +552,7 @@ class PIAPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: PipelineImageInput,
-        prompt: Union[str, List[str]] = None,
-        strength: float = 1.0,
+        prompt: Optional[Union[str, List[str]]] = None,
         num_frames: Optional[int] = 16,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -679,24 +567,21 @@ class PIAPipeline(
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
         ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
-        motion_scale: int = 0,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        pag_scale: float = 3.0,
+        pag_adaptive_scale: float = 0.0,
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
-            image (`PipelineImageInput`):
-                The input image to be used for video generation.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            strength (`float`, *optional*, defaults to 1.0):
-                Indicates extent to transform the reference `image`. Must be between 0 and 1.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated video.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -737,11 +622,6 @@ class PIAPipeline(
                 IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
                 contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
                 provided, embeddings are computed from the `ip_adapter_image` input argument.
-            motion_scale: (`int`, *optional*, defaults to 0):
-                Parameter that controls the amount and type of motion that is added to the image. Increasing the value
-                increases the amount of motion, while specific ranges of values control the type of motion that is
-                added. Must be between 0 and 8. Set between 0-2 to only increase the amount of motion. Set between 3-5
-                to create looping motion. Set between 6-8 to perform motion with image style transfer.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video. Choose between `torch.Tensor`, `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -762,14 +642,21 @@ class PIAPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            pag_scale (`float`, *optional*, defaults to 3.0):
+                The scale factor for the perturbed attention guidance. If it is set to 0.0, the perturbed attention
+                guidance will not be used.
+            pag_adaptive_scale (`float`, *optional*, defaults to 0.0):
+                The adaptive scale factor for the perturbed attention guidance. If it is set to 0.0, `pag_scale` is
+                used.
 
         Examples:
 
         Returns:
-            [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] is returned, otherwise a
-                `tuple` is returned where the first element is a list with the generated frames.
+            [`~pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] is
+                returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
+
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -792,6 +679,8 @@ class PIAPipeline(
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
+        self._pag_scale = pag_scale
+        self._pag_adaptive_scale = pag_adaptive_scale
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -818,14 +707,19 @@ class PIAPipeline(
             lora_scale=text_encoder_lora_scale,
             clip_skip=self.clip_skip,
         )
+
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
-        if self.do_classifier_free_guidance:
+        if self.do_perturbed_attention_guidance:
+            prompt_embeds = self._prepare_perturbed_attention_guidance(
+                prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
+            )
+        elif self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(
+            ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
                 device,
@@ -833,51 +727,54 @@ class PIAPipeline(
                 self.do_classifier_free_guidance,
             )
 
+            for i, image_embeds in enumerate(ip_adapter_image_embeds):
+                negative_image_embeds = None
+                if self.do_classifier_free_guidance:
+                    negative_image_embeds, image_embeds = image_embeds.chunk(2)
+                if self.do_perturbed_attention_guidance:
+                    image_embeds = self._prepare_perturbed_attention_guidance(
+                        image_embeds, negative_image_embeds, self.do_classifier_free_guidance
+                    )
+                elif self.do_classifier_free_guidance:
+                    image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
+                image_embeds = image_embeds.to(device)
+                ip_adapter_image_embeds[i] = image_embeds
+
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
-        latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
-        self._num_timesteps = len(timesteps)
+        timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
-            4,
+            num_channels_latents,
             num_frames,
             height,
             width,
             prompt_embeds.dtype,
             device,
             generator,
-            latents=latents,
+            latents,
         )
-        mask, masked_image = self.prepare_masked_condition(
-            image,
-            batch_size * num_videos_per_prompt,
-            4,
-            num_frames=num_frames,
-            height=height,
-            width=width,
-            dtype=self.unet.dtype,
-            device=device,
-            generator=generator,
-            motion_scale=motion_scale,
-        )
-        if strength < 1.0:
-            noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=latents.dtype)
-            latents = self.scheduler.add_noise(masked_image[0], noise, latent_timestep)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = (
-            {"image_embeds": image_embeds}
+            {"image_embeds": ip_adapter_image_embeds}
             if ip_adapter_image is not None or ip_adapter_image_embeds is not None
             else None
         )
 
-        # 8. Denoising loop
+        if self.do_perturbed_attention_guidance:
+            original_attn_proc = self.unet.attn_processors
+            self._set_pag_attn_processor(
+                pag_applied_layers=self.pag_applied_layers,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+            )
+
         num_free_init_iters = self._free_init_num_iters if self.free_init_enabled else 1
         for free_init_iter in range(num_free_init_iters):
             if self.free_init_enabled:
@@ -888,12 +785,12 @@ class PIAPipeline(
             self._num_timesteps = len(timesteps)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
+            # 8. Denoising loop
             with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                    latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                    latent_model_input = torch.cat([latent_model_input, mask, masked_image], dim=1)
 
                     # predict the noise residual
                     noise_pred = self.unet(
@@ -905,7 +802,11 @@ class PIAPipeline(
                     ).sample
 
                     # perform guidance
-                    if self.do_classifier_free_guidance:
+                    if self.do_perturbed_attention_guidance:
+                        noise_pred = self._apply_perturbed_attention_guidance(
+                            noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
+                        )
+                    elif self.do_classifier_free_guidance:
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
@@ -936,7 +837,10 @@ class PIAPipeline(
         # 10. Offload all models
         self.maybe_free_model_hooks()
 
+        if self.do_perturbed_attention_guidance:
+            self.unet.set_attn_processor(original_attn_proc)
+
         if not return_dict:
             return (video,)
 
-        return PIAPipelineOutput(frames=video)
+        return AnimateDiffPipelineOutput(frames=video)
