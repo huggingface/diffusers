@@ -22,6 +22,7 @@ import unittest
 import numpy as np
 import torch
 from packaging import version
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
     ControlNetModel,
@@ -89,6 +90,14 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "latent_channels": 4,
         "sample_size": 128,
     }
+    text_encoder = CLIPTextModel.from_pretrained("peft-internal-testing/tiny-clip-text-2")
+    tokenizer = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
+    text_encoder_2 = CLIPTextModelWithProjection.from_pretrained("peft-internal-testing/tiny-clip-text-2")
+    tokenizer_2 = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
+
+    @property
+    def output_shape(self):
+        return (1, 64, 64, 3)
 
     def setUp(self):
         super().setUp()

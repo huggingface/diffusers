@@ -17,15 +17,10 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import (
-    CLIPTextModel,
-    CLIPTokenizer,
-    T5EncoderModel,
-    T5TokenizerFast,
-)
+from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import SD3LoraLoaderMixin
+from ...loaders import FluxLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -142,7 +137,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
+class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     r"""
     The Flux pipeline for text-to-image generation.
 
@@ -333,7 +328,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, SD3LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, FluxLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -366,12 +361,12 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
             )
 
         if self.text_encoder is not None:
-            if isinstance(self, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
+            if isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 
         if self.text_encoder_2 is not None:
-            if isinstance(self, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
+            if isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
