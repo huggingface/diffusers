@@ -82,7 +82,6 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "tokenizer_2": tokenizer_2,
             "transformer": transformer,
             "vae": vae,
-            "default_sample_size": 4,
         }
 
     def get_dummy_inputs(self, device, seed=0):
