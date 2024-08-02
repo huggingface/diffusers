@@ -50,19 +50,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
-class AnimateDiffTransformer3DOutput(BaseOutput):
-    """
-    The output of [`AnimateDiffTransformer3D`].
-
-    Args:
-        sample (`torch.Tensor` of shape `(batch_size * num_frames, num_channels, height, width)`):
-            The hidden states output conditioned on `encoder_hidden_states` input.
-    """
-
-    sample: torch.Tensor
-
-
-@dataclass
 class UNetMotionOutput(BaseOutput):
     """
     The output of [`UNetMotionOutput`].
@@ -162,8 +149,7 @@ class AnimateDiffTransformer3D(nn.Module):
         class_labels: Optional[torch.LongTensor] = None,
         num_frames: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        return_dict: bool = True,
-    ) -> AnimateDiffTransformer3DOutput:
+    ) -> torch.Tensor:
         """
         The [`AnimateDiffTransformer3D`] forward method.
 
@@ -184,16 +170,10 @@ class AnimateDiffTransformer3D(nn.Module):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a
-                [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DOutput`] instead of a plain
-                tuple.
 
         Returns:
-            [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DOutput`] or `tuple`:
-                If `return_dict` is True, an
-                [`~models.transformers.animatediff_transformer_3d.AnimateDiffTransformer3DOutput`] is returned,
-                otherwise a `tuple` where the first element is the sample tensor.
+            torch.Tensor:
+                The output tensor.
         """
         # 1. Input
         batch_frames, channel, height, width = hidden_states.shape
@@ -230,11 +210,7 @@ class AnimateDiffTransformer3D(nn.Module):
         hidden_states = hidden_states.reshape(batch_frames, channel, height, width)
 
         output = hidden_states + residual
-
-        if not return_dict:
-            return (output,)
-
-        return AnimateDiffTransformer3DOutput(sample=output)
+        return output
 
 
 class DownBlockMotion(nn.Module):
