@@ -28,6 +28,7 @@ from .controlnet import (
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
+from .flux import FluxPipeline
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -49,6 +50,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pag import (
+    PixArtSigmaPAGPipeline,
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGPipeline,
@@ -97,8 +99,10 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGPipeline),
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGPipeline),
+        ("pixart-sigma-pag", PixArtSigmaPAGPipeline),
         ("auraflow", AuraFlowPipeline),
         ("kolors", KolorsPipeline),
+        ("flux", FluxPipeline),
     ]
 )
 
