@@ -25,7 +25,6 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = FluxTransformer2DModel(
-            sample_size=32,
             patch_size=1,
             in_channels=4,
             num_layers=1,
