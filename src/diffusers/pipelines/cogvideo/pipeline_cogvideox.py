@@ -38,7 +38,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import CogVideoXPipeline
         >>> from diffusers.utils import export_to_video
 
-        >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX", torch_dtype=torch.bfloat16).to("cuda")
+        >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.bfloat16).to("cuda")
         >>> video = pipe("a polar bear dancing, high quality, realistic", num_inference_steps=20).frames[0]
 
         >>> export_to_video(video, "output.mp4", fps=8)

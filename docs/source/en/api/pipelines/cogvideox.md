@@ -38,7 +38,7 @@ import torch
 from diffusers import LattePipeline
 
 pipeline = LattePipeline.from_pretrained(
-	"THUDM/CogVideoX", torch_dtype=torch.bfloat16
+	"THUDM/CogVideoX-2b", torch_dtype=torch.float16
 ).to("cuda")
 ```
 

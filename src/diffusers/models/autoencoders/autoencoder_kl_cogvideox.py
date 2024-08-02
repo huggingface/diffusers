@@ -16,7 +16,6 @@ from ..upsampling import Upsample3D
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
-# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
 class CogVideoXSafeConv3d(nn.Conv3d):
     """
     A 3D convolution layer that splits the input tensor into smaller parts to avoid OOM in CogVideoX Model.
@@ -46,7 +45,6 @@ class CogVideoXSafeConv3d(nn.Conv3d):
             return super().forward(input)
 
 
-# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
 class CogVideoXCausalConv3d(nn.Module):
     r"""A 3D causal convolution layer that pads the input tensor to ensure causality in CogVideoX Model."""
 
@@ -125,7 +123,6 @@ class CogVideoXCausalConv3d(nn.Module):
         return output
 
 
-# Todo: zRzRzRzRzRzRzR Move it to cogvideox model file since pr#2 has been merged
 class CogVideoXSpatialNorm3D(nn.Module):
     r"""
     Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002. This implementation is specific
