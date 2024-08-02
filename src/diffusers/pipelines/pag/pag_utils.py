@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import re
-from typing import List, Optional, Tuple, Union
+from typing import List, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -39,7 +39,9 @@ class PAGMixin:
         """
         pag_attn_processors = self._pag_attn_processors
         if pag_attn_processors is None:
-            raise ValueError("No PAG attention processors have been set. Set the attention processors by calling `set_pag_applied_layers` and passing the relevant parameters.")
+            raise ValueError(
+                "No PAG attention processors have been set. Set the attention processors by calling `set_pag_applied_layers` and passing the relevant parameters."
+            )
 
         pag_attn_proc = pag_attn_processors[0] if do_classifier_free_guidance else pag_attn_processors[1]
 
@@ -144,7 +146,10 @@ class PAGMixin:
     def set_pag_applied_layers(
         self,
         pag_applied_layers: Union[str, List[str]],
-        pag_attn_processors: Tuple[AttentionProcessor, AttentionProcessor] = (PAGCFGIdentitySelfAttnProcessor2_0(), PAGIdentitySelfAttnProcessor2_0()),
+        pag_attn_processors: Tuple[AttentionProcessor, AttentionProcessor] = (
+            PAGCFGIdentitySelfAttnProcessor2_0(),
+            PAGIdentitySelfAttnProcessor2_0(),
+        ),
     ):
         r"""
         Set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
@@ -152,10 +157,11 @@ class PAGMixin:
         Args:
             pag_applied_layers (`str` or `List[str]`):
                 One or more strings, or simple regex, to identify layers where to apply PAG.
-            pag_attn_processors: (`Tuple[AttentionProcessor, AttentionProcessor]`, defaults to `(PAGCFGIdentitySelfAttnProcessor2_0(), PAGIdentitySelfAttnProcessor2_0())`):
-                A tuple of two attention processors. The first attention processor is for PAG with Classifier-free
-                guidance enabled (conditional and unconditional). The second attention processor is for PAG with CFG
-                disabled (unconditional only).
+            pag_attn_processors:
+                (`Tuple[AttentionProcessor, AttentionProcessor]`, defaults to `(PAGCFGIdentitySelfAttnProcessor2_0(),
+                PAGIdentitySelfAttnProcessor2_0())`): A tuple of two attention processors. The first attention
+                processor is for PAG with Classifier-free guidance enabled (conditional and unconditional). The second
+                attention processor is for PAG with CFG disabled (unconditional only).
             self_attn_identifier (`str`, defaults to "attn1"):
                 The string to identity self-attn layers.
         """
@@ -208,7 +214,7 @@ class PAGMixin:
 
         if self._pag_attn_processors is None:
             return {}
-        
+
         valid_attn_processors = tuple(x.__class__ for x in self._pag_attn_processors)
 
         processors = {}
