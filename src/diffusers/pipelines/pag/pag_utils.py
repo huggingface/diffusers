@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...models.attention_processor import (
+    Attention,
     AttentionProcessor,
     PAGCFGIdentitySelfAttnProcessor2_0,
     PAGIdentitySelfAttnProcessor2_0,
@@ -36,10 +37,9 @@ class PAGMixin:
         r"""
         Set the attention processor for the PAG layers.
         """
-        pag_attn_processors = getattr(self, "_pag_attn_processors", None)
+        pag_attn_processors = self._pag_attn_processors
         if pag_attn_processors is None:
-            # If this hasn't been set by the user, we default to the original PAG identity processors
-            pag_attn_processors = (PAGCFGIdentitySelfAttnProcessor2_0(), PAGIdentitySelfAttnProcessor2_0())
+            raise ValueError("No PAG attention processors have been set. Set the attention processors by calling `set_pag_applied_layers` and passing the relevant parameters.")
 
         pag_attn_proc = pag_attn_processors[0] if do_classifier_free_guidance else pag_attn_processors[1]
 
@@ -48,16 +48,11 @@ class PAGMixin:
         else:
             model: nn.Module = self.transformer
 
-        def is_self_attn(module_name: str) -> bool:
+        def is_self_attn(module: nn.Module) -> bool:
             r"""
             Check if the module is self-attention module based on its name.
             """
-            attn_id = getattr(self, "_self_attn_identifier", "attn1")
-
-            # here, we check for "to" because we want the attention processor itself and not the qkv layers
-            qkv_present = "to" in module_name
-            norm_present = "norm" in module_name
-            return attn_id in module_name and not qkv_present and not norm_present
+            return isinstance(module, Attention) and not module.is_cross_attention
 
         def is_fake_integral_match(layer_id, name):
             layer_id = layer_id.split(".")[-1]
@@ -75,11 +70,11 @@ class PAGMixin:
                 #   (3) Make sure it's not a fake integral match if the layer_id ends with a number
                 #       For example, blocks.1, blocks.10 should be differentiable if layer_id="blocks.1"
                 if (
-                    is_self_attn(name)
+                    is_self_attn(module)
                     and re.search(layer_id, name) is not None
                     and not is_fake_integral_match(layer_id, name)
                 ):
-                    print(f"applying to: {name}")
+                    logger.debug(f"Apply PAG to layer: {name}")
                     target_modules.append(module)
 
             if len(target_modules) == 0:
@@ -149,8 +144,7 @@ class PAGMixin:
     def set_pag_applied_layers(
         self,
         pag_applied_layers: Union[str, List[str]],
-        pag_attn_processors: Optional[Tuple[AttentionProcessor, AttentionProcessor]] = None,
-        self_attn_identifier: str = "attn1",
+        pag_attn_processors: Tuple[AttentionProcessor, AttentionProcessor] = (PAGCFGIdentitySelfAttnProcessor2_0(), PAGIdentitySelfAttnProcessor2_0()),
     ):
         r"""
         Set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
@@ -158,13 +152,16 @@ class PAGMixin:
         Args:
             pag_applied_layers (`str` or `List[str]`):
                 One or more strings, or simple regex, to identify layers where to apply PAG.
-            pag_attn_processors: (`Tuple[AttentionProcessor, AttentionProcessor]`, *optional*):
+            pag_attn_processors: (`Tuple[AttentionProcessor, AttentionProcessor]`, defaults to `(PAGCFGIdentitySelfAttnProcessor2_0(), PAGIdentitySelfAttnProcessor2_0())`):
                 A tuple of two attention processors. The first attention processor is for PAG with Classifier-free
                 guidance enabled (conditional and unconditional). The second attention processor is for PAG with CFG
                 disabled (unconditional only).
             self_attn_identifier (`str`, defaults to "attn1"):
                 The string to identity self-attn layers.
         """
+
+        if not hasattr(self, "_pag_attn_processors"):
+            self._pag_attn_processors = None
 
         if not isinstance(pag_applied_layers, list):
             pag_applied_layers = [pag_applied_layers]
@@ -179,12 +176,7 @@ class PAGMixin:
                 )
 
         self.pag_applied_layers = pag_applied_layers
-        self._self_attn_identifier = self_attn_identifier
-
-        # Ensure we don't overwrite existing processors, possible from __init__, if the intention
-        # was to only change the layers where PAG was applied.
-        if pag_attn_processors is not None:
-            self._pag_attn_processors = pag_attn_processors
+        self._pag_attn_processors = pag_attn_processors
 
     @property
     def pag_scale(self):
@@ -214,10 +206,10 @@ class PAGMixin:
             with the key as the name of the layer.
         """
 
-        if not hasattr(self, "_pag_attn_processors") or self._pag_attn_processors is None:
-            valid_attn_processors = (PAGCFGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0)
-        else:
-            valid_attn_processors = tuple(x.__class__ for x in self._pag_attn_processors)
+        if self._pag_attn_processors is None:
+            return {}
+        
+        valid_attn_processors = tuple(x.__class__ for x in self._pag_attn_processors)
 
         processors = {}
         for name, proc in self.unet.attn_processors.items():
