@@ -27,6 +27,8 @@ from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import CogVideoXLayerNormZero
 
+from einops import rearrange
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -397,8 +399,8 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
 
         # 7. Unpatchify
         p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, p, p, channels)
-        output = output.permute(0, 1, 6, 2, 4, 3, 5).flatten(5, 6).flatten(3, 4)
+        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, channels, p, p)
+        output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
 
         if not return_dict:
             return (output,)

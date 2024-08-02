@@ -4,7 +4,7 @@ from typing import Any, Dict
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3D, DPMSolverMultistepScheduler
+from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3D, CogVideoXDDIMScheduler
 
 
 def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]):
@@ -194,13 +194,18 @@ if __name__ == "__main__":
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id)
 
-    # TODO: verify with authors
-    scheduler = DPMSolverMultistepScheduler.from_pretrained(
-        "runwayml/stable-diffusion-v1-5",
-        subfolder="scheduler",
-        algorithm_type="sde-dpmsolver++",
-        prediction_type="v_prediction",
-    )
+    scheduler = CogVideoXDDIMScheduler.from_config({
+        "snr_shift_scale": 3.0,
+        "beta_end": 0.012,
+        "beta_schedule": "scaled_linear",
+        "beta_start": 0.00085,
+        "clip_sample": False,
+        "num_train_timesteps": 1000,
+        "prediction_type": "v_prediction",
+        "rescale_betas_zero_snr": True,
+        "set_alpha_to_one": True,
+        "timestep_spacing": "linspace"
+    })
 
     pipe = CogVideoXPipeline(
         tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler

@@ -35,7 +35,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```python
-        >>> # TODO: verify this before merge
         >>> from diffusers import CogVideoXPipeline
         >>> from diffusers.utils import export_to_video
 
@@ -444,7 +443,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         fps: int = 8,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
-        guidance_scale: float = 7.5,
+        guidance_scale: float = 6,
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
