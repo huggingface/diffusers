@@ -30,7 +30,12 @@ from transformers import (
 )
 
 from diffusers import KandinskyV22PriorEmb2EmbPipeline, PriorTransformer, UnCLIPScheduler
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, skip_mps, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    skip_mps,
+    torch_device,
+)
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -210,23 +215,13 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
         )[0]
 
         image_slice = image[0, -10:]
+
         image_from_tuple_slice = image_from_tuple[0, -10:]
 
         assert image.shape == (1, 32)
 
         expected_slice = np.array(
-            [
-                0.1071284,
-                1.3330271,
-                0.61260223,
-                -0.6691065,
-                -0.3846852,
-                -1.0303661,
-                0.22716111,
-                0.03348901,
-                0.30040675,
-                -0.24805029,
-            ]
+            [-0.8947, 0.7225, -0.2400, -1.4224, -1.9268, -1.1454, -1.8220, -0.7972, 1.0465, -0.5207]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

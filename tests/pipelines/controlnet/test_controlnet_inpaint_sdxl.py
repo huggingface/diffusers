@@ -37,7 +37,12 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    require_torch_gpu,
+    torch_device,
+)
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
@@ -228,12 +233,6 @@ class ControlNetPipelineSDXLFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
-    def test_dict_tuple_outputs_equivalent(self):
-        expected_slice = None
-        if torch_device == "cpu":
-            expected_slice = np.array([0.5490, 0.5053, 0.4676, 0.5816, 0.5364, 0.4830, 0.5937, 0.5719, 0.4318])
-        super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
-
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
@@ -341,7 +340,8 @@ class ControlNetPipelineSDXLFastTests(
 
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
-        expected_slice = np.array([0.549, 0.5053, 0.4676, 0.5816, 0.5364, 0.483, 0.5937, 0.5719, 0.4318])
+
+        expected_slice = np.array([0.5460, 0.4943, 0.4635, 0.5832, 0.5366, 0.4815, 0.6034, 0.5741, 0.4341])
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4

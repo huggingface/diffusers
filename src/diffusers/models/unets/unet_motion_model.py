@@ -19,7 +19,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, FrozenDict, register_to_config
-from ...loaders import UNet2DConditionLoadersMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, UNet2DConditionLoadersMixin
 from ...utils import logging
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -29,6 +29,7 @@ from ..attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
     AttnProcessor2_0,
+    FusedAttnProcessor2_0,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
 )
@@ -93,7 +94,7 @@ class MotionModules(nn.Module):
             )
 
 
-class MotionAdapter(ModelMixin, ConfigMixin):
+class MotionAdapter(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @register_to_config
     def __init__(
         self,
@@ -230,7 +231,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         pass
 
 
-class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin):
     r"""
     A modified conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a
     sample shaped output.
@@ -597,7 +598,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if not config.get("num_attention_heads"):
             config["num_attention_heads"] = config["attention_head_dim"]
 
-        config = FrozenDict(config)
+        expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
+        config = FrozenDict({k: config.get(k) for k in config if k in expected_kwargs or k in optional_kwargs})
+        config["_class_name"] = cls.__name__
         model = cls.from_config(config)
 
         if not load_weights:
@@ -926,6 +929,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for module in self.modules():
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
+
+        self.set_attn_processor(FusedAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):

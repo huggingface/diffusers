@@ -76,7 +76,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     torch_dtype=torch.float16,
-        ...     enabe_pag=True,
+        ...     enable_pag=True,
         ... )
         >>> pipe = pipe.to("cuda")
 
