@@ -445,7 +445,7 @@ class AnimateDiffControlNetPipelineFastTests(
 
         for context_length in [8, 9]:
             for context_stride in [4, 6]:
-                pipe.enable_free_noise(context_length, context_stride, weighting_scheme="pyramid", shuffle=True)
+                pipe.enable_free_noise(context_length, context_stride)
 
                 inputs_enable_free_noise = self.get_dummy_inputs(torch_device, num_frames=16)
                 frames_enable_free_noise = pipe(**inputs_enable_free_noise).frames[0]
