@@ -54,3 +54,9 @@ The abstract from the paper is:
 [[autodoc]] StableDiffusionXLControlNetPAGPipeline
 	- all
 	- __call__
+
+
+## PixArtSigmaPAGPipeline
+[[autodoc]] PixArtSigmaPAGPipeline
+	- all
+	- __call__
