@@ -2,12 +2,15 @@
 # +> fuse layer
 # position l_p -> position block ->
 
+from typing import Optional
+
 import cv2
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
 from torch import nn
 
+from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.utils import logging
 
 
@@ -34,6 +37,20 @@ def zero_module(module: nn.Module) -> nn.Module:
     return module
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 class AuxiliaryLatentModule(nn.Module):
     def __init__(self, font_path, dims=2, glyph_channels=256, position_channels=64, model_channels=256, **kwargs):
         super().__init__()
@@ -42,6 +59,7 @@ class AuxiliaryLatentModule(nn.Module):
         self.font = ImageFont.truetype(font_path, 60)
         self.use_fp16 = kwargs.get("use_fp16", False)
         self.device = kwargs.get("device", "cpu")
+        self.scale_factor = 0.18215
         self.glyph_block = nn.Sequential(
             conv_nd(dims, glyph_channels, 8, 3, padding=1),
             nn.SiLU(),
@@ -79,6 +97,16 @@ class AuxiliaryLatentModule(nn.Module):
             conv_nd(dims, 32, 64, 3, padding=1, stride=2),
             nn.SiLU(),
         )
+
+        self.vae = AutoencoderKL.from_pretrained(
+            "runwayml/stable-diffusion-v1-5",
+            subfolder="vae",
+            torch_dtype=torch.float16 if self.use_fp16 else torch.float32,
+            variant="fp16" if self.use_fp16 else "fp32",
+        )
+        self.vae.eval()
+        for param in self.vae.parameters():
+            param.requires_grad = False
 
         self.fuse_block = zero_module(conv_nd(dims, 256 + 64 + 4, model_channels, 3, padding=1))
 
@@ -216,8 +244,7 @@ class AuxiliaryLatentModule(nn.Module):
         masked_img = torch.from_numpy(masked_img.copy()).float().cpu()
         if self.use_fp16:
             masked_img = masked_img.half()
-        encoder_posterior = self.encode_first_stage(masked_img[None, ...])
-        masked_x = self.get_first_stage_encoding(encoder_posterior).detach()
+        masked_x = self.encode_first_stage(masked_img[None, ...]).detach()
         if self.use_fp16:
             masked_x = masked_x.half()
         masked_x = torch.cat([masked_x for _ in range(img_count)], dim=0)
@@ -228,13 +255,12 @@ class AuxiliaryLatentModule(nn.Module):
         enc_pos = self.position_block(positions, emb, context)
         guided_hint = self.fuse_block(torch.cat([enc_glyph, enc_pos, masked_x], dim=1))
 
-        return guided_hint
+        hint = self.arr2tensor(np_hint, img_count)
+
+        return guided_hint, hint  # , gly_pos_imgs
 
     def encode_first_stage(self, masked_img):
-        pass
-
-    def get_first_stage_encoding(self, encoder_posterior):
-        pass
+        return retrieve_latents(self.vae.encode(masked_img)) * self.scale_factor
 
     def arr2tensor(self, arr, bs):
         arr = np.transpose(arr, (2, 0, 1))
@@ -351,5 +377,6 @@ class AuxiliaryLatentModule(nn.Module):
         self.device = device
         self.glyph_block = self.glyph_block.to(device)
         self.position_block = self.position_block.to(device)
+        self.vae = self.vae.to(device)
         self.fuse_block = self.fuse_block.to(device)
         return self
