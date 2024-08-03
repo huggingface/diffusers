@@ -450,7 +450,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(
                 for transformer_block in motion_module.transformer_blocks:
                     self.assertFalse(
                         isinstance(transformer_block, FreeNoiseTransformerBlock),
-                        "Motion module transformer blocks must not be an instance of `FreeNoiseTransformerBlock` after enabling FreeNoise.",
+                        "Motion module transformer blocks must not be an instance of `FreeNoiseTransformerBlock` after disabling FreeNoise.",
                     )
 
     def test_free_noise(self):
