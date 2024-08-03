@@ -17,7 +17,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNetMotionModel,
 )
-from diffusers.models.unets.unet_motion_model import FreeNoiseTransformerBlock
+from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import numpy_cosine_similarity_distance, require_torch_gpu, slow, torch_device
 

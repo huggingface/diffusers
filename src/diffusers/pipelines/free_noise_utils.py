@@ -16,11 +16,10 @@ from typing import Optional, Union
 
 import torch
 
-from ..models.attention import BasicTransformerBlock
+from ..models.attention import BasicTransformerBlock, FreeNoiseTransformerBlock
 from ..models.unets.unet_motion_model import (
     CrossAttnDownBlockMotion,
     DownBlockMotion,
-    FreeNoiseTransformerBlock,
     UpBlockMotion,
 )
 from ..utils import logging
