@@ -1997,7 +1997,7 @@ class StableDiffusionMixin:
         _safety_checker = getattr(self, "safety_checker", None)
         if _safety_checker is not None:
             if hasattr(_safety_checker, "update_safety_checker_Level"):
-                self.safety_checker.update_safety_checker_Level(Level)
+                self.safety_checker.update_safety_checker_Level(level)
             else:
                 logger.warning("`safety_checker_level` is ignored because `update_safety_checker_Level` is not in `safety_checker`.")
         else:
