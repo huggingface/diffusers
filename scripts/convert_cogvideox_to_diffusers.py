@@ -172,7 +172,7 @@ def get_args():
     )
     parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original vae checkpoint")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
-    parser.add_argument("--fp16", action="store_true", default=False, help="Whether to save the model weights in fp16")
+    parser.add_argument("--fp16", action="store_true", default=True, help="Whether to save the model weights in fp16")
     parser.add_argument(
         "--push_to_hub", action="store_true", default=False, help="Whether to push to HF Hub after saving"
     )
@@ -214,5 +214,4 @@ if __name__ == "__main__":
     if args.fp16:
         pipe = pipe.to(dtype=torch.float16)
 
-    variant = "fp16" if args.fp16 else None
-    pipe.save_pretrained(args.output_path, safe_serialization=True, variant=variant, push_to_hub=args.push_to_hub)
+    pipe.save_pretrained(args.output_path, safe_serialization=True, push_to_hub=args.push_to_hub)

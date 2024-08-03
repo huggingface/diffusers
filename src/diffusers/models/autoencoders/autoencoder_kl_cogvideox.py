@@ -59,10 +59,8 @@ class CogVideoXCausalConv3d(nn.Module):
     ):
         super().__init__()
 
-        def cast_tuple(t, length=1):
-            return t if isinstance(t, tuple) else ((t,) * length)
-
-        kernel_size = cast_tuple(kernel_size, 3)
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size,) * 3
 
         time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
 
