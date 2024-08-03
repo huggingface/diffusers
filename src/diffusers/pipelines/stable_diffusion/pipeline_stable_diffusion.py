@@ -563,6 +563,12 @@ class StableDiffusionPipeline(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
         return image, has_nsfw_concept
+    
+    def safety_checker_Level(self, Level):
+        if self.safety_checker is not None:
+            self.safety_checker.update_safety_checker_Level(Level)
+        else:
+            logger.warning("`safety_checker_Level` is ignored because `safety_checker=None` is passed.")
 
     def decode_latents(self, latents):
         deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"

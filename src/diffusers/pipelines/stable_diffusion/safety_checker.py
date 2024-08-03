@@ -46,6 +46,21 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         self.concept_embeds_weights = nn.Parameter(torch.ones(17), requires_grad=False)
         self.special_care_embeds_weights = nn.Parameter(torch.ones(3), requires_grad=False)
+    
+    def update_safety_checker_Level(self, Level):
+        Level_dict = {
+            "WEAK": -1.0,
+            "MEDIUM": -0.5,
+            "NOMAL": 0.0,
+            "STRONG": 0.5,
+            "MAX": 1.0,
+            }
+        if Level in Level_dict:
+            Level = Level_dict[Level] 
+        if isinstance(Level, (float, int)): 
+            setattr(self,"adjustment",Level)
+        else:
+            raise ValueError("`int` or `float` or one of the following ['WEAK'], ['MEDIUM'], ['NOMAL'], ['STRONG'], ['MAX']")
 
     @torch.no_grad()
     def forward(self, clip_input, images):
