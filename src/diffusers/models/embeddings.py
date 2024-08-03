@@ -453,6 +453,26 @@ def apply_rotary_emb(
         return x_out.type_as(x)
 
 
+class FluxPosEmbed(nn.Module):
+    def __init__(self, theta: int, axes_dim: List[int]):
+        super().__init__()
+        self.theta = theta
+        self.axes_dim = axes_dim
+
+    def forward(self, ids: torch.Tensor) -> torch.Tensor:
+        n_axes = ids.shape[-1]
+        cos_out = []
+        sin_out = []
+        pos = ids.squeeze().float().cpu().numpy()
+        for i in range(n_axes):
+            cos, sin = get_1d_rotary_pos_embed(self.axes_dim[i], pos[:, i], repeat_interleave_real=True, use_real=True)
+            cos_out.append(cos)
+            sin_out.append(sin)
+        freqs_cos = torch.cat(cos_out, dim=-1).to(ids.device)
+        freqs_sin = torch.cat(sin_out, dim=-1).to(ids.device)
+        return freqs_cos, freqs_sin
+
+
 class TimestepEmbedding(nn.Module):
     def __init__(
         self,

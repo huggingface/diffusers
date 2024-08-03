@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -27,46 +27,11 @@ from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings
+from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-# YiYi to-do: refactor rope related functions/classes
-def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
-    assert dim % 2 == 0, "The dimension must be even."
-
-    scale = torch.arange(0, dim, 2, dtype=torch.float64, device=pos.device) / dim
-    omega = 1.0 / (theta**scale)
-
-    batch_size, seq_length = pos.shape
-    out = torch.einsum("...n,d->...nd", pos, omega)
-    cos_out = torch.cos(out)
-    sin_out = torch.sin(out)
-
-    stacked_out = torch.stack([cos_out, -sin_out, sin_out, cos_out], dim=-1)
-    out = stacked_out.view(batch_size, -1, dim // 2, 2, 2)
-    return out.float()
-
-
-# YiYi to-do: refactor rope related functions/classes
-class EmbedND(nn.Module):
-    def __init__(self, dim: int, theta: int, axes_dim: List[int]):
-        super().__init__()
-        self.dim = dim
-        self.theta = theta
-        self.axes_dim = axes_dim
-
-    def forward(self, ids: torch.Tensor) -> torch.Tensor:
-        n_axes = ids.shape[-1]
-        emb = torch.cat(
-            [rope(ids[..., i], self.axes_dim[i], self.theta) for i in range(n_axes)],
-            dim=-3,
-        )
-
-        return emb.unsqueeze(1)
 
 
 @maybe_allow_in_graph
@@ -264,7 +229,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         self.out_channels = in_channels
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
-        self.pos_embed = EmbedND(dim=self.inner_dim, theta=10000, axes_dim=[16, 56, 56])
+        self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=[16, 56, 56])
         text_time_guidance_cls = (
             CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
         )
