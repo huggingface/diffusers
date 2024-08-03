@@ -2042,7 +2042,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
         for module in self.children():
             fn_recursive_resnet_forward(module, chunk_size)
 
-    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
     def disable_forward_chunking(self) -> None:
         def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
             if hasattr(module, "set_chunk_feed_forward"):
