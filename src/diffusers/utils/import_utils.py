@@ -294,6 +294,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
+_sentencepiece_available = importlib.util.find_spec("entencepiece") is not None
+try:
+    _sentencepiece_version = importlib_metadata.version("sentencepiece")
+    logger.info(f"Successfully imported sentencepiece version {_sentencepiece_version}")
+except importlib_metadata.PackageNotFoundError:
+    _sentencepiece_available = False
+
 _matplotlib_available = importlib.util.find_spec("matplotlib") is not None
 try:
     _matplotlib_version = importlib_metadata.version("matplotlib")
@@ -435,6 +442,9 @@ def is_bitsandbytes_available():
 def is_google_colab():
     return _is_google_colab
 
+def is_sentencepiece_available():
+    return _sentencepiece_available 
+
 
 # docstyle-ignore
 FLAX_IMPORT_ERROR = """
@@ -554,6 +564,12 @@ SAFETENSORS_IMPORT_ERROR = """
 """
 
 # docstyle-ignore
+SENTENCEPIECE_IMPORT_ERROR = """
+{0} requires the sentencepiece library but it was not found in your environment. You can install it with pip: `pip install sentencepiece`
+"""
+
+
+# docstyle-ignore
 BITSANDBYTES_IMPORT_ERROR = """
 {0} requires the bitsandbytes library but it was not found in your environment. You can install it with pip: `pip install bitsandbytes`
 """
@@ -581,6 +597,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("peft", (is_peft_available, PEFT_IMPORT_ERROR)),
         ("safetensors", (is_safetensors_available, SAFETENSORS_IMPORT_ERROR)),
         ("bitsandbytes", (is_bitsandbytes_available, BITSANDBYTES_IMPORT_ERROR)),
+        ("sentencepiece", (is_sentencepiece_available, SENTENCEPIECE_IMPORT_ERROR)),
     ]
 )
 

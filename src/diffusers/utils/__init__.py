@@ -91,6 +91,7 @@ from .import_utils import (
     is_unidecode_available,
     is_wandb_available,
     is_xformers_available,
+    is_sentencepiece_available,
     requires_backends,
 )
 from .loading_utils import load_image, load_video
