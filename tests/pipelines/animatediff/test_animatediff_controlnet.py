@@ -18,7 +18,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNetMotionModel,
 )
-from diffusers.models.unets.unet_motion_model import FreeNoiseTransformerBlock
+from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import torch_device
 
