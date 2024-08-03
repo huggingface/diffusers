@@ -4,7 +4,7 @@ from typing import Any, Dict
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3DModel, CogVideoXDDIMScheduler
+from diffusers import AutoencoderKLCogVideoX, CogVideoXDDIMScheduler, CogVideoXPipeline, CogVideoXTransformer3DModel
 
 
 def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]):
@@ -75,9 +75,9 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "time_embed.0": "time_embedding.linear_1",
     "time_embed.2": "time_embedding.linear_2",
     "mixins.patch_embed": "patch_embed",
-    "mixins.final_layer.norm_final": "norm_out",
+    "mixins.final_layer.norm_final": "norm_out.norm",
     "mixins.final_layer.linear": "proj_out",
-    "mixins.final_layer.adaLN_modulation.1": "adaln_out.1",
+    "mixins.final_layer.adaLN_modulation.1": "norm_out.linear",
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {
@@ -176,6 +176,7 @@ def get_args():
     parser.add_argument(
         "--push_to_hub", action="store_true", default=False, help="Whether to push to HF Hub after saving"
     )
+    parser.add_argument("--text_encoder_cache_dir", type=str, default=None, help="Path to text encoder cache directory")
     return parser.parse_args()
 
 
@@ -192,7 +193,7 @@ if __name__ == "__main__":
 
     text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
-    text_encoder = T5EncoderModel.from_pretrained(text_encoder_id)
+    text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
 
     scheduler = CogVideoXDDIMScheduler.from_config({
         "snr_shift_scale": 3.0,

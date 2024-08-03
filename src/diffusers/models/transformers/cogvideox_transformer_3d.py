@@ -25,28 +25,10 @@ from ..attention_processor import CogVideoXAttnProcessor2_0
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import CogVideoXLayerNormZero
-
-from einops import rearrange
+from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int):
-    # "feed_forward_chunk_size" can be used to save memory
-    if hidden_states.shape[chunk_dim] % chunk_size != 0:
-        raise ValueError(
-            f"`hidden_states` dimension to be chunked: {hidden_states.shape[chunk_dim]} has to be divisible by chunk size: {chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
-        )
-
-    num_chunks = hidden_states.shape[chunk_dim] // chunk_size
-    ff_output = torch.cat(
-        [ff(hid_slice) for hid_slice in hidden_states.chunk(num_chunks, dim=chunk_dim)],
-        dim=chunk_dim,
-    )
-    return ff_output
-
 
 @maybe_allow_in_graph
 class CogVideoXBlock(nn.Module):
@@ -91,12 +73,10 @@ class CogVideoXBlock(nn.Module):
         attention_head_dim: int,
         time_embed_dim: int,
         dropout: float = 0.0,
-        cross_attention_dim: Optional[int] = None,
         activation_fn: str = "gelu-approximate",
         attention_bias: bool = False,
         qk_norm: bool = True,
         norm_elementwise_affine: bool = True,
-        norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single', 'ada_norm_continuous', 'layer_norm_i2vgen'
         norm_eps: float = 1e-5,
         final_dropout: bool = True,
         ff_inner_dim: Optional[int] = None,
@@ -110,10 +90,9 @@ class CogVideoXBlock(nn.Module):
 
         self.attn1 = Attention(
             query_dim=dim,
-            cross_attention_dim=cross_attention_dim,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
-            qk_norm=norm_type if qk_norm else None,
+            qk_norm="layer_norm" if qk_norm else None,
             eps=1e-6,
             bias=attention_bias,
             out_bias=attention_out_bias,
@@ -131,15 +110,6 @@ class CogVideoXBlock(nn.Module):
             inner_dim=ff_inner_dim,
             bias=ff_bias,
         )
-
-        # let chunk size default to None
-        self._chunk_size = None
-        self._chunk_dim = 0
-
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
-        # Sets chunk feed-forward
-        self._chunk_size = chunk_size
-        self._chunk_dim = dim
 
     def forward(
         self,
@@ -167,11 +137,7 @@ class CogVideoXBlock(nn.Module):
 
         # feed-forward
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
-
-        if self._chunk_size is not None:
-            ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
-        else:
-            ff_output = self.ff(norm_hidden_states)
+        ff_output = self.ff(norm_hidden_states)
 
         hidden_states = hidden_states + gate_ff * ff_output[:, text_length:]
         encoder_hidden_states = encoder_hidden_states + enc_gate_ff * ff_output[:, :text_length]
@@ -230,7 +196,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         text_embed_dim: int = 4096,
         num_layers: int = 30,
         dropout: float = 0.0,
-        cross_attention_dim: Optional[int] = None,
         attention_bias: bool = True,
         sample_width: int = 90,
         sample_height: int = 60,
@@ -240,7 +205,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         max_text_seq_length: int = 226,
         activation_fn: str = "gelu-approximate",
         timestep_activation_fn: str = "silu",
-        norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         spatial_interpolation_scale: float = 1.875,
@@ -248,10 +212,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
-
-        self.height = sample_height
-        self.width = sample_width
-        self.frames = sample_frames
 
         post_patch_height = sample_height // patch_size
         post_patch_width = sample_width // patch_size
@@ -279,7 +239,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         self.time_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
         self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, timestep_activation_fn)
 
-        # 4. Define spatial transformers blocks
+        # 4. Define spatio-temporal transformers blocks
         self.transformer_blocks = nn.ModuleList(
             [
                 CogVideoXBlock(
@@ -288,10 +248,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                     attention_head_dim=attention_head_dim,
                     time_embed_dim=time_embed_dim,
                     dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
                     activation_fn=activation_fn,
                     attention_bias=attention_bias,
-                    norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
                     norm_eps=norm_eps,
                 )
@@ -301,8 +259,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         self.norm_final = nn.LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
 
         # 5. Output blocks
-        self.adaln_out = nn.Sequential(nn.SiLU(), nn.Linear(time_embed_dim, 2 * inner_dim))
-        self.norm_out = nn.LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
+        self.norm_out = AdaLayerNorm(embedding_dim=time_embed_dim, output_dim=2 * inner_dim, norm_elementwise_affine=norm_elementwise_affine, norm_eps=norm_eps, use_embedding=False)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 
         self.gradient_checkpointing = False
@@ -393,8 +350,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.norm_final(hidden_states)
 
         # 6. Final block
-        shift, scale = self.adaln_out(emb).chunk(2, dim=1)
-        hidden_states = self.norm_out(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
+        hidden_states = self.norm_out(hidden_states, temb=emb)
         hidden_states = self.proj_out(hidden_states)
 
         # 7. Unpatchify

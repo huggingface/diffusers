@@ -341,7 +341,7 @@ class Downsample3D(nn.Module):
                 # (batch_size * height * width, channels, frames // 2) -> (batch_size, height, width, channels, frames // 2) -> (batch_size, channels, frames // 2, height, width)
                 x = x.reshape(batch_size, height, width, channels, x.shape[-1]).permute(0, 3, 4, 1, 2)
 
-            # Pad the tensor
+        # Pad the tensor
         pad = (0, 1, 0, 1)
         x = F.pad(x, pad, mode="constant", value=0)
         batch_size, channels, frames, height, width = x.shape
