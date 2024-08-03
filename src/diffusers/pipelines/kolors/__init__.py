@@ -5,9 +5,9 @@ from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
+    is_sentencepiece_available,
     is_torch_available,
     is_transformers_available,
-    is_sentencepiece_available,
 )
 
 
@@ -20,7 +20,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ...utils import dummy_torch_and_transformers_and_sentencepiece_objects  # noqa F403
 
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_sentencepiece_object))
+    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_sentencepiece_objects))
 else:
     _import_structure["pipeline_kolors"] = ["KolorsPipeline"]
     _import_structure["pipeline_kolors_img2img"] = ["KolorsImg2ImgPipeline"]

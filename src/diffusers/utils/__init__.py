@@ -78,6 +78,7 @@ from .import_utils import (
     is_peft_version,
     is_safetensors_available,
     is_scipy_available,
+    is_sentencepiece_available,
     is_tensorboard_available,
     is_timm_available,
     is_torch_available,
@@ -91,7 +92,6 @@ from .import_utils import (
     is_unidecode_available,
     is_wandb_available,
     is_xformers_available,
-    is_sentencepiece_available,
     requires_backends,
 )
 from .loading_utils import load_image, load_video

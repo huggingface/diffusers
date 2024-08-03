@@ -10,10 +10,10 @@ from ..utils import (
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
+    is_sentencepiece_available,
     is_torch_available,
     is_torch_npu_available,
     is_transformers_available,
-    is_sentencepiece_available,
 )
 
 
@@ -642,7 +642,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 StableDiffusionKDiffusionPipeline,
                 StableDiffusionXLKDiffusionPipeline,
             )
-        
+
         try:
             if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
                 raise OptionalDependencyNotAvailable()

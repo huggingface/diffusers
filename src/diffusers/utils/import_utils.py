@@ -294,7 +294,7 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
-_sentencepiece_available = importlib.util.find_spec("entencepiece") is not None
+_sentencepiece_available = importlib.util.find_spec("sentencepiece") is not None
 try:
     _sentencepiece_version = importlib_metadata.version("sentencepiece")
     logger.info(f"Successfully imported sentencepiece version {_sentencepiece_version}")
@@ -442,8 +442,9 @@ def is_bitsandbytes_available():
 def is_google_colab():
     return _is_google_colab
 
+
 def is_sentencepiece_available():
-    return _sentencepiece_available 
+    return _sentencepiece_available
 
 
 # docstyle-ignore
