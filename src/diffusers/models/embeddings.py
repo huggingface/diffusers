@@ -302,7 +302,7 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
         If True, return real part and imaginary part separately. Otherwise, return complex numbers.
 
     Returns:
-        `torch.Tensor`: positional embdding with shape `( grid_size * grid_size, embed_dim/2)`.
+        `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
     """
     start, stop = crops_coords
     grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
@@ -902,7 +902,7 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         pooled_projections = self.pooler(encoder_hidden_states)  # (N, 1024)
 
         if self.use_style_cond_and_image_meta_size:
-            # extra condition2: image meta size embdding
+            # extra condition2: image meta size embedding
             image_meta_size = self.size_proj(image_meta_size.view(-1))
             image_meta_size = image_meta_size.to(dtype=hidden_dtype)
             image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)

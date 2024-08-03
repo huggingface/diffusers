@@ -46,5 +46,4 @@ pipe.enable_model_cpu_offload()
 # generate image
 generator = torch.manual_seed(0)
 image = pipe("a tortoise", num_inference_steps=20, generator=generator, image_pair=[image_a,image_b], image=query).images[0]
-
 ```

@@ -148,12 +148,12 @@ accelerate launch train_dreambooth_lora_sd3.py \
 ```
 
 ### Text Encoder Training
-Alongside the transformer, LoRA fine-tuning of the CLIP text encoders is now also supported. 
+Alongside the transformer, LoRA fine-tuning of the CLIP text encoders is now also supported.
 To do so, just specify `--train_text_encoder` while launching training. Please keep the following points in mind:
 
 > [!NOTE]
-> SD3 has three text encoders (CLIP L/14, OpenCLIP bigG/14, and T5-v1.1-XXL). 
-By enabling `--train_text_encoder`, LoRA fine-tuning of both **CLIP encoders** is performed. At the moment, T5 fine-tuning is not supported and weights remain frozen when text encoder training is enabled. 
+> SD3 has three text encoders (CLIP L/14, OpenCLIP bigG/14, and T5-v1.1-XXL).
+By enabling `--train_text_encoder`, LoRA fine-tuning of both **CLIP encoders** is performed. At the moment, T5 fine-tuning is not supported and weights remain frozen when text encoder training is enabled.
 
 To perform DreamBooth LoRA with text-encoder training, run:
 ```bash
@@ -185,4 +185,4 @@ accelerate launch train_dreambooth_lora_sd3.py \
 
 1. We default to the "logit_normal" weighting scheme for the loss following the SD3 paper. Thanks to @bghira for helping us discover that for other weighting schemes supported from the training script, training may incur numerical instabilities.
 2. Thanks to `bghira`, `JinxuXiang`, and `bendanzzc` for helping us discover a bug in how VAE encoding was being done previously. This has been fixed in [#8917](https://github.com/huggingface/diffusers/pull/8917).
-3. Additionally, we now have the option to control if we want to apply preconditioning to the model outputs via a `--precondition_outputs` CLI arg. It affects how the model `target` is calculated as well. 
+3. Additionally, we now have the option to control if we want to apply preconditioning to the model outputs via a `--precondition_outputs` CLI arg. It affects how the model `target` is calculated as well.

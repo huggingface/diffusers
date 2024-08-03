@@ -67,7 +67,7 @@ Please refer to the [How to use Stable Diffusion in Apple Silicon](https://huggi
 
 ## Quickstart
 
-Generating outputs is super easy with 🤗 Diffusers. To generate an image from text, use the `from_pretrained` method to load any pretrained diffusion model (browse the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) for 27.000+ checkpoints):
+Generating outputs is super easy with 🤗 Diffusers. To generate an image from text, use the `from_pretrained` method to load any pretrained diffusion model (browse the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) for 30,000+ checkpoints):
 
 ```python
 from diffusers import DiffusionPipeline
@@ -209,7 +209,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
 - https://github.com/deep-floyd/IF
 - https://github.com/bentoml/BentoML
 - https://github.com/bmaltais/kohya_ss
-- +12.000 other amazing GitHub repositories 💪
+- +14,000 other amazing GitHub repositories 💪
 
 Thank you for using us ❤️.
 

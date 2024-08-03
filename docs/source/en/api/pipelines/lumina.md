@@ -59,7 +59,7 @@ First, load the pipeline:
 
 ```python
 from diffusers import LuminaText2ImgPipeline
-import torch 
+import torch
 
 pipeline = LuminaText2ImgPipeline.from_pretrained(
 	"Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16
@@ -87,4 +87,4 @@ image = pipeline(prompt="Upper body of a young woman in a Victorian-era outfit w
 [[autodoc]] LuminaText2ImgPipeline
 	- all
 	- __call__
-	
+

@@ -24,7 +24,7 @@ jobs:
   mirror_community_pipeline:
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_COMMUNITY_MIRROR }}
-    
+
     runs-on: ubuntu-latest
     steps:
       # Checkout to correct ref
@@ -95,7 +95,7 @@ jobs:
         if: ${{ success() }}
         run: |
           pip install requests && python utils/notify_community_pipelines_mirror.py --status=success
-      
+
       - name: Report failure status
         if: ${{ failure() }}
         run: |

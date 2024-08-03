@@ -106,7 +106,7 @@ def checkout_commit(repo: Repo, commit_id: str):
 def clean_code(content: str) -> str:
     """
     Remove docstrings, empty line or comments from some code (used to detect if a diff is real or only concern
-    comments or docstings).
+    comments or docstrings).
 
     Args:
         content (`str`): The code to clean
@@ -165,7 +165,7 @@ def keep_doc_examples_only(content: str) -> str:
 def get_all_tests() -> List[str]:
     """
     Walks the `tests` folder to return a list of files/subfolders. This is used to split the tests to run when using
-    paralellism. The split is:
+    parallelism. The split is:
 
     - folders under `tests`: (`tokenization`, `pipelines`, etc) except the subfolder `models` is excluded.
     - folders under `tests/models`: `bert`, `gpt2`, etc.
@@ -635,7 +635,7 @@ def get_tree_starting_at(module: str, edges: List[Tuple[str, str]]) -> List[Unio
 
     Args:
         module (`str`): The module that will be the root of the subtree we want.
-        eges (`List[Tuple[str, str]]`): The list of all edges of the tree.
+        edges (`List[Tuple[str, str]]`): The list of all edges of the tree.
 
     Returns:
         `List[Union[str, List[str]]]`: The tree to print in the following format: [module, [list of edges
@@ -663,7 +663,7 @@ def print_tree_deps_of(module, all_edges=None):
 
     Args:
         module (`str`): The module that will be the root of the subtree we want.
-        all_eges (`List[Tuple[str, str]]`, *optional*):
+        all_edges (`List[Tuple[str, str]]`, *optional*):
             The list of all edges of the tree. Will be set to `create_reverse_dependency_tree()` if not passed.
     """
     if all_edges is None:
@@ -706,7 +706,7 @@ def init_test_examples_dependencies() -> Tuple[Dict[str, List[str]], List[str]]:
     for framework in ["flax", "pytorch", "tensorflow"]:
         test_files = list((PATH_TO_EXAMPLES / framework).glob("test_*.py"))
         all_examples.extend(test_files)
-        # Remove the files at the root of examples/framework since they are not proper examples (they are eith utils
+        # Remove the files at the root of examples/framework since they are not proper examples (they are either utils
         # or example test files).
         examples = [
             f for f in (PATH_TO_EXAMPLES / framework).glob("**/*.py") if f.parent != PATH_TO_EXAMPLES / framework
