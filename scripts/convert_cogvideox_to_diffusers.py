@@ -4,7 +4,7 @@ from typing import Any, Dict
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3D, CogVideoXDDIMScheduler
+from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3DModel, CogVideoXDDIMScheduler
 
 
 def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]):
@@ -127,7 +127,7 @@ def convert_transformer(ckpt_path: str):
     PREFIX_KEY = "model.diffusion_model."
 
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
-    transformer = CogVideoXTransformer3D()
+    transformer = CogVideoXTransformer3DModel()
 
     for key in list(original_state_dict.keys()):
         new_key = key[len(PREFIX_KEY) :]

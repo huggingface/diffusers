@@ -178,7 +178,7 @@ class CogVideoXBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
+class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
 
     """
@@ -322,8 +322,7 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
         batch_size, num_frames, channels, height, width = hidden_states.shape
 
         # 1. Time embedding
-        timesteps = timestep
-        if not torch.is_tensor(timesteps):
+        if not torch.is_tensor(timestep):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
             is_mps = hidden_states.device.type == "mps"
@@ -331,12 +330,11 @@ class CogVideoXTransformer3D(ModelMixin, ConfigMixin):
                 dtype = torch.float32 if is_mps else torch.float64
             else:
                 dtype = torch.int32 if is_mps else torch.int64
-            timesteps = torch.tensor([timesteps], dtype=dtype, device=hidden_states.device)
-        elif len(timesteps.shape) == 0:
-            timesteps = timesteps[None].to(hidden_states.device)
+            timesteps = torch.tensor([timestep], dtype=dtype, device=hidden_states.device)
+        elif len(timestep.shape) == 0:
+            timesteps = timestep[None].to(hidden_states.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        timesteps = timesteps.expand(hidden_states.shape[0])
         t_emb = self.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors

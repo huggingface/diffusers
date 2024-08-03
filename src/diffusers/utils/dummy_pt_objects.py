@@ -107,7 +107,7 @@ class AutoencoderTiny(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class CogVideoXTransformer3D(metaclass=DummyObject):
+class CogVideoXTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

@@ -141,8 +141,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_amused import AmusedScheduler
         from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
-        from .scheduling_ddim_cogvideox import CogVideoXDDIMScheduler
         from .scheduling_ddim import DDIMScheduler
+        from .scheduling_ddim_cogvideox import CogVideoXDDIMScheduler
         from .scheduling_ddim_inverse import DDIMInverseScheduler
         from .scheduling_ddim_parallel import DDIMParallelScheduler
         from .scheduling_ddpm import DDPMScheduler

@@ -286,8 +286,9 @@ class KDownsample2D(nn.Module):
 
 
 class Downsample3D(nn.Module):
+    # Todo: Wait for paper relase.
     r"""
-    A 3D Downsampling layer.
+    A 3D Downsampling layer using in [CogVideoX]() by Tsinghua University & ZhipuAI
 
     Args:
         in_channels (`int`):

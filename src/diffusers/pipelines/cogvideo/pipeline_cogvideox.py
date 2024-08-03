@@ -21,7 +21,7 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3D
+from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
@@ -138,8 +138,8 @@ class CogVideoXPipeline(DiffusionPipeline):
         tokenizer (`T5Tokenizer`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        transformer ([`CogVideoXTransformer3D`]):
-            A text conditioned `CogVideoXTransformer3D` to denoise the encoded video latents.
+        transformer ([`CogVideoXTransformer3DModel`]):
+            A text conditioned `CogVideoXTransformer3DModel` to denoise the encoded video latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
     """
@@ -158,7 +158,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         tokenizer: T5Tokenizer,
         text_encoder: T5EncoderModel,
         vae: AutoencoderKLCogVideoX,
-        transformer: CogVideoXTransformer3D,
+        transformer: CogVideoXTransformer3DModel,
         scheduler: CogVideoXDDIMScheduler,
     ):
         super().__init__()

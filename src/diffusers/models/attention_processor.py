@@ -2059,7 +2059,7 @@ class LuminaAttnProcessor2_0:
 class CogVideoXAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
-    used in the CogVideoXTransformer3D model. It applies a normalization layer on the query and key vectors.
+    used in the CogVideoXTransformer3DModel. It applies a normalization layer on the query and key vectors.
     """
 
     def __init__(self):
@@ -2073,12 +2073,7 @@ class CogVideoXAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        *args,
-        **kwargs,
     ) -> torch.Tensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
 
         input_ndim = hidden_states.ndim
         if input_ndim == 4:

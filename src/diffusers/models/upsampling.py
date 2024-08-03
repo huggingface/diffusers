@@ -349,8 +349,9 @@ class KUpsample2D(nn.Module):
 
 
 class Upsample3D(nn.Module):
+    # Todo: Wait for paper relase.
     r"""
-    A 3D Upsampling layer.
+    A 3D Upsample3D layer using in [CogVideoX]() by Tsinghua University & ZhipuAI
 
     Args:
         in_channels (`int`):

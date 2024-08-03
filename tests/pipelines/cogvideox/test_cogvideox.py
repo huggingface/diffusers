@@ -24,7 +24,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKL, CogVideoXPipeline, CogVideoXTransformer3D, DDIMScheduler
+from diffusers import AutoencoderKL, CogVideoXPipeline, CogVideoXTransformer3DModel, DDIMScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -51,7 +51,7 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = CogVideoXTransformer3D(
+        transformer = CogVideoXTransformer3DModel(
             sample_size=8,
             num_layers=1,
             patch_size=2,

@@ -24,7 +24,6 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
@@ -192,7 +191,7 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         sample_max_value: float = 1.0,
         timestep_spacing: str = "leading",
         rescale_betas_zero_snr: bool = False,
-        snr_shift_scale: float = 3.0
+        snr_shift_scale: float = 3.0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -211,7 +210,7 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
         # Modify: SNR shift following SD3
-        self.alphas_cumprod = self.alphas_cumprod / (snr_shift_scale + (1-snr_shift_scale) * self.alphas_cumprod)
+        self.alphas_cumprod = self.alphas_cumprod / (snr_shift_scale + (1 - snr_shift_scale) * self.alphas_cumprod)
 
         # Rescale for zero SNR
         if rescale_betas_zero_snr:
@@ -387,7 +386,7 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
                 " `v_prediction`"
             )
 
-        a_t = ((1-alpha_prod_t_prev)/(1-alpha_prod_t))**0.5
+        a_t = ((1 - alpha_prod_t_prev) / (1 - alpha_prod_t)) ** 0.5
         b_t = alpha_prod_t_prev**0.5 - alpha_prod_t**0.5 * a_t
 
         prev_sample = a_t * sample + b_t * pred_original_sample

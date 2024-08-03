@@ -10,10 +10,10 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-## CogVideoXTransformer3D
+## CogVideoXTransformer3DModel
 
 A Diffusion Transformer model for 3D data from [CogVideoX](https://github.com/THUDM/CogVideoX).
 
-## CogVideoXTransformer3D
+## CogVideoXTransformer3DModel
 
-[[autodoc]] CogVideoXTransformer3D
+[[autodoc]] CogVideoXTransformer3DModel
