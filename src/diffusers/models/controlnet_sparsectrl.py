@@ -32,10 +32,7 @@ from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unets.unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unets.unet_2d_condition import UNet2DConditionModel
-from .unets.unet_3d_blocks import (
-    CrossAttnDownBlockMotion,
-    DownBlockMotion,
-)
+from .unets.unet_motion_model import CrossAttnDownBlockMotion, DownBlockMotion
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -317,7 +314,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                     temporal_num_attention_heads=motion_num_attention_heads[i],
                     temporal_max_seq_length=motion_max_seq_length,
                     temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
-                    temporal_double_self_attention=False,
                 )
             elif down_block_type == "DownBlockMotion":
                 down_block = DownBlockMotion(
@@ -334,7 +330,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                     add_downsample=not is_final_block,
                     temporal_num_attention_heads=motion_num_attention_heads[i],
                     temporal_max_seq_length=motion_max_seq_length,
-                    temporal_double_self_attention=False,
                     temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
                 )
             else:
