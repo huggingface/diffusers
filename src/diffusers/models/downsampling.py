@@ -342,14 +342,14 @@ class Downsample3D(nn.Module):
                 x = x.reshape(batch_size, height, width, channels, x.shape[-1]).permute(0, 3, 4, 1, 2)
 
             # Pad the tensor
-            pad = (0, 1, 0, 1)
-            x = F.pad(x, pad, mode="constant", value=0)
-            batch_size, channels, frames, height, width = x.shape
-            # (batch_size, channels, frames, height, width) -> (batch_size, frames, channels, height, width) -> (batch_size * frames, channels, height, width)
-            x = x.permute(0, 2, 1, 3, 4).reshape(batch_size * frames, channels, height, width)
-            x = self.conv(x)
-            # (batch_size * frames, channels, height, width) -> (batch_size, frames, channels, height, width) -> (batch_size, channels, frames, height, width)
-            x = x.reshape(batch_size, frames, x.shape[1], x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
+        pad = (0, 1, 0, 1)
+        x = F.pad(x, pad, mode="constant", value=0)
+        batch_size, channels, frames, height, width = x.shape
+        # (batch_size, channels, frames, height, width) -> (batch_size, frames, channels, height, width) -> (batch_size * frames, channels, height, width)
+        x = x.permute(0, 2, 1, 3, 4).reshape(batch_size * frames, channels, height, width)
+        x = self.conv(x)
+        # (batch_size * frames, channels, height, width) -> (batch_size, frames, channels, height, width) -> (batch_size, channels, frames, height, width)
+        x = x.reshape(batch_size, frames, x.shape[1], x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
         return x
 
 
