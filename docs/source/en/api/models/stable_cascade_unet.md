@@ -16,4 +16,4 @@ A UNet model from the [Stable Cascade pipeline](../pipelines/stable_cascade.md).
 
 ## StableCascadeUNet
 
-[[autodoc]] StableCascadeUNet
+[[autodoc]] models.unets.unet_stable_cascade.StableCascadeUNet
