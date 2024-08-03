@@ -58,21 +58,32 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import HunyuanDiTPipeline
+        >>> from diffusers import FlowMatchEulerDiscreteScheduler
         >>> from diffusers.utils import load_image
+        >>> from PIL import Image
+        >>> from torchvision import transforms
+        >>> from pipeline_hunyuandit_differential_img2img import HunyuanDiTDifferentialImg2ImgPipeline
+        >>> pipe = HunyuanDiTDifferentialImg2ImgPipeline.from_pretrained(
+        >>>     "Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
+        >>> ).to("cuda")
+        >>> source_image = load_image(
+        >>>     "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png"
+        >>> )
+        >>> map = load_image(
+        >>>     "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask_2.png"
+        >>> )
+        >>> prompt = "a green pear"
+        >>> negative_prompt = "blurry"
+        >>> image = pipe(
+        >>>     prompt=prompt,
+        >>>     negative_prompt=negative_prompt,
+        >>>     image=source_image,
+        >>>     num_inference_steps=28,
+        >>>     guidance_scale=4.5,
+        >>>     strength=1.0,
+        >>>     map=map,
+        >>> ).images[0]
 
-        >>> pipe = HunyuanDiTImg2ImgPipeline.from_pretrained(
-        ...     "Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
-        ... )
-        >>> pipe.to("cuda")
-        >>> url = (
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/kolors/bunny_source.png"
-        ... )
-        >>> init_image = load_image(url)
-        >>> # You may also use English prompt as HunyuanDiT supports both English and Chinese
-        >>> # prompt = "An astronaut riding a horse"
-        >>> prompt = "一个宇航员在骑马"
-        >>> image = pipe(prompt, image=init_image).images[0]
         ```
 """
 
