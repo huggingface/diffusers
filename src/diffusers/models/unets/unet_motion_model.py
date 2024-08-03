@@ -343,7 +343,7 @@ class DownBlockMotion(nn.Module):
 
             else:
                 hidden_states = resnet(hidden_states, temb)
-            hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
+            hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
             output_states = output_states + (hidden_states,)
 
@@ -547,7 +547,7 @@ class CrossAttnDownBlockMotion(nn.Module):
             hidden_states = motion_module(
                 hidden_states,
                 num_frames=num_frames,
-            )[0]
+            )
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -772,7 +772,7 @@ class CrossAttnUpBlockMotion(nn.Module):
             hidden_states = motion_module(
                 hidden_states,
                 num_frames=num_frames,
-            )[0]
+            )
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -924,7 +924,7 @@ class UpBlockMotion(nn.Module):
 
             else:
                 hidden_states = resnet(hidden_states, temb)
-            hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
+            hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -1121,7 +1121,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                 hidden_states = motion_module(
                     hidden_states,
                     num_frames=num_frames,
-                )[0]
+                )
                 hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
