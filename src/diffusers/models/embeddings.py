@@ -302,7 +302,7 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
         If True, return real part and imaginary part separately. Otherwise, return complex numbers.
 
     Returns:
-        `torch.Tensor`: positional embdding with shape `( grid_size * grid_size, embed_dim/2)`.
+        `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
     """
     start, stop = crops_coords
     grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
@@ -795,6 +795,30 @@ class CombinedTimestepTextProjEmbeddings(nn.Module):
         return conditioning
 
 
+class CombinedTimestepGuidanceTextProjEmbeddings(nn.Module):
+    def __init__(self, embedding_dim, pooled_projection_dim):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.guidance_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.text_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
+
+    def forward(self, timestep, guidance, pooled_projection):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=pooled_projection.dtype))  # (N, D)
+
+        guidance_proj = self.time_proj(guidance)
+        guidance_emb = self.guidance_embedder(guidance_proj.to(dtype=pooled_projection.dtype))  # (N, D)
+
+        time_guidance_emb = timesteps_emb + guidance_emb
+
+        pooled_projections = self.text_embedder(pooled_projection)
+        conditioning = time_guidance_emb + pooled_projections
+
+        return conditioning
+
+
 class HunyuanDiTAttentionPool(nn.Module):
     # Copied from https://github.com/Tencent/HunyuanDiT/blob/cb709308d92e6c7e8d59d0dff41b74d35088db6a/hydit/modules/poolers.py#L6
 
@@ -878,7 +902,7 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         pooled_projections = self.pooler(encoder_hidden_states)  # (N, 1024)
 
         if self.use_style_cond_and_image_meta_size:
-            # extra condition2: image meta size embdding
+            # extra condition2: image meta size embedding
             image_meta_size = self.size_proj(image_meta_size.view(-1))
             image_meta_size = image_meta_size.to(dtype=hidden_dtype)
             image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)

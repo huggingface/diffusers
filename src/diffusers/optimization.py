@@ -87,7 +87,7 @@ def get_piecewise_constant_schedule(optimizer: Optimizer, step_rules: str, last_
             The optimizer for which to schedule the learning rate.
         step_rules (`string`):
             The rules for the learning rate. ex: rule_steps="1:10,0.1:20,0.01:30,0.005" it means that the learning rate
-            if multiple 1 for the first 10 steps, mutiple 0.1 for the next 20 steps, multiple 0.01 for the next 30
+            if multiple 1 for the first 10 steps, multiple 0.1 for the next 20 steps, multiple 0.01 for the next 30
             steps and multiple 0.005 for the other steps.
         last_epoch (`int`, *optional*, defaults to -1):
             The index of the last epoch when resuming training.
