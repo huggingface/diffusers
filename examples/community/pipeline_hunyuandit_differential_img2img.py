@@ -16,9 +16,7 @@ import inspect
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import PIL.Image
 import torch
-from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from transformers import (
     BertModel,
     BertTokenizer,
@@ -27,24 +25,23 @@ from transformers import (
     T5EncoderModel,
 )
 
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.models import AutoencoderKL, HunyuanDiT2DModel
 from diffusers.models.embeddings import get_2d_rotary_pos_embed
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import (
     StableDiffusionSafetyChecker,
 )
 from diffusers.schedulers import DDPMScheduler
 from diffusers.utils import (
+    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
-    deprecate,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 
 
 if is_torch_xla_available():
