@@ -1642,7 +1642,7 @@ from io import BytesIO
 from PIL import Image
 import torch
 from diffusers import DDIMScheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionImg2ImgPipeline
+from diffusers import DiffusionPipeline
 
 # Use the DDIMScheduler scheduler here instead
 scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
@@ -1662,7 +1662,6 @@ pipe = pipe.to("cuda")
 url = "https://pajoca.com/wp-content/uploads/2022/09/tekito-yamakawa-1.png"
 response = requests.get(url)
 input_image = Image.open(BytesIO(response.content)).convert("RGB")
-
 prompt = "photorealistic new zealand hills"
 image = pipe(prompt, image=input_image, strength=0.75,).images[0]
 image.save('tensorrt_img2img_new_zealand_hills.png')
