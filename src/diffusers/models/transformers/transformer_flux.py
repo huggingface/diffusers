@@ -1,4 +1,5 @@
-# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Black Forest Labs, The HuggingFace Team. All rights reserved.
+
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...loaders import PeftAdapterMixin
 from ...models.attention import FeedForward
 from ...models.attention_processor import Attention, FluxAttnProcessor2_0, FluxSingleAttnProcessor2_0
 from ...models.modeling_utils import ModelMixin
@@ -88,6 +89,7 @@ class FluxSingleTransformerBlock(nn.Module):
         )
 
         hidden_states = torch.cat([attn_output, mlp_hidden_states], dim=2)
+        gate = gate.unsqueeze(1)
         hidden_states = gate * self.proj_out(hidden_states)
         hidden_states = residual + hidden_states
 
@@ -192,7 +194,7 @@ class FluxTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
     The Transformer model introduced in Flux.
 
@@ -224,12 +226,14 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
+        axes_dims_rope: List[int] = [16, 56, 56],
     ):
         super().__init__()
         self.out_channels = in_channels
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
         self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=[16, 56, 56])
+
         text_time_guidance_cls = (
             CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
         )
@@ -266,6 +270,10 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        if hasattr(module, "gradient_checkpointing"):
+            module.gradient_checkpointing = value
 
     def forward(
         self,
