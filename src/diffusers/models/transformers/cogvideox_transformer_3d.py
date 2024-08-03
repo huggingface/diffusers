@@ -335,7 +335,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
             timesteps = timestep[None].to(hidden_states.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        t_emb = self.time_proj(timesteps)
+        t_emb = self.time_proj(timestep)
 
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.

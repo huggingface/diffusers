@@ -2072,6 +2072,7 @@ class CogVideoXAttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
 
