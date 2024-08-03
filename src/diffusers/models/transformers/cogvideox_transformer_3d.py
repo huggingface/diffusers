@@ -124,8 +124,11 @@ class CogVideoXBlock(nn.Module):
 
         # attention
         text_length = norm_encoder_hidden_states.size(1)
-        norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
-        attn_output = self.attn1(norm_hidden_states, attention_mask=attention_mask)
+        attn_output = self.attn1(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=norm_encoder_hidden_states,
+            attention_mask=attention_mask,
+        )
 
         hidden_states = hidden_states + gate_msa * attn_output[:, text_length:]
         encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_output[:, :text_length]
@@ -314,11 +317,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
 
         encoder_hidden_states = hidden_states[:, : self.config.max_text_seq_length]
         hidden_states = hidden_states[:, self.config.max_text_seq_length :]
-
-        # 4. Prepare attention mask
-        if attention_mask is None:
-            attention_mask = torch.ones(batch_size, self.num_patches + self.config.max_text_seq_length)
-        attention_mask = attention_mask.to(device=hidden_states.device, dtype=hidden_states.dtype)
 
         # 5. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
