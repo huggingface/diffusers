@@ -2003,7 +2003,7 @@ class StableDiffusionMixin:
         else:
             logger.warning("Since there is no `safety_checker`, `safety_checker_level` is ignored.")
 
-    def safety_level(self):
+    def filter_level(self):
         """
         Return:
             `int` ,`float` or None
