@@ -20,6 +20,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import FromOriginalModelMixin
 from ..utils import BaseOutput, logging
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -92,7 +93,7 @@ class SparseControlNetConditioningEmbedding(nn.Module):
         return embedding
 
 
-class SparseControlNetModel(ModelMixin, ConfigMixin):
+class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     A SparseControlNet model as described in [SparseCtrl: Adding Sparse Controls to Text-to-Video Diffusion
     Models](https://arxiv.org/abs/2311.16933).

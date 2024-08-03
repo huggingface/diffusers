@@ -74,6 +74,9 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "MotionAdapter": {
         "checkpoint_mapping_fn": convert_animatediff_checkpoint_to_diffusers,
     },
+    "SparseControlNetModel": {
+        "checkpoint_mapping_fn": convert_animatediff_checkpoint_to_diffusers,
+    },
 }
 
 
