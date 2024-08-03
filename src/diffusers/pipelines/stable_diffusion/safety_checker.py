@@ -34,7 +34,6 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
     main_input_name = "clip_input"
 
     _no_split_modules = ["CLIPEncoderLayer"]
-    
 
     def __init__(self, config: CLIPConfig):
         super().__init__(config)
@@ -63,7 +62,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
             "MAX": 1.0,
             }
         if Level in Level_dict:
-            Level = Level_dict[Level]     
+            Level = Level_dict[Level]
         if isinstance(Level, (float, int)): 
             setattr(self,"adjustment",Level)
         else:
