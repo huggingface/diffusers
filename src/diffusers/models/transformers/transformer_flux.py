@@ -373,7 +373,6 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        print(f"{txt_ids.shape=}, {img_ids.shape=}")
         ids = torch.cat((txt_ids, img_ids), dim=1)
         image_rotary_emb = self.pos_embed(ids)
 
