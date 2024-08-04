@@ -84,7 +84,7 @@ class PAGMixin:
         def get_block_index(module_name):
             r"""
             Get the block index from the module name. Can be "block_0", "block_1", ... If there is only one block (e.g.
-            mid_block) and index is ommited from the name, it will be "block_0".
+            mid_block) and index is omitted from the name, it will be "block_0".
             """
             # down_blocks.1.attentions.0.transformer_blocks.0.attn1 -> "block_1"
             # mid_block.attentions.0.transformer_blocks.0.attn1 -> "block_0"
@@ -223,7 +223,7 @@ class PAGMixin:
 
     def set_pag_applied_layers(self, pag_applied_layers):
         r"""
-        set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
+        set the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
         """
 
         if not isinstance(pag_applied_layers, list):
@@ -315,7 +315,7 @@ class PixArtPAGMixin:
         def get_block_index(module_name):
             r"""
             Get the block index from the module name. can be "block_0", "block_1", ... If there is only one block (e.g.
-            mid_block) and index is ommited from the name, it will be "block_0".
+            mid_block) and index is omitted from the name, it will be "block_0".
             """
             # transformer_blocks.23.attn -> "23"
             return module_name.split(".")[1]
@@ -339,7 +339,7 @@ class PixArtPAGMixin:
     # Copied from diffusers.pipelines.pag.pag_utils.PAGMixin.set_pag_applied_layers
     def set_pag_applied_layers(self, pag_applied_layers):
         r"""
-        set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
+        set the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
         """
 
         if not isinstance(pag_applied_layers, list):
