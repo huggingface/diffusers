@@ -23,7 +23,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
-from ...schedulers import CogVideoXDDIMScheduler
+from ...schedulers import CogVideoXDDIMScheduler,CogVideoXDPMScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -159,7 +159,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         text_encoder: T5EncoderModel,
         vae: AutoencoderKLCogVideoX,
         transformer: CogVideoXTransformer3DModel,
-        scheduler: CogVideoXDDIMScheduler,
+        scheduler: CogVideoXDPMScheduler,
     ):
         super().__init__()
 
@@ -443,7 +443,10 @@ class CogVideoXPipeline(DiffusionPipeline):
         fps: int = 8,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
-        guidance_scale: float = 6,
+        guidance_scale: float = 7.5,
+        use_dpm_solver: bool = False,
+        use_dynamic_cfg: bool = True,
+        guidance_scale_schedule: Callable[[int, int], int] = lambda x, y: x + y,
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -604,6 +607,8 @@ class CogVideoXPipeline(DiffusionPipeline):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
+            # for DPM-solver++
+            old_pred_original_sample = None
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
@@ -624,11 +629,19 @@ class CogVideoXPipeline(DiffusionPipeline):
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
+                    if use_dynamic_cfg:
+                        new_guidance_scale = guidance_scale_schedule(guidance_scale, num_inference_steps - t.item()) # here "num_inference-t.item()" must be an int, not a tensor
+                    else:
+                        new_guidance_scale = guidance_scale
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + new_guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                if not use_dpm_solver:
+                    latents = self.scheduler.step(noise_pred.float(), t, latents.float(), **extra_step_kwargs, return_dict=False)[0].to(noise_pred.dtype)
+                else:
+                    latents, old_pred_original_sample = self.scheduler.step(noise_pred.float(), old_pred_original_sample, t, timesteps[i-1] if i > 0 else None, latents.float(), **extra_step_kwargs, return_dict=False)
+                    latents = latents.to(noise_pred.dtype)
 
                 # call the callback, if provided
                 if callback_on_step_end is not None:
