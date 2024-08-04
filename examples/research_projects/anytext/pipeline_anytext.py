@@ -62,45 +62,36 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
+        >>> from pipeline_anytext import AnyTextPipeline
+        >>> from text_controlnet import TextControlNetModel
+        >>> from diffusers import DDIMScheduler
         >>> from diffusers.utils import load_image
-        >>> import numpy as np
         >>> import torch
 
-        >>> import cv2
-        >>> from PIL import Image
-
-        >>> # download an image
-        >>> image = load_image(
-        ...     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
-        ... )
-        >>> image = np.array(image)
-
-        >>> # get canny image
-        >>> image = cv2.Canny(image, 100, 200)
-        >>> image = image[:, :, None]
-        >>> image = np.concatenate([image, image, image], axis=2)
-        >>> canny_image = Image.fromarray(image)
-
         >>> # load control net and stable diffusion v1-5
-        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
-        ... )
+        >>> text_controlnet = TextControlNetModel.from_pretrained("a/TextControlNet", torch_dtype=torch.float16)
+        >>> pipe = AnyTextPipeline.from_pretrained(
+        ...     "a/AnyText", controlnet=text_controlnet, torch_dtype=torch.float16,
+        ...     variant="fp16"
+        ... ).to("cuda")
 
-        >>> # speed up diffusion process with faster scheduler and memory optimization
-        >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-        >>> # remove following line if xformers is not installed
-        >>> pipe.enable_xformers_memory_efficient_attention()
+        >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        >>> # uncomment following line if PyTorch>=2.0 is not installed for memory optimization
+        >>> #pipe.enable_xformers_memory_efficient_attention()
 
-        >>> pipe.enable_model_cpu_offload()
+        >>> # uncomment following line if you want to offload the model to CPU for memory optimization
+        >>> # also remove the `.to("cuda")` part
+        >>> #pipe.enable_model_cpu_offload()
 
         >>> # generate image
-        >>> generator = torch.manual_seed(0)
+        >>> generator = torch.Generator("cpu").manual_seed(66273235)
+        >>> prompt = 'photo of caramel macchiato coffee on the table, top-down perspective, with "Any" "Text" written on it using cream'
+        >>> draw_pos = load_image("www.huggingface.co/a/AnyText/tree/main/examples/gen9.png")
         >>> image = pipe(
-        ...     "futuristic-looking woman", num_inference_steps=20, generator=generator, image=canny_image
+        ...     prompt, num_inference_steps=20, generator=generator, mode="generate",
+        ...     draw_pos=draw_pos
         ... ).images[0]
+        >>> image
         ```
 """
 
