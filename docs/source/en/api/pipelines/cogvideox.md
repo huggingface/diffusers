@@ -17,8 +17,7 @@
 
 # CogVideoX
 
-
-[]() from Tsinghua University & ZhipuAI.
+[TODO]() from Tsinghua University & ZhipuAI.
 
 The abstract from the paper is:
 
@@ -58,14 +57,16 @@ Finally, compile the components and run inference:
 pipeline.transformer = torch.compile(pipeline.transformer)
 pipeline.vae.decode = torch.compile(pipeline.vae.decode)
 
-video = pipeline(prompt="A dog wearing sunglasses floating in space, surreal, nebulae in background").frames[0]
+# CogVideoX works very well with long and well-described prompts
+prompt = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance."
+video = pipeline(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
 ```
 
-The [benchmark]() results on an 80GB A100 machine are:
+The [benchmark](TODO: link) results on an 80GB A100 machine are:
 
 ```
-Without torch.compile(): Average inference time: 16.246 seconds.
-With torch.compile(): Average inference time: 14.573 seconds.
+Without torch.compile(): Average inference time: TODO seconds.
+With torch.compile(): Average inference time: TODO seconds.
 ```
 
 ## CogVideoXPipeline
@@ -76,4 +77,3 @@ With torch.compile(): Average inference time: 14.573 seconds.
 
 ## CogVideoXPipelineOutput
 [[autodoc]] pipelines.pipline_cogvideo.pipeline_output.CogVideoXPipelineOutput
-
