@@ -539,7 +539,7 @@ class Attention(nn.Module):
         return tensor
 
     def get_attention_scores(
-        self, query: torch.Tensor, key: torch.Tensor, attention_mask: torch.Tensor = None
+        self, query: torch.Tensor, key: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         r"""
         Compute the attention scores.
