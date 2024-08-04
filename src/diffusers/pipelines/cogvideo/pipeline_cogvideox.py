@@ -47,8 +47,9 @@ EXAMPLE_DOC_STRING = """
         ...     "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
         ...     "atmosphere of this unique musical performance."
         ... )
-        >>> video = pipe("a polar bear dancing, high quality, realistic", num_inference_steps=20).frames[0]
-
+        >>> video = pipe(
+        ...     "a polar bear dancing, high quality, realistic", guidance_scale=6, num_inference_steps=50
+        ... ).frames[0]
         >>> export_to_video(video, "output.mp4", fps=8)
         ```
 """
