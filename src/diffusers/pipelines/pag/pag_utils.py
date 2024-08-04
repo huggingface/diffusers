@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import re
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -76,7 +76,7 @@ class PAGMixin:
                     and re.search(layer_id, name) is not None
                     and not is_fake_integral_match(layer_id, name)
                 ):
-                    logger.debug(f"Apply PAG to layer: {name}")
+                    logger.debug(f"Applying PAG to layer: {name}")
                     target_modules.append(module)
 
             if len(target_modules) == 0:
@@ -156,14 +156,17 @@ class PAGMixin:
 
         Args:
             pag_applied_layers (`str` or `List[str]`):
-                One or more strings, or simple regex, to identify layers where to apply PAG.
+                One or more strings identifying the layer names, or a simple regex for matching multiple layers, where
+                PAG is to be applied. A few ways of expected usage are as follows:
+                  - Single layers specified as - "blocks.{layer_index}"
+                  - Multiple layers as a list - ["blocks.{layers_index_1}", "blocks.{layer_index_2}", ...]
+                  - Multiple layers as a block name - "mid"
+                  - Multiple layers as regex - "blocks.({layer_index_1}|{layer_index_2})"
             pag_attn_processors:
                 (`Tuple[AttentionProcessor, AttentionProcessor]`, defaults to `(PAGCFGIdentitySelfAttnProcessor2_0(),
                 PAGIdentitySelfAttnProcessor2_0())`): A tuple of two attention processors. The first attention
                 processor is for PAG with Classifier-free guidance enabled (conditional and unconditional). The second
                 attention processor is for PAG with CFG disabled (unconditional only).
-            self_attn_identifier (`str`, defaults to "attn1"):
-                The string to identity self-attn layers.
         """
 
         if not hasattr(self, "_pag_attn_processors"):
@@ -185,27 +188,27 @@ class PAGMixin:
         self._pag_attn_processors = pag_attn_processors
 
     @property
-    def pag_scale(self):
+    def pag_scale(self) -> float:
         r"""Get the scale factor for the perturbed attention guidance."""
         return self._pag_scale
 
     @property
-    def pag_adaptive_scale(self):
+    def pag_adaptive_scale(self) -> float:
         r"""Get the adaptive scale factor for the perturbed attention guidance."""
         return self._pag_adaptive_scale
 
     @property
-    def do_pag_adaptive_scaling(self):
+    def do_pag_adaptive_scaling(self) -> bool:
         r"""Check if the adaptive scaling is enabled for the perturbed attention guidance."""
         return self._pag_adaptive_scale > 0 and self._pag_scale > 0 and len(self.pag_applied_layers) > 0
 
     @property
-    def do_perturbed_attention_guidance(self):
+    def do_perturbed_attention_guidance(self) -> bool:
         r"""Check if the perturbed attention guidance is enabled."""
         return self._pag_scale > 0 and len(self.pag_applied_layers) > 0
 
     @property
-    def pag_attn_processors(self):
+    def pag_attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of PAG attention processors: A dictionary contains all PAG attention processors used in the model
@@ -215,7 +218,7 @@ class PAGMixin:
         if self._pag_attn_processors is None:
             return {}
 
-        valid_attn_processors = tuple(x.__class__ for x in self._pag_attn_processors)
+        valid_attn_processors = {x.__class__ for x in self._pag_attn_processors}
 
         processors = {}
         for name, proc in self.unet.attn_processors.items():

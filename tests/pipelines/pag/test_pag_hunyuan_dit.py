@@ -83,7 +83,7 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer_2": tokenizer_2,
             "safety_checker": None,
             "feature_extractor": None,
-            "pag_applied_layers": [1],
+            "pag_applied_layers": ["blocks.1"],
         }
         return components
 
@@ -336,28 +336,28 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         all_self_attn_layers = [k for k in pipe.transformer.attn_processors.keys() if "attn1" in k]
         original_attn_procs = pipe.transformer.attn_processors
-        pag_layers = [0, 1]
+        pag_layers = ["blocks.0", "blocks.1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_layers)
 
         # blocks.0
         block_0_self_attn = ["blocks.0.attn1.processor"]
         pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = [0]
+        pag_layers = ["blocks.0"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
 
         pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["blocks.0.attn1"]
+        pag_layers = "blocks.0.attn1"
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
 
         pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = [0, "1"]
+        pag_layers = "blocks.(0|1)"
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert (len(pipe.pag_attn_processors)) == 2
 
         pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["0", "blocks.1"]
+        pag_layers = ["blocks.0", r"blocks\.1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert len(pipe.pag_attn_processors) == 2
