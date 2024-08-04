@@ -30,6 +30,7 @@ from ..attention_processor import (
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
+    FusedAttnProcessor2_0,
 )
 from ..embeddings import (
     GaussianFourierProjection,
@@ -890,6 +891,8 @@ class UNet2DConditionModel(
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
+        self.set_attn_processor(FusedAttnProcessor2_0())
+
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
@@ -1024,6 +1027,10 @@ class UNet2DConditionModel(
                 raise ValueError(
                     f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
                 )
+
+            if hasattr(self, "text_encoder_hid_proj") and self.text_encoder_hid_proj is not None:
+                encoder_hidden_states = self.text_encoder_hid_proj(encoder_hidden_states)
+
             image_embeds = added_cond_kwargs.get("image_embeds")
             image_embeds = self.encoder_hid_proj(image_embeds)
             encoder_hidden_states = (encoder_hidden_states, image_embeds)
