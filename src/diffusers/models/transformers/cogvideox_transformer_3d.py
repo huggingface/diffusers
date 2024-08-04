@@ -30,6 +30,7 @@ from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 @maybe_allow_in_graph
 class CogVideoXBlock(nn.Module):
     r"""
@@ -260,7 +261,13 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         self.norm_final = nn.LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
 
         # 5. Output blocks
-        self.norm_out = AdaLayerNorm(embedding_dim=time_embed_dim, output_dim=2 * inner_dim, norm_elementwise_affine=norm_elementwise_affine, norm_eps=norm_eps, use_embedding=False)
+        self.norm_out = AdaLayerNorm(
+            embedding_dim=time_embed_dim,
+            output_dim=2 * inner_dim,
+            norm_elementwise_affine=norm_elementwise_affine,
+            norm_eps=norm_eps,
+            use_embedding=False,
+        )
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 
         self.gradient_checkpointing = False
@@ -280,20 +287,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
 
         # 1. Time embedding
         timesteps = timestep
-        if not torch.is_tensor(timesteps):
-            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = hidden_states.device.type == "mps"
-            if isinstance(timestep, float):
-                dtype = torch.float32 if is_mps else torch.float64
-            else:
-                dtype = torch.int32 if is_mps else torch.int64
-            timesteps = torch.tensor([timesteps], dtype=dtype, device=hidden_states.device)
-        elif len(timesteps.shape) == 0:
-            timesteps = timesteps[None].to(hidden_states.device)
-
-        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        timesteps = timesteps.expand(hidden_states.shape[0])
         t_emb = self.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
