@@ -2,19 +2,13 @@
 # +> Token Replacement -> FrozenCLIPEmbedderT3
 # text -> tokenizer ->
 
-from typing import List, Optional
 
-import cv2
-import numpy as np
 import torch
-from easydict import EasyDict as edict
-from PIL import Image, ImageDraw, ImageFont
+from PIL import ImageFont
 from torch import nn
 
-from diffusers.loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from diffusers.models.autoencoders.vae import DiagonalGaussianDistribution
+from diffusers.utils import logging
 
 from .embedding_manager import EmbeddingManager
 from .frozen_clip_embedder_t3 import FrozenCLIPEmbedderT3
@@ -46,10 +40,10 @@ class TextEmbeddingModule(nn.Module):
         rec_model_dir = "./ocr_weights/ppv3_rec.pth"
         self.text_predictor = create_predictor(rec_model_dir).eval()
         args = {}
-        args['rec_image_shape'] = "3, 48, 320"
-        args['rec_batch_num'] = 6
-        args['rec_char_dict_path'] = "./ocr_recog/ppocr_keys_v1.txt"
-        args['use_fp16'] = use_fp16
+        args["rec_image_shape"] = "3, 48, 320"
+        args["rec_batch_num"] = 6
+        args["rec_char_dict_path"] = "./ocr_recog/ppocr_keys_v1.txt"
+        args["use_fp16"] = use_fp16
         self.cn_recognizer = TextRecognizer(args, self.text_predictor)
         for param in self.text_predictor.parameters():
             param.requires_grad = False
@@ -57,17 +51,21 @@ class TextEmbeddingModule(nn.Module):
 
     @torch.no_grad()
     def forward(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, hint, n_prompt, text_info):
-        prompt_embeds = self.get_learned_conditioning({"c_concat": [hint], "c_crossattn": [[prompt] * len(prompt)], "text_info": text_info})
-        negative_prompt_embeds = self.get_learned_conditioning({"c_concat": [hint], "c_crossattn": [[n_prompt] * len(prompt)], "text_info": text_info})
+        prompt_embeds = self.get_learned_conditioning(
+            {"c_concat": [hint], "c_crossattn": [[prompt] * len(prompt)], "text_info": text_info}
+        )
+        negative_prompt_embeds = self.get_learned_conditioning(
+            {"c_concat": [hint], "c_crossattn": [[n_prompt] * len(prompt)], "text_info": text_info}
+        )
 
         return prompt_embeds, negative_prompt_embeds
 
     def get_learned_conditioning(self, c):
-        if hasattr(self.frozen_CLIP_embedder_t3, 'encode') and callable(self.frozen_CLIP_embedder_t3.encode):
-            if self.embedding_manager is not None and c['text_info'] is not None:
-                self.embedding_manager.encode_text(c['text_info'])
+        if hasattr(self.frozen_CLIP_embedder_t3, "encode") and callable(self.frozen_CLIP_embedder_t3.encode):
+            if self.embedding_manager is not None and c["text_info"] is not None:
+                self.embedding_manager.encode_text(c["text_info"])
             if isinstance(c, dict):
-                cond_txt = c['c_crossattn'][0]
+                cond_txt = c["c_crossattn"][0]
             else:
                 cond_txt = c
             if self.embedding_manager is not None:
@@ -75,7 +73,7 @@ class TextEmbeddingModule(nn.Module):
             else:
                 cond_txt = self.frozen_CLIP_embedder_t3.encode(cond_txt)
             if isinstance(c, dict):
-                c['c_crossattn'][0] = cond_txt
+                c["c_crossattn"][0] = cond_txt
             else:
                 c = cond_txt
             if isinstance(c, DiagonalGaussianDistribution):
