@@ -19,16 +19,18 @@ import gc
 import os
 from collections import OrderedDict
 from copy import copy
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
+import PIL.Image
 import tensorrt as trt
 import torch
 from huggingface_hub import snapshot_download
 from huggingface_hub.utils import validate_hf_hub_args
 from onnx import shape_inference
+from packaging import version
 from polygraphy import cuda
 from polygraphy.backend.common import bytes_from_path
 from polygraphy.backend.onnx.loader import fold_constants
@@ -43,14 +45,18 @@ from polygraphy.backend.trt import (
 from polygraphy.backend.trt import util as trt_util
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from diffusers.configuration_utils import FrozenDict, deprecate
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import (
-    StableDiffusionPipeline,
     StableDiffusionPipelineOutput,
     StableDiffusionSafetyChecker,
 )
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import logging
+from diffusers.utils.torch_utils import randn_tensor
 
 
 """
@@ -588,11 +594,13 @@ def make_VAE(model, device, max_batch_size, embedding_dim, inpaint=False):
     return VAE(model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim)
 
 
-class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
+class TensorRTStableDiffusionPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
+):
     r"""
     Pipeline for text-to-image generation using TensorRT accelerated Stable Diffusion.
 
-    This model inherits from [`StableDiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
@@ -675,6 +683,98 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         self.models = {}  # loaded in __loadModels()
         self.engine = {}  # loaded in build_engines()
 
+        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+            deprecation_message = (
+                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
+                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
+                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
+                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
+                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
+                " file"
+            )
+            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(scheduler.config)
+            new_config["steps_offset"] = 1
+            scheduler._internal_dict = FrozenDict(new_config)
+
+        if hasattr(scheduler.config, "skip_prk_steps") and scheduler.config.skip_prk_steps is False:
+            deprecation_message = (
+                f"The configuration file of this scheduler: {scheduler} has not set the configuration"
+                " `skip_prk_steps`. `skip_prk_steps` should be set to True in the configuration file. Please make"
+                " sure to update the config accordingly as not setting `skip_prk_steps` in the config might lead to"
+                " incorrect results in future versions. If you have downloaded this checkpoint from the Hugging Face"
+                " Hub, it would be very nice if you could open a Pull request for the"
+                " `scheduler/scheduler_config.json` file"
+            )
+            deprecate(
+                "skip_prk_steps not set",
+                "1.0.0",
+                deprecation_message,
+                standard_warn=False,
+            )
+            new_config = dict(scheduler.config)
+            new_config["skip_prk_steps"] = True
+            scheduler._internal_dict = FrozenDict(new_config)
+
+        if safety_checker is None and requires_safety_checker:
+            logger.warning(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+            )
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
+            )
+
+        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+            version.parse(unet.config._diffusers_version).base_version
+        ) < version.parse("0.9.0.dev0")
+        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
+            deprecation_message = (
+                "The configuration file of the unet has set the default `sample_size` to smaller than"
+                " 64 which seems highly unlikely .If you're checkpoint is a fine-tuned version of any of the"
+                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
+                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
+                " in the config might lead to incorrect results in future versions. If you have downloaded this"
+                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
+                " the `unet/config.json` file"
+            )
+            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(unet.config)
+            new_config["sample_size"] = 64
+            unet._internal_dict = FrozenDict(new_config)
+        # Check shapes, assume num_channels_latents == 4, num_channels_mask == 1, num_channels_masked == 4
+        if unet.config.in_channels != 4:
+            logger.warning(
+                f"You have loaded a UNet with {unet.config.in_channels} input channels, whereas by default,"
+                f" {self.__class__} assumes that `pipeline.unet` has 4 input channels: 4 for `num_channels_latents`,"
+                ". If you did not intend to modify"
+                " this behavior, please check whether you have loaded the right checkpoint."
+            )
+
+        self.register_modules(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            scheduler=scheduler,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
+        )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
+
     def __loadModels(self):
         # Load pipeline models
         self.embedding_dim = self.text_encoder.config.hidden_size
@@ -690,6 +790,75 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
             self.models["unet"] = make_UNet(self.unet, **models_args)
         if "vae" in self.stages:
             self.models["vae"] = make_VAE(self.vae, **models_args)
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
+    def prepare_latents(
+        self,
+        batch_size: int,
+        num_channels_latents: int,
+        height: int,
+        width: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        generator: Union[torch.Generator, List[torch.Generator]],
+        latents: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        r"""
+        Prepare the latent vectors for diffusion.
+        Args:
+            batch_size (int): The number of samples in the batch.
+            num_channels_latents (int): The number of channels in the latent vectors.
+            height (int): The height of the latent vectors.
+            width (int): The width of the latent vectors.
+            dtype (torch.dtype): The data type of the latent vectors.
+            device (torch.device): The device to place the latent vectors on.
+            generator (Union[torch.Generator, List[torch.Generator]]): The generator(s) to use for random number generation.
+            latents (Optional[torch.Tensor]): The pre-existing latent vectors. If None, new latent vectors will be generated.
+        Returns:
+            torch.Tensor: The prepared latent vectors.
+        """
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device)
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
+        return latents
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
+    def run_safety_checker(
+        self, image: Union[torch.Tensor, PIL.Image.Image], device: torch.device, dtype: torch.dtype
+    ) -> Tuple[Union[torch.Tensor, PIL.Image.Image], Optional[bool]]:
+        r"""
+        Runs the safety checker on the given image.
+        Args:
+            image (Union[torch.Tensor, PIL.Image.Image]): The input image to be checked.
+            device (torch.device): The device to run the safety checker on.
+            dtype (torch.dtype): The data type of the input image.
+        Returns:
+            (image, has_nsfw_concept) Tuple[Union[torch.Tensor, PIL.Image.Image], Optional[bool]]: A tuple containing the processed image and
+            a boolean indicating whether the image has a NSFW (Not Safe for Work) concept.
+        """
+        if self.safety_checker is None:
+            has_nsfw_concept = None
+        else:
+            if torch.is_tensor(image):
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            else:
+                feature_extractor_input = self.image_processor.numpy_to_pil(image)
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+            )
+        return image, has_nsfw_concept
 
     @classmethod
     @validate_hf_hub_args
@@ -931,7 +1100,6 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
 
             # VAE decode latent
             images = self.__decode_latent(latents)
-
         images, has_nsfw_concept = self.run_safety_checker(images, self.torch_device, text_embeddings.dtype)
         images = self.numpy_to_pil(images)
         return StableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
