@@ -192,8 +192,7 @@ class Attention(nn.Module):
             self.norm_q = RMSNorm(dim_head, eps=eps)
             self.norm_k = RMSNorm(dim_head, eps=eps)
         else:
-            allowed_qk_norms = set("layer_norm", "fp32_layer_norm", "layer_norm_across_heads", "rms_norm")
-            raise ValueError(f"Unexpected value for {qk_norm=}. It must be one of {allowed_qk_norms}")
+            raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None or 'layer_norm'")
 
         if cross_attention_norm is None:
             self.norm_cross = None
@@ -661,13 +660,6 @@ class Attention(nn.Module):
             assert False
 
         return encoder_hidden_states
-
-    def maybe_apply_qk_norm(self, query: torch.Tensor, key: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        if self.norm_q is not None:
-            query = self.norm_q(query)
-        if self.norm_k is not None:
-            key = self.norm_k(key)
-        return query, key
 
     @torch.no_grad()
     def fuse_projections(self, fuse=True):
@@ -1226,8 +1218,11 @@ class AuraFlowAttnProcessor2_0:
         key = key.view(batch_size, -1, attn.heads, head_dim)
         value = value.view(batch_size, -1, attn.heads, head_dim)
 
-        # Apply QK-norm if needed
-        query, key = attn.maybe_apply_qk_norm(query, key)
+        # Apply QK norm.
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
 
         # Concatenate the projections.
         if encoder_hidden_states is not None:
@@ -1328,8 +1323,10 @@ class FluxSingleAttnProcessor2_0:
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        # Apply QK-norm if needed
-        query, key = attn.maybe_apply_qk_norm(query, key)
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
@@ -1390,8 +1387,10 @@ class FluxAttnProcessor2_0:
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        # Apply QK-norm if needed
-        query, key = attn.maybe_apply_qk_norm(query, key)
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
 
         # `context` projections.
         encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
@@ -1786,9 +1785,6 @@ class AttnProcessor2_0:
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        # Apply QK-norm if needed
-        query, key = attn.maybe_apply_qk_norm(query, key)
-
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
@@ -1893,8 +1889,10 @@ class StableAudioAttnProcessor2_0:
             key = torch.repeat_interleave(key, heads_per_kv_head, dim=1)
             value = torch.repeat_interleave(value, heads_per_kv_head, dim=1)
 
-        # Apply QK-norm if needed
-        query, key = attn.maybe_apply_qk_norm(query, key)
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
 
         # Apply RoPE if needed
         if rotary_emb is not None:
@@ -2005,8 +2003,10 @@ class HunyuanAttnProcessor2_0:
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        # Apply QK-norm if needed
-        query, key = attn.maybe_apply_qk_norm(query, key)
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
@@ -2106,8 +2106,10 @@ class FusedHunyuanAttnProcessor2_0:
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        # Apply QK-norm if needed
-        query, key = attn.maybe_apply_qk_norm(query, key)
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
@@ -2183,8 +2185,11 @@ class LuminaAttnProcessor2_0:
         # Get key-value heads
         kv_heads = inner_dim // head_dim
 
-        # Apply QK-norm if needed
-        query, key = attn.maybe_apply_qk_norm(query, key)
+        # Apply Query-Key Norm if needed
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
 
         query = query.view(batch_size, -1, attn.heads, head_dim)
 
@@ -2308,9 +2313,6 @@ class FusedAttnProcessor2_0:
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # Apply QK-norm if needed
-        query, key = attn.maybe_apply_qk_norm(query, key)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
