@@ -52,7 +52,7 @@ pipeline = pipeline.to("cuda")
 
 Text-to-image의 경우 텍스트 프롬프트를 전달합니다. 기본적으로 SDXL Turbo는 512x512 이미지를 생성하며, 이 해상도에서 최상의 결과를 제공합니다. `height` 및 `width` 매개 변수를 768x768 또는 1024x1024로 설정할 수 있지만 이 경우 품질 저하를 예상할 수 있습니다.
 
-모델이 `guidance_scale` 없이 학습되었으므로 이를 0.0으로 설정해 비활성화해야 합니다. 단일 추론 스텝만으로도 고품질 이미지를 생성할 수 있습니다. 
+모델이 `guidance_scale` 없이 학습되었으므로 이를 0.0으로 설정해 비활성화해야 합니다. 단일 추론 스텝만으로도 고품질 이미지를 생성할 수 있습니다.
 스텝 수를 2, 3 또는 4로 늘리면 이미지 품질이 향상됩니다.
 
 ```py
@@ -74,7 +74,7 @@ image
 
 ## Image-to-image
 
-Image-to-image 생성의 경우 `num_inference_steps * strength`가 1보다 크거나 같은지 확인하세요. 
+Image-to-image 생성의 경우 `num_inference_steps * strength`가 1보다 크거나 같은지 확인하세요.
 Image-to-image 파이프라인은 아래 예제에서 `0.5 * 2.0 = 1` 스텝과 같이 `int(num_inference_steps * strength)` 스텝으로 실행됩니다.
 
 ```py
