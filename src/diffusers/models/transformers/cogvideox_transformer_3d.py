@@ -21,7 +21,6 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
-from ..attention_processor import CogVideoXAttnProcessor2_0
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -97,7 +96,6 @@ class CogVideoXBlock(nn.Module):
             eps=1e-6,
             bias=attention_bias,
             out_bias=attention_out_bias,
-            processor=CogVideoXAttnProcessor2_0(),
         )
 
         # 2. Feed Forward
@@ -124,9 +122,13 @@ class CogVideoXBlock(nn.Module):
 
         # attention
         text_length = norm_encoder_hidden_states.size(1)
+
+        # CogVideoX uses concatenated text + video embeddings with self-attention instead of using
+        # them in cross-attention individually
+        norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
         attn_output = self.attn1(
             hidden_states=norm_hidden_states,
-            encoder_hidden_states=norm_encoder_hidden_states,
+            encoder_hidden_states=None,
         )
 
         hidden_states = hidden_states + gate_msa * attn_output[:, text_length:]
