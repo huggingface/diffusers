@@ -1151,17 +1151,6 @@ class AnyTextPipeline(
         )
         prompt, texts = self.modify_prompt(prompt)
 
-        prompt_embeds, negative_prompt_embeds = self.text_embedding_module(
-            prompt,
-            device,
-            num_images_per_prompt,
-            self.do_classifier_free_guidance,
-            negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
-            clip_skip=self.clip_skip,
-        )
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
@@ -1199,7 +1188,7 @@ class AnyTextPipeline(
             #     guess_mode=guess_mode,
             # )
             # height, width = image.shape[-2:]
-            guided_hint = self.auxiliary_latent_module(
+            guided_hint, hint, text_info = self.auxiliary_latent_module(
                 emb=timestep_cond,
                 context=prompt_embeds,
                 mode=mode,
@@ -1237,6 +1226,15 @@ class AnyTextPipeline(
         else:
             assert False
 
+        prompt_embeds, negative_prompt_embeds = self.text_embedding_module(
+            prompt,
+            device,
+            num_images_per_prompt,
+            self.do_classifier_free_guidance,
+            hint,
+            negative_prompt,
+            text_info,
+        )
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas

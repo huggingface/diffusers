@@ -120,7 +120,6 @@ class AuxiliaryLatentModule(nn.Module):
         prompt,
         draw_pos,
         ori_image,
-        img_count,
         max_chars=77,
         revise_pos=False,
         sort_priority=False,
@@ -196,10 +195,11 @@ class AuxiliaryLatentModule(nn.Module):
                 poly_list += [None]
         np_hint = np.sum(pre_pos, axis=0).clip(0, 1)
         # prepare info dict
-        glyphs_list = []
-        positions = []
-        n_lines = [len(texts)] * img_count
-        gly_pos_imgs = []
+        info = {}
+        info['glyphs'] = []
+        info['gly_line'] = []
+        info['positions'] = []
+        info['n_lines'] = [len(texts)]*len(prompt)
         for i in range(len(texts)):
             text = texts[i]
             if len(text) > max_chars:
@@ -208,56 +208,46 @@ class AuxiliaryLatentModule(nn.Module):
                 text = text[:max_chars]
             gly_scale = 2
             if pre_pos[i].mean() != 0:
-                glyphs = self.draw_glyph2(
-                    self.font, text, poly_list[i], scale=gly_scale, width=w, height=h, add_space=False
-                )
-                gly_pos_img = cv2.drawContours(glyphs * 255, [poly_list[i] * gly_scale], 0, (255, 255, 255), 1)
+                gly_line = self.draw_glyph(self.font, text)
+                glyphs = self.draw_glyph2(self.font, text, poly_list[i], scale=gly_scale, width=w, height=h, add_space=False)
                 if revise_pos:
                     resize_gly = cv2.resize(glyphs, (pre_pos[i].shape[1], pre_pos[i].shape[0]))
-                    new_pos = cv2.morphologyEx(
-                        (resize_gly * 255).astype(np.uint8),
-                        cv2.MORPH_CLOSE,
-                        kernel=np.ones((resize_gly.shape[0] // 10, resize_gly.shape[1] // 10), dtype=np.uint8),
-                        iterations=1,
-                    )
+                    new_pos = cv2.morphologyEx((resize_gly*255).astype(np.uint8), cv2.MORPH_CLOSE, kernel=np.ones((resize_gly.shape[0]//10, resize_gly.shape[1]//10), dtype=np.uint8), iterations=1)
                     new_pos = new_pos[..., np.newaxis] if len(new_pos.shape) == 2 else new_pos
                     contours, _ = cv2.findContours(new_pos, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
                     if len(contours) != 1:
-                        str_warning = f"Fail to revise position {i} to bounding rect, remain position unchanged..."
+                        str_warning = f'Fail to revise position {i} to bounding rect, remain position unchanged...'
                         logger.warning(str_warning)
                     else:
                         rect = cv2.minAreaRect(contours[0])
                         poly = np.int0(cv2.boxPoints(rect))
-                        pre_pos[i] = cv2.drawContours(new_pos, [poly], -1, 255, -1) / 255.0
-                        gly_pos_img = cv2.drawContours(glyphs * 255, [poly * gly_scale], 0, (255, 255, 255), 1)
-                gly_pos_imgs += [gly_pos_img]  # for show
+                        pre_pos[i] = cv2.drawContours(new_pos, [poly], -1, 255, -1) / 255.
             else:
-                glyphs = np.zeros((h * gly_scale, w * gly_scale, 1))
-                gly_pos_imgs += [np.zeros((h * gly_scale, w * gly_scale, 1))]  # for show
+                glyphs = np.zeros((h*gly_scale, w*gly_scale, 1))
+                gly_line = np.zeros((80, 512, 1))
             pos = pre_pos[i]
-            glyphs_list += [self.arr2tensor(glyphs, img_count)]
-            positions += [self.arr2tensor(pos, img_count)]
-
+            info['glyphs'] += [self.arr2tensor(glyphs, len(prompt))]
+            info['gly_line'] += [self.arr2tensor(gly_line, len(prompt))]
+            info['positions'] += [self.arr2tensor(pos, len(prompt))]
         # get masked_x
-        masked_img = ((edit_image.astype(np.float32) / 127.5) - 1.0) * (1 - np_hint)
+        masked_img = ((edit_image.astype(np.float32) / 127.5) - 1.0)*(1-np_hint)
         masked_img = np.transpose(masked_img, (2, 0, 1))
-        masked_img = torch.from_numpy(masked_img.copy()).float().cpu()
+        masked_img = torch.from_numpy(masked_img.copy()).float().to(self.device)
         if self.use_fp16:
             masked_img = masked_img.half()
         masked_x = self.encode_first_stage(masked_img[None, ...]).detach()
         if self.use_fp16:
             masked_x = masked_x.half()
-        masked_x = torch.cat([masked_x for _ in range(img_count)], dim=0)
+        info['masked_x'] = torch.cat([masked_x for _ in range(len(prompt))], dim=0)
+        hint = self.arr2tensor(np_hint, len(prompt))
 
-        glyphs = torch.cat(glyphs_list, dim=1).sum(dim=1, keepdim=True)
-        positions = torch.cat(positions, dim=1).sum(dim=1, keepdim=True)
+        glyphs = torch.cat(info['glyphs'], dim=1).sum(dim=1, keepdim=True)
+        positions = torch.cat(info['positions'], dim=1).sum(dim=1, keepdim=True)
         enc_glyph = self.glyph_block(glyphs, emb, context)
         enc_pos = self.position_block(positions, emb, context)
         guided_hint = self.fuse_block(torch.cat([enc_glyph, enc_pos, masked_x], dim=1))
 
-        hint = self.arr2tensor(np_hint, img_count)
-
-        return guided_hint, hint  # , gly_pos_imgs
+        return guided_hint, hint, info
 
     def encode_first_stage(self, masked_img):
         return retrieve_latents(self.vae.encode(masked_img)) * self.scale_factor
