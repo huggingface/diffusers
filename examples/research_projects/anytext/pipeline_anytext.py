@@ -1145,10 +1145,6 @@ class AnyTextPipeline(
         )
         guess_mode = guess_mode or global_pool_conditions
 
-        # 3. Encode input prompt
-        text_encoder_lora_scale = (
-            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
-        )
         prompt, texts = self.modify_prompt(prompt)
 
         # For classifier free guidance, we need to do two forward passes.
@@ -1226,14 +1222,22 @@ class AnyTextPipeline(
         else:
             assert False
 
+        # 3. Encode input prompt
+        text_encoder_lora_scale = (
+            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
+        )
         prompt_embeds, negative_prompt_embeds = self.text_embedding_module(
             prompt,
             device,
             num_images_per_prompt,
             self.do_classifier_free_guidance,
             hint,
-            negative_prompt,
             text_info,
+            negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
+            clip_skip=self.clip_skip,
         )
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
