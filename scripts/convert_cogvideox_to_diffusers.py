@@ -176,7 +176,9 @@ def get_args():
     parser.add_argument(
         "--push_to_hub", action="store_true", default=False, help="Whether to push to HF Hub after saving"
     )
-    parser.add_argument("--text_encoder_cache_dir", type=str, default=None, help="Path to text encoder cache directory")
+    parser.add_argument(
+        "--text_encoder_cache_dir", type=str, default=None, help="Path to text encoder cache directory"
+    )
     return parser.parse_args()
 
 
@@ -195,18 +197,20 @@ if __name__ == "__main__":
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
 
-    scheduler = CogVideoXDDIMScheduler.from_config({
-        "snr_shift_scale": 3.0,
-        "beta_end": 0.012,
-        "beta_schedule": "scaled_linear",
-        "beta_start": 0.00085,
-        "clip_sample": False,
-        "num_train_timesteps": 1000,
-        "prediction_type": "v_prediction",
-        "rescale_betas_zero_snr": True,
-        "set_alpha_to_one": True,
-        "timestep_spacing": "linspace"
-    })
+    scheduler = CogVideoXDDIMScheduler.from_config(
+        {
+            "snr_shift_scale": 3.0,
+            "beta_end": 0.012,
+            "beta_schedule": "scaled_linear",
+            "beta_start": 0.00085,
+            "clip_sample": False,
+            "num_train_timesteps": 1000,
+            "prediction_type": "v_prediction",
+            "rescale_betas_zero_snr": True,
+            "set_alpha_to_one": True,
+            "timestep_spacing": "linspace",
+        }
+    )
 
     pipe = CogVideoXPipeline(
         tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler

@@ -37,7 +37,15 @@ class AdaLayerNorm(nn.Module):
         num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
-    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None, output_dim: Optional[int] = None, norm_elementwise_affine: bool = False, norm_eps: float = 1e-5, use_embedding: bool = True):
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_embeddings: Optional[int] = None,
+        output_dim: Optional[int] = None,
+        norm_elementwise_affine: bool = False,
+        norm_eps: float = 1e-5,
+        use_embedding: bool = True,
+    ):
         super().__init__()
         if use_embedding:
             self.emb = nn.Embedding(num_embeddings, embedding_dim)
@@ -50,7 +58,9 @@ class AdaLayerNorm(nn.Module):
         self.linear = nn.Linear(embedding_dim, output_dim)
         self.norm = nn.LayerNorm(output_dim // 2, norm_eps, norm_elementwise_affine)
 
-    def forward(self, hidden_states: torch.Tensor, timestep: Optional[torch.Tensor] = None, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self, hidden_states: torch.Tensor, timestep: Optional[torch.Tensor] = None, temb: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         input_ndim = hidden_states.ndim
 
         if self.emb is not None:

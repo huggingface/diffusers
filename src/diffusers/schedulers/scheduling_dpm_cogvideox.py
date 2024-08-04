@@ -302,13 +302,12 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
     def get_variables(self, alpha_prod_t, alpha_prod_t_prev, alpha_prod_t_back=None):
-
-        lamb = ((alpha_prod_t / (1-alpha_prod_t))**0.5).log()
-        lamb_next = ((alpha_prod_t_prev / (1-alpha_prod_t_prev))**0.5).log()
+        lamb = ((alpha_prod_t / (1 - alpha_prod_t)) ** 0.5).log()
+        lamb_next = ((alpha_prod_t_prev / (1 - alpha_prod_t_prev)) ** 0.5).log()
         h = lamb_next - lamb
 
         if alpha_prod_t_back is not None:
-            lamb_previous = ((alpha_prod_t_back / (1-alpha_prod_t_back))**0.5).log()
+            lamb_previous = ((alpha_prod_t_back / (1 - alpha_prod_t_back)) ** 0.5).log()
             h_last = lamb - lamb_previous
             r = h_last / h
             return h, r, lamb, lamb_next
@@ -316,8 +315,8 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
             return h, None, lamb, lamb_next
 
     def get_mult(self, h, r, alpha_prod_t, alpha_prod_t_prev, alpha_prod_t_back):
-        mult1 = ((1-alpha_prod_t_prev) / (1-alpha_prod_t))**0.5 * (-h).exp()
-        mult2 = (-2*h).expm1() * alpha_prod_t_prev**0.5
+        mult1 = ((1 - alpha_prod_t_prev) / (1 - alpha_prod_t)) ** 0.5 * (-h).exp()
+        mult2 = (-2 * h).expm1() * alpha_prod_t_prev**0.5
 
         if alpha_prod_t_back is not None:
             mult3 = 1 + 1 / (2 * r)
@@ -399,24 +398,25 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # To make style tests pass, commented out `pred_epsilon` as it is an unused variable
         if self.config.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-            pred_epsilon = model_output
+            # pred_epsilon = model_output
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
-            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+            # pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
         elif self.config.prediction_type == "v_prediction":
             pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
-            pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+            # pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
                 " `v_prediction`"
             )
-        
+
         h, r, lamb, lamb_next = self.get_variables(alpha_prod_t, alpha_prod_t_prev, alpha_prod_t_back)
-        mult = [mult for mult in self.get_mult(h, r, alpha_prod_t, alpha_prod_t_prev, alpha_prod_t_back)]
-        mult_noise = (1-alpha_prod_t_prev)**0.5 * (1 - (-2*h).exp())**0.5
+        mult = list(self.get_mult(h, r, alpha_prod_t, alpha_prod_t_prev, alpha_prod_t_back))
+        mult_noise = (1 - alpha_prod_t_prev) ** 0.5 * (1 - (-2 * h).exp()) ** 0.5
 
         prev_sample = mult[0] * sample - mult[1] * pred_original_sample + mult_noise * torch.randn_like(sample)
 
@@ -429,7 +429,10 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
 
             prev_sample = x_advanced
 
-        return prev_sample, pred_original_sample
+        if not return_dict:
+            return (prev_sample, pred_original_sample)
+
+        return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
