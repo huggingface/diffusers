@@ -116,7 +116,6 @@ class CogVideoXBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
@@ -127,7 +126,6 @@ class CogVideoXBlock(nn.Module):
         attn_output = self.attn1(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
-            attention_mask=attention_mask,
         )
 
         hidden_states = hidden_states + gate_msa * attn_output[:, text_length:]
@@ -275,7 +273,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.LongTensor],
-        attention_mask: Optional[Union[int, torch.Tensor]] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
@@ -334,7 +331,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states,
                     encoder_hidden_states,
                     emb,
-                    attention_mask,
                     **ckpt_kwargs,
                 )
             else:
@@ -342,7 +338,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     temb=emb,
-                    attention_mask=attention_mask,
                 )
 
         hidden_states = self.norm_final(hidden_states)
