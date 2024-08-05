@@ -1179,7 +1179,7 @@ class PAGJointAttnProcessor2_0:
             encoder_hidden_states_org = encoder_hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
 
         ################## perturbed path ##################
-        
+
         batch_size = encoder_hidden_states_ptb.shape[0]
 
         # `sample` projections.
@@ -1277,7 +1277,7 @@ class PAGCFGJointAttnProcessor2_0:
         # chunk
         hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
         hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
-        
+
         encoder_hidden_states_uncond, encoder_hidden_states_org, encoder_hidden_states_ptb =encoder_hidden_states.chunk(3)
         encoder_hidden_states_org = torch.cat([encoder_hidden_states_uncond, encoder_hidden_states_org])
 
@@ -1328,7 +1328,7 @@ class PAGCFGJointAttnProcessor2_0:
             encoder_hidden_states_org = encoder_hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
 
         ################## perturbed path ##################
-        
+
         batch_size = encoder_hidden_states_ptb.shape[0]
 
         # `sample` projections.

@@ -25,8 +25,8 @@ from transformers import (
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin
-from ...models.autoencoders import AutoencoderKL
 from ...models.attention_processor import PAGCFGJointAttnProcessor2_0, PAGJointAttnProcessor2_0
+from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import SD3Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -133,7 +133,7 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
     r"""
     [PAG pipeline](https://huggingface.co/docs/diffusers/main/en/using-diffusers/pag) for text-to-image generation
     using Stable Diffusion 3.
-    
+
     Args:
         transformer ([`SD3Transformer2DModel`]):
             Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
@@ -207,7 +207,7 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
             if hasattr(self, "transformer") and self.transformer is not None
             else 128
         )
-        
+
         self.set_pag_applied_layers(
             pag_applied_layers, pag_attn_processors=(PAGCFGJointAttnProcessor2_0(), PAGJointAttnProcessor2_0())
         )
@@ -797,8 +797,8 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
         self._pag_scale = pag_scale
-        self._pag_adaptive_scale = pag_adaptive_scale # 
-        
+        self._pag_adaptive_scale = pag_adaptive_scale #
+
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -893,7 +893,7 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
                     noise_pred = self._apply_perturbed_attention_guidance(
                         noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
                     )
-                    
+
                 elif self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
@@ -941,7 +941,7 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
 
         if self.do_perturbed_attention_guidance:
             self.transformer.set_attn_processor(original_attn_proc)
-            
+
         if not return_dict:
             return (image,)
 

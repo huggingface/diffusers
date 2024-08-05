@@ -23,8 +23,6 @@ from ...models.attention_processor import (
     AttentionProcessor,
     PAGCFGIdentitySelfAttnProcessor2_0,
     PAGIdentitySelfAttnProcessor2_0,
-    PAGJointAttnProcessor2_0,
-    PAGCFGJointAttnProcessor2_0,
 )
 from ...utils import logging
 
@@ -35,7 +33,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class PAGMixin:
     r"""Mixin class for [Pertubed Attention Guidance](https://arxiv.org/abs/2403.17377v1)."""
 
-   
+
     def _set_pag_attn_processor(self, pag_applied_layers, do_classifier_free_guidance):
         r"""
         Set the attention processor for the PAG layers.
