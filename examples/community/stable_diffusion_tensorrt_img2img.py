@@ -60,7 +60,7 @@ from diffusers.utils import logging
 """
 Installation instructions
 python3 -m pip install --upgrade transformers diffusers>=0.16.0
-python3 -m pip install --upgrade tensorrt-cu12==10.2.0
+python3 -m pip install --upgrade tensorrt~=10.2.0
 python3 -m pip install --upgrade polygraphy>=0.47.0 onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 python3 -m pip install onnxruntime
 """
@@ -659,7 +659,7 @@ class TensorRTStableDiffusionImg2ImgPipeline(DiffusionPipeline):
     r"""
     Pipeline for image-to-image generation using TensorRT accelerated Stable Diffusion.
 
-    This model inherits from [`StableDiffusionImg2ImgPipeline`]. Check the superclass documentation for the generic methods the
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
