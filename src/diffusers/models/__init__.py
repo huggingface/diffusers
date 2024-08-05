@@ -131,6 +131,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SparseControlNetModel,
             UNetControlNetXSModel,
         )
+
         from .embeddings import ImageProjection, ImageProjectionCustomized
         from .modeling_utils import ModelMixin
         from .transformers import (
