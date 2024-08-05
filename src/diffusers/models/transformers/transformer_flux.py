@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -225,13 +225,13 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
-        axes_dims_rope: List[int] = [16, 56, 56],
+        axes_dims_rope: Tuple[int] = (16, 56, 56),
     ):
         super().__init__()
         self.out_channels = in_channels
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
-        self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=[16, 56, 56])
+        self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
 
         text_time_guidance_cls = (
             CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
