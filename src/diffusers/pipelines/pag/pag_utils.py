@@ -221,7 +221,17 @@ class PAGMixin:
         valid_attn_processors = {x.__class__ for x in self._pag_attn_processors}
 
         processors = {}
-        for name, proc in self.unet.attn_processors.items():
+        # We could have iterated through the self.components.items() and checked if a component is
+        # `ModelMixin` subclassed but that can include a VAE too.
+        if hasattr(self, "unet"):
+            denoiser_module = self.unet
+        elif hasattr(self, "transformer"):
+            denoiser_module = self.transformer
+        else:
+            raise ValueError("No denoiser module found.")
+        
+        for name, proc in denoiser_module.attn_processors.items():
             if proc.__class__ in valid_attn_processors:
                 processors[name] = proc
+        
         return processors

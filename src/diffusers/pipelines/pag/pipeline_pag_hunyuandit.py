@@ -201,7 +201,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         requires_safety_checker: bool = True,
         text_encoder_2: Optional[T5EncoderModel] = None,
         tokenizer_2: Optional[MT5Tokenizer] = None,
-        pag_applied_layers: Union[str, List[str]] = "blocks.21",  # "blocks.16.attn1", "blocks.16", "16", 16
+        pag_applied_layers: Union[str, List[str]] = "blocks.1",  # "blocks.16.attn1", "blocks.16", "16", 16
     ):
         super().__init__()
 

@@ -83,7 +83,6 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer_2": tokenizer_2,
             "safety_checker": None,
             "feature_extractor": None,
-            "pag_applied_layers": ["blocks.1"],
         }
         return components
 
@@ -348,12 +347,12 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
 
         pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = "blocks.0.attn1"
+        pag_layers = ["blocks.0.attn1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
 
         pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = "blocks.(0|1)"
+        pag_layers = ["blocks.(0|1)"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert (len(pipe.pag_attn_processors)) == 2
 
