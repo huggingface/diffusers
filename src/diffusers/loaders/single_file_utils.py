@@ -1872,10 +1872,17 @@ def convert_animatediff_checkpoint_to_diffusers(checkpoint, **kwargs):
 def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
 
-    num_layers = sum([1 if key.startswith("double_blocks.") else 0 for key in checkpoint.keys()])
-    num_single_layers = sum([1 if key.startswith("single_blocks.") else 0 for key in checkpoint.keys()])
+    num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "double_blocks." in k))[-1] + 1  # noqa: C401
+    num_single_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "single_blocks." in k))[-1] + 1  # noqa: C401
     mlp_ratio = 4.0
     inner_dim = 3072
+
+    # in SD3 original implementation of AdaLayerNormContinuous, it split linear projection output into shift, scale;
+    # while in diffusers it split into scale, shift. Here we swap the linear projection weights in order to be able to use diffusers implementation
+    def swap_scale_shift(weight):
+        shift, scale = weight.chunk(2, dim=0)
+        new_weight = torch.cat([scale, shift], dim=0)
+        return new_weight
 
     ## time_text_embed.timestep_embedder <-  time_in
     converted_state_dict["time_text_embed.timestep_embedder.linear_1.weight"] = checkpoint.pop(
