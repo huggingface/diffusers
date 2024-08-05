@@ -18,6 +18,7 @@ from collections import OrderedDict
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
+from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
@@ -47,7 +48,6 @@ from .kandinsky2_2 import (
     KandinskyV22Pipeline,
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
-from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
@@ -103,7 +103,6 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGPipeline),
         ("pixart-sigma-pag", PixArtSigmaPAGPipeline),
         ("auraflow", AuraFlowPipeline),
-        ("kolors", KolorsPipeline),
         ("flux", FluxPipeline),
     ]
 )
@@ -121,7 +120,6 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGImg2ImgPipeline),
         ("lcm", LatentConsistencyModelImg2ImgPipeline),
-        ("kolors", KolorsImg2ImgPipeline),
     ]
 )
 
@@ -159,6 +157,12 @@ _AUTO_INPAINT_DECODER_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky22", KandinskyV22InpaintPipeline),
     ]
 )
+
+if is_sentencepiece_available():
+    from .kolors import KolorsPipeline
+
+    AUTO_TEXT2IMAGE_PIPELINES_MAPPING["kolors"] = KolorsPipeline
+    AUTO_IMAGE2IMAGE_PIPELINES_MAPPING["kolors"] = KolorsPipeline
 
 SUPPORTED_TASKS_MAPPINGS = [
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,

@@ -20,12 +20,11 @@ import torch
 
 from diffusers import (
     AutoencoderKL,
-    ChatGLMModel,
-    ChatGLMTokenizer,
     EulerDiscreteScheduler,
     KolorsPipeline,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.kolors import ChatGLMModel, ChatGLMTokenizer
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import (

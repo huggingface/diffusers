@@ -78,6 +78,7 @@ from .import_utils import (
     is_peft_version,
     is_safetensors_available,
     is_scipy_available,
+    is_sentencepiece_available,
     is_tensorboard_available,
     is_timm_available,
     is_torch_available,
