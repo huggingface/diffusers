@@ -79,11 +79,13 @@ else:
             "AuraFlowTransformer2DModel",
             "AutoencoderKL",
             "AutoencoderKLTemporalDecoder",
+            "AutoencoderOobleck",
             "AutoencoderTiny",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
             "ControlNetXSAdapter",
             "DiTTransformer2DModel",
+            "FluxTransformer2DModel",
             "HunyuanDiT2DControlNetModel",
             "HunyuanDiT2DModel",
             "HunyuanDiT2DMultiControlNetModel",
@@ -99,6 +101,8 @@ else:
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
             "SD3Transformer2DModel",
+            "SparseControlNetModel",
+            "StableAudioDiTModel",
             "StableCascadeUNet",
             "T2IAdapter",
             "T5FilmDecoder",
@@ -209,7 +213,7 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
-    _import_structure["schedulers"].extend(["DPMSolverSDEScheduler"])
+    _import_structure["schedulers"].extend(["CosineDPMSolverMultistepScheduler", "DPMSolverSDEScheduler"])
 
 try:
     if not (is_torch_available() and is_transformers_available()):
@@ -229,8 +233,11 @@ else:
             "AmusedImg2ImgPipeline",
             "AmusedInpaintPipeline",
             "AmusedPipeline",
+            "AnimateDiffControlNetPipeline",
+            "AnimateDiffPAGPipeline",
             "AnimateDiffPipeline",
             "AnimateDiffSDXLPipeline",
+            "AnimateDiffSparseControlNetPipeline",
             "AnimateDiffVideoToVideoPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
@@ -243,7 +250,9 @@ else:
             "ChatGLMTokenizer",
             "CLIPImageProjection",
             "CycleDiffusionPipeline",
+            "FluxPipeline",
             "HunyuanDiTControlNetPipeline",
+            "HunyuanDiTPAGPipeline",
             "HunyuanDiTPipeline",
             "I2VGenXLPipeline",
             "IFImg2ImgPipeline",
@@ -287,10 +296,13 @@ else:
             "PaintByExamplePipeline",
             "PIAPipeline",
             "PixArtAlphaPipeline",
+            "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
+            "StableAudioPipeline",
+            "StableAudioProjectionModel",
             "StableCascadeCombinedPipeline",
             "StableCascadeDecoderPipeline",
             "StableCascadePriorPipeline",
@@ -513,11 +525,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AuraFlowTransformer2DModel,
             AutoencoderKL,
             AutoencoderKLTemporalDecoder,
+            AutoencoderOobleck,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
             ControlNetModel,
             ControlNetXSAdapter,
             DiTTransformer2DModel,
+            FluxTransformer2DModel,
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DModel,
             HunyuanDiT2DMultiControlNetModel,
@@ -533,6 +547,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SD3Transformer2DModel,
+            SparseControlNetModel,
+            StableAudioDiTModel,
             T2IAdapter,
             T5FilmDecoder,
             Transformer2DModel,
@@ -629,7 +645,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_torchsde_objects import *  # noqa F403
     else:
-        from .schedulers import DPMSolverSDEScheduler
+        from .schedulers import CosineDPMSolverMultistepScheduler, DPMSolverSDEScheduler
 
     try:
         if not (is_torch_available() and is_transformers_available()):
@@ -643,8 +659,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AmusedImg2ImgPipeline,
             AmusedInpaintPipeline,
             AmusedPipeline,
+            AnimateDiffControlNetPipeline,
+            AnimateDiffPAGPipeline,
             AnimateDiffPipeline,
             AnimateDiffSDXLPipeline,
+            AnimateDiffSparseControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
@@ -655,7 +674,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ChatGLMTokenizer,
             CLIPImageProjection,
             CycleDiffusionPipeline,
+            FluxPipeline,
             HunyuanDiTControlNetPipeline,
+            HunyuanDiTPAGPipeline,
             HunyuanDiTPipeline,
             I2VGenXLPipeline,
             IFImg2ImgPipeline,
@@ -699,10 +720,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PaintByExamplePipeline,
             PIAPipeline,
             PixArtAlphaPipeline,
+            PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
+            StableAudioPipeline,
+            StableAudioProjectionModel,
             StableCascadeCombinedPipeline,
             StableCascadeDecoderPipeline,
             StableCascadePriorPipeline,

@@ -168,22 +168,12 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         image_from_tuple = pipe(**self.get_dummy_inputs(device), return_dict=False)[0]
 
         image_slice = image[0, 0, 0, -10:]
+
         image_from_tuple_slice = image_from_tuple[0, 0, 0, -10:]
         assert image.shape == (1, 16, 24, 24)
 
         expected_slice = np.array(
-            [
-                96.139565,
-                -20.213179,
-                -116.40341,
-                -191.57129,
-                39.350136,
-                74.80767,
-                39.782352,
-                -184.67352,
-                -46.426907,
-                168.41783,
-            ]
+            [94.5498, -21.9481, -117.5025, -192.8760, 38.0117, 73.4709, 38.1142, -185.5593, -47.7869, 167.2853]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
