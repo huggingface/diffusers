@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         ...     "atmosphere of this unique musical performance."
         ... )
         >>> video = pipe(
-        ...     "a polar bear dancing, high quality, realistic", guidance_scale=6, num_inference_steps=50
+        ...     "a polar bear dancing, high quality, realistic", guidance_scale=6, num_inference_steps=20
         ... ).frames[0]
         >>> export_to_video(video, "output.mp4", fps=8)
         ```
@@ -449,7 +449,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 480,
         width: int = 720,
-        num_seconds: int = 6,
+        num_frames: int = 48,
         fps: int = 8,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
@@ -482,10 +482,11 @@ class CogVideoXPipeline(DiffusionPipeline):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            num_seconds (`int`, defaults to `6`):
-                Duration of video in seconds. Must be 4, 5, or 6.
-            fps (`int`, defaults to `8`):
-                Number of frames per second in video. Must be equal to 8 (for now).
+            num_frames (`int`, defaults to `48`):
+                Number of frames to generate. Must be divisible by self.vae_scale_factor_temporal. Generated video will
+                contain 1 extra frame because CogVideoX is conditioned with (num_seconds * fps + 1) frames where
+                num_seconds is 6 and fps is 4. However, since videos can be saved at any fps, the only condition that
+                needs to be satisfied is that of divisibility mentioned above.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -540,8 +541,8 @@ class CogVideoXPipeline(DiffusionPipeline):
         """
 
         assert (
-            num_seconds in [4, 5, 6] and fps == 8
-        ), "The number of seconds must be 4, 5, or 6, and the fps must be 8. Other values are not supported in CogVideoX."
+            num_frames <= 48 and num_frames % fps == 0 and fps == 8
+        ), f"The number of frames must be divisible by {fps=} and less than 48 frames (for now). Other values are not supported in CogVideoX."
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -597,7 +598,7 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
-        num_frames = 1 + num_seconds * fps
+        num_frames += 1
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             latent_channels,
@@ -642,6 +643,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                 self._guidance_scale = 1 + guidance_scale * (
                     (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
                 )
+                print(self._guidance_scale)
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
@@ -676,7 +678,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                     progress_bar.update()
 
         if not output_type == "latents":
-            video = self.decode_latents(latents, num_seconds)
+            video = self.decode_latents(latents, num_frames // fps)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents
