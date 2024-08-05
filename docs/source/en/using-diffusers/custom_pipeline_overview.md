@@ -289,9 +289,9 @@ scheduler = DPMSolverMultistepScheduler.from_pretrained(pipe_id, subfolder="sche
 3. Load an image processor:
 
 ```python
-from transformers import CLIPFeatureExtractor
+from transformers import CLIPImageProcessor
 
-feature_extractor = CLIPFeatureExtractor.from_pretrained(pipe_id, subfolder="feature_extractor")
+feature_extractor = CLIPImageProcessor.from_pretrained(pipe_id, subfolder="feature_extractor")
 ```
 
 <Tip warning={true}>
