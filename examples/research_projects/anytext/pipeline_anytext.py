@@ -218,11 +218,10 @@ class AnyTextPipeline(
         feature_extractor: CLIPImageProcessor,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
-        font_path: str = None,
     ):
         super().__init__()
-        self.text_embedding_module = TextEmbeddingModule(text_encoder, tokenizer)
-        self.auxiliary_latent_module = AuxiliaryLatentModule(font_path)
+        self.text_embedding_module = TextEmbeddingModule(use_fp16=unet.dtype == torch.float16)
+        self.auxiliary_latent_module = AuxiliaryLatentModule(vae=vae, use_fp16=unet.dtype == torch.float16)
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -1228,16 +1227,10 @@ class AnyTextPipeline(
         )
         prompt_embeds, negative_prompt_embeds = self.text_embedding_module(
             prompt,
-            device,
-            num_images_per_prompt,
-            self.do_classifier_free_guidance,
-            hint,
             text_info,
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
-            clip_skip=self.clip_skip,
         )
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(

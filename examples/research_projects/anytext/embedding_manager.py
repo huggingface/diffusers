@@ -156,10 +156,6 @@ class EmbeddingManager(nn.Module):
             if self.emb_type == "ocr":
                 recog_emb = self.get_recog_emb(gline_list)
                 enc_glyph = self.proj(recog_emb.reshape(recog_emb.shape[0], -1))
-            elif self.emb_type == "vit":
-                enc_glyph = self.get_vision_emb(pad_H(torch.cat(gline_list, dim=0)))
-            elif self.emb_type == "conv":
-                enc_glyph = self.glyph_encoder(pad_H(torch.cat(gline_list, dim=0)))
             if self.add_pos:
                 enc_pos = self.position_encoder(torch.cat(gline_list, dim=0))
                 enc_glyph = enc_glyph + enc_pos

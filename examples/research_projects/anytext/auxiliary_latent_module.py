@@ -52,14 +52,11 @@ def retrieve_latents(
 
 
 class AuxiliaryLatentModule(nn.Module):
-    def __init__(self, font_path, dims=2, glyph_channels=256, position_channels=64, model_channels=256, **kwargs):
+    def __init__(self, dims, glyph_channels, position_channels, model_channels, **kwargs):
         super().__init__()
-        if font_path is None:
-            raise ValueError("font_path must be provided!")
-        self.font = ImageFont.truetype(font_path, 60)
+        self.font = ImageFont.truetype("./font/Arial_Unicode.ttf", 60)
         self.use_fp16 = kwargs.get("use_fp16", False)
         self.device = kwargs.get("device", "cpu")
-        self.scale_factor = 0.18215
         self.glyph_block = nn.Sequential(
             conv_nd(dims, glyph_channels, 8, 3, padding=1),
             nn.SiLU(),
@@ -98,15 +95,8 @@ class AuxiliaryLatentModule(nn.Module):
             nn.SiLU(),
         )
 
-        self.vae = AutoencoderKL.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
-            subfolder="vae",
-            torch_dtype=torch.float16 if self.use_fp16 else torch.float32,
-            variant="fp16" if self.use_fp16 else "fp32",
-        )
+        self.vae = kwargs.get("vae")
         self.vae.eval()
-        for param in self.vae.parameters():
-            param.requires_grad = False
 
         self.fuse_block = zero_module(conv_nd(dims, 256 + 64 + 4, model_channels, 3, padding=1))
 
@@ -257,7 +247,7 @@ class AuxiliaryLatentModule(nn.Module):
         return guided_hint, hint, info
 
     def encode_first_stage(self, masked_img):
-        return retrieve_latents(self.vae.encode(masked_img)) * self.scale_factor
+        return retrieve_latents(self.vae.encode(masked_img)) * self.vae.scale_factor
 
     def arr2tensor(self, arr, bs):
         arr = np.transpose(arr, (2, 0, 1))
