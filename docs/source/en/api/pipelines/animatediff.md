@@ -25,6 +25,9 @@ The abstract of the paper is the following:
 | Pipeline | Tasks | Demo
 |---|---|:---:|
 | [AnimateDiffPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff.py) | *Text-to-Video Generation with AnimateDiff* |
+| [AnimateDiffControlNetPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_controlnet.py) | *Controlled Video-to-Video Generation with AnimateDiff using ControlNet* |
+| [AnimateDiffSparseControlNetPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_sparsectrl.py) | *Controlled Video-to-Video Generation with AnimateDiff using SparseCtrl* |
+| [AnimateDiffSDXLPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_sdxl.py) | *Video-to-Video Generation with AnimateDiff* |
 | [AnimateDiffVideoToVideoPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_video2video.py) | *Video-to-Video Generation with AnimateDiff* |
 
 ## Available checkpoints
@@ -99,6 +102,83 @@ Here are some sample outputs:
 AnimateDiff tends to work better with finetuned Stable Diffusion models. If you plan on using a scheduler that can clip samples, make sure to disable it by setting `clip_sample=False` in the scheduler as this can also have an adverse effect on generated samples. Additionally, the AnimateDiff checkpoints can be sensitive to the beta schedule of the scheduler. We recommend setting this to `linear`.
 
 </Tip>
+
+### AnimateDiffControlNetPipeline
+
+AnimateDiff can also be used with ControlNets ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang, Anyi Rao, and Maneesh Agrawala. With a ControlNet model, you can provide an additional control image to condition and control Stable Diffusion generation. For example, if you provide depth maps, the ControlNet model generates a video that'll preserve the spatial information from the depth maps. It is a more flexible and accurate way to control the video generation process.
+
+```python
+import torch
+from diffusers import AnimateDiffControlNetPipeline, AutoencoderKL, ControlNetModel, MotionAdapter, LCMScheduler
+from diffusers.utils import export_to_gif, load_video
+
+# Additionally, you will need a preprocess videos before they can be used with the ControlNet
+# HF maintains just the right package for it: `pip install controlnet_aux`
+from controlnet_aux.processor import ZoeDetector
+
+# Download controlnets from https://huggingface.co/lllyasviel/ControlNet-v1-1 to use .from_single_file
+# Download Diffusers-format controlnets, such as https://huggingface.co/lllyasviel/sd-controlnet-depth, to use .from_pretrained()
+controlnet = ControlNetModel.from_single_file("control_v11f1p_sd15_depth.pth", torch_dtype=torch.float16)
+
+# We use AnimateLCM for this example but one can use the original motion adapters as well (for example, https://huggingface.co/guoyww/animatediff-motion-adapter-v1-5-3)
+motion_adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM")
+
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+pipe: AnimateDiffControlNetPipeline = AnimateDiffControlNetPipeline.from_pretrained(
+    "SG161222/Realistic_Vision_V5.1_noVAE",
+    motion_adapter=motion_adapter,
+    controlnet=controlnet,
+    vae=vae,
+).to(device="cuda", dtype=torch.float16)
+pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
+pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora")
+pipe.set_adapters(["lcm-lora"], [0.8])
+
+depth_detector = ZoeDetector.from_pretrained("lllyasviel/Annotators").to("cuda")
+video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
+conditioning_frames = []
+
+with pipe.progress_bar(total=len(video)) as progress_bar:
+    for frame in video:
+        conditioning_frames.append(depth_detector(frame))
+        progress_bar.update()
+
+prompt = "a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality"
+negative_prompt = "bad quality, worst quality"
+
+video = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_frames=len(video),
+    num_inference_steps=10,
+    guidance_scale=2.0,
+    conditioning_frames=conditioning_frames,
+    generator=torch.Generator().manual_seed(42),
+).frames[0]
+
+export_to_gif(video, "animatediff_controlnet.gif", fps=8)
+```
+
+Here are some sample outputs:
+
+<table align="center">
+    <tr>
+      <th align="center">Source Video</th>
+      <th align="center">Output Video</th>
+    </tr>
+    <tr>
+        <td align="center">
+          raccoon playing a guitar
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif" alt="racoon playing a guitar" />
+        </td>
+        <td align="center">
+          a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-controlnet-output.gif" alt="a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality" />
+        </td>
+    </tr>
+</table>
 
 ### AnimateDiffSparseControlNetPipeline
 
@@ -759,6 +839,12 @@ pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapt
 ## AnimateDiffPipeline
 
 [[autodoc]] AnimateDiffPipeline
+  - all
+  - __call__
+
+## AnimateDiffControlNetPipeline
+
+[[autodoc]] AnimateDiffControlNetPipeline
   - all
   - __call__
 

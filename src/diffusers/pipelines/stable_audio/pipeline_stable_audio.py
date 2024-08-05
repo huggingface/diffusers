@@ -44,7 +44,7 @@ EXAMPLE_DOC_STRING = """
         >>> import soundfile as sf
         >>> from diffusers import StableAudioPipeline
 
-        >>> repo_id = "ylacombe/stable-audio-1.0"  # TODO (YL): change once set
+        >>> repo_id = "stabilityai/stable-audio-open-1.0"
         >>> pipe = StableAudioPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
