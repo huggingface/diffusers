@@ -21,7 +21,7 @@ specific language governing permissions and limitations under the License.
 시작하기 전에 다음 라이브러리가 설치되어 있는지 확인하세요:
 
 ```py
-!pip install -q -U diffusers transformers accelerate 
+!pip install -q -U diffusers transformers accelerate
 ```
 
 이 모델에는 [SVD](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid)와 [SVD-XT](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt) 두 가지 종류가 있습니다. SVD 체크포인트는 14개의 프레임을 생성하도록 학습되었고, SVD-XT 체크포인트는 25개의 프레임을 생성하도록 파인튜닝되었습니다.
