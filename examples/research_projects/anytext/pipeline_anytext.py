@@ -621,7 +621,7 @@ class AnyTextPipeline(
     def check_inputs(
         self,
         prompt,
-        image,
+        # image,
         callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
@@ -676,39 +676,6 @@ class AnyTextPipeline(
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
         )
-        if (
-            isinstance(self.controlnet, ControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetModel)
-        ):
-            self.check_image(image, prompt, prompt_embeds)
-        elif (
-            isinstance(self.controlnet, MultiControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
-        ):
-            if not isinstance(image, list):
-                raise TypeError("For multiple controlnets: `image` must be type `list`")
-
-            # When `image` is a nested list:
-            # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
-            elif any(isinstance(i, list) for i in image):
-                transposed_image = [list(t) for t in zip(*image)]
-                if len(transposed_image) != len(self.controlnet.nets):
-                    raise ValueError(
-                        f"For multiple controlnets: if you pass`image` as a list of list, each sublist must have the same length as the number of controlnets, but the sublists in `image` got {len(transposed_image)} images and {len(self.controlnet.nets)} ControlNets."
-                    )
-                for image_ in transposed_image:
-                    self.check_image(image_, prompt, prompt_embeds)
-            elif len(image) != len(self.controlnet.nets):
-                raise ValueError(
-                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
-                )
-            else:
-                for image_ in image:
-                    self.check_image(image_, prompt, prompt_embeds)
-        else:
-            assert False
 
         # Check `controlnet_conditioning_scale`
         if (
@@ -717,6 +684,7 @@ class AnyTextPipeline(
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
             if not isinstance(controlnet_conditioning_scale, float):
+                print(controlnet_conditioning_scale)
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
         elif (
             isinstance(self.controlnet, MultiControlNetModel)

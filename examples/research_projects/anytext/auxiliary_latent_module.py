@@ -51,9 +51,9 @@ def retrieve_latents(
 
 
 class AuxiliaryLatentModule(nn.Module):
-    def __init__(self, dims, glyph_channels, position_channels, model_channels, **kwargs):
+    def __init__(self, dims=2, glyph_channels=1, position_channels=1, model_channels=320, **kwargs):
         super().__init__()
-        self.font = ImageFont.truetype("./font/Arial_Unicode.ttf", 60)
+        self.font = ImageFont.truetype("/home/x/Documents/gits/AnyText/font/Arial_Unicode.ttf", 60)
         self.use_fp16 = kwargs.get("use_fp16", False)
         self.device = kwargs.get("device", "cpu")
         self.glyph_block = nn.Sequential(

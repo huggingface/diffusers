@@ -134,13 +134,13 @@ def get_image_file_list(img_file):
 
 class TextRecognizer(object):
     def __init__(self, args, predictor):
-        self.rec_image_shape = [int(v) for v in args.rec_image_shape.split(",")]
-        self.rec_batch_num = args.rec_batch_num
+        self.rec_image_shape = [int(v) for v in args['rec_image_shape'].split(",")]
+        self.rec_batch_num = args['rec_batch_num']
         self.predictor = predictor
-        self.chars = self.get_char_dict(args.rec_char_dict_path)
+        self.chars = self.get_char_dict(args['rec_char_dict_path'])
         self.char2id = {x: i for i, x in enumerate(self.chars)}
         self.is_onnx = not isinstance(self.predictor, torch.nn.Module)
-        self.use_fp16 = args.use_fp16
+        self.use_fp16 = args['use_fp16']
 
     # img: CHW
     def resize_norm_img(self, img, max_wh_ratio):
