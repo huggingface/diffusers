@@ -9,10 +9,10 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
-from ..downsampling import Downsample3D
+from ..downsampling import CogVideoXDownsample3D
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from ..upsampling import Upsample3D
+from ..upsampling import CogVideoXUpsample3D
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
@@ -46,7 +46,16 @@ class CogVideoXSafeConv3d(nn.Conv3d):
 
 
 class CogVideoXCausalConv3d(nn.Module):
-    r"""A 3D causal convolution layer that pads the input tensor to ensure causality in CogVideoX Model."""
+    r"""A 3D causal convolution layer that pads the input tensor to ensure causality in CogVideoX Model.
+
+    Args:
+        in_channels (int): Number of channels in the input tensor.
+        out_channels (int): Number of output channels.
+        kernel_size (Union[int, Tuple[int, int, int]]): Size of the convolutional kernel.
+        stride (int, optional): Stride of the convolution. Default is 1.
+        dilation (int, optional): Dilation rate of the convolution. Default is 1.
+        pad_mode (str, optional): Padding mode. Default is "constant".
+    """
 
     def __init__(
         self,
@@ -162,6 +171,22 @@ class CogVideoXSpatialNorm3D(nn.Module):
 
 
 class CogVideoXResnetBlock3D(nn.Module):
+    r"""
+    A 3D ResNet block used in the CogVideoX model.
+
+    Args:
+        in_channels (int): Number of input channels.
+        out_channels (Optional[int], optional): Number of output channels. If None, defaults to `in_channels`. Default is None.
+        dropout (float, optional): Dropout rate. Default is 0.0.
+        temb_channels (int, optional): Number of time embedding channels. Default is 512.
+        groups (int, optional): Number of groups for group normalization. Default is 32.
+        eps (float, optional): Epsilon value for normalization layers. Default is 1e-6.
+        non_linearity (str, optional): Activation function to use. Default is "swish".
+        conv_shortcut (bool, optional): If True, use a convolutional shortcut. Default is False.
+        spatial_norm_dim (Optional[int], optional): Dimension of the spatial normalization. Default is None.
+        pad_mode (str, optional): Padding mode. Default is "first".
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -257,6 +282,24 @@ class CogVideoXResnetBlock3D(nn.Module):
 
 
 class CogVideoXDownBlock3D(nn.Module):
+    r"""
+    A downsampling block used in the CogVideoX model.
+
+    Args:
+        in_channels (int): Number of input channels.
+        out_channels (int): Number of output channels.
+        temb_channels (int): Number of time embedding channels.
+        dropout (float, optional): Dropout rate. Default is 0.0.
+        num_layers (int, optional): Number of layers in the block. Default is 1.
+        resnet_eps (float, optional): Epsilon value for the ResNet layers. Default is 1e-6.
+        resnet_act_fn (str, optional): Activation function for the ResNet layers. Default is "swish".
+        resnet_groups (int, optional): Number of groups for group normalization in the ResNet layers. Default is 32.
+        add_downsample (bool, optional): If True, add a downsampling layer at the end of the block. Default is True.
+        downsample_padding (int, optional): Padding for the downsampling layer. Default is 0.
+        compress_time (bool, optional): If True, apply temporal compression. Default is False.
+        pad_mode (str, optional): Padding mode. Default is "first".
+    """
+
     _supports_gradient_checkpointing = True
 
     def __init__(
@@ -297,7 +340,11 @@ class CogVideoXDownBlock3D(nn.Module):
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
-                [Downsample3D(out_channels, out_channels, padding=downsample_padding, compress_time=compress_time)]
+                [
+                    CogVideoXDownsample3D(
+                        out_channels, out_channels, padding=downsample_padding, compress_time=compress_time
+                    )
+                ]
             )
 
         self.gradient_checkpointing = False
@@ -332,6 +379,21 @@ class CogVideoXDownBlock3D(nn.Module):
 
 
 class CogVideoXMidBlock3D(nn.Module):
+    r"""
+    A middle block used in the CogVideoX model.
+
+    Args:
+        in_channels (int): Number of input channels.
+        temb_channels (int): Number of time embedding channels.
+        dropout (float, optional): Dropout rate. Default is 0.0.
+        num_layers (int, optional): Number of layers in the block. Default is 1.
+        resnet_eps (float, optional): Epsilon value for the ResNet layers. Default is 1e-6.
+        resnet_act_fn (str, optional): Activation function for the ResNet layers. Default is "swish".
+        resnet_groups (int, optional): Number of groups for group normalization in the ResNet layers. Default is 32.
+        spatial_norm_dim (Optional[int], optional): Dimension of the spatial normalization. Default is None.
+        pad_mode (str, optional): Padding mode. Default is "first".
+    """
+
     _supports_gradient_checkpointing = True
 
     def __init__(
@@ -393,6 +455,25 @@ class CogVideoXMidBlock3D(nn.Module):
 
 
 class CogVideoXUpBlock3D(nn.Module):
+    r"""
+    An upsampling block used in the CogVideoX model.
+
+    Args:
+        in_channels (int): Number of input channels.
+        out_channels (int): Number of output channels.
+        temb_channels (int): Number of time embedding channels.
+        dropout (float, optional): Dropout rate. Default is 0.0.
+        num_layers (int, optional): Number of layers in the block. Default is 1.
+        resnet_eps (float, optional): Epsilon value for the ResNet layers. Default is 1e-6.
+        resnet_act_fn (str, optional): Activation function for the ResNet layers. Default is "swish".
+        resnet_groups (int, optional): Number of groups for group normalization in the ResNet layers. Default is 32.
+        spatial_norm_dim (int, optional): Dimension of the spatial normalization. Default is 16.
+        add_upsample (bool, optional): If True, add an upsampling layer at the end of the block. Default is True.
+        upsample_padding (int, optional): Padding for the upsampling layer. Default is 1.
+        compress_time (bool, optional): If True, apply temporal compression. Default is False.
+        pad_mode (str, optional): Padding mode. Default is "first".
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -433,7 +514,11 @@ class CogVideoXUpBlock3D(nn.Module):
 
         if add_upsample:
             self.upsamplers = nn.ModuleList(
-                [Upsample3D(out_channels, out_channels, padding=upsample_padding, compress_time=compress_time)]
+                [
+                    CogVideoXUpsample3D(
+                        out_channels, out_channels, padding=upsample_padding, compress_time=compress_time
+                    )
+                ]
             )
 
     def forward(

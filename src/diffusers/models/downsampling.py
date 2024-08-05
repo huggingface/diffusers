@@ -285,7 +285,7 @@ class KDownsample2D(nn.Module):
         return F.conv2d(inputs, weight, stride=2)
 
 
-class Downsample3D(nn.Module):
+class CogVideoXDownsample3D(nn.Module):
     # Todo: Wait for paper relase.
     r"""
     A 3D Downsampling layer using in [CogVideoX]() by Tsinghua University & ZhipuAI

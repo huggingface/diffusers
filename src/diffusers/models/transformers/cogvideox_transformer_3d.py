@@ -150,8 +150,6 @@ class CogVideoXBlock(nn.Module):
 
 
 class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
-    _supports_gradient_checkpointing = True
-
     """
     A Transformer model for video-like data.
 
@@ -187,6 +185,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         video_length (`int`, *optional*):
             The number of frames in the video-like data.
     """
+
+    _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(

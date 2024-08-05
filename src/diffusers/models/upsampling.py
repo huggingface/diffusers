@@ -348,10 +348,9 @@ class KUpsample2D(nn.Module):
         return F.conv_transpose2d(inputs, weight, stride=2, padding=self.pad * 2 + 1)
 
 
-class Upsample3D(nn.Module):
-    # Todo: Wait for paper relase.
+class CogVideoXUpsample3D(nn.Module):
     r"""
-    A 3D Upsample3D layer using in [CogVideoX]() by Tsinghua University & ZhipuAI
+    A 3D Upsample layer using in CogVideoX by Tsinghua University & ZhipuAI  # Todo: Wait for paper relase.
 
     Args:
         in_channels (`int`):
