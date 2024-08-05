@@ -1533,10 +1533,11 @@ class ImageProjectionCustomized(nn.Module):
     def forward(self, image_embeds: torch.Tensor):
         print(f'image_embeds={image_embeds.size()}')
         image_embeds = image_embeds.repeat(1, 2*self.num_image_text_embeds)
-        print(f'image_embeds after={image_embeds.size()}')
+        print(f'image_embeds after repeat={image_embeds.size()}')
         image_embeds = image_embeds.reshape(
             -1, self.num_image_text_embeds, self.cross_attention_dim
         )
+        print(f'image_embeds after reshape={image_embeds.size()}')
         return image_embeds
     
 class ImageProjection(nn.Module):

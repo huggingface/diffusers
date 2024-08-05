@@ -583,6 +583,9 @@ class UNet2DConditionLoadersMixin:
             clip_embeddings_dim = 1024 # fixed by CLIP model
             cross_attention_dim = 2048 # fixed by sdxl two text encoders
 
+            print(f'clip_embeddings_dim={clip_embeddings_dim}')
+            print(f'cross_attention_dim={cross_attention_dim}')
+
             with init_context():
                 image_projection = ImageProjectionCustomized(
                     cross_attention_dim=cross_attention_dim,
