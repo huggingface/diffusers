@@ -1518,6 +1518,25 @@ class TextImageProjection(nn.Module):
         return torch.cat([image_text_embeds, text_embeds], dim=1)
 
 
+class ImageProjectionCustomized(nn.Module):
+    def __init__(
+        self,
+        image_embed_dim: int = 1024,
+        cross_attention_dim: int = 2048,
+        num_image_text_embeds: int = 1,
+    ):
+        super().__init__()
+        
+        self.cross_attention_dim = cross_attention_dim
+        self.num_image_text_embeds = num_image_text_embeds
+        
+    def forward(self, image_embeds: torch.Tensor):
+        image_embeds = image_embeds.repeat(1, 2*self.num_image_text_embeds)
+        image_embeds = image_embeds.reshape(
+            -1, self.num_image_text_embeds, self.cross_attention_dim
+        )
+        return image_embeds
+    
 class ImageProjection(nn.Module):
     def __init__(
         self,
