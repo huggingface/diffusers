@@ -47,7 +47,7 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
-    SD3Transformer2DModel,
+    FluxTransformer2DModel,
     FluxPipeline,
 )
 from diffusers.optimization import get_scheduler
@@ -1100,7 +1100,7 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
-    transformer = SD3Transformer2DModel.from_pretrained(
+    transformer = FluxTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
     )
 
@@ -1147,7 +1147,7 @@ def main(args):
     def save_model_hook(models, weights, output_dir):
         if accelerator.is_main_process:
             for i, model in enumerate(models):
-                if isinstance(unwrap_model(model), SD3Transformer2DModel):
+                if isinstance(unwrap_model(model), FluxTransformer2DModel):
                     unwrap_model(model).save_pretrained(os.path.join(output_dir, "transformer"))
                 elif isinstance(unwrap_model(model), (CLIPTextModelWithProjection, T5EncoderModel)):
                     if isinstance(unwrap_model(model), CLIPTextModelWithProjection):
@@ -1170,8 +1170,8 @@ def main(args):
             model = models.pop()
 
             # load diffusers style into model
-            if isinstance(unwrap_model(model), SD3Transformer2DModel):
-                load_model = SD3Transformer2DModel.from_pretrained(input_dir, subfolder="transformer")
+            if isinstance(unwrap_model(model), FluxTransformer2DModel):
+                load_model = FluxTransformer2DModel.from_pretrained(input_dir, subfolder="transformer")
                 model.register_to_config(**load_model.config)
 
                 model.load_state_dict(load_model.state_dict())
@@ -1506,6 +1506,7 @@ def main(args):
                 models_to_accumulate.extend([text_encoder_one, text_encoder_two])
             with accelerator.accumulate(models_to_accumulate):
                 pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
+                #latent_image_ids=
                 prompts = batch["prompts"]
 
                 # encode batch prompts when custom prompts are provided for each image -
@@ -1549,13 +1550,12 @@ def main(args):
                     model_pred = transformer(
                         hidden_states=noisy_model_input,
                         # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
-                        timestep=timestep / 1000,
+                        timestep=timesteps / 1000,
                         guidance=guidance,
                         pooled_projections=pooled_prompt_embeds,
                         encoder_hidden_states=prompt_embeds,
                         txt_ids=text_ids,
                         img_ids=latent_image_ids,
-                        joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
                 else:
@@ -1568,13 +1568,12 @@ def main(args):
                     model_pred = transformer(
                         hidden_states=noisy_model_input,
                         # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
-                        timestep=timestep / 1000,
+                        timestep=timesteps / 1000,
                         guidance=guidance,
                         pooled_projections=pooled_prompt_embeds,
                         encoder_hidden_states=prompt_embeds,
                         txt_ids=text_ids,
                         img_ids=latent_image_ids,
-                        joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
 
