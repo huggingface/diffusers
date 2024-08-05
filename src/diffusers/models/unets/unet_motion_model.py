@@ -233,6 +233,7 @@ class DownBlockMotion(nn.Module):
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_max_seq_length: int = 32,
         temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        temporal_double_self_attention: bool = True,
     ):
         super().__init__()
         resnets = []
@@ -282,6 +283,7 @@ class DownBlockMotion(nn.Module):
                     positional_embeddings="sinusoidal",
                     num_positional_embeddings=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads[i],
+                    double_self_attention=temporal_double_self_attention,
                 )
             )
 
@@ -384,6 +386,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
         temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        temporal_double_self_attention: bool = True,
     ):
         super().__init__()
         resnets = []
@@ -465,6 +468,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                     positional_embeddings="sinusoidal",
                     num_positional_embeddings=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
+                    double_self_attention=temporal_double_self_attention,
                 )
             )
 

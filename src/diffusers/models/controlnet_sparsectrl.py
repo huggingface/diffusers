@@ -315,6 +315,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     temporal_num_attention_heads=motion_num_attention_heads[i],
                     temporal_max_seq_length=motion_max_seq_length,
                     temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
+                    temporal_double_self_attention=False,
                 )
             elif down_block_type == "DownBlockMotion":
                 down_block = DownBlockMotion(
@@ -332,6 +333,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     temporal_num_attention_heads=motion_num_attention_heads[i],
                     temporal_max_seq_length=motion_max_seq_length,
                     temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
+                    temporal_double_self_attention=False,
                 )
             else:
                 raise ValueError(
