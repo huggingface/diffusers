@@ -1033,7 +1033,9 @@ class UNet2DConditionModel(
                 encoder_hidden_states = self.text_encoder_hid_proj(encoder_hidden_states)
 
             image_embeds = added_cond_kwargs.get("image_embeds")
+            print(f'unet 2d image_embeds before={image_embeds.size()}')
             image_embeds = self.encoder_hid_proj(image_embeds)
+            print(f'unet 2d image_embeds after={image_embeds.size()}')
             encoder_hidden_states = (encoder_hidden_states, image_embeds)
         return encoder_hidden_states
 
