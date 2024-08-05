@@ -15,10 +15,9 @@
 import sys
 import unittest
 
-from diffusers import (
-    FlowMatchEulerDiscreteScheduler,
-    StableDiffusion3Pipeline,
-)
+from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
+
+from diffusers import FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
 from diffusers.utils.testing_utils import is_peft_available, require_peft_backend, require_torch_gpu, torch_device
 
 
@@ -35,6 +34,7 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = StableDiffusion3Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler()
     scheduler_kwargs = {}
+    uses_flow_matching = True
     transformer_kwargs = {
         "sample_size": 32,
         "patch_size": 1,
@@ -47,6 +47,7 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "pooled_projection_dim": 64,
         "out_channels": 4,
     }
+    transformer_cls = SD3Transformer2DModel
     vae_kwargs = {
         "sample_size": 32,
         "in_channels": 3,
@@ -61,6 +62,16 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "scaling_factor": 1.5035,
     }
     has_three_text_encoders = True
+    tokenizer_cls, tokenizer_id = CLIPTokenizer, "hf-internal-testing/tiny-random-clip"
+    tokenizer_2_cls, tokenizer_2_id = CLIPTokenizer, "hf-internal-testing/tiny-random-clip"
+    tokenizer_3_cls, tokenizer_3_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
+    text_encoder_cls, text_encoder_id = CLIPTextModelWithProjection, "hf-internal-testing/tiny-sd3-text_encoder"
+    text_encoder_2_cls, text_encoder_2_id = CLIPTextModelWithProjection, "hf-internal-testing/tiny-sd3-text_encoder-2"
+    text_encoder_3_cls, text_encoder_3_id = T5EncoderModel, "hf-internal-testing/tiny-random-t5"
+
+    @property
+    def output_shape(self):
+        return (1, 32, 32, 3)
 
     @require_torch_gpu
     def test_sd3_lora(self):
