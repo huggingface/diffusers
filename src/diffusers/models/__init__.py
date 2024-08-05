@@ -108,6 +108,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
             VQModel,
         )
+<<<<<<< HEAD
         from .controlnets import (
             ControlNetModel,
             ControlNetUnionModel,
@@ -123,6 +124,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetControlNetXSModel,
         )
         from .embeddings import ImageProjection
+=======
+        from .controlnet import ControlNetModel
+        from .controlnet_hunyuan import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
+        from .controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
+        from .controlnet_sparsectrl import SparseControlNetModel
+        from .controlnet_xs import ControlNetXSAdapter, UNetControlNetXSModel
+        from .embeddings import ImageProjection, ImageProjectionCustomized
+>>>>>>> d1d7f5f74 (correct output_hidden_state)
         from .modeling_utils import ModelMixin
         from .transformers import (
             AllegroTransformer3DModel,
