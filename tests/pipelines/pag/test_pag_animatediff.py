@@ -429,7 +429,10 @@ class AnimateDiffPAGPipelineFastTests(
         pipe.set_progress_bar_config(disable=None)
 
         # pag_applied_layers = ["mid","up","down"] should apply to all self-attention layers
-        all_self_attn_layers = [k for k in pipe.unet.attn_processors.keys() if "attn1" in k]
+        # Note that for motion modules in AnimateDiff, both attn1 and attn2 are self-attention
+        all_self_attn_layers = [
+            k for k in pipe.unet.attn_processors.keys() if "attn1" in k or ("motion_modules" in k and "attn2" in k)
+        ]
         original_attn_procs = pipe.unet.attn_processors
         pag_layers = [
             "down",
@@ -439,12 +442,13 @@ class AnimateDiffPAGPipelineFastTests(
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_layers)
 
-        # pag_applied_layers = ["mid"], or ["mid.block_0"] or ["mid.block_0.motion_modules_0"] should apply to all self-attention layers in mid_block, i.e.
+        # pag_applied_layers = ["mid"], or ["mid_block.0"] should apply to all self-attention layers in mid_block, i.e.
         # mid_block.motion_modules.0.transformer_blocks.0.attn1.processor
         # mid_block.attentions.0.transformer_blocks.0.attn1.processor
         all_self_attn_mid_layers = [
-            "mid_block.motion_modules.0.transformer_blocks.0.attn1.processor",
             "mid_block.attentions.0.transformer_blocks.0.attn1.processor",
+            "mid_block.motion_modules.0.transformer_blocks.0.attn1.processor",
+            "mid_block.motion_modules.0.transformer_blocks.0.attn2.processor",
         ]
         pipe.unet.set_attn_processor(original_attn_procs.copy())
         pag_layers = ["mid"]
@@ -452,17 +456,17 @@ class AnimateDiffPAGPipelineFastTests(
         assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0"]
+        pag_layers = ["mid_block"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0.attentions_0", "mid.block_0.motion_modules_0"]
+        pag_layers = ["mid_block.(attentions|motion_modules)"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0.attentions_1"]
+        pag_layers = ["mid_block.attentions.1"]
         with self.assertRaises(ValueError):
             pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
 
@@ -474,19 +478,19 @@ class AnimateDiffPAGPipelineFastTests(
         pipe.unet.set_attn_processor(original_attn_procs.copy())
         pag_layers = ["down"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 6
+        assert len(pipe.pag_attn_processors) == 10
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_0"]
+        pag_layers = ["down_blocks.0"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert (len(pipe.pag_attn_processors)) == 4
+        assert (len(pipe.pag_attn_processors)) == 6
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_1"]
+        pag_layers = ["blocks.1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 2
+        assert len(pipe.pag_attn_processors) == 10
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_1.motion_modules_2"]
+        pag_layers = ["motion_modules.42"]
         with self.assertRaises(ValueError):
             pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)

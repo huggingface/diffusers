@@ -129,7 +129,7 @@ class AnimateDiffPAGPipeline(
         scheduler: KarrasDiffusionSchedulers,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
-        pag_applied_layers: Union[str, List[str]] = "mid",  # ["mid"], ["down.block_1"], ["up.block_0.attentions_0"]
+        pag_applied_layers: Union[str, List[str]] = "mid_block.*attn1",  # ["mid"], ["down_blocks.1"]
     ):
         super().__init__()
         if isinstance(unet, UNet2DConditionModel):
