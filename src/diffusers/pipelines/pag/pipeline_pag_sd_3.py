@@ -26,6 +26,7 @@ from transformers import (
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
+from ...models.attention_processor import PAGCFGJointAttnProcessor2_0, PAGJointAttnProcessor2_0
 from ...models.transformers import SD3Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -36,7 +37,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_3.pipeline_output import StableDiffusion3PipelineOutput
-from .pag_utils import SD3PAGMixin
+from .pag_utils import PAGMixin
 
 
 if is_torch_xla_available():
@@ -128,8 +129,11 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, SD3PAGMixin):
+class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, PAGMixin):
     r"""
+    [PAG pipeline](https://huggingface.co/docs/diffusers/main/en/using-diffusers/pag) for text-to-image generation
+    using Stable Diffusion 3.
+    
     Args:
         transformer ([`SD3Transformer2DModel`]):
             Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
@@ -204,7 +208,9 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
             else 128
         )
         
-        self.set_pag_applied_layers(pag_applied_layers)
+        self.set_pag_applied_layers(
+            pag_applied_layers, pag_attn_processors=(PAGCFGJointAttnProcessor2_0(), PAGJointAttnProcessor2_0())
+        )
 
 
     def _get_t5_prompt_embeds(
