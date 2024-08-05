@@ -435,6 +435,13 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument(
+        "--guidance_scale",
+        type=float,
+        default=3.5,
+        help="the FLUX.1 dev variant is a guidance distilled model",
+    )
+
+    parser.add_argument(
         "--text_encoder_lr",
         type=float,
         default=5e-6,
@@ -1558,6 +1565,13 @@ def main(args):
                     height=model_input.shape[2],
                     width=model_input.shape[3],
                 )
+
+                # handle guidance
+                if transformer.config.guidance_embeds:
+                    guidance = torch.tensor([args.guidance_scale], device=device)
+                    guidance = guidance.expand(model_input.shape[0])
+                else:
+                    guidance = None
 
                 # Predict the noise residual
                 if not args.train_text_encoder:
