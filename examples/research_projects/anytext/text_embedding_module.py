@@ -3,23 +3,14 @@
 # text -> tokenizer ->
 
 
-from typing import List, Optional
+from typing import Optional
 
 import torch
 from PIL import ImageFont
 from torch import nn
 
-from diffusers.loaders import (
-    StableDiffusionLoraLoaderMixin,
-    TextualInversionLoaderMixin,
-)
-from diffusers.models.autoencoders.vae import DiagonalGaussianDistribution
-from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.utils import (
-    USE_PEFT_BACKEND,
     logging,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
 
 from .embedding_manager import EmbeddingManager
@@ -74,6 +65,8 @@ class TextEmbeddingModule(nn.Module):
         prompt_embeds = self.frozen_CLIP_embedder_t3.encode([prompt], embedding_manager=self.embedding_manager)
 
         self.embedding_manager.encode_text(text_info)
-        negative_prompt_embeds = self.frozen_CLIP_embedder_t3.encode([negative_prompt], embedding_manager=self.embedding_manager)
+        negative_prompt_embeds = self.frozen_CLIP_embedder_t3.encode(
+            [negative_prompt], embedding_manager=self.embedding_manager
+        )
 
         return prompt_embeds, negative_prompt_embeds

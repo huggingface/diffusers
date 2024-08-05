@@ -10,7 +10,6 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 from torch import nn
 
-from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.utils import logging
 
 
