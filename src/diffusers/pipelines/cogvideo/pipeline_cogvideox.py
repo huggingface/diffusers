@@ -482,7 +482,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
             num_seconds (`int`, defaults to `6`):
-                Duration of video in seconds. Must be less than or equal to 6.
+                Duration of video in seconds. Must be 4, 5, or 6.
             fps (`int`, defaults to `8`):
                 Number of frames per second in video. Must be equal to 8 (for now).
             num_inference_steps (`int`, *optional*, defaults to 50):
@@ -537,7 +537,8 @@ class CogVideoXPipeline(DiffusionPipeline):
             [`~pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
-        assert num_seconds <= 6 and fps == 8
+
+        assert num_seconds in [4, 5, 6] and fps == 8, "The number of seconds must be 4, 5, or 6, and the fps must be 8."
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs

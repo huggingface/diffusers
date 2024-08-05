@@ -361,14 +361,14 @@ class CogVideoXPatchEmbed(nn.Module):
         """
         text_embeds = self.text_proj(text_embeds)
 
-        B, F, C, H, W = image_embeds.shape
-        image_embeds = image_embeds.reshape(-1, C, H, W)
+        batch, num_frames, channels, height, width = image_embeds.shape
+        image_embeds = image_embeds.reshape(-1, channels, height, width)
         image_embeds = self.proj(image_embeds)
-        image_embeds = image_embeds.view(B, F, *image_embeds.shape[1:])
-        image_embeds = image_embeds.flatten(3).transpose(2, 3)  # [B, F, H x W, C]
-        image_embeds = image_embeds.flatten(1, 2)  # [B, F x H x W, C]
+        image_embeds = image_embeds.view(batch, num_frames, *image_embeds.shape[1:])
+        image_embeds = image_embeds.flatten(3).transpose(2, 3)  # [batch, num_frames, height x width, channels]
+        image_embeds = image_embeds.flatten(1, 2)  # [batch, num_frames x height x width, channels]
 
-        embeds = torch.cat([text_embeds, image_embeds], dim=1).contiguous()  # [B, S + F x H x W, C]
+        embeds = torch.cat([text_embeds, image_embeds],dim=1).contiguous()  # [batch, seq_length + num_frames x height x width, channels]
         return embeds
 
 

@@ -25,7 +25,7 @@ from the original format using [`FromOriginalModelMixin.from_single_file`] as fo
 ```py
 from diffusers import AutoencoderKLCogVideoX
 
-url = "3d-vae.pt"  # can also be a local file
+url = "THUDM/CogVideoX-2b"  # can also be a local file
 model = AutoencoderKLCogVideoX.from_single_file(url)
 ```
 
