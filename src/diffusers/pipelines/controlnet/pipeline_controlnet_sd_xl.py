@@ -1380,7 +1380,7 @@ class StableDiffusionXLControlNetPipeline(
                 batch_size * num_images_per_prompt,
                 self.do_classifier_free_guidance,
             )
-        
+
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):
             image = self.prepare_image(
