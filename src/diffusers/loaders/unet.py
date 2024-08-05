@@ -577,6 +577,19 @@ class UNet2DConditionLoadersMixin:
                     image_embed_dim=clip_embeddings_dim,
                     num_image_text_embeds=num_image_text_embeds,
                 )
+
+        elif "proj.weight" in state_dict:
+            # IP-Adapter
+            num_image_text_embeds = 4
+            clip_embeddings_dim = state_dict["proj.weight"].shape[-1]
+            cross_attention_dim = state_dict["proj.weight"].shape[0] // 4
+
+            with init_context():
+                image_projection = ImageProjectionCustomized(
+                    cross_attention_dim=cross_attention_dim,
+                    image_embed_dim=clip_embeddings_dim,
+                    num_image_text_embeds=num_image_text_embeds,
+                )
         else:
             if "proj.weight" in state_dict:
                 # IP-Adapter
