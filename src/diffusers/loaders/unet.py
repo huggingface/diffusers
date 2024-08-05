@@ -594,7 +594,9 @@ class UNet2DConditionLoadersMixin:
                 # IP-Adapter
                 num_image_text_embeds = 4
                 clip_embeddings_dim = state_dict["proj.weight"].shape[-1]
+                print('clip_embeddings_dim={clip_embeddings_dim}')
                 cross_attention_dim = state_dict["proj.weight"].shape[0] // 4
+                print(f'cross_attention_dim={cross_attention_dim}')
 
                 with init_context():
                     image_projection = ImageProjection(
