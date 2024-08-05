@@ -2628,9 +2628,11 @@ class MultiIPAdapterImageProjection(nn.Module):
         for image_embed, image_projection_layer in zip(image_embeds, self.image_projection_layers):
             batch_size, num_images = image_embed.shape[0], image_embed.shape[1]
             image_embed = image_embed.reshape((batch_size * num_images,) + image_embed.shape[2:])
-            print(f'MultiIPAdapterImageProjection image_embed={image_embed}')
+            print(f'MultiIPAdapterImageProjection image_embed before={image_embed.size()}')
             image_embed = image_projection_layer(image_embed)
+            print(f'MultiIPAdapterImageProjection image_embed after={image_embed.size()}')
             image_embed = image_embed.reshape((batch_size, num_images) + image_embed.shape[1:])
+            print(f'MultiIPAdapterImageProjection image_embed reshape={image_embed.size()}')
 
             projected_image_embeds.append(image_embed)
 
