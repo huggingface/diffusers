@@ -87,7 +87,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# SD3 DreamBooth - {repo_id}
+# Flux [dev] DreamBooth - {repo_id}
 
 <Gallery />
 
@@ -95,7 +95,7 @@ def save_model_card(
 
 These are {repo_id} DreamBooth weights for {base_model}.
 
-The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [SD3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sd3.md).
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [Flux diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_flux.md).
 
 Was the text encoder fine-tuned? {train_text_encoder}.
 
@@ -114,7 +114,7 @@ image = pipeline('{validation_prompt if validation_prompt else instance_prompt}'
 
 ## License
 
-Please adhere to the licensing terms as described `[here](https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/LICENSE)`.
+Please adhere to the licensing terms as described `[here](https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/LICENSE.md)`.
 """
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
@@ -129,8 +129,8 @@ Please adhere to the licensing terms as described `[here](https://huggingface.co
         "text-to-image",
         "diffusers-training",
         "diffusers",
-        "sd3",
-        "sd3-diffusers",
+        "flux",
+        "flux-diffusers",
         "template:sd-lora",
     ]
 
@@ -1024,7 +1024,7 @@ def main(args):
                 torch_dtype = torch.float16
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
-            pipeline = StableDiffusion3Pipeline.from_pretrained(
+            pipeline = FluxPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
                 revision=args.revision,
@@ -1430,7 +1430,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_name = "dreambooth-sd3"
+        tracker_name = "dreambooth-flux"
         accelerator.init_trackers(tracker_name, config=vars(args))
 
     # Train!
