@@ -58,7 +58,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
-
+from diffusers.pipelines.flux.pipeline_flux import prepare_latent_image_ids,pack_latents,unpack_latents
 
 if is_wandb_available():
     import wandb
@@ -1506,7 +1506,6 @@ def main(args):
                 models_to_accumulate.extend([text_encoder_one, text_encoder_two])
             with accelerator.accumulate(models_to_accumulate):
                 pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
-                #latent_image_ids=
                 prompts = batch["prompts"]
 
                 # encode batch prompts when custom prompts are provided for each image -
@@ -1523,6 +1522,13 @@ def main(args):
                 model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
+                latent_image_ids = prepare_latent_image_ids(
+                    model_input.shape[0],
+                    model_input.shape[2],
+                    model_input.shape[3],
+                    accelerator.device,
+                    weight_dtype,
+                )
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
@@ -1545,10 +1551,18 @@ def main(args):
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
+                packed_noisy_model_input = pack_latents(
+                    noisy_model_input,
+                    batch_size=model_input.shape[0],
+                    num_channels_latents=model_input.shape[1],
+                    height=model_input.shape[2],
+                    width=model_input.shape[3],
+                )
+
                 # Predict the noise residual
                 if not args.train_text_encoder:
                     model_pred = transformer(
-                        hidden_states=noisy_model_input,
+                        hidden_states=packed_noisy_model_input,
                         # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
                         timestep=timesteps / 1000,
                         guidance=guidance,
@@ -1566,7 +1580,7 @@ def main(args):
                         text_input_ids_list=[tokens_one, tokens_two],
                     )
                     model_pred = transformer(
-                        hidden_states=noisy_model_input,
+                        hidden_states=packed_noisy_model_input,
                         # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
                         timestep=timesteps / 1000,
                         guidance=guidance,
@@ -1576,6 +1590,13 @@ def main(args):
                         img_ids=latent_image_ids,
                         return_dict=False,
                     )[0]
+
+                model_pred = unpack_latents(
+                    model_pred,
+                    height=model_input.shape[2],
+                    width=model_input.shape[3],
+                    vae_scale_factor=vae.config.scaling_factor,
+                )
 
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                 # Preconditioning of the model outputs.
@@ -1710,14 +1731,14 @@ def main(args):
         if args.train_text_encoder:
             text_encoder_one = unwrap_model(text_encoder_one)
             text_encoder_two = unwrap_model(text_encoder_two)
-            pipeline = StableDiffusion3Pipeline.from_pretrained(
+            pipeline = FluxPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 transformer=transformer,
                 text_encoder=text_encoder_one,
                 text_encoder_2=text_encoder_two,
             )
         else:
-            pipeline = StableDiffusion3Pipeline.from_pretrained(
+            pipeline = FluxPipeline.from_pretrained(
                 args.pretrained_model_name_or_path, transformer=transformer
             )
 
@@ -1726,7 +1747,7 @@ def main(args):
 
         # Final inference
         # Load previous pipeline
-        pipeline = StableDiffusion3Pipeline.from_pretrained(
+        pipeline = FluxPipeline.from_pretrained(
             args.output_dir,
             revision=args.revision,
             variant=args.variant,
