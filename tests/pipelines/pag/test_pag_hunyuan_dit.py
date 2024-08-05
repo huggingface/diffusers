@@ -190,9 +190,7 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(
-                tmpdir, pag_applied_layers=components["pag_applied_layers"]
-            )
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
@@ -288,7 +286,6 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = self.get_dummy_components()
 
         # base pipeline (expect same output when pag is disabled)
-        components.pop("pag_applied_layers", None)
         pipe_sd = HunyuanDiTPipeline(**components)
         pipe_sd = pipe_sd.to(device)
         pipe_sd.set_progress_bar_config(disable=None)
@@ -328,7 +325,6 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = self.get_dummy_components()
 
         # base pipeline
-        components.pop("pag_applied_layers", None)
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
