@@ -377,7 +377,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 Whether or not to return a [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] or `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] or `tuple`:
                 If return_dict is `True`, [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] is returned, otherwise a
                 tuple is returned where the first element is the sample tensor.
 

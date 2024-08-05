@@ -25,6 +25,9 @@ The abstract of the paper is the following:
 | Pipeline | Tasks | Demo
 |---|---|:---:|
 | [AnimateDiffPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff.py) | *Text-to-Video Generation with AnimateDiff* |
+| [AnimateDiffControlNetPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_controlnet.py) | *Controlled Video-to-Video Generation with AnimateDiff using ControlNet* |
+| [AnimateDiffSparseControlNetPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_sparsectrl.py) | *Controlled Video-to-Video Generation with AnimateDiff using SparseCtrl* |
+| [AnimateDiffSDXLPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_sdxl.py) | *Video-to-Video Generation with AnimateDiff* |
 | [AnimateDiffVideoToVideoPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_video2video.py) | *Video-to-Video Generation with AnimateDiff* |
 
 ## Available checkpoints
@@ -99,6 +102,266 @@ Here are some sample outputs:
 AnimateDiff tends to work better with finetuned Stable Diffusion models. If you plan on using a scheduler that can clip samples, make sure to disable it by setting `clip_sample=False` in the scheduler as this can also have an adverse effect on generated samples. Additionally, the AnimateDiff checkpoints can be sensitive to the beta schedule of the scheduler. We recommend setting this to `linear`.
 
 </Tip>
+
+### AnimateDiffControlNetPipeline
+
+AnimateDiff can also be used with ControlNets ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang, Anyi Rao, and Maneesh Agrawala. With a ControlNet model, you can provide an additional control image to condition and control Stable Diffusion generation. For example, if you provide depth maps, the ControlNet model generates a video that'll preserve the spatial information from the depth maps. It is a more flexible and accurate way to control the video generation process.
+
+```python
+import torch
+from diffusers import AnimateDiffControlNetPipeline, AutoencoderKL, ControlNetModel, MotionAdapter, LCMScheduler
+from diffusers.utils import export_to_gif, load_video
+
+# Additionally, you will need a preprocess videos before they can be used with the ControlNet
+# HF maintains just the right package for it: `pip install controlnet_aux`
+from controlnet_aux.processor import ZoeDetector
+
+# Download controlnets from https://huggingface.co/lllyasviel/ControlNet-v1-1 to use .from_single_file
+# Download Diffusers-format controlnets, such as https://huggingface.co/lllyasviel/sd-controlnet-depth, to use .from_pretrained()
+controlnet = ControlNetModel.from_single_file("control_v11f1p_sd15_depth.pth", torch_dtype=torch.float16)
+
+# We use AnimateLCM for this example but one can use the original motion adapters as well (for example, https://huggingface.co/guoyww/animatediff-motion-adapter-v1-5-3)
+motion_adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM")
+
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+pipe: AnimateDiffControlNetPipeline = AnimateDiffControlNetPipeline.from_pretrained(
+    "SG161222/Realistic_Vision_V5.1_noVAE",
+    motion_adapter=motion_adapter,
+    controlnet=controlnet,
+    vae=vae,
+).to(device="cuda", dtype=torch.float16)
+pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
+pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora")
+pipe.set_adapters(["lcm-lora"], [0.8])
+
+depth_detector = ZoeDetector.from_pretrained("lllyasviel/Annotators").to("cuda")
+video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
+conditioning_frames = []
+
+with pipe.progress_bar(total=len(video)) as progress_bar:
+    for frame in video:
+        conditioning_frames.append(depth_detector(frame))
+        progress_bar.update()
+
+prompt = "a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality"
+negative_prompt = "bad quality, worst quality"
+
+video = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_frames=len(video),
+    num_inference_steps=10,
+    guidance_scale=2.0,
+    conditioning_frames=conditioning_frames,
+    generator=torch.Generator().manual_seed(42),
+).frames[0]
+
+export_to_gif(video, "animatediff_controlnet.gif", fps=8)
+```
+
+Here are some sample outputs:
+
+<table align="center">
+    <tr>
+      <th align="center">Source Video</th>
+      <th align="center">Output Video</th>
+    </tr>
+    <tr>
+        <td align="center">
+          raccoon playing a guitar
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif" alt="racoon playing a guitar" />
+        </td>
+        <td align="center">
+          a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-controlnet-output.gif" alt="a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality" />
+        </td>
+    </tr>
+</table>
+
+### AnimateDiffSparseControlNetPipeline
+
+[SparseCtrl: Adding Sparse Controls to Text-to-Video Diffusion Models](https://arxiv.org/abs/2311.16933) for achieving controlled generation in text-to-video diffusion models by Yuwei Guo, Ceyuan Yang, Anyi Rao, Maneesh Agrawala, Dahua Lin, and Bo Dai.
+
+The abstract from the paper is:
+
+*The development of text-to-video (T2V), i.e., generating videos with a given text prompt, has been significantly advanced in recent years. However, relying solely on text prompts often results in ambiguous frame composition due to spatial uncertainty. The research community thus leverages the dense structure signals, e.g., per-frame depth/edge sequences, to enhance controllability, whose collection accordingly increases the burden of inference. In this work, we present SparseCtrl to enable flexible structure control with temporally sparse signals, requiring only one or a few inputs, as shown in Figure 1. It incorporates an additional condition encoder to process these sparse signals while leaving the pre-trained T2V model untouched. The proposed approach is compatible with various modalities, including sketches, depth maps, and RGB images, providing more practical control for video generation and promoting applications such as storyboarding, depth rendering, keyframe animation, and interpolation. Extensive experiments demonstrate the generalization of SparseCtrl on both original and personalized T2V generators. Codes and models will be publicly available at [this https URL](https://guoyww.github.io/projects/SparseCtrl).*
+
+SparseCtrl introduces the following checkpoints for controlled text-to-video generation:
+
+- [SparseCtrl Scribble](https://huggingface.co/guoyww/animatediff-sparsectrl-scribble)
+- [SparseCtrl RGB](https://huggingface.co/guoyww/animatediff-sparsectrl-rgb)
+
+#### Using SparseCtrl Scribble
+
+```python
+import torch
+
+from diffusers import AnimateDiffSparseControlNetPipeline
+from diffusers.models import AutoencoderKL, MotionAdapter, SparseControlNetModel
+from diffusers.schedulers import DPMSolverMultistepScheduler
+from diffusers.utils import export_to_gif, load_image
+
+
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
+controlnet_id = "guoyww/animatediff-sparsectrl-scribble"
+lora_adapter_id = "guoyww/animatediff-motion-lora-v1-5-3"
+vae_id = "stabilityai/sd-vae-ft-mse"
+device = "cuda"
+
+motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, torch_dtype=torch.float16).to(device)
+controlnet = SparseControlNetModel.from_pretrained(controlnet_id, torch_dtype=torch.float16).to(device)
+vae = AutoencoderKL.from_pretrained(vae_id, torch_dtype=torch.float16).to(device)
+scheduler = DPMSolverMultistepScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    beta_schedule="linear",
+    algorithm_type="dpmsolver++",
+    use_karras_sigmas=True,
+)
+pipe = AnimateDiffSparseControlNetPipeline.from_pretrained(
+    model_id,
+    motion_adapter=motion_adapter,
+    controlnet=controlnet,
+    vae=vae,
+    scheduler=scheduler,
+    torch_dtype=torch.float16,
+).to(device)
+pipe.load_lora_weights(lora_adapter_id, adapter_name="motion_lora")
+pipe.fuse_lora(lora_scale=1.0)
+
+prompt = "an aerial view of a cyberpunk city, night time, neon lights, masterpiece, high quality"
+negative_prompt = "low quality, worst quality, letterboxed"
+
+image_files = [
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-1.png",
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-2.png",
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-3.png"
+]
+condition_frame_indices = [0, 8, 15]
+conditioning_frames = [load_image(img_file) for img_file in image_files]
+
+video = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_inference_steps=25,
+    conditioning_frames=conditioning_frames,
+    controlnet_conditioning_scale=1.0,
+    controlnet_frame_indices=condition_frame_indices,
+    generator=torch.Generator().manual_seed(1337),
+).frames[0]
+export_to_gif(video, "output.gif")
+```
+
+Here are some sample outputs:
+
+<table align="center">
+    <tr>
+        <center>
+          <b>an aerial view of a cyberpunk city, night time, neon lights, masterpiece, high quality</b>
+        </center>
+    </tr>
+    <tr>
+        <td>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-1.png" alt="scribble-1" />
+          </center>
+        </td>
+        <td>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-2.png" alt="scribble-2" />
+          </center>
+        </td>
+        <td>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-scribble-3.png" alt="scribble-3" />
+          </center>
+        </td>
+    </tr>
+    <tr>
+        <td colspan=3>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-sparsectrl-scribble-results.gif" alt="an aerial view of a cyberpunk city, night time, neon lights, masterpiece, high quality" />
+          </center>
+        </td>
+    </tr>
+</table>
+
+#### Using SparseCtrl RGB
+
+```python
+import torch
+
+from diffusers import AnimateDiffSparseControlNetPipeline
+from diffusers.models import AutoencoderKL, MotionAdapter, SparseControlNetModel
+from diffusers.schedulers import DPMSolverMultistepScheduler
+from diffusers.utils import export_to_gif, load_image
+
+
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
+controlnet_id = "guoyww/animatediff-sparsectrl-rgb"
+lora_adapter_id = "guoyww/animatediff-motion-lora-v1-5-3"
+vae_id = "stabilityai/sd-vae-ft-mse"
+device = "cuda"
+
+motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, torch_dtype=torch.float16).to(device)
+controlnet = SparseControlNetModel.from_pretrained(controlnet_id, torch_dtype=torch.float16).to(device)
+vae = AutoencoderKL.from_pretrained(vae_id, torch_dtype=torch.float16).to(device)
+scheduler = DPMSolverMultistepScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    beta_schedule="linear",
+    algorithm_type="dpmsolver++",
+    use_karras_sigmas=True,
+)
+pipe = AnimateDiffSparseControlNetPipeline.from_pretrained(
+    model_id,
+    motion_adapter=motion_adapter,
+    controlnet=controlnet,
+    vae=vae,
+    scheduler=scheduler,
+    torch_dtype=torch.float16,
+).to(device)
+pipe.load_lora_weights(lora_adapter_id, adapter_name="motion_lora")
+
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-firework.png")
+
+video = pipe(
+    prompt="closeup face photo of man in black clothes, night city street, bokeh, fireworks in background",
+    negative_prompt="low quality, worst quality",
+    num_inference_steps=25,
+    conditioning_frames=image,
+    controlnet_frame_indices=[0],
+    controlnet_conditioning_scale=1.0,
+    generator=torch.Generator().manual_seed(42),
+).frames[0]
+export_to_gif(video, "output.gif")
+```
+
+Here are some sample outputs:
+
+<table align="center">
+    <tr>
+        <center>
+          <b>closeup face photo of man in black clothes, night city street, bokeh, fireworks in background</b>
+        </center>
+    </tr>
+    <tr>
+        <td>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-firework.png" alt="closeup face photo of man in black clothes, night city street, bokeh, fireworks in background" />
+          </center>
+        </td>
+        <td>
+          <center>
+            <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-sparsectrl-rgb-result.gif" alt="closeup face photo of man in black clothes, night city street, bokeh, fireworks in background" />
+          </center>
+        </td>
+    </tr>
+</table>
 
 ### AnimateDiffSDXLPipeline
 
@@ -560,9 +823,34 @@ export_to_gif(frames, "animatelcm-motion-lora.gif")
 </table>
 
 
+## Using `from_single_file` with the MotionAdapter
+
+`diffusers>=0.30.0` supports loading the AnimateDiff checkpoints into the `MotionAdapter` in their original format via `from_single_file`
+
+```python
+from diffusers import MotionAdapter
+
+ckpt_path = "https://huggingface.co/Lightricks/LongAnimateDiff/blob/main/lt_long_mm_32_frames.ckpt"
+
+adapter = MotionAdapter.from_single_file(ckpt_path, torch_dtype=torch.float16)
+pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter)
+```
+
 ## AnimateDiffPipeline
 
 [[autodoc]] AnimateDiffPipeline
+  - all
+  - __call__
+
+## AnimateDiffControlNetPipeline
+
+[[autodoc]] AnimateDiffControlNetPipeline
+  - all
+  - __call__
+
+## AnimateDiffSparseControlNetPipeline
+
+[[autodoc]] AnimateDiffSparseControlNetPipeline
   - all
   - __call__
 

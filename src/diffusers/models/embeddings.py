@@ -35,10 +35,21 @@ def get_timestep_embedding(
     """
     This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal timestep embeddings.
 
-    :param timesteps: a 1-D Tensor of N indices, one per batch element.
-                      These may be fractional.
-    :param embedding_dim: the dimension of the output. :param max_period: controls the minimum frequency of the
-    embeddings. :return: an [N x dim] Tensor of positional embeddings.
+    Args
+        timesteps (torch.Tensor):
+            a 1-D Tensor of N indices, one per batch element. These may be fractional.
+        embedding_dim (int):
+            the dimension of the output.
+        flip_sin_to_cos (bool):
+            Whether the embedding order should be `cos, sin` (if True) or `sin, cos` (if False)
+        downscale_freq_shift (float):
+            Controls the delta between frequencies between dimensions
+        scale (float):
+            Scaling factor applied to the embeddings.
+        max_period (int):
+            Controls the maximum frequency of the embeddings
+    Returns
+        torch.Tensor: an [N x dim] Tensor of positional embeddings.
     """
     assert len(timesteps.shape) == 1, "Timesteps should be a 1d-array"
 
@@ -291,7 +302,7 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
         If True, return real part and imaginary part separately. Otherwise, return complex numbers.
 
     Returns:
-        `torch.Tensor`: positional embdding with shape `( grid_size * grid_size, embed_dim/2)`.
+        `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
     """
     start, stop = crops_coords
     grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
@@ -308,12 +319,16 @@ def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
     assert embed_dim % 4 == 0
 
     # use half of dimensions to encode grid_h
-    emb_h = get_1d_rotary_pos_embed(embed_dim // 2, grid[0].reshape(-1), use_real=use_real)  # (H*W, D/4)
-    emb_w = get_1d_rotary_pos_embed(embed_dim // 2, grid[1].reshape(-1), use_real=use_real)  # (H*W, D/4)
+    emb_h = get_1d_rotary_pos_embed(
+        embed_dim // 2, grid[0].reshape(-1), use_real=use_real
+    )  # (H*W, D/2) if use_real else (H*W, D/4)
+    emb_w = get_1d_rotary_pos_embed(
+        embed_dim // 2, grid[1].reshape(-1), use_real=use_real
+    )  # (H*W, D/2) if use_real else (H*W, D/4)
 
     if use_real:
-        cos = torch.cat([emb_h[0], emb_w[0]], dim=1)  # (H*W, D/2)
-        sin = torch.cat([emb_h[1], emb_w[1]], dim=1)  # (H*W, D/2)
+        cos = torch.cat([emb_h[0], emb_w[0]], dim=1)  # (H*W, D)
+        sin = torch.cat([emb_h[1], emb_w[1]], dim=1)  # (H*W, D)
         return cos, sin
     else:
         emb = torch.cat([emb_h, emb_w], dim=1)  # (H*W, D/2)
@@ -337,7 +352,13 @@ def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, n
 
 
 def get_1d_rotary_pos_embed(
-    dim: int, pos: Union[np.ndarray, int], theta: float = 10000.0, use_real=False, linear_factor=1.0, ntk_factor=1.0
+    dim: int,
+    pos: Union[np.ndarray, int],
+    theta: float = 10000.0,
+    use_real=False,
+    linear_factor=1.0,
+    ntk_factor=1.0,
+    repeat_interleave_real=True,
 ):
     """
     Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
@@ -357,18 +378,27 @@ def get_1d_rotary_pos_embed(
             Scaling factor for the context extrapolation. Defaults to 1.0.
         ntk_factor (`float`, *optional*, defaults to 1.0):
             Scaling factor for the NTK-Aware RoPE. Defaults to 1.0.
+        repeat_interleave_real (`bool`, *optional*, defaults to `True`):
+            If `True` and `use_real`, real part and imaginary part are each interleaved with themselves to reach `dim`.
+            Otherwise, they are concateanted with themselves.
     Returns:
         `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
     """
+    assert dim % 2 == 0
+
     if isinstance(pos, int):
         pos = np.arange(pos)
     theta = theta * ntk_factor
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim)) / linear_factor  # [D/2]
     t = torch.from_numpy(pos).to(freqs.device)  # type: ignore  # [S]
     freqs = torch.outer(t, freqs).float()  # type: ignore   # [S, D/2]
-    if use_real:
+    if use_real and repeat_interleave_real:
         freqs_cos = freqs.cos().repeat_interleave(2, dim=1)  # [S, D]
         freqs_sin = freqs.sin().repeat_interleave(2, dim=1)  # [S, D]
+        return freqs_cos, freqs_sin
+    elif use_real:
+        freqs_cos = torch.cat([freqs.cos(), freqs.cos()], dim=-1)  # [S, D]
+        freqs_sin = torch.cat([freqs.sin(), freqs.sin()], dim=-1)  # [S, D]
         return freqs_cos, freqs_sin
     else:
         freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
@@ -379,6 +409,7 @@ def apply_rotary_emb(
     x: torch.Tensor,
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
     use_real: bool = True,
+    use_real_unbind_dim: int = -1,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
@@ -400,8 +431,17 @@ def apply_rotary_emb(
         sin = sin[None, None]
         cos, sin = cos.to(x.device), sin.to(x.device)
 
-        x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
-        x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+        if use_real_unbind_dim == -1:
+            # Use for example in Lumina
+            x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+            x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+        elif use_real_unbind_dim == -2:
+            # Use for example in Stable Audio
+            x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)  # [B, S, H, D//2]
+            x_rotated = torch.cat([-x_imag, x_real], dim=-1)
+        else:
+            raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
+
         out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
 
         return out
@@ -462,11 +502,12 @@ class TimestepEmbedding(nn.Module):
 
 
 class Timesteps(nn.Module):
-    def __init__(self, num_channels: int, flip_sin_to_cos: bool, downscale_freq_shift: float):
+    def __init__(self, num_channels: int, flip_sin_to_cos: bool, downscale_freq_shift: float, scale: int = 1):
         super().__init__()
         self.num_channels = num_channels
         self.flip_sin_to_cos = flip_sin_to_cos
         self.downscale_freq_shift = downscale_freq_shift
+        self.scale = scale
 
     def forward(self, timesteps):
         t_emb = get_timestep_embedding(
@@ -474,6 +515,7 @@ class Timesteps(nn.Module):
             self.num_channels,
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.downscale_freq_shift,
+            scale=self.scale,
         )
         return t_emb
 
@@ -753,6 +795,30 @@ class CombinedTimestepTextProjEmbeddings(nn.Module):
         return conditioning
 
 
+class CombinedTimestepGuidanceTextProjEmbeddings(nn.Module):
+    def __init__(self, embedding_dim, pooled_projection_dim):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.guidance_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.text_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
+
+    def forward(self, timestep, guidance, pooled_projection):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=pooled_projection.dtype))  # (N, D)
+
+        guidance_proj = self.time_proj(guidance)
+        guidance_emb = self.guidance_embedder(guidance_proj.to(dtype=pooled_projection.dtype))  # (N, D)
+
+        time_guidance_emb = timesteps_emb + guidance_emb
+
+        pooled_projections = self.text_embedder(pooled_projection)
+        conditioning = time_guidance_emb + pooled_projections
+
+        return conditioning
+
+
 class HunyuanDiTAttentionPool(nn.Module):
     # Copied from https://github.com/Tencent/HunyuanDiT/blob/cb709308d92e6c7e8d59d0dff41b74d35088db6a/hydit/modules/poolers.py#L6
 
@@ -836,7 +902,7 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         pooled_projections = self.pooler(encoder_hidden_states)  # (N, 1024)
 
         if self.use_style_cond_and_image_meta_size:
-            # extra condition2: image meta size embdding
+            # extra condition2: image meta size embedding
             image_meta_size = self.size_proj(image_meta_size.view(-1))
             image_meta_size = image_meta_size.to(dtype=hidden_dtype)
             image_meta_size = image_meta_size.view(-1, 6 * 256)  # (N, 1536)

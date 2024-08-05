@@ -60,7 +60,7 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
@@ -1605,13 +1605,15 @@ def main(args):
                 if isinstance(model, type(unwrap_model(unet))):
                     unet_lora_layers_to_save = convert_state_dict_to_diffusers(get_peft_model_state_dict(model))
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                    text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
-                        get_peft_model_state_dict(model)
-                    )
+                    if args.train_text_encoder:
+                        text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(model)
+                        )
                 elif isinstance(model, type(unwrap_model(text_encoder_two))):
-                    text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
-                        get_peft_model_state_dict(model)
-                    )
+                    if args.train_text_encoder:
+                        text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(model)
+                        )
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1625,7 +1627,7 @@ def main(args):
                 text_encoder_2_lora_layers=text_encoder_two_lora_layers_to_save,
             )
         if args.train_text_encoder_ti:
-            embedding_handler.save_embeddings(f"{output_dir}/{args.output_dir}_emb.safetensors")
+            embedding_handler.save_embeddings(f"{args.output_dir}/{Path(args.output_dir).name}_emb.safetensors")
 
     def load_model_hook(models, input_dir):
         unet_ = None
@@ -1644,7 +1646,7 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
+        lora_state_dict, network_alphas = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
 
         unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
