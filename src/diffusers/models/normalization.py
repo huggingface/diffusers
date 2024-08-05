@@ -37,18 +37,46 @@ class AdaLayerNorm(nn.Module):
         num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
-    def __init__(self, embedding_dim: int, num_embeddings: int):
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_embeddings: Optional[int] = None,
+        output_dim: Optional[int] = None,
+        norm_elementwise_affine: bool = False,
+        norm_eps: float = 1e-5,
+        use_embedding: bool = True,
+    ):
         super().__init__()
-        self.emb = nn.Embedding(num_embeddings, embedding_dim)
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, embedding_dim * 2)
-        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False)
+        if use_embedding:
+            self.emb = nn.Embedding(num_embeddings, embedding_dim)
+        else:
+            self.emb = None
 
-    def forward(self, x: torch.Tensor, timestep: torch.Tensor) -> torch.Tensor:
-        emb = self.linear(self.silu(self.emb(timestep)))
-        scale, shift = torch.chunk(emb, 2)
-        x = self.norm(x) * (1 + scale) + shift
-        return x
+        output_dim = output_dim or embedding_dim * 2
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, output_dim)
+        self.norm = nn.LayerNorm(output_dim // 2, norm_eps, norm_elementwise_affine)
+
+    def forward(
+        self, hidden_states: torch.Tensor, timestep: Optional[torch.Tensor] = None, temb: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        input_ndim = hidden_states.ndim
+
+        if self.emb is not None:
+            temb = self.emb(timestep)
+
+        temb = self.linear(self.silu(temb))
+
+        if input_ndim == 3:
+            shift, scale = temb.chunk(2, dim=1)
+            shift = shift[:, None, :]
+            scale = scale[:, None, :]
+        else:
+            scale, shift = temb.chunk(2, dim=0)
+
+        hidden_states = self.norm(hidden_states) * (1 + scale) + shift
+        return hidden_states
 
 
 class FP32LayerNorm(nn.LayerNorm):
@@ -319,6 +347,30 @@ class LuminaLayerNormContinuous(nn.Module):
             x = self.linear_2(x)
 
         return x
+
+
+class CogVideoXLayerNormZero(nn.Module):
+    def __init__(
+        self,
+        conditioning_dim: int,
+        embedding_dim: int,
+        elementwise_affine: bool = True,
+        eps: float = 1e-5,
+        bias: bool = True,
+    ) -> None:
+        super().__init__()
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(conditioning_dim, 6 * embedding_dim, bias=bias)
+        self.norm = nn.LayerNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
+
+    def forward(
+        self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        shift, scale, gate, enc_shift, enc_scale, enc_gate = self.linear(self.silu(temb)).chunk(6, dim=1)
+        hidden_states = self.norm(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
+        encoder_hidden_states = self.norm(encoder_hidden_states) * (1 + enc_scale)[:, None, :] + enc_shift[:, None, :]
+        return hidden_states, encoder_hidden_states, gate[:, None, :], enc_gate[:, None, :]
 
 
 if is_torch_version(">=", "2.1.0"):
