@@ -229,9 +229,9 @@ class PAGMixin:
             denoiser_module = self.transformer
         else:
             raise ValueError("No denoiser module found.")
-        
+
         for name, proc in denoiser_module.attn_processors.items():
             if proc.__class__ in valid_attn_processors:
                 processors[name] = proc
-        
+
         return processors
