@@ -863,6 +863,7 @@ class UNet2DConditionLoadersMixin:
                             # IP-Adapter Plus
                             num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
 
+                print(f'num_image_text_embeds={num_image_text_embeds}')
                 with init_context():
                     attn_procs[name] = attn_processor_class(
                         hidden_size=hidden_size,
