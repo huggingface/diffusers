@@ -114,6 +114,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
             VQModel,
         )
+
         from .cache_utils import CacheMixin
         from .controlnets import (
             ControlNetModel,
@@ -130,7 +131,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SparseControlNetModel,
             UNetControlNetXSModel,
         )
-        from .embeddings import ImageProjection
+        from .embeddings import ImageProjection, ImageProjectionCustomized
         from .modeling_utils import ModelMixin
         from .transformers import (
             AllegroTransformer3DModel,
