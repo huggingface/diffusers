@@ -1114,8 +1114,6 @@ class PAGJointAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
-        *args,
-        **kwargs,
     ) -> torch.FloatTensor:
         residual = hidden_states
 
