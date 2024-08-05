@@ -744,8 +744,11 @@ class ImageProjection(nn.Module):
         batch_size = image_embeds.shape[0]
 
         # image
+        print(f'image_embeds={image_embeds.size()}')
         image_embeds = self.image_embeds(image_embeds)
+        print(f'image_embeds after project={image_embeds.size()}')
         image_embeds = image_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
+        print(f'image_embeds after reshape={image_embeds.size()}')
         image_embeds = self.norm(image_embeds)
         return image_embeds
 
