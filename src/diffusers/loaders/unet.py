@@ -24,6 +24,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
 from ..models.embeddings import (
+    ImageProjectionCustomized,
     ImageProjection,
     IPAdapterFaceIDImageProjection,
     IPAdapterFaceIDPlusImageProjection,
@@ -576,7 +577,20 @@ class UNet2DConditionLoadersMixin:
         image_projection = None
         init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
 
-        if "proj.weight" in state_dict:
+        if state_dict is None:
+            # IP-Adapter-Customized
+            num_image_text_embeds = 1 # fixed
+            clip_embeddings_dim = 1024 # fixed by CLIP model
+            cross_attention_dim = 2048 # fixed by sdxl two text encoders
+
+            with init_context():
+                image_projection = ImageProjectionCustomized(
+                    cross_attention_dim=cross_attention_dim,
+                    image_embed_dim=clip_embeddings_dim,
+                    num_image_text_embeds=num_image_text_embeds,
+                )
+
+        elif "proj.weight" in state_dict:
             # IP-Adapter
             num_image_text_embeds = 4
             clip_embeddings_dim = state_dict["proj.weight"].shape[-1]
