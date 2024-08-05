@@ -146,6 +146,7 @@ else:
         [
             "AnimateDiffPAGPipeline",
             "HunyuanDiTPAGPipeline",
+            "StableDiffusion3PAGPipeline",
             "StableDiffusionPAGPipeline",
             "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
@@ -535,6 +536,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
             PixArtSigmaPAGPipeline,
+            StableDiffusion3Pipeline,
             StableDiffusionControlNetPAGPipeline,
             StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGPipeline,
