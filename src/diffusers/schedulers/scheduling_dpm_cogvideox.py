@@ -25,6 +25,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
+from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
@@ -419,14 +420,16 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
         mult = list(self.get_mult(h, r, alpha_prod_t, alpha_prod_t_prev, alpha_prod_t_back))
         mult_noise = (1 - alpha_prod_t_prev) ** 0.5 * (1 - (-2 * h).exp()) ** 0.5
 
-        prev_sample = mult[0] * sample - mult[1] * pred_original_sample + mult_noise * torch.randn_like(sample)
+        noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
+        prev_sample = mult[0] * sample - mult[1] * pred_original_sample + mult_noise * noise
 
         if old_pred_original_sample is None or prev_timestep < 0:
             # Save a network evaluation if all noise levels are 0 or on the first step
             return prev_sample, pred_original_sample
         else:
             denoised_d = mult[2] * pred_original_sample - mult[3] * old_pred_original_sample
-            x_advanced = mult[0] * sample - mult[1] * denoised_d + mult_noise * torch.randn_like(sample)
+            noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
+            x_advanced = mult[0] * sample - mult[1] * denoised_d + mult_noise * noise
 
             prev_sample = x_advanced
 

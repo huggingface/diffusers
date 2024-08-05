@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import inspect
+import math
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -622,7 +623,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -635,8 +636,12 @@ class CogVideoXPipeline(DiffusionPipeline):
                     timestep=timestep,
                     return_dict=False,
                 )[0]
+                noise_pred = noise_pred.float()
 
                 # perform guidance
+                self._guidance_scale = 1 + guidance_scale * (
+                    (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                )
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
@@ -654,6 +659,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                         **extra_step_kwargs,
                         return_dict=False,
                     )
+                latents = latents.to(prompt_embeds.dtype)
 
                 # call the callback, if provided
                 if callback_on_step_end is not None:
