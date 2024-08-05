@@ -64,6 +64,7 @@ from diffusers.utils import (
     convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
+from diffusers.pipelines.flux.pipeline_flux import prepare_latent_image_ids,pack_latents,unpack_latents
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -1391,22 +1392,23 @@ def main(args):
 
         def compute_text_embeddings(prompt, text_encoders, tokenizers):
             with torch.no_grad():
-                prompt_embeds, pooled_prompt_embeds = encode_prompt(
+                prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
                     text_encoders, tokenizers, prompt, args.max_sequence_length
                 )
                 prompt_embeds = prompt_embeds.to(accelerator.device)
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
-            return prompt_embeds, pooled_prompt_embeds
+                text_ids = text_ids.to(accelerator.device)
+            return prompt_embeds, pooled_prompt_embeds, text_ids
 
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
-        instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
+        instance_prompt_hidden_states, instance_pooled_prompt_embeds, instance_text_ids = compute_text_embeddings(
             args.instance_prompt, text_encoders, tokenizers
         )
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
         if not args.train_text_encoder:
-            class_prompt_hidden_states, class_pooled_prompt_embeds = compute_text_embeddings(
+            class_prompt_hidden_states, class_pooled_prompt_embeds, class_text_ids = compute_text_embeddings(
                 args.class_prompt, text_encoders, tokenizers
             )
 
@@ -1426,9 +1428,11 @@ def main(args):
     if not train_dataset.custom_instance_prompts:
         prompt_embeds = instance_prompt_hidden_states
         pooled_prompt_embeds = instance_pooled_prompt_embeds
+        text_ids = instance_text_ids
         if args.with_prior_preservation:
             prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
             pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, class_pooled_prompt_embeds], dim=0)
+            text_ids = torch.cat([text_ids, class_text_ids], dim=0)
 
 
     # Scheduler and math around the number of training steps.
@@ -1538,7 +1542,7 @@ def main(args):
 
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
-                    prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(
+                    prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
                             prompts, text_encoders, tokenizers
                         )
 
@@ -1546,6 +1550,13 @@ def main(args):
                 model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
+                latent_image_ids = prepare_latent_image_ids(
+                    model_input.shape[0],
+                    model_input.shape[2],
+                    model_input.shape[3],
+                    accelerator.device,
+                    weight_dtype,
+                )
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
@@ -1568,14 +1579,33 @@ def main(args):
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
+                packed_noisy_model_input = pack_latents(
+                    noisy_model_input,
+                    batch_size=model_input.shape[0],
+                    num_channels_latents=model_input.shape[1],
+                    height=model_input.shape[2],
+                    width=model_input.shape[3],
+                )
+
                 # Predict the noise residual
                 model_pred = transformer(
-                    hidden_states=noisy_model_input,
-                    timestep=timesteps,
-                    encoder_hidden_states=prompt_embeds,
+                    hidden_states=packed_noisy_model_input,
+                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
+                    timestep=timesteps / 1000,
+                    guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
+                    txt_ids=text_ids,
+                    img_ids=latent_image_ids,
                     return_dict=False,
                 )[0]
+
+                model_pred = unpack_latents(
+                    model_pred,
+                    height=model_input.shape[2],
+                    width=model_input.shape[3],
+                    vae_scale_factor=vae.config.scaling_factor,
+                )
 
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                 # Preconditioning of the model outputs.
