@@ -212,14 +212,14 @@ TCD-LoRA is very versatile, and it can be combined with other adapter types like
 import torch
 import numpy as np
 from PIL import Image
-from transformers import DPTFeatureExtractor, DPTForDepthEstimation
+from transformers import DPTImageProcessor, DPTForDepthEstimation
 from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
 from diffusers.utils import load_image, make_image_grid
 from scheduling_tcd import TCDScheduler
 
 device = "cuda"
 depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to(device)
-feature_extractor = DPTFeatureExtractor.from_pretrained("Intel/dpt-hybrid-midas")
+feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
 
 def get_depth_map(image):
     image = feature_extractor(images=image, return_tensors="pt").pixel_values.to(device)

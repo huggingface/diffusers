@@ -24,7 +24,7 @@ import PIL
 from PIL import Image
 
 from diffusers import StableDiffusionPipeline
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 
 def image_grid(imgs, rows, cols):

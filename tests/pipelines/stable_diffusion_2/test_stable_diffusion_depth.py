@@ -26,8 +26,8 @@ from transformers import (
     CLIPTextModel,
     CLIPTokenizer,
     DPTConfig,
-    DPTFeatureExtractor,
     DPTForDepthEstimation,
+    DPTImageProcessor,
 )
 
 from diffusers import (
@@ -145,9 +145,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
             backbone_featmap_shape=[1, 384, 24, 24],
         )
         depth_estimator = DPTForDepthEstimation(depth_estimator_config).eval()
-        feature_extractor = DPTFeatureExtractor.from_pretrained(
-            "hf-internal-testing/tiny-random-DPTForDepthEstimation"
-        )
+        feature_extractor = DPTImageProcessor.from_pretrained("hf-internal-testing/tiny-random-DPTForDepthEstimation")
 
         components = {
             "unet": unet,
