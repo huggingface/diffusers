@@ -38,7 +38,7 @@ from ...loaders import (
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
-from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
+from ...models import AutoencoderKL, ControlNetModel, ImageProjection, ImageProjectionCustomized, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
@@ -569,7 +569,7 @@ class StableDiffusionXLControlNetPipeline(
             for single_ip_adapter_image, image_proj_layer in zip(
                 ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
             ):
-                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
+                output_hidden_state = not isinstance(image_proj_layer, ImageProjection) and not isinstance(image_proj_layer, ImageProjectionCustomized)
                 print(f'output_hidden_state={output_hidden_state}')
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
                     single_ip_adapter_image, device, 1, output_hidden_state

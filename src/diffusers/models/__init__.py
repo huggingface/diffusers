@@ -88,7 +88,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
         from .controlnet_sparsectrl import SparseControlNetModel
         from .controlnet_xs import ControlNetXSAdapter, UNetControlNetXSModel
-        from .embeddings import ImageProjection
+        from .embeddings import ImageProjection, ImageProjectionCustomized
         from .modeling_utils import ModelMixin
         from .transformers import (
             AuraFlowTransformer2DModel,
