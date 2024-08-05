@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import inspect
-import math
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -640,10 +639,10 @@ class CogVideoXPipeline(DiffusionPipeline):
                 noise_pred = noise_pred.float()
 
                 # perform guidance
-                self._guidance_scale = 1 + guidance_scale * (
-                    (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
-                )
-                print(self._guidance_scale)
+                # self._guidance_scale = 1 + guidance_scale * (
+                #     (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                # )
+                # print(self._guidance_scale)
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)

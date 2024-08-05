@@ -176,7 +176,8 @@ class CogVideoXResnetBlock3D(nn.Module):
 
     Args:
         in_channels (int): Number of input channels.
-        out_channels (Optional[int], optional): Number of output channels. If None, defaults to `in_channels`. Default is None.
+        out_channels (Optional[int], optional):
+            Number of output channels. If None, defaults to `in_channels`. Default is None.
         dropout (float, optional): Dropout rate. Default is 0.0.
         temb_channels (int, optional): Number of time embedding channels. Default is 512.
         groups (int, optional): Number of groups for group normalization. Default is 32.
