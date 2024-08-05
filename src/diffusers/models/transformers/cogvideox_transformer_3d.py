@@ -151,7 +151,7 @@ class CogVideoXBlock(nn.Module):
 
 class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
     """
-    A Transformer model for video-like data.
+    A Transformer model for video-like data in CogVideoX. TODO: add link to CogVideoX upon release
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.

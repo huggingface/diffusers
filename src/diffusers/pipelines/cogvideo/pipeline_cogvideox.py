@@ -540,7 +540,7 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         assert (
             num_seconds in [4, 5, 6] and fps == 8
-        ), "The number of seconds must be 4, 5, or 6, and the fps must be 8."
+        ), "The number of seconds must be 4, 5, or 6, and the fps must be 8. Other values are not supported in CogVideoX."
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
