@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
+from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline, StableDiffusion3PAGPipeline
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_torch_gpu,
@@ -21,8 +21,8 @@ from ..test_pipelines_common import (
 )
 
 
-class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
-    pipeline_class = StableDiffusion3Pipeline
+class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+    pipeline_class = StableDiffusion3PAGPipeline
     params = frozenset(
         [
             "prompt",
@@ -117,6 +117,7 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "output_type": "np",
+            "pag_scale": 0.0,
         }
         return inputs
 
@@ -304,8 +305,8 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
 @slow
 @require_torch_gpu
-class StableDiffusion3PipelineSlowTests(unittest.TestCase):
-    pipeline_class = StableDiffusion3Pipeline
+class StableDiffusion3PAGPipelineSlowTests(unittest.TestCase):
+    pipeline_class = StableDiffusion3PAGPipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
 
     def setUp(self):
