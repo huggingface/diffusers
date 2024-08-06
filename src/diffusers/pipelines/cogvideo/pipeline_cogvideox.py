@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import inspect
+import math
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -446,6 +447,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 6,
+        use_dynamic_cfg: bool = False,
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -616,7 +618,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -632,11 +634,11 @@ class CogVideoXPipeline(DiffusionPipeline):
                 noise_pred = noise_pred.float()
 
                 # perform guidance
-                # self._guidance_scale = 1 + guidance_scale * (
-                #     (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
-                # )
-                # print(self._guidance_scale)
-                if self.do_classifier_free_guidance:
+                if use_dynamic_cfg:
+                    self._guidance_scale = 1 + guidance_scale * (
+                        (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                    )
+                if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
