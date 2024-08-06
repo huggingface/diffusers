@@ -3,17 +3,14 @@
 # text -> tokenizer ->
 
 
-from typing import Optional
-
+import cv2
+import numpy as np
 import torch
 from embedding_manager import EmbeddingManager
 from frozen_clip_embedder_t3 import FrozenCLIPEmbedderT3
 from PIL import ImageFont
 from recognizer import TextRecognizer, create_predictor
 from torch import nn
-from torch.nn import functional as F
-import numpy as np
-import cv2
 
 from diffusers.utils import (
     logging,
