@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import inspect
+import math
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -465,6 +466,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        use_dynamic_cfg: bool = False,
     ) -> Union[CogVideoXPipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -639,11 +641,12 @@ class CogVideoXPipeline(DiffusionPipeline):
                 noise_pred = noise_pred.float()
 
                 # perform guidance
-                # self._guidance_scale = 1 + guidance_scale * (
-                #     (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
-                # )
-                # print(self._guidance_scale)
-                if self.do_classifier_free_guidance:
+                if use_dynamic_cfg:
+                    self._guidance_scale = 1 + guidance_scale * (
+                        (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                    )
+                    print(self._guidance_scale)
+                if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
