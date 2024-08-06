@@ -37,7 +37,7 @@ Both checkpoints have slightly difference usage which we detail below.
 
 ```python
 import torch
-from diffusers import  FluxPipeline
+from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
@@ -61,7 +61,7 @@ out.save("image.png")
 
 ```python
 import torch
-from diffusers import  FluxPipeline
+from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
