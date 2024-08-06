@@ -1091,7 +1091,7 @@ def main(args):
         subfolder="tokenizer",
         revision=args.revision,
     )
-    tokenizer_two = CLIPTokenizer.from_pretrained(
+    tokenizer_two = T5TokenizerFast.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer_2",
         revision=args.revision,
