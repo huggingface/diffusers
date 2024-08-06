@@ -276,21 +276,21 @@ class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixi
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        all_self_attn_layers = [k for k in pipe.transformer.attn_processors.keys() if "attn1" in k]
+        all_self_attn_layers = [k for k in pipe.transformer.attn_processors.keys() if "attn" in k]
         original_attn_procs = pipe.transformer.attn_processors
         pag_layers = ["blocks.0", "blocks.1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_layers)
 
         # blocks.0
-        block_0_self_attn = ["blocks.0.attn1.processor"]
+        block_0_self_attn = ["transformer_blocks.0.attn.processor"]
         pipe.transformer.set_attn_processor(original_attn_procs.copy())
         pag_layers = ["blocks.0"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
 
         pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["blocks.0.attn1"]
+        pag_layers = ["blocks.0.attn"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
 
