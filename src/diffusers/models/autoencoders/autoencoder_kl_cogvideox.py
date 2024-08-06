@@ -117,7 +117,7 @@ class CogVideoXCausalConv3d(nn.Module):
 
         self.conv_cache = None
 
-    def fake_cp_pass_from_previous_rank(self, inputs: torch.Tensor) -> torch.Tensor:
+    def fake_context_parallel_forward(self, inputs: torch.Tensor) -> torch.Tensor:
         dim = self.temporal_dim
         kernel_size = self.time_kernel_size
         if kernel_size == 1:
@@ -138,7 +138,7 @@ class CogVideoXCausalConv3d(nn.Module):
         self.conv_cache = None
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        input_parallel = self.fake_cp_pass_from_previous_rank(inputs)
+        input_parallel = self.fake_context_parallel_forward(inputs)
 
         self._clear_fake_context_parallel_cache()
         self.conv_cache = input_parallel[:, :, -self.time_kernel_size + 1 :].contiguous().detach().clone().cpu()
@@ -969,38 +969,9 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 logger.debug(f"Clearing fake Context Parallel cache for layer: {name}")
                 module._clear_fake_context_parallel_cache()
 
-    def enable_tiling(self, use_tiling: bool = True):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.use_tiling = use_tiling
-
-    def disable_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.enable_tiling(False)
-
-    def enable_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
-
     @apply_forward_hook
     def encode(
-        self, x: torch.Tensor, return_dict: bool = True, fake_cp: bool = False
+        self, x: torch.Tensor, return_dict: bool = True
     ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
@@ -1009,8 +980,6 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             x (`torch.Tensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
-            fake_cp (`bool`, *optional*, defaults to `True`):
-                If True, the fake context parallel will be used to reduce GPU memory consumption (Only 1 GPU work).
 
         Returns:
                 The latent representations of the encoded images. If `return_dict` is True, a
@@ -1033,8 +1002,6 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             z (`torch.Tensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
-            fake_cp (`bool`, *optional*, defaults to `True`):
-                If True, the fake context parallel will be used to reduce GPU memory consumption (Only 1 GPU work).
 
         Returns:
             [`~models.vae.DecoderOutput`] or `tuple`:
