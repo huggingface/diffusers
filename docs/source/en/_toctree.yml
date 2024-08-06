@@ -237,6 +237,8 @@
       title: AutoencoderKL
     - local: api/models/asymmetricautoencoderkl
       title: AsymmetricAutoencoderKL
+    - local: api/models/stable_cascade_unet
+      title: StableCascadeUNet
     - local: api/models/autoencoder_tiny
       title: Tiny AutoEncoder
     - local: api/models/autoencoder_oobleck
