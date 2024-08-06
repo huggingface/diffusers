@@ -85,4 +85,5 @@ With torch.compile(): Average inference time: TODO seconds.
   - __call__
 
 ## CogVideoXPipelineOutput
-[[autodoc]] pipelines.pipline_cogvideo.pipeline_output.CogVideoXPipelineOutput
+
+[[autodoc]] pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipelineOutput
