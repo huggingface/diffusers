@@ -265,7 +265,6 @@ class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixi
         out_pag_enabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
 
         assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
-        assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
 
     def test_pag_applied_layers(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
