@@ -36,10 +36,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```python
+        >>> import torch
         >>> from diffusers import CogVideoXPipeline
         >>> from diffusers.utils import export_to_video
 
-        >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.bfloat16).to("cuda")
+        >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16).to("cuda")
         >>> prompt = (
         ...     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
         ...     "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
@@ -48,9 +49,7 @@ EXAMPLE_DOC_STRING = """
         ...     "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
         ...     "atmosphere of this unique musical performance."
         ... )
-        >>> video = pipe(
-        ...     "a polar bear dancing, high quality, realistic", guidance_scale=6, num_inference_steps=20
-        ... ).frames[0]
+        >>> video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
         >>> export_to_video(video, "output.mp4", fps=8)
         ```
 """

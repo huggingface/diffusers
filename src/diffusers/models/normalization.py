@@ -44,39 +44,41 @@ class AdaLayerNorm(nn.Module):
         output_dim: Optional[int] = None,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-5,
-        use_embedding: bool = True,
+        chunk_dim: int = 0,
     ):
         super().__init__()
-        if use_embedding:
+
+        self.chunk_dim = chunk_dim
+        output_dim = output_dim or embedding_dim * 2
+
+        if num_embeddings is not None:
             self.emb = nn.Embedding(num_embeddings, embedding_dim)
         else:
             self.emb = None
-
-        output_dim = output_dim or embedding_dim * 2
 
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, output_dim)
         self.norm = nn.LayerNorm(output_dim // 2, norm_eps, norm_elementwise_affine)
 
     def forward(
-        self, hidden_states: torch.Tensor, timestep: Optional[torch.Tensor] = None, temb: Optional[torch.Tensor] = None
+        self, x: torch.Tensor, timestep: Optional[torch.Tensor] = None, temb: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        input_ndim = hidden_states.ndim
-
         if self.emb is not None:
             temb = self.emb(timestep)
 
         temb = self.linear(self.silu(temb))
 
-        if input_ndim == 3:
+        if self.chunk_dim == 1:
+            # This is a bit weird why we have the order of "shift, scale" here and "scale, shift" in the
+            # other if-branch. This branch is specific to CogVideoX for now.
             shift, scale = temb.chunk(2, dim=1)
             shift = shift[:, None, :]
             scale = scale[:, None, :]
         else:
             scale, shift = temb.chunk(2, dim=0)
 
-        hidden_states = self.norm(hidden_states) * (1 + scale) + shift
-        return hidden_states
+        x = self.norm(x) * (1 + scale) + shift
+        return x
 
 
 class FP32LayerNorm(nn.LayerNorm):
