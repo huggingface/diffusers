@@ -227,6 +227,7 @@ class Attention(nn.Module):
             self.to_k = None
             self.to_v = None
 
+        self.added_proj_bias = added_proj_bias
         if self.added_kv_proj_dim is not None:
             self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_kv_dim, bias=added_proj_bias)
             self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_kv_dim, bias=added_proj_bias)
@@ -698,12 +699,15 @@ class Attention(nn.Module):
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
-            self.to_added_qkv = nn.Linear(in_features, out_features, bias=True, device=device, dtype=dtype)
-            self.to_added_qkv.weight.copy_(concatenated_weights)
-            concatenated_bias = torch.cat(
-                [self.add_q_proj.bias.data, self.add_k_proj.bias.data, self.add_v_proj.bias.data]
+            self.to_added_qkv = nn.Linear(
+                in_features, out_features, bias=self.added_proj_bias, device=device, dtype=dtype
             )
-            self.to_added_qkv.bias.copy_(concatenated_bias)
+            self.to_added_qkv.weight.copy_(concatenated_weights)
+            if self.added_proj_bias:
+                concatenated_bias = torch.cat(
+                    [self.add_q_proj.bias.data, self.add_k_proj.bias.data, self.add_v_proj.bias.data]
+                )
+                self.to_added_qkv.bias.copy_(concatenated_bias)
 
         self.fused_projections = fuse
 
@@ -1210,6 +1214,103 @@ class AuraFlowAttnProcessor2_0:
             encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
             encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
             encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+
+        # Reshape.
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim)
+        key = key.view(batch_size, -1, attn.heads, head_dim)
+        value = value.view(batch_size, -1, attn.heads, head_dim)
+
+        # Apply QK norm.
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # Concatenate the projections.
+        if encoder_hidden_states is not None:
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            )
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(batch_size, -1, attn.heads, head_dim)
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            )
+
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_q(encoder_hidden_states_key_proj)
+
+            query = torch.cat([encoder_hidden_states_query_proj, query], dim=1)
+            key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
+            value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
+
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
+
+        # Attention.
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, dropout_p=0.0, scale=attn.scale, is_causal=False
+        )
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # Split the attention outputs.
+        if encoder_hidden_states is not None:
+            hidden_states, encoder_hidden_states = (
+                hidden_states[:, encoder_hidden_states.shape[1] :],
+                hidden_states[:, : encoder_hidden_states.shape[1]],
+            )
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+        if encoder_hidden_states is not None:
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        if encoder_hidden_states is not None:
+            return hidden_states, encoder_hidden_states
+        else:
+            return hidden_states
+
+
+class FusedAuraFlowAttnProcessor2_0:
+    """Attention processor used typically in processing Aura Flow with fused projections."""
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention") and is_torch_version("<", "2.1"):
+            raise ImportError(
+                "FusedAuraFlowAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
+            )
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        *args,
+        **kwargs,
+    ) -> torch.FloatTensor:
+        batch_size = hidden_states.shape[0]
+
+        # `sample` projections.
+        qkv = attn.to_qkv(hidden_states)
+        split_size = qkv.shape[-1] // 3
+        query, key, value = torch.split(qkv, split_size, dim=-1)
+
+        # `context` projections.
+        if encoder_hidden_states is not None:
+            encoder_qkv = attn.to_added_qkv(encoder_hidden_states)
+            split_size = encoder_qkv.shape[-1] // 3
+            (
+                encoder_hidden_states_query_proj,
+                encoder_hidden_states_key_proj,
+                encoder_hidden_states_value_proj,
+            ) = torch.split(encoder_qkv, split_size, dim=-1)
 
         # Reshape.
         inner_dim = key.shape[-1]
