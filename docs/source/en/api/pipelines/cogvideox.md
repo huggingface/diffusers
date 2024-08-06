@@ -29,6 +29,8 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 </Tip>
 
+This pipeline was contributed by [zRzRzRzRzRzRzR](https://github.com/zRzRzRzRzRzRzR). The original codebase can be found [here](https://huggingface.co/THUDM). The original weights can be found under [hf.co/THUDM](https://huggingface.co/THUDM).
+
 ### Inference
 
 Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
