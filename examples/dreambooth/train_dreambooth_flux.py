@@ -119,7 +119,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="openrail++",
+        license="flux-1-dev-non-commercial-license",
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
@@ -1163,8 +1163,6 @@ def main(args):
                             unwrap_model(model).save_pretrained(os.path.join(output_dir, "text_encoder"))
                         elif hidden_size == 1280:
                             unwrap_model(model).save_pretrained(os.path.join(output_dir, "text_encoder_2"))
-                    else:
-                        unwrap_model(model).save_pretrained(os.path.join(output_dir, "text_encoder_3"))
                 else:
                     raise ValueError(f"Wrong model supplied: {type(model)=}.")
 

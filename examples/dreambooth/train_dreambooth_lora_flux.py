@@ -135,7 +135,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="openrail++",
+        license="flux-1-dev-non-commercial-license",
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
@@ -1200,7 +1200,6 @@ def main(args):
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
-                text_encoder_2_lora_layers=text_encoder_two_lora_layers_to_save,
             )
 
     def load_model_hook(models, input_dir):
