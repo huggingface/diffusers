@@ -237,8 +237,12 @@
       title: AutoencoderKL
     - local: api/models/asymmetricautoencoderkl
       title: AsymmetricAutoencoderKL
+    - local: api/models/stable_cascade_unet
+      title: StableCascadeUNet
     - local: api/models/autoencoder_tiny
       title: Tiny AutoEncoder
+    - local: api/models/autoencoder_oobleck
+      title: Oobleck AutoEncoder
     - local: api/models/consistency_decoder_vae
       title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
@@ -251,6 +255,8 @@
       title: HunyuanDiT2DModel
     - local: api/models/aura_flow_transformer2d
       title: AuraFlowTransformer2DModel
+    - local: api/models/flux_transformer
+      title: FluxTransformer2DModel
     - local: api/models/latte_transformer3d
       title: LatteTransformer3DModel
     - local: api/models/lumina_nextdit2d
@@ -259,6 +265,8 @@
       title: TransformerTemporalModel
     - local: api/models/sd3_transformer2d
       title: SD3Transformer2DModel
+    - local: api/models/stable_audio_transformer
+      title: StableAudioDiTModel
     - local: api/models/prior_transformer
       title: PriorTransformer
     - local: api/models/controlnet
@@ -316,6 +324,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/flux
+      title: Flux
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
     - local: api/pipelines/i2vgenxl
@@ -362,6 +372,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/stable_audio
+      title: Stable Audio
     - local: api/pipelines/stable_cascade
       title: Stable Cascade
     - sections:
@@ -425,6 +437,8 @@
       title: CMStochasticIterativeScheduler
     - local: api/schedulers/consistency_decoder
       title: ConsistencyDecoderScheduler
+    - local: api/schedulers/cosine_dpm
+      title: CosineDPMSolverMultistepScheduler
     - local: api/schedulers/ddim_inverse
       title: DDIMInverseScheduler
     - local: api/schedulers/ddim

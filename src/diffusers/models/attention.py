@@ -19,7 +19,7 @@ from torch import nn
 
 from ..utils import deprecate, logging
 from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU
+from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, SwiGLU
 from .attention_processor import Attention, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm
@@ -376,7 +376,7 @@ class BasicTransformerBlock(nn.Module):
                 "layer_norm",
             )
 
-        elif norm_type in ["ada_norm_zero", "ada_norm", "layer_norm", "ada_norm_continuous"]:
+        elif norm_type in ["ada_norm_zero", "ada_norm", "layer_norm"]:
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
         elif norm_type == "layer_norm_i2vgen":
             self.norm3 = None
@@ -820,6 +820,8 @@ class FeedForward(nn.Module):
             act_fn = GEGLU(dim, inner_dim, bias=bias)
         elif activation_fn == "geglu-approximate":
             act_fn = ApproximateGELU(dim, inner_dim, bias=bias)
+        elif activation_fn == "swiglu":
+            act_fn = SwiGLU(dim, inner_dim, bias=bias)
 
         self.net = nn.ModuleList([])
         # project in
