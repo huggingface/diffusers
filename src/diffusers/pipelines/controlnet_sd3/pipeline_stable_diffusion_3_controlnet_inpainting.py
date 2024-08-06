@@ -56,20 +56,45 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusion3ControlNetPipeline
-        >>> from diffusers.models import SD3ControlNetModel, SD3MultiControlNetModel
-        >>> from diffusers.utils import load_image
+        >>> from diffusers.utils import load_image, check_min_version
+        >>> from diffusers.pipelines import StableDiffusion3ControlNetInpaintingPipeline
+        >>> from diffusers.models.controlnet_sd3 import SD3ControlNetModel
 
-        >>> controlnet = SD3ControlNetModel.from_pretrained("InstantX/SD3-Controlnet-Canny", torch_dtype=torch.float16)
+        >>> check_min_version("0.30.0.dev0")
 
-        >>> pipe = StableDiffusion3ControlNetPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-3-medium-diffusers", controlnet=controlnet, torch_dtype=torch.float16
-        ... )
+        >>> controlnet = SD3ControlNetModel.from_pretrained(
+        >>>     "alimama-creative/SD3-Controlnet-Inpainting",
+        >>>     use_safetensors=True,
+        >>>     extra_conditioning_channels=1
+        >>> )
+        >>> pipe = StableDiffusion3ControlNetInpaintingPipeline.from_pretrained(
+        >>>     "stabilityai/stable-diffusion-3-medium-diffusers",
+        >>>     controlnet=controlnet,
+        >>>     torch_dtype=torch.float16,
+        >>> )
+        >>> pipe.text_encoder.to(torch.float16)
+        >>> pipe.controlnet.to(torch.float16)
         >>> pipe.to("cuda")
-        >>> control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")
-        >>> prompt = "A girl holding a sign that says InstantX"
-        >>> image = pipe(prompt, control_image=control_image, controlnet_conditioning_scale=0.7).images[0]
-        >>> image.save("sd3.png")
+
+        >>> image = load_image("https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/blob/main/images/prod.png")
+        >>> mask = load_image("https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/blob/main/images/mask.jpeg")
+        >>> width = 1024
+        >>> height = 1024
+        >>> prompt="a woman wearing a white jacket, black hat and black pants is standing in a field, the hat writes SD3"
+        >>> generator = torch.Generator(device="cuda").manual_seed(24)
+        >>> res_image = pipe(
+        >>>     negative_prompt='deformed, distorted, disfigured, poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, mutated hands and fingers, disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, NSFW',
+        >>>     prompt=prompt,
+        >>>     height=height,
+        >>>     width=width,
+        >>>     control_image = image,
+        >>>     control_mask = mask,
+        >>>     num_inference_steps=28,
+        >>>     generator=generator,
+        >>>     controlnet_conditioning_scale=0.95,
+        >>>     guidance_scale=7,
+        >>> ).images[0]
+        >>> res_image.save(f'sd3.png')
         ```
 """
 
