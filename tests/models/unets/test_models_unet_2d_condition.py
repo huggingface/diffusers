@@ -1127,7 +1127,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         loaded_model = self.model_class.from_pretrained(
             "hf-internal-testing/unet2d-sharded-with-variant-dummy", variant="fp16"
         )
-        print("helooooo")
         loaded_model = loaded_model.to(torch_device)
         new_output = loaded_model(**inputs_dict)
 
