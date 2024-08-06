@@ -191,6 +191,10 @@
     title: Evaluating Diffusion Models
   title: Conceptual Guides
 - sections:
+  - local: community_projects
+    title: Projects built with Diffusers
+  title: Community Projects
+- sections:
   - isExpanded: false
     sections:
     - local: api/configuration
