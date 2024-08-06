@@ -9,7 +9,7 @@ import numpy as np
 import PIL.Image
 import PIL.ImageOps
 
-from .import_utils import BACKENDS_MAPPING, is_opencv_available
+from .import_utils import is_imageio_available
 from .logging import get_logger
 
 
@@ -115,10 +115,22 @@ def export_to_obj(mesh, output_obj_path: str = None):
 def export_to_video(
     video_frames: Union[List[np.ndarray], List[PIL.Image.Image]], output_video_path: str = None, fps: int = 10
 ) -> str:
-    if is_opencv_available():
-        import cv2
+    if is_imageio_available():
+        import imageio
     else:
-        raise ImportError(BACKENDS_MAPPING["opencv"][1].format("export_to_video"))
+        raise ImportError(
+            (
+                "`export_to_video` requires imageio and ffmpeg to be installed on your machine. "
+                "Please install via `pip install imageio imageio-ffmpeg`"
+            )
+        )
+    try:
+        imageio.plugins.ffmpeg.get_exe()
+    except AttributeError:
+        raise AttributeError(
+            "`Unable to find an ffmpeg installation on your machine. Please install via `pip install imageio-ffmpeg"
+        )
+
     if output_video_path is None:
         output_video_path = tempfile.NamedTemporaryFile(suffix=".mp4").name
 
@@ -128,10 +140,8 @@ def export_to_video(
     elif isinstance(video_frames[0], PIL.Image.Image):
         video_frames = [np.array(frame) for frame in video_frames]
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    h, w, c = video_frames[0].shape
-    video_writer = cv2.VideoWriter(output_video_path, fourcc, fps=fps, frameSize=(w, h))
-    for i in range(len(video_frames)):
-        img = cv2.cvtColor(video_frames[i], cv2.COLOR_RGB2BGR)
-        video_writer.write(img)
+    with imageio.get_writer(output_video_path, fps=fps) as writer:
+        for frame in video_frames:
+            writer.append_data(frame)
+
     return output_video_path

@@ -330,6 +330,15 @@ except importlib_metadata.PackageNotFoundError:
 
 _is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
 
+_imageio_available = importlib.util.find_spec("imageio") is not None
+if _imageio_available:
+    try:
+        _imageio_version = importlib_metadata.version("imageio")
+        logger.debug(f"Successfully imported imageio version {_imageio_version}")
+
+    except importlib_metadata.PackageNotFoundError:
+        _imageio_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -445,6 +454,10 @@ def is_google_colab():
 
 def is_sentencepiece_available():
     return _sentencepiece_available
+
+
+def is_imageio_available():
+    return _imageio_available
 
 
 # docstyle-ignore
