@@ -248,6 +248,10 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 orders = [1, 2] * (steps // 2)
             elif order == 1:
                 orders = [1] * steps
+
+        if self.config.final_sigmas_type == "zero":
+            orders[-1] = 1
+
         return orders
 
     @property
