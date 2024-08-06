@@ -946,7 +946,7 @@ def encode_prompt(
             text_encoder=text_encoders[0],
             tokenizer=tokenizers[0],
             prompt=prompt,
-            device=device if device is not None else text_encoder.device,
+            device=device if device is not None else text_encoders[0].device,
             num_images_per_prompt=num_images_per_prompt,
         )
 
@@ -956,7 +956,7 @@ def encode_prompt(
         max_sequence_length=max_sequence_length,
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
-        device=device if device is not None else text_encoders[-1].device,
+        device=device if device is not None else text_encoders[1].device,
     )
 
     text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
@@ -1554,7 +1554,7 @@ def main(args):
 
                 # handle guidance
                 if transformer.config.guidance_embeds:
-                    guidance = torch.tensor([args.guidance_scale], device=device)
+                    guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
                     guidance = None

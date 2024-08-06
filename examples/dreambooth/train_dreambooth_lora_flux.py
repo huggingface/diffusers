@@ -453,11 +453,12 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument(
-        "--text_encoder_lr",
+        "--guidance_scale",
         type=float,
-        default=5e-6,
-        help="Text encoder learning rate to use.",
+        default=3.5,
+        help="the FLUX.1 dev variant is a guidance distilled model",
     )
+
     parser.add_argument(
         "--scale_lr",
         action="store_true",
@@ -945,7 +946,7 @@ def encode_prompt(
             text_encoder=text_encoders[0],
             tokenizer=tokenizers[0],
             prompt=prompt,
-            device=device if device is not None else text_encoder.device,
+            device=device if device is not None else text_encoders[0].device,
             num_images_per_prompt=num_images_per_prompt,
         )
 
@@ -955,7 +956,7 @@ def encode_prompt(
         max_sequence_length=max_sequence_length,
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
-        device=device if device is not None else text_encoders[-1].device,
+        device=device if device is not None else text_encoders[1].device,
     )
 
     text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
@@ -1521,6 +1522,13 @@ def main(args):
                     height=model_input.shape[2],
                     width=model_input.shape[3],
                 )
+
+                # handle guidance
+                if transformer.config.guidance_embeds:
+                    guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
+                    guidance = guidance.expand(model_input.shape[0])
+                else:
+                    guidance = None
 
                 # Predict the noise residual
                 model_pred = transformer(
