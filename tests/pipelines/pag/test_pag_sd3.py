@@ -1,16 +1,18 @@
 import inspect
-import gc
 import unittest
 
 import numpy as np
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline, StableDiffusion3PAGPipeline
+from diffusers import (
+    AutoencoderKL,
+    FlowMatchEulerDiscreteScheduler,
+    SD3Transformer2DModel,
+    StableDiffusion3PAGPipeline,
+    StableDiffusion3Pipeline,
+)
 from diffusers.utils.testing_utils import (
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
     torch_device,
 )
 
