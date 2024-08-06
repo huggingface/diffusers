@@ -588,6 +588,11 @@ BITSANDBYTES_IMPORT_ERROR = """
 {0} requires the bitsandbytes library but it was not found in your environment. You can install it with pip: `pip install bitsandbytes`
 """
 
+# docstyle-ignore
+IMAGEIO_IMPORT_ERROR = """
+{0} requires the imageio library and ffmpeg but it was not found in your environment. You can install it with pip: `pip install imageio imageio-ffmpeg`
+"""
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
@@ -612,6 +617,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("safetensors", (is_safetensors_available, SAFETENSORS_IMPORT_ERROR)),
         ("bitsandbytes", (is_bitsandbytes_available, BITSANDBYTES_IMPORT_ERROR)),
         ("sentencepiece", (is_sentencepiece_available, SENTENCEPIECE_IMPORT_ERROR)),
+        ("imageio", (is_imageio_available, IMAGEIO_IMPORT_ERROR)),
     ]
 )
 

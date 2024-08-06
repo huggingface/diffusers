@@ -6,7 +6,7 @@ import PIL.Image
 import PIL.ImageOps
 import requests
 
-from .import_utils import is_imageio_available
+from .import_utils import BACKENDS_MAPPING, is_imageio_available
 
 
 def load_image(
@@ -103,12 +103,8 @@ def load_video(
         if is_imageio_available():
             import imageio
         else:
-            raise ImportError(
-                (
-                    "`load_video` requires imageio and ffmpeg to be installed on your machine. "
-                    "Please install via `pip install imageio imageio-ffmpeg`"
-                )
-            )
+            raise ImportError(BACKENDS_MAPPING["imageio"][1].format("load_video"))
+
         try:
             imageio.plugins.ffmpeg.get_exe()
         except AttributeError:
