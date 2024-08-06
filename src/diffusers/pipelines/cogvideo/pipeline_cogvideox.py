@@ -338,12 +338,12 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         frames = []
         for i in range(num_seconds):
-            # Whether or not to clear fake context parallel cache
-            fake_cp = i + 1 < num_seconds
             start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
 
-            current_frames = self.vae.decode(latents[:, :, start_frame:end_frame], fake_cp=fake_cp).sample
+            current_frames = self.vae.decode(latents[:, :, start_frame:end_frame]).sample
             frames.append(current_frames)
+
+        self.vae.clear_fake_context_parallel_cache()
 
         frames = torch.cat(frames, dim=2)
         return frames

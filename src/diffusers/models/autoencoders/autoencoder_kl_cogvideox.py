@@ -22,6 +22,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders.single_file_model import FromOriginalModelMixin
+from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..downsampling import CogVideoXDownsample3D
@@ -29,6 +30,9 @@ from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from ..upsampling import CogVideoXUpsample3D
 from .vae import DecoderOutput, DiagonalGaussianDistribution
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class CogVideoXSafeConv3d(nn.Conv3d):
@@ -129,13 +133,15 @@ class CogVideoXCausalConv3d(nn.Module):
         inputs = inputs.transpose(0, dim).contiguous()
         return inputs
 
-    def forward(self, inputs: torch.Tensor, clear_fake_cp_cache: bool = True):
-        input_parallel = self.fake_cp_pass_from_previous_rank(inputs)
-
+    def _clear_fake_context_parallel_cache(self):
         del self.conv_cache
         self.conv_cache = None
-        if not clear_fake_cp_cache:
-            self.conv_cache = input_parallel[:, :, -self.time_kernel_size + 1 :].contiguous().detach().clone().cpu()
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        input_parallel = self.fake_cp_pass_from_previous_rank(inputs)
+
+        self._clear_fake_context_parallel_cache()
+        self.conv_cache = input_parallel[:, :, -self.time_kernel_size + 1 :].contiguous().detach().clone().cpu()
 
         padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
         input_parallel = F.pad(input_parallel, padding_2d, mode="constant", value=0)
@@ -268,15 +274,16 @@ class CogVideoXResnetBlock3D(nn.Module):
         inputs: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        clear_fake_cp_cache: bool = True,
     ) -> torch.Tensor:
         hidden_states = inputs
+
         if zq is not None:
             hidden_states = self.norm1(hidden_states, zq)
         else:
             hidden_states = self.norm1(hidden_states)
+
         hidden_states = self.nonlinearity(hidden_states)
-        hidden_states = self.conv1(hidden_states, clear_fake_cp_cache=clear_fake_cp_cache)
+        hidden_states = self.conv1(hidden_states)
 
         if temb is not None:
             hidden_states = hidden_states + self.temb_proj(self.nonlinearity(temb))[:, :, None, None, None]
@@ -288,16 +295,13 @@ class CogVideoXResnetBlock3D(nn.Module):
 
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states, clear_fake_cp_cache=clear_fake_cp_cache)
+        hidden_states = self.conv2(hidden_states)
 
         if self.in_channels != self.out_channels:
-            if self.use_conv_shortcut:
-                inputs = self.conv_shortcut(inputs, clear_fake_cp_cache=clear_fake_cp_cache)
-            else:
-                inputs = self.conv_shortcut(inputs)
+            inputs = self.conv_shortcut(inputs)
 
-        output_tensor = inputs + hidden_states
-        return output_tensor
+        hidden_states = hidden_states + inputs
+        return hidden_states
 
 
 class CogVideoXDownBlock3D(nn.Module):
@@ -373,7 +377,6 @@ class CogVideoXDownBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        clear_fake_cp_cache: bool = False,
     ) -> torch.Tensor:
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
@@ -385,10 +388,10 @@ class CogVideoXDownBlock3D(nn.Module):
                     return create_forward
 
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, zq, clear_fake_cp_cache
+                    create_custom_forward(resnet), hidden_states, temb, zq
                 )
             else:
-                hidden_states = resnet(hidden_states, temb, zq, clear_fake_cp_cache)
+                hidden_states = resnet(hidden_states, temb, zq)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
@@ -453,7 +456,6 @@ class CogVideoXMidBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        clear_fake_cp_cache: bool = False,
     ) -> torch.Tensor:
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
@@ -465,10 +467,10 @@ class CogVideoXMidBlock3D(nn.Module):
                     return create_forward
 
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, zq, clear_fake_cp_cache
+                    create_custom_forward(resnet), hidden_states, temb, zq
                 )
             else:
-                hidden_states = resnet(hidden_states, temb, zq, clear_fake_cp_cache)
+                hidden_states = resnet(hidden_states, temb, zq)
 
         return hidden_states
 
@@ -547,7 +549,6 @@ class CogVideoXUpBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        clear_fake_cp_cache: bool = False,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXUpBlock3D` class."""
         for resnet in self.resnets:
@@ -560,10 +561,10 @@ class CogVideoXUpBlock3D(nn.Module):
                     return create_forward
 
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, zq, clear_fake_cp_cache
+                    create_custom_forward(resnet), hidden_states, temb, zq
                 )
             else:
-                hidden_states = resnet(hidden_states, temb, zq, clear_fake_cp_cache)
+                hidden_states = resnet(hidden_states, temb, zq)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -671,11 +672,9 @@ class CogVideoXEncoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = True
-    ) -> torch.Tensor:
+    def forward(self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         r"""The forward method of the `CogVideoXEncoder3D` class."""
-        hidden_states = self.conv_in(sample, clear_fake_cp_cache=clear_fake_cp_cache)
+        hidden_states = self.conv_in(sample)
 
         if self.training and self.gradient_checkpointing:
 
@@ -688,25 +687,25 @@ class CogVideoXEncoder3D(nn.Module):
             # 1. Down
             for down_block in self.down_blocks:
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(down_block), hidden_states, temb, None, clear_fake_cp_cache
+                    create_custom_forward(down_block), hidden_states, temb, None
                 )
 
             # 2. Mid
             hidden_states = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.mid_block), hidden_states, temb, None, clear_fake_cp_cache
+                create_custom_forward(self.mid_block), hidden_states, temb, None
             )
         else:
             # 1. Down
             for down_block in self.down_blocks:
-                hidden_states = down_block(hidden_states, temb, None, clear_fake_cp_cache)
+                hidden_states = down_block(hidden_states, temb, None)
 
             # 2. Mid
-            hidden_states = self.mid_block(hidden_states, temb, None, clear_fake_cp_cache)
+            hidden_states = self.mid_block(hidden_states, temb, None)
 
         # 3. Post-process
         hidden_states = self.norm_out(hidden_states)
         hidden_states = self.conv_act(hidden_states)
-        hidden_states = self.conv_out(hidden_states, clear_fake_cp_cache=clear_fake_cp_cache)
+        hidden_states = self.conv_out(hidden_states)
         return hidden_states
 
 
@@ -816,11 +815,9 @@ class CogVideoXDecoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None, clear_fake_cp_cache: bool = True
-    ) -> torch.Tensor:
+    def forward(self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         r"""The forward method of the `CogVideoXDecoder3D` class."""
-        hidden_states = self.conv_in(sample, clear_fake_cp_cache=clear_fake_cp_cache)
+        hidden_states = self.conv_in(sample)
 
         if self.training and self.gradient_checkpointing:
 
@@ -832,26 +829,26 @@ class CogVideoXDecoder3D(nn.Module):
 
             # 1. Mid
             hidden_states = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.mid_block), hidden_states, temb, sample, clear_fake_cp_cache
+                create_custom_forward(self.mid_block), hidden_states, temb, sample
             )
 
             # 2. Up
             for up_block in self.up_blocks:
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(up_block), hidden_states, temb, sample, clear_fake_cp_cache
+                    create_custom_forward(up_block), hidden_states, temb, sample
                 )
         else:
             # 1. Mid
-            hidden_states = self.mid_block(hidden_states, temb, sample, clear_fake_cp_cache)
+            hidden_states = self.mid_block(hidden_states, temb, sample)
 
             # 2. Up
             for up_block in self.up_blocks:
-                hidden_states = up_block(hidden_states, temb, sample, clear_fake_cp_cache)
+                hidden_states = up_block(hidden_states, temb, sample)
 
         # 3. Post-process
         hidden_states = self.norm_out(hidden_states, sample)
         hidden_states = self.conv_act(hidden_states)
-        hidden_states = self.conv_out(hidden_states, clear_fake_cp_cache=clear_fake_cp_cache)
+        hidden_states = self.conv_out(hidden_states)
         return hidden_states
 
 
@@ -966,6 +963,12 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if isinstance(module, (CogVideoXEncoder3D, CogVideoXDecoder3D)):
             module.gradient_checkpointing = value
 
+    def clear_fake_context_parallel_cache(self):
+        for name, module in self.named_modules():
+            if isinstance(module, CogVideoXCausalConv3d):
+                logger.debug(f"Clearing fake Context Parallel cache for layer: {name}")
+                module._clear_fake_context_parallel_cache()
+
     def enable_tiling(self, use_tiling: bool = True):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1013,7 +1016,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 The latent representations of the encoded images. If `return_dict` is True, a
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
-        h = self.encoder(x, clear_fake_cp_cache=not fake_cp)
+        h = self.encoder(x)
         if self.quant_conv is not None:
             h = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(h)
@@ -1022,9 +1025,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return AutoencoderKLOutput(latent_dist=posterior)
 
     @apply_forward_hook
-    def decode(
-        self, z: torch.FloatTensor, return_dict: bool = True, fake_cp: bool = False
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    def decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         """
         Decode a batch of images.
 
@@ -1043,7 +1044,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         """
         if self.post_quant_conv is not None:
             z = self.post_quant_conv(z)
-        dec = self.decoder(z, clear_fake_cp_cache=not fake_cp)
+        dec = self.decoder(z)
         if not return_dict:
             return (dec,)
         return DecoderOutput(sample=dec)
