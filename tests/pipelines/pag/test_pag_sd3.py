@@ -44,7 +44,7 @@ class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixi
             sample_size=32,
             patch_size=1,
             in_channels=4,
-            num_layers=1,
+            num_layers=2,
             attention_head_dim=8,
             num_attention_heads=4,
             caption_projection_dim=32,
