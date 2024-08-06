@@ -64,7 +64,7 @@ from diffusers.utils import (
     convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
-from diffusers.pipelines.flux.pipeline_flux import prepare_latent_image_ids,pack_latents,unpack_latents
+from diffusers.pipelines.flux.pipeline_flux import _prepare_latent_image_ids,_pack_latents,_unpack_latents
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -1550,7 +1550,7 @@ def main(args):
                 model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
-                latent_image_ids = prepare_latent_image_ids(
+                latent_image_ids = _prepare_latent_image_ids(
                     model_input.shape[0],
                     model_input.shape[2],
                     model_input.shape[3],
@@ -1579,7 +1579,7 @@ def main(args):
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
-                packed_noisy_model_input = pack_latents(
+                packed_noisy_model_input = _pack_latents(
                     noisy_model_input,
                     batch_size=model_input.shape[0],
                     num_channels_latents=model_input.shape[1],
@@ -1600,7 +1600,7 @@ def main(args):
                     return_dict=False,
                 )[0]
 
-                model_pred = unpack_latents(
+                model_pred = _unpack_latents(
                     model_pred,
                     height=model_input.shape[2],
                     width=model_input.shape[3],
