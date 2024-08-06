@@ -1120,7 +1120,7 @@ def main(args):
         text_encoder_one.requires_grad_(False)
         text_encoder_two.requires_grad_(False)
 
-    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora transformer) to half-precision
+    # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -1134,7 +1134,7 @@ def main(args):
             "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
         )
 
-    vae.to(accelerator.device, dtype=torch.float32)
+    vae.to(accelerator.device, dtype=torch.bfloat16)
     if not args.train_text_encoder:
         text_encoder_one.to(accelerator.device, dtype=weight_dtype)
         text_encoder_two.to(accelerator.device, dtype=weight_dtype)
@@ -1158,11 +1158,9 @@ def main(args):
                     unwrap_model(model).save_pretrained(os.path.join(output_dir, "transformer"))
                 elif isinstance(unwrap_model(model), (CLIPTextModelWithProjection, T5EncoderModel)):
                     if isinstance(unwrap_model(model), CLIPTextModelWithProjection):
-                        hidden_size = unwrap_model(model).config.hidden_size
-                        if hidden_size == 768:
-                            unwrap_model(model).save_pretrained(os.path.join(output_dir, "text_encoder"))
-                        elif hidden_size == 1280:
-                            unwrap_model(model).save_pretrained(os.path.join(output_dir, "text_encoder_2"))
+                        unwrap_model(model).save_pretrained(os.path.join(output_dir, "text_encoder"))
+                    else:
+                        unwrap_model(model).save_pretrained(os.path.join(output_dir, "text_encoder_2"))
                 else:
                     raise ValueError(f"Wrong model supplied: {type(model)=}.")
 
