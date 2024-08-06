@@ -1191,9 +1191,6 @@ def main(args):
                         model(**load_model.config)
                         model.load_state_dict(load_model.state_dict())
                     except Exception:
-                            model(**load_model.config)
-                            model.load_state_dict(load_model.state_dict())
-                        except Exception:
                             raise ValueError(f"Couldn't load the model of type: ({type(model)}).")
             else:
                 raise ValueError(f"Unsupported model found: {type(model)=}")
@@ -1222,15 +1219,9 @@ def main(args):
             "weight_decay": args.adam_weight_decay_text_encoder,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
-        text_parameters_two_with_lr = {
-            "params": text_encoder_two.parameters(),
-            "weight_decay": args.adam_weight_decay_text_encoder,
-            "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
-        }
         params_to_optimize = [
             transformer_parameters_with_lr,
             text_parameters_one_with_lr,
-            text_parameters_two_with_lr,
         ]
     else:
         params_to_optimize = [transformer_parameters_with_lr]
@@ -1291,7 +1282,6 @@ def main(args):
             # --learning_rate
             params_to_optimize[1]["lr"] = args.learning_rate
             params_to_optimize[2]["lr"] = args.learning_rate
-            params_to_optimize[3]["lr"] = args.learning_rate
 
         optimizer = optimizer_class(
             params_to_optimize,
@@ -1503,12 +1493,11 @@ def main(args):
         transformer.train()
         if args.train_text_encoder:
             text_encoder_one.train()
-            text_encoder_two.train()
 
         for step, batch in enumerate(train_dataloader):
             models_to_accumulate = [transformer]
             if args.train_text_encoder:
-                models_to_accumulate.extend([text_encoder_one, text_encoder_two])
+                models_to_accumulate.extend([text_encoder_one])
             with accelerator.accumulate(models_to_accumulate):
                 pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                 prompts = batch["prompts"]
