@@ -1114,6 +1114,20 @@ class AnyTextPipeline(
 
         prompt, texts = self.modify_prompt(prompt)
 
+        # 3. Encode input prompt
+        text_encoder_lora_scale = (
+            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
+        )
+        prompt_embeds, negative_prompt_embeds, text_info = self.text_embedding_module(
+            prompt,
+            texts,
+            negative_prompt,
+            num_images_per_prompt,
+            mode,
+            draw_pos,
+            ori_image,
+        )
+
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
@@ -1151,15 +1165,10 @@ class AnyTextPipeline(
             #     guess_mode=guess_mode,
             # )
             # height, width = image.shape[-2:]
-            guided_hint, hint, text_info = self.auxiliary_latent_module(
+            guided_hint = self.auxiliary_latent_module(
                 emb=timestep_cond,
                 context=prompt_embeds,
-                mode=mode,
-                texts=texts,
-                prompt=prompt,
-                draw_pos=draw_pos,
-                ori_image=ori_image,
-                img_count=len(prompt),
+                text_info=text_info,
             )
         # elif isinstance(controlnet, MultiControlNetModel):
         #     images = []
@@ -1189,17 +1198,6 @@ class AnyTextPipeline(
         else:
             assert False
 
-        # 3. Encode input prompt
-        text_encoder_lora_scale = (
-            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
-        )
-        prompt_embeds, negative_prompt_embeds = self.text_embedding_module(
-            prompt,
-            text_info,
-            negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-        )
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas

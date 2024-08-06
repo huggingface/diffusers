@@ -53,7 +53,7 @@ def retrieve_latents(
 class AuxiliaryLatentModule(nn.Module):
     def __init__(self, dims=2, glyph_channels=1, position_channels=1, model_channels=320, **kwargs):
         super().__init__()
-        self.font = ImageFont.truetype("/home/x/Documents/gits/AnyText/font/Arial_Unicode.ttf", 60)
+        self.font = ImageFont.truetype("/home/cosmos/Documents/gits/AnyText/font/Arial_Unicode.ttf", 60)
         self.use_fp16 = kwargs.get("use_fp16", False)
         self.device = kwargs.get("device", "cpu")
         self.glyph_block = nn.Sequential(
@@ -104,146 +104,15 @@ class AuxiliaryLatentModule(nn.Module):
         self,
         emb,
         context,
-        mode,
-        texts,
-        prompt,
-        draw_pos,
-        ori_image,
-        max_chars=77,
-        revise_pos=False,
-        sort_priority=False,
-        h=512,
-        w=512,
+        text_info,
     ):
-        if prompt is None and texts is None:
-            raise ValueError("Prompt or texts must be provided!")
-        n_lines = len(texts)
-        if mode == "generate":
-            edit_image = np.ones((h, w, 3)) * 127.5  # empty mask image
-        elif mode == "edit":
-            if draw_pos is None or ori_image is None:
-                raise ValueError("Reference image and position image are needed for text editing!")
-            if isinstance(ori_image, str):
-                ori_image = cv2.imread(ori_image)[..., ::-1]
-                if ori_image is None:
-                    raise ValueError(f"Can't read ori_image image from {ori_image}!")
-            elif isinstance(ori_image, torch.Tensor):
-                ori_image = ori_image.cpu().numpy()
-            else:
-                if not isinstance(ori_image, np.ndarray):
-                    raise ValueError(f"Unknown format of ori_image: {type(ori_image)}")
-            edit_image = ori_image.clip(1, 255)  # for mask reason
-            edit_image = self.check_channels(edit_image)
-            edit_image = self.resize_image(
-                edit_image, max_length=768
-            )  # make w h multiple of 64, resize if w or h > max_length
-            h, w = edit_image.shape[:2]  # change h, w by input ref_img
-        # preprocess pos_imgs(if numpy, make sure it's white pos in black bg)
-        if draw_pos is None:
-            pos_imgs = np.zeros((w, h, 1))
-        if isinstance(draw_pos, str):
-            draw_pos = cv2.imread(draw_pos)[..., ::-1]
-            if draw_pos is None:
-                raise ValueError(f"Can't read draw_pos image from {draw_pos}!")
-            pos_imgs = 255 - draw_pos
-        elif isinstance(draw_pos, torch.Tensor):
-            pos_imgs = draw_pos.cpu().numpy()
-        else:
-            if not isinstance(draw_pos, np.ndarray):
-                raise ValueError(f"Unknown format of draw_pos: {type(draw_pos)}")
-        if mode == "edit":
-            pos_imgs = cv2.resize(pos_imgs, (w, h))
-        pos_imgs = pos_imgs[..., 0:1]
-        pos_imgs = cv2.convertScaleAbs(pos_imgs)
-        _, pos_imgs = cv2.threshold(pos_imgs, 254, 255, cv2.THRESH_BINARY)
-        # separate pos_imgs
-        pos_imgs = self.separate_pos_imgs(pos_imgs, sort_priority)
-        if len(pos_imgs) == 0:
-            pos_imgs = [np.zeros((h, w, 1))]
-        if len(pos_imgs) < n_lines:
-            if n_lines == 1 and texts[0] == " ":
-                pass  # text-to-image without text
-            else:
-                raise ValueError(
-                    f"Found {len(pos_imgs)} positions that < needed {n_lines} from prompt, check and try again!"
-                )
-        elif len(pos_imgs) > n_lines:
-            str_warning = f"Warning: found {len(pos_imgs)} positions that > needed {n_lines} from prompt."
-            logger.warning(str_warning)
-        # get pre_pos, poly_list, hint that needed for anytext
-        pre_pos = []
-        poly_list = []
-        for input_pos in pos_imgs:
-            if input_pos.mean() != 0:
-                input_pos = input_pos[..., np.newaxis] if len(input_pos.shape) == 2 else input_pos
-                poly, pos_img = self.find_polygon(input_pos)
-                pre_pos += [pos_img / 255.0]
-                poly_list += [poly]
-            else:
-                pre_pos += [np.zeros((h, w, 1))]
-                poly_list += [None]
-        np_hint = np.sum(pre_pos, axis=0).clip(0, 1)
-        # prepare info dict
-        info = {}
-        info["glyphs"] = []
-        info["gly_line"] = []
-        info["positions"] = []
-        info["n_lines"] = [len(texts)] * len(prompt)
-        for i in range(len(texts)):
-            text = texts[i]
-            if len(text) > max_chars:
-                str_warning = f'"{text}" length > max_chars: {max_chars}, will be cut off...'
-                logger.warning(str_warning)
-                text = text[:max_chars]
-            gly_scale = 2
-            if pre_pos[i].mean() != 0:
-                gly_line = self.draw_glyph(self.font, text)
-                glyphs = self.draw_glyph2(
-                    self.font, text, poly_list[i], scale=gly_scale, width=w, height=h, add_space=False
-                )
-                if revise_pos:
-                    resize_gly = cv2.resize(glyphs, (pre_pos[i].shape[1], pre_pos[i].shape[0]))
-                    new_pos = cv2.morphologyEx(
-                        (resize_gly * 255).astype(np.uint8),
-                        cv2.MORPH_CLOSE,
-                        kernel=np.ones((resize_gly.shape[0] // 10, resize_gly.shape[1] // 10), dtype=np.uint8),
-                        iterations=1,
-                    )
-                    new_pos = new_pos[..., np.newaxis] if len(new_pos.shape) == 2 else new_pos
-                    contours, _ = cv2.findContours(new_pos, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-                    if len(contours) != 1:
-                        str_warning = f"Fail to revise position {i} to bounding rect, remain position unchanged..."
-                        logger.warning(str_warning)
-                    else:
-                        rect = cv2.minAreaRect(contours[0])
-                        poly = np.int0(cv2.boxPoints(rect))
-                        pre_pos[i] = cv2.drawContours(new_pos, [poly], -1, 255, -1) / 255.0
-            else:
-                glyphs = np.zeros((h * gly_scale, w * gly_scale, 1))
-                gly_line = np.zeros((80, 512, 1))
-            pos = pre_pos[i]
-            info["glyphs"] += [self.arr2tensor(glyphs, len(prompt))]
-            info["gly_line"] += [self.arr2tensor(gly_line, len(prompt))]
-            info["positions"] += [self.arr2tensor(pos, len(prompt))]
-        # get masked_x
-        masked_img = ((edit_image.astype(np.float32) / 127.5) - 1.0) * (1 - np_hint)
-        masked_img = np.transpose(masked_img, (2, 0, 1))
-        masked_img = torch.from_numpy(masked_img.copy()).float().to(self.device)
-        if self.use_fp16:
-            masked_img = masked_img.half()
-        masked_x = self.encode_first_stage(masked_img[None, ...]).detach()
-        if self.use_fp16:
-            masked_x = masked_x.half()
-        info["masked_x"] = torch.cat([masked_x for _ in range(len(prompt))], dim=0)
-        hint = self.arr2tensor(np_hint, len(prompt))
-
-        glyphs = torch.cat(info["glyphs"], dim=1).sum(dim=1, keepdim=True)
-        positions = torch.cat(info["positions"], dim=1).sum(dim=1, keepdim=True)
+        glyphs = torch.cat(text_info["glyphs"], dim=1).sum(dim=1, keepdim=True)
+        positions = torch.cat(text_info["positions"], dim=1).sum(dim=1, keepdim=True)
         enc_glyph = self.glyph_block(glyphs, emb, context)
         enc_pos = self.position_block(positions, emb, context)
-        guided_hint = self.fuse_block(torch.cat([enc_glyph, enc_pos, masked_x], dim=1))
+        guided_hint = self.fuse_block(torch.cat([enc_glyph, enc_pos, text_info["masked_x"]], dim=1))
 
-        return guided_hint, hint, info
+        return guided_hint
 
     def encode_first_stage(self, masked_img):
         return retrieve_latents(self.vae.encode(masked_img)) * self.vae.scale_factor
