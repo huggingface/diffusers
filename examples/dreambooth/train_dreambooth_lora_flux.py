@@ -215,10 +215,10 @@ def import_model_class_from_model_name_or_path(
         pretrained_model_name_or_path, subfolder=subfolder, revision=revision
     )
     model_class = text_encoder_config.architectures[0]
-    if model_class == "CLIPTextModelWithProjection":
-        from transformers import CLIPTextModelWithProjection
+    if model_class == "CLIPTextModel":
+        from transformers import CLIPTextModel
 
-        return CLIPTextModelWithProjection
+        return CLIPTextModel
     elif model_class == "T5EncoderModel":
         from transformers import T5EncoderModel
 
