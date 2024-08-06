@@ -1118,14 +1118,13 @@ class AnyTextPipeline(
         text_encoder_lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
-        prompt_embeds, negative_prompt_embeds, text_info = self.text_embedding_module(
+        prompt_embeds, negative_prompt_embeds, text_info, np_hint = self.text_embedding_module(
             prompt,
             texts,
             negative_prompt,
             num_images_per_prompt,
             mode,
             draw_pos,
-            ori_image,
         )
 
         # For classifier free guidance, we need to do two forward passes.
@@ -1166,9 +1165,13 @@ class AnyTextPipeline(
             # )
             # height, width = image.shape[-2:]
             guided_hint = self.auxiliary_latent_module(
-                emb=timestep_cond,
-                context=prompt_embeds,
+                context=prompt_embeds[1],
                 text_info=text_info,
+                mode=mode,
+                draw_pos=draw_pos,
+                ori_image=ori_image,
+                num_images_per_prompt=num_images_per_prompt,
+                np_hint=np_hint,
             )
         # elif isinstance(controlnet, MultiControlNetModel):
         #     images = []

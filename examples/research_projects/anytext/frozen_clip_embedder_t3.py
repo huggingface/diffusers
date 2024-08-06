@@ -20,7 +20,7 @@ class FrozenCLIPEmbedderT3(AbstractEncoder):
     ):
         super().__init__()
         self.tokenizer = CLIPTokenizer.from_pretrained(version)
-        self.transformer = CLIPTextModel.from_pretrained(version)
+        self.transformer = CLIPTextModel.from_pretrained(version).to(device)
         if use_vision:
             self.vit = CLIPVisionModelWithProjection.from_pretrained(version)
             self.processor = AutoProcessor.from_pretrained(version)

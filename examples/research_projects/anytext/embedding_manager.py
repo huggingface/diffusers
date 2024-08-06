@@ -185,6 +185,7 @@ class EmbeddingManager(nn.Module):
                 text_emb = torch.cat(self.text_embs_all[i], dim=0)
                 if sum(idx) != len(text_emb):
                     print("truncation for long caption...")
+                text_emb = text_emb.to(embedded_text.device)
                 embedded_text[i][idx] = text_emb[: sum(idx)]
         return embedded_text
 

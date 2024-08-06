@@ -2,31 +2,20 @@
 # +> fuse layer
 # position l_p -> position block ->
 
+import math
 from typing import Optional
 
 import cv2
 import numpy as np
 import torch
-from PIL import Image, ImageDraw, ImageFont
+from einops import repeat
+from PIL import ImageFont
 from torch import nn
 
 from diffusers.utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def conv_nd(dims, *args, **kwargs):
-    """
-    Create a 1D, 2D, or 3D convolution module.
-    """
-    if dims == 1:
-        return nn.Conv1d(*args, **kwargs)
-    elif dims == 2:
-        return nn.Conv2d(*args, **kwargs)
-    elif dims == 3:
-        return nn.Conv3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimensions: {dims}")
 
 
 # Copied from diffusers.models.controlnet.zero_module
@@ -56,74 +45,142 @@ class AuxiliaryLatentModule(nn.Module):
         self.font = ImageFont.truetype("/home/cosmos/Documents/gits/AnyText/font/Arial_Unicode.ttf", 60)
         self.use_fp16 = kwargs.get("use_fp16", False)
         self.device = kwargs.get("device", "cpu")
+        self.model_channels = model_channels
+        time_embed_dim = model_channels * 4
+        self.time_embed = nn.Sequential(
+            nn.Linear(model_channels, time_embed_dim),
+            nn.SiLU(),
+            nn.Linear(time_embed_dim, time_embed_dim),
+        )
         self.glyph_block = nn.Sequential(
-            conv_nd(dims, glyph_channels, 8, 3, padding=1),
+            nn.Conv2d(glyph_channels, 8, 3, padding=1),
             nn.SiLU(),
-            conv_nd(dims, 8, 8, 3, padding=1),
+            nn.Conv2d(8, 8, 3, padding=1),
             nn.SiLU(),
-            conv_nd(dims, 8, 16, 3, padding=1, stride=2),
+            nn.Conv2d(8, 16, 3, padding=1, stride=2),
             nn.SiLU(),
-            conv_nd(dims, 16, 16, 3, padding=1),
+            nn.Conv2d(16, 16, 3, padding=1),
             nn.SiLU(),
-            conv_nd(dims, 16, 32, 3, padding=1, stride=2),
+            nn.Conv2d(16, 32, 3, padding=1, stride=2),
             nn.SiLU(),
-            conv_nd(dims, 32, 32, 3, padding=1),
+            nn.Conv2d(32, 32, 3, padding=1),
             nn.SiLU(),
-            conv_nd(dims, 32, 96, 3, padding=1, stride=2),
+            nn.Conv2d(32, 96, 3, padding=1, stride=2),
             nn.SiLU(),
-            conv_nd(dims, 96, 96, 3, padding=1),
+            nn.Conv2d(96, 96, 3, padding=1),
             nn.SiLU(),
-            conv_nd(dims, 96, 256, 3, padding=1, stride=2),
+            nn.Conv2d(96, 256, 3, padding=1, stride=2),
             nn.SiLU(),
         )
 
         self.position_block = nn.Sequential(
-            conv_nd(dims, position_channels, 8, 3, padding=1),
+            nn.Conv2d(position_channels, 8, 3, padding=1),
             nn.SiLU(),
-            conv_nd(dims, 8, 8, 3, padding=1),
+            nn.Conv2d(8, 8, 3, padding=1),
             nn.SiLU(),
-            conv_nd(dims, 8, 16, 3, padding=1, stride=2),
+            nn.Conv2d(8, 16, 3, padding=1, stride=2),
             nn.SiLU(),
-            conv_nd(dims, 16, 16, 3, padding=1),
+            nn.Conv2d(16, 16, 3, padding=1),
             nn.SiLU(),
-            conv_nd(dims, 16, 32, 3, padding=1, stride=2),
+            nn.Conv2d(16, 32, 3, padding=1, stride=2),
             nn.SiLU(),
-            conv_nd(dims, 32, 32, 3, padding=1),
+            nn.Conv2d(32, 32, 3, padding=1),
             nn.SiLU(),
-            conv_nd(dims, 32, 64, 3, padding=1, stride=2),
+            nn.Conv2d(32, 64, 3, padding=1, stride=2),
             nn.SiLU(),
         )
+        self.time_embed = self.time_embed.to(device="cuda", dtype=torch.float16)
+        self.glyph_block = self.glyph_block.to(device="cuda", dtype=torch.float16)
+        self.position_block = self.position_block.to(device="cuda", dtype=torch.float16)
 
         self.vae = kwargs.get("vae")
         self.vae.eval()
 
-        self.fuse_block = zero_module(conv_nd(dims, 256 + 64 + 4, model_channels, 3, padding=1))
+        self.fuse_block = zero_module(nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1))
+        self.fuse_block = self.fuse_block.to(device="cuda", dtype=torch.float16)
 
     @torch.no_grad()
     def forward(
         self,
-        emb,
         context,
         text_info,
+        mode,
+        draw_pos,
+        ori_image,
+        num_images_per_prompt,
+        np_hint,
+        h=512,
+        w=512,
     ):
+        if mode == "generate":
+            edit_image = np.ones((h, w, 3)) * 127.5  # empty mask image
+        elif mode == "edit":
+            if draw_pos is None or ori_image is None:
+                raise ValueError("Reference image and position image are needed for text editing!")
+            if isinstance(ori_image, str):
+                ori_image = cv2.imread(ori_image)[..., ::-1]
+                if ori_image is None:
+                    raise ValueError(f"Can't read ori_image image from {ori_image}!")
+            elif isinstance(ori_image, torch.Tensor):
+                ori_image = ori_image.cpu().numpy()
+            else:
+                if not isinstance(ori_image, np.ndarray):
+                    raise ValueError(f"Unknown format of ori_image: {type(ori_image)}")
+            edit_image = ori_image.clip(1, 255)  # for mask reason
+            edit_image = self.check_channels(edit_image)
+            edit_image = self.resize_image(
+                edit_image, max_length=768
+            )  # make w h multiple of 64, resize if w or h > max_length
+            h, w = edit_image.shape[:2]  # change h, w by input ref_img
+
+        # get masked_x
+        masked_img = ((edit_image.astype(np.float32) / 127.5) - 1.0) * (1 - np_hint)
+        masked_img = np.transpose(masked_img, (2, 0, 1))
+        masked_img = torch.from_numpy(masked_img.copy()).float().to(self.device)
+        if self.use_fp16:
+            masked_img = masked_img.half()
+        masked_x = self.encode_first_stage(masked_img[None, ...]).detach()
+        if self.use_fp16:
+            masked_x = masked_x.half()
+        text_info["masked_x"] = torch.cat([masked_x for _ in range(num_images_per_prompt)], dim=0)
+
         glyphs = torch.cat(text_info["glyphs"], dim=1).sum(dim=1, keepdim=True)
         positions = torch.cat(text_info["positions"], dim=1).sum(dim=1, keepdim=True)
-        enc_glyph = self.glyph_block(glyphs, emb, context)
-        enc_pos = self.position_block(positions, emb, context)
-        guided_hint = self.fuse_block(torch.cat([enc_glyph, enc_pos, text_info["masked_x"]], dim=1))
+        t_emb = self.timestep_embedding(torch.tensor([1000], device="cuda"), self.model_channels, repeat_only=False)
+        if self.use_fp16:
+            t_emb = t_emb.half()
+        emb = self.time_embed(t_emb)
+        print(glyphs.shape, emb.shape, positions.shape, context.shape)
+        enc_glyph = self.glyph_block(glyphs.cuda(), emb, context)
+        enc_pos = self.position_block(positions.cuda(), emb, context)
+        guided_hint = self.fuse_block(torch.cat([enc_glyph, enc_pos, text_info["masked_x"].cuda()], dim=1))
 
         return guided_hint
 
-    def encode_first_stage(self, masked_img):
-        return retrieve_latents(self.vae.encode(masked_img)) * self.vae.scale_factor
+    def timestep_embedding(self, timesteps, dim, max_period=10000, repeat_only=False):
+        """
+        Create sinusoidal timestep embeddings.
+        :param timesteps: a 1-D Tensor of N indices, one per batch element.
+                        These may be fractional.
+        :param dim: the dimension of the output.
+        :param max_period: controls the minimum frequency of the embeddings.
+        :return: an [N x dim] Tensor of positional embeddings.
+        """
+        if not repeat_only:
+            half = dim // 2
+            freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
+                device=timesteps.device
+            )
+            args = timesteps[:, None].float() * freqs[None]
+            embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+            if dim % 2:
+                embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+        else:
+            embedding = repeat(timesteps, "b -> b d", d=dim)
+        return embedding
 
-    def arr2tensor(self, arr, bs):
-        arr = np.transpose(arr, (2, 0, 1))
-        _arr = torch.from_numpy(arr.copy()).float().cpu()
-        if self.use_fp16:
-            _arr = _arr.half()
-        _arr = torch.stack([_arr for _ in range(bs)], dim=0)
-        return _arr
+    def encode_first_stage(self, masked_img):
+        return retrieve_latents(self.vae.encode(masked_img)) * self.vae.config.scaling_factor
 
     def check_channels(self, image):
         channels = image.shape[2] if len(image.shape) == 3 else 1
@@ -154,79 +211,6 @@ class AuxiliaryLatentModule(nn.Module):
         for char in string:
             new_string += char + " " * nSpace
         return new_string[:-nSpace]
-
-    def draw_glyph2(self, font, text, polygon, vertAng=10, scale=1, width=512, height=512, add_space=True):
-        enlarge_polygon = polygon * scale
-        rect = cv2.minAreaRect(enlarge_polygon)
-        box = cv2.boxPoints(rect)
-        box = np.int0(box)
-        w, h = rect[1]
-        angle = rect[2]
-        if angle < -45:
-            angle += 90
-        angle = -angle
-        if w < h:
-            angle += 90
-
-        vert = False
-        if abs(angle) % 90 < vertAng or abs(90 - abs(angle) % 90) % 90 < vertAng:
-            _w = max(box[:, 0]) - min(box[:, 0])
-            _h = max(box[:, 1]) - min(box[:, 1])
-            if _h >= _w:
-                vert = True
-                angle = 0
-
-        img = np.zeros((height * scale, width * scale, 3), np.uint8)
-        img = Image.fromarray(img)
-
-        # infer font size
-        image4ratio = Image.new("RGB", img.size, "white")
-        draw = ImageDraw.Draw(image4ratio)
-        _, _, _tw, _th = draw.textbbox(xy=(0, 0), text=text, font=font)
-        text_w = min(w, h) * (_tw / _th)
-        if text_w <= max(w, h):
-            # add space
-            if len(text) > 1 and not vert and add_space:
-                for i in range(1, 100):
-                    text_space = self.insert_spaces(text, i)
-                    _, _, _tw2, _th2 = draw.textbbox(xy=(0, 0), text=text_space, font=font)
-                    if min(w, h) * (_tw2 / _th2) > max(w, h):
-                        break
-                text = self.insert_spaces(text, i - 1)
-            font_size = min(w, h) * 0.80
-        else:
-            shrink = 0.75 if vert else 0.85
-            font_size = min(w, h) / (text_w / max(w, h)) * shrink
-        new_font = font.font_variant(size=int(font_size))
-
-        left, top, right, bottom = new_font.getbbox(text)
-        text_width = right - left
-        text_height = bottom - top
-
-        layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(layer)
-        if not vert:
-            draw.text(
-                (rect[0][0] - text_width // 2, rect[0][1] - text_height // 2 - top),
-                text,
-                font=new_font,
-                fill=(255, 255, 255, 255),
-            )
-        else:
-            x_s = min(box[:, 0]) + _w // 2 - text_height // 2
-            y_s = min(box[:, 1])
-            for c in text:
-                draw.text((x_s, y_s), c, font=new_font, fill=(255, 255, 255, 255))
-                _, _t, _, _b = new_font.getbbox(c)
-                y_s += _b
-
-        rotated_layer = layer.rotate(angle, expand=1, center=(rect[0][0], rect[0][1]))
-
-        x_offset = int((img.width - rotated_layer.width) / 2)
-        y_offset = int((img.height - rotated_layer.height) / 2)
-        img.paste(rotated_layer, (x_offset, y_offset), rotated_layer)
-        img = np.expand_dims(np.array(img.convert("1")), axis=2).astype(np.float64)
-        return img
 
     def to(self, device):
         self.device = device
