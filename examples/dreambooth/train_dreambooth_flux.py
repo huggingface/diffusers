@@ -1187,12 +1187,10 @@ def main(args):
                     model.load_state_dict(load_model.state_dict())
                 except Exception:
                     try:
-                        load_model = CLIPTextModelWithProjection.from_pretrained(input_dir, subfolder="text_encoder_2")
+                        load_model = T5EncoderModel.from_pretrained(input_dir, subfolder="text_encoder_2")
                         model(**load_model.config)
                         model.load_state_dict(load_model.state_dict())
                     except Exception:
-                        try:
-                            load_model = T5EncoderModel.from_pretrained(input_dir, subfolder="text_encoder_3")
                             model(**load_model.config)
                             model.load_state_dict(load_model.state_dict())
                         except Exception:
