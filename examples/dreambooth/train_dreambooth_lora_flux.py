@@ -1148,9 +1148,6 @@ def main(args):
 
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
-        if args.train_text_encoder:
-            text_encoder_one.gradient_checkpointing_enable()
-            text_encoder_two.gradient_checkpointing_enable()
 
     # now we will add new LoRA weights to the attention layers
     transformer_lora_config = LoraConfig(
@@ -1161,15 +1158,6 @@ def main(args):
     )
     transformer.add_adapter(transformer_lora_config)
 
-    if args.train_text_encoder:
-        text_lora_config = LoraConfig(
-            r=args.rank,
-            lora_alpha=args.rank,
-            init_lora_weights="gaussian",
-            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
-        )
-        text_encoder_one.add_adapter(text_lora_config)
-        text_encoder_two.add_adapter(text_lora_config)
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -1234,21 +1222,12 @@ def main(args):
                     f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                     f" {unexpected_keys}. "
                 )
-        if args.train_text_encoder:
-            # Do we need to call `scale_lora_layers()` here?
-            _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
-
-            _set_state_dict_into_text_encoder(
-                lora_state_dict, prefix="text_encoder_2.", text_encoder=text_encoder_two_
-            )
 
         # Make sure the trainable params are in float32. This is again needed since the base models
         # are in `weight_dtype`. More details:
         # https://github.com/huggingface/diffusers/pull/6514#discussion_r1449796804
         if args.mixed_precision == "fp16":
             models = [transformer_]
-            if args.train_text_encoder:
-                models.extend([text_encoder_one_, text_encoder_two_])
             # only upcast trainable parameters (LoRA) into fp32
             cast_training_params(models)
 
@@ -1268,37 +1247,14 @@ def main(args):
     # Make sure the trainable params are in float32.
     if args.mixed_precision == "fp16":
         models = [transformer]
-        if args.train_text_encoder:
-            models.extend([text_encoder_one, text_encoder_two])
         # only upcast trainable parameters (LoRA) into fp32
         cast_training_params(models, dtype=torch.float32)
 
     transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters()))
-    if args.train_text_encoder:
-        text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
-        text_lora_parameters_two = list(filter(lambda p: p.requires_grad, text_encoder_two.parameters()))
 
     # Optimization parameters
     transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
-    if args.train_text_encoder:
-        # different learning rate for text encoder and unet
-        text_lora_parameters_one_with_lr = {
-            "params": text_lora_parameters_one,
-            "weight_decay": args.adam_weight_decay_text_encoder,
-            "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
-        }
-        text_lora_parameters_two_with_lr = {
-            "params": text_lora_parameters_two,
-            "weight_decay": args.adam_weight_decay_text_encoder,
-            "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
-        }
-        params_to_optimize = [
-            transformer_parameters_with_lr,
-            text_lora_parameters_one_with_lr,
-            text_lora_parameters_two_with_lr,
-        ]
-    else:
-        params_to_optimize = [transformer_parameters_with_lr]
+    params_to_optimize = [transformer_parameters_with_lr]
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
