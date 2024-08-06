@@ -15,7 +15,7 @@ from diffusers.utils import logging
 
 try:
     from ligo.segments import segment
-    from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+    from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 except ImportError:
     raise ImportError("Please install transformers and ligo-segments to use the mixture pipeline")
 
@@ -144,7 +144,7 @@ class StableDiffusionTilingPipeline(DiffusionPipeline, StableDiffusionExtrasMixi
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler],
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
     ):
         super().__init__()
         self.register_modules(
