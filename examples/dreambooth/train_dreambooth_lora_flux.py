@@ -121,16 +121,10 @@ You should use `{instance_prompt}` to trigger the image generation.
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
-pipeline = AutoPipelineForText2Image.from_pretrained('stabilityai/stable-diffusion-3-medium-diffusers', torch_dtype=torch.float16).to('cuda')
+pipeline = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to('cuda')
 pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
 image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
 ```
-
-### Use it with UIs such as AUTOMATIC1111, Comfy UI, SD.Next, Invoke
-
-- **LoRA**: download **[`diffusers_lora_weights.safetensors` here 💾](/{repo_id}/blob/main/diffusers_lora_weights.safetensors)**.
-    - Rename it and place it on your `models/Lora` folder.
-    - On AUTOMATIC1111, load the LoRA by adding `<lora:your_new_name:1>` to your prompt. On ComfyUI just [load it as a regular LoRA](https://comfyanonymous.github.io/ComfyUI_examples/lora/).
 
 For more details, including weighting, merging and fusing LoRAs, check the [documentation on loading LoRAs in diffusers](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters)
 

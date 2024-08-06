@@ -108,7 +108,7 @@ You should use `{instance_prompt}` to trigger the image generation.
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
-pipeline = AutoPipelineForText2Image.from_pretrained('{repo_id}', torch_dtype=torch.float16).to('cuda')
+pipeline = AutoPipelineForText2Image.from_pretrained('{repo_id}', torch_dtype=torch.bfloat16).to('cuda')
 image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
 ```
 
