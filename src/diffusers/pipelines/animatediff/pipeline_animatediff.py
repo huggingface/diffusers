@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -43,6 +43,7 @@ from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..free_init_utils import FreeInitMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from .context_utils import ContextScheduler
 from .pipeline_output import AnimateDiffPipelineOutput
 
 
@@ -395,17 +396,29 @@ class AnimateDiffPipeline(
         return ip_adapter_image_embeds
 
     # Copied from diffusers.pipelines.text_to_video_synthesis/pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
-    def decode_latents(self, latents):
+    def decode_latents(self, latents, decode_batch_size):
         latents = 1 / self.vae.config.scaling_factor * latents
 
         batch_size, channels, num_frames, height, width = latents.shape
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
-        image = self.vae.decode(latents).sample
-        video = image[None, :].reshape((batch_size, num_frames, -1) + image.shape[2:]).permute(0, 2, 1, 3, 4)
+        video = []
+        for i in range(0, batch_size * num_frames, decode_batch_size):
+            batch_latents = latents[i : i + decode_batch_size]
+            batch_video = self.vae.decode(batch_latents).sample
+            video.append(batch_video)
+        video = torch.cat(video, dim=0)
+        video = video.reshape(batch_size, num_frames, *video.shape[1:]).permute(0, 2, 1, 3, 4)
+        
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         video = video.float()
         return video
+
+        # image = self.vae.decode(latents).sample
+        # video = image[None, :].reshape((batch_size, num_frames, -1) + image.shape[2:]).permute(0, 2, 1, 3, 4)
+        # # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        # video = video.float()
+        # return video
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -563,12 +576,14 @@ class AnimateDiffPipeline(
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
         ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
+        context_scheduler: Optional[ContextScheduler] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        decode_batch_size: int = 16,
         **kwargs,
     ):
         r"""
@@ -693,6 +708,16 @@ class AnimateDiffPipeline(
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+        
+        # If _context_scheduler_provided is True, it means that the user has provided a custom context scheduler.
+        # When True, it results in pipeline behaving in "long context" mode otherwise "normal" mode.
+        # Long-context mode results in interpolation of the prompt list to match the number of frames, instead of
+        # using the default behaviour (which is to generate different video for each prompt in the list).
+        _context_scheduler_provided = context_scheduler is not None
+        if not _context_scheduler_provided:
+            context_scheduler = ContextScheduler(length=num_frames, loop=False, type="uniform")
+        else:
+            batch_size = 1
 
         device = self._execution_device
 
@@ -700,22 +725,69 @@ class AnimateDiffPipeline(
         text_encoder_lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-            prompt,
-            device,
-            num_videos_per_prompt,
-            self.do_classifier_free_guidance,
-            negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
-            clip_skip=self.clip_skip,
-        )
-        # For classifier free guidance, we need to do two forward passes.
-        # Here we concatenate the unconditional and text embeddings into a single batch
-        # to avoid doing two forward passes
-        if self.do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+        prompt_embedding_map = {}
+        for i, p in enumerate(prompt):
+            prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+                p,
+                device,
+                num_videos_per_prompt,
+                self.do_classifier_free_guidance,
+                negative_prompt[i] if negative_prompt is not None else None,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                lora_scale=text_encoder_lora_scale,
+                clip_skip=self.clip_skip,
+            )
+            prompt_embedding_map[i] = (prompt_embeds, negative_prompt_embeds)
+        prompt_embedding_linspace = torch.linspace(0, len(prompt_embedding_map) - 1, num_frames, device=device, dtype=prompt_embeds.dtype)
+
+        def get_prompt_embedding(frame_indices: List[int]) -> Tuple[torch.Tensor, torch.Tensor]:
+            pe_list, npe_list = [], []
+            
+            if _context_scheduler_provided:
+                middle_frame = frame_indices[len(frame_indices) // 2]
+                prompt_index = int(prompt_embedding_linspace[middle_frame].item())
+                print("prompt_index:", prompt_index)
+
+                if prompt_index in prompt_embedding_map.keys():
+                    pe, npe = prompt_embedding_map[prompt_index]
+                else:
+                    # do average between closest left and right prompt embeddings
+                    alpha = prompt_embedding_linspace[middle_frame] - prompt_index
+                    left_pe, left_npe = prompt_embedding_map[prompt_index]
+                    right_pe, right_npe = prompt_embedding_map[prompt_index + 1]
+                    pe = left_pe * (1 - alpha) + right_pe * alpha
+                    npe = left_npe * (1 - alpha) + right_npe * alpha
+
+                pe_list.append(pe)
+                npe_list.append(npe)
+
+                # mean of all prompt embeds in given context indices
+                # total_pe = torch.zeros((1, *prompt_embeds.shape[1:]), device=device, dtype=prompt_embeds.dtype)
+                # total_npe = torch.zeros((1, *prompt_embeds.shape[1:]), device=device, dtype=prompt_embeds.dtype)
+                # for frame_index in frame_indices:
+                #     prompt_index = int(prompt_embedding_linspace[frame_index].item())
+                #     if prompt_index in prompt_embedding_map.keys():
+                #         pe, npe = prompt_embedding_map[prompt_index]
+                #     else:
+                #         alpha = prompt_embedding_linspace[frame_index] - prompt_index
+                #         pe, npe = prompt_embedding_map[prompt_index]
+                #         next_pe, next_npe = prompt_embedding_map[prompt_index + 1]
+                #         pe = pe * (1 - alpha) + next_pe * alpha
+                #         npe = npe * (1 - alpha) + next_npe * alpha
+                #     total_pe += pe
+                #     total_npe += npe
+                
+                # pe_list.append(total_pe / len(frame_indices))
+                # npe_list.append(total_npe / len(frame_indices))
+            else:
+                for (prompt_embed, negative_prompt_embed) in prompt_embedding_map.values():
+                    pe_list.append(prompt_embed)
+                    npe_list.append(negative_prompt_embed)
+            
+            pe_list = torch.cat(pe_list)
+            npe_list = torch.cat(npe_list)
+            return pe_list, npe_list
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
@@ -767,26 +839,41 @@ class AnimateDiffPipeline(
             # 8. Denoising loop
             with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
-                    # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                    latent_batch_size = latents.shape[0] * (2 if self.do_classifier_free_guidance else 1)
+                    total_noise_preds = torch.zeros((latent_batch_size, *latents.shape[1:]), device=device, dtype=latents.dtype)
+                    total_counts = torch.zeros((1, 1, num_frames, 1, 1), device=device, dtype=latents.dtype)
 
-                    # predict the noise residual
-                    noise_pred = self.unet(
-                        latent_model_input,
-                        t,
-                        encoder_hidden_states=prompt_embeds,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                        added_cond_kwargs=added_cond_kwargs,
-                    ).sample
+                    for context_indices in context_scheduler(num_frames, i, num_inference_steps, generator):
+                        print("context_indices", context_indices)
+                        # expand the latents if we are doing classifier free guidance
+                        context_latents = latents[:, :, context_indices]
+                        latent_model_input = torch.cat([context_latents] * 2) if self.do_classifier_free_guidance else context_latents
+                        latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                        context_prompt_embeds, context_negative_prompt_embeds = get_prompt_embedding(context_indices)
+                        if self.do_classifier_free_guidance:
+                            context_prompt_embeds = torch.cat([context_negative_prompt_embeds, context_prompt_embeds])
+                        
+                        # predict the noise residual
+                        noise_pred = self.unet(
+                            latent_model_input,
+                            t,
+                            encoder_hidden_states=context_prompt_embeds,
+                            cross_attention_kwargs=cross_attention_kwargs,
+                            added_cond_kwargs=added_cond_kwargs,
+                        ).sample
+
+                        total_noise_preds[:, :, context_indices] += noise_pred
+                        total_counts[:, :, context_indices] += 1
 
                     # perform guidance
                     if self.do_classifier_free_guidance:
-                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred_uncond, noise_pred_text = (total_noise_preds / total_counts).chunk(2)
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
+                    
                     # compute the previous noisy sample x_t -> x_t-1
                     latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                    print("latents:", latents.min(), latents.max(), total_counts.squeeze())
 
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
@@ -808,7 +895,7 @@ class AnimateDiffPipeline(
         if output_type == "latent":
             video = latents
         else:
-            video_tensor = self.decode_latents(latents)
+            video_tensor = self.decode_latents(latents, decode_batch_size)
             video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 10. Offload all models
