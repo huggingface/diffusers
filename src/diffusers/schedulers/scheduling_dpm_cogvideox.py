@@ -30,8 +30,8 @@ from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
 @dataclass
-# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->DDIM
-class DDIMSchedulerOutput(BaseOutput):
+# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->CogVideoX
+class CogVideoXDPMSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's `step` function output.
 
@@ -93,6 +93,7 @@ def betas_for_alpha_bar(
     return torch.tensor(betas, dtype=torch.float32)
 
 
+# Copied from diffusers.schedulers.scheduling_ddim_cogvideox.rescale_zero_terminal_snr
 def rescale_zero_terminal_snr(alphas_cumprod):
     """
     Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
@@ -231,16 +232,6 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
 
-    def _get_variance(self, timestep, prev_timestep):
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
-        beta_prod_t = 1 - alpha_prod_t
-        beta_prod_t_prev = 1 - alpha_prod_t_prev
-
-        variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
-
-        return variance
-
     def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -339,7 +330,7 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
         generator=None,
         variance_noise: Optional[torch.Tensor] = None,
         return_dict: bool = False,
-    ) -> Union[DDIMSchedulerOutput, Tuple]:
+    ) -> Union[CogVideoXDPMSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -364,12 +355,13 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
                 Alternative to generating noise with `generator` by directly providing the noise for the variance
                 itself. Useful for methods such as [`CycleDiffusion`].
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] or `tuple`.
+                Whether or not to return a [`~schedulers.scheduling_dpm_cogvideox.CogVideoXDPMDPMSchedulerOutput`] or
+                `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] or `tuple`:
-                If return_dict is `True`, [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] is returned, otherwise a
-                tuple is returned where the first element is the sample tensor.
+            [`~schedulers.scheduling_dpm_cogvideox.CogVideoXDPMSchedulerOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_dpm_cogvideox.CogVideoXDPMSchedulerOutput`] is
+                returned, otherwise a tuple is returned where the first element is the sample tensor.
 
         """
         if self.num_inference_steps is None:
@@ -436,7 +428,7 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample, pred_original_sample)
 
-        return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+        return CogVideoXDPMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(

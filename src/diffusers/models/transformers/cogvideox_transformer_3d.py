@@ -269,7 +269,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
             output_dim=2 * inner_dim,
             norm_elementwise_affine=norm_elementwise_affine,
             norm_eps=norm_eps,
-            use_embedding=False,
+            chunk_dim=1,
         )
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 

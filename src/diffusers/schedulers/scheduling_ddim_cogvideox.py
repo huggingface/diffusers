@@ -29,8 +29,8 @@ from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
 @dataclass
-# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->DDIM
-class DDIMSchedulerOutput(BaseOutput):
+# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->CogVideoXDDIM
+class CogVideoXDDIMSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's `step` function output.
 
@@ -312,7 +312,7 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         generator=None,
         variance_noise: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[DDIMSchedulerOutput, Tuple]:
+    ) -> Union[CogVideoXDDIMSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -337,12 +337,13 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
                 Alternative to generating noise with `generator` by directly providing the noise for the variance
                 itself. Useful for methods such as [`CycleDiffusion`].
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] or `tuple`.
+                Whether or not to return a [`~schedulers.scheduling_ddim_cogvideox.CogVideoXDDIMSchedulerOutput`] or
+                `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] or `tuple`:
-                If return_dict is `True`, [`~schedulers.scheduling_ddim.DDIMSchedulerOutput`] is returned, otherwise a
-                tuple is returned where the first element is the sample tensor.
+            [`~schedulers.scheduling_ddim_cogvideox.CogVideoXDDIMSchedulerOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_ddim_cogvideox.CogVideoXDDIMSchedulerOutput`] is
+                returned, otherwise a tuple is returned where the first element is the sample tensor.
 
         """
         if self.num_inference_steps is None:
@@ -392,41 +393,11 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         b_t = alpha_prod_t_prev**0.5 - alpha_prod_t**0.5 * a_t
 
         prev_sample = a_t * sample + b_t * pred_original_sample
-        # breakpoint()
-        # # 5. compute variance: "sigma_t(η)" -> see formula (16)
-        # # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
-        # variance = self._get_variance(timestep, prev_timestep)
-        # std_dev_t = eta * variance ** (0.5)
-
-        # if use_clipped_model_output:
-        #     # the pred_epsilon is always re-derived from the clipped x_0 in Glide
-        #     pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
-
-        # # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        # pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * pred_epsilon
-
-        # # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        # prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
-
-        # if eta > 0:
-        #     if variance_noise is not None and generator is not None:
-        #         raise ValueError(
-        #             "Cannot pass both generator and variance_noise. Please make sure that either `generator` or"
-        #             " `variance_noise` stays `None`."
-        #         )
-
-        #     if variance_noise is None:
-        #         variance_noise = randn_tensor(
-        #             model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
-        #         )
-        #     variance = std_dev_t * variance_noise
-
-        #     prev_sample = prev_sample + variance
 
         if not return_dict:
             return (prev_sample,)
 
-        return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+        return CogVideoXDDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
