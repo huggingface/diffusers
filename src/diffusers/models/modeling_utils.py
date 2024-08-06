@@ -447,8 +447,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
 
-                <Deprecated>Use the `variant` parameter instead.</Deprecated>
+                <Deprecated>
                 
+                Use the `variant` parameter instead.
+                
+                </Deprecated>
+
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
             from_flax (`bool`, *optional*, defaults to `False`):
