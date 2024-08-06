@@ -57,9 +57,10 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AutoPipelineForText2Image
 
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
-        ...     "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16,
+        ...     "stabilityai/stable-diffusion-3-medium-diffusers",
+        ...     torch_dtype=torch.float16,
         ...     enable_pag=True,
-        ...     pag_applied_layers=["13"]
+        ...     pag_applied_layers=["13"],
         ... )
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
@@ -181,9 +182,8 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
         tokenizer_2: CLIPTokenizer,
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
-        pag_applied_layers: Union[str, List[str]] = "blocks.1", # 1st transformer block
+        pag_applied_layers: Union[str, List[str]] = "blocks.1",  # 1st transformer block
     ):
-
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -211,7 +211,6 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
         self.set_pag_applied_layers(
             pag_applied_layers, pag_attn_processors=(PAGCFGJointAttnProcessor2_0(), PAGJointAttnProcessor2_0())
         )
-
 
     def _get_t5_prompt_embeds(
         self,
@@ -797,7 +796,7 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
         self._pag_scale = pag_scale
-        self._pag_adaptive_scale = pag_adaptive_scale #
+        self._pag_adaptive_scale = pag_adaptive_scale  #
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

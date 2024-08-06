@@ -27,11 +27,11 @@ else:
     _import_structure["pipeline_pag_hunyuandit"] = ["HunyuanDiTPAGPipeline"]
     _import_structure["pipeline_pag_pixart_sigma"] = ["PixArtSigmaPAGPipeline"]
     _import_structure["pipeline_pag_sd"] = ["StableDiffusionPAGPipeline"]
+    _import_structure["pipeline_pag_sd_3"] = ["StableDiffusion3PAGPipeline"]
     _import_structure["pipeline_pag_sd_animatediff"] = ["AnimateDiffPAGPipeline"]
     _import_structure["pipeline_pag_sd_xl"] = ["StableDiffusionXLPAGPipeline"]
     _import_structure["pipeline_pag_sd_xl_img2img"] = ["StableDiffusionXLPAGImg2ImgPipeline"]
     _import_structure["pipeline_pag_sd_xl_inpaint"] = ["StableDiffusionXLPAGInpaintPipeline"]
-    _import_structure["pipeline_pag_sd_3"] = ["StableDiffusion3PAGPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:

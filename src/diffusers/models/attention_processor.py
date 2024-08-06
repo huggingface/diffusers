@@ -1111,7 +1111,9 @@ class PAGJointAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("PAGJointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "PAGJointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
 
     def __call__(
         self,
@@ -1130,7 +1132,9 @@ class PAGJointAttnProcessor2_0:
             batch_size, channel, height, width = encoder_hidden_states.shape
             encoder_hidden_states = encoder_hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        identity_block_size = hidden_states.shape[1] # patch embeddings width * height (correspond to self-attention map width or height)
+        identity_block_size = hidden_states.shape[
+            1
+        ]  # patch embeddings width * height (correspond to self-attention map width or height)
 
         # chunk
         hidden_states_org, hidden_states_ptb = hidden_states.chunk(2)
@@ -1160,7 +1164,9 @@ class PAGJointAttnProcessor2_0:
         key_org = key_org.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value_org = value_org.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        hidden_states_org = F.scaled_dot_product_attention(query_org, key_org, value_org, dropout_p=0.0, is_causal=False)
+        hidden_states_org = F.scaled_dot_product_attention(
+            query_org, key_org, value_org, dropout_p=0.0, is_causal=False
+        )
         hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states_org = hidden_states_org.to(query_org.dtype)
 
@@ -1180,7 +1186,9 @@ class PAGJointAttnProcessor2_0:
         if input_ndim == 4:
             hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
         if context_input_ndim == 4:
-            encoder_hidden_states_org = encoder_hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            encoder_hidden_states_org = encoder_hidden_states_org.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         ################## perturbed path ##################
 
@@ -1212,7 +1220,7 @@ class PAGJointAttnProcessor2_0:
         full_mask = torch.zeros((seq_len, seq_len), device=query_ptb.device, dtype=query_ptb.dtype)
 
         # set the attention value between image patches to -inf
-        full_mask[:identity_block_size, :identity_block_size] = float('-inf')
+        full_mask[:identity_block_size, :identity_block_size] = float("-inf")
 
         # set the diagonal of the attention value between image patches to 0
         full_mask[:identity_block_size, :identity_block_size].fill_diagonal_(0)
@@ -1220,7 +1228,9 @@ class PAGJointAttnProcessor2_0:
         # expand the mask to match the attention weights shape
         full_mask = full_mask.unsqueeze(0).unsqueeze(0)  # Add batch and num_heads dimensions
 
-        hidden_states_ptb = F.scaled_dot_product_attention(query_ptb, key_ptb, value_ptb, attn_mask=full_mask, dropout_p=0.0, is_causal=False)
+        hidden_states_ptb = F.scaled_dot_product_attention(
+            query_ptb, key_ptb, value_ptb, attn_mask=full_mask, dropout_p=0.0, is_causal=False
+        )
         hidden_states_ptb = hidden_states_ptb.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states_ptb = hidden_states_ptb.to(query_ptb.dtype)
 
@@ -1240,7 +1250,9 @@ class PAGJointAttnProcessor2_0:
         if input_ndim == 4:
             hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
         if context_input_ndim == 4:
-            encoder_hidden_states_ptb = encoder_hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            encoder_hidden_states_ptb = encoder_hidden_states_ptb.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         ################ concat ###############
         hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
@@ -1254,7 +1266,9 @@ class PAGCFGJointAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("PAGCFGJointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "PAGCFGJointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
 
     def __call__(
         self,
@@ -1276,13 +1290,19 @@ class PAGCFGJointAttnProcessor2_0:
             batch_size, channel, height, width = encoder_hidden_states.shape
             encoder_hidden_states = encoder_hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        identity_block_size = hidden_states.shape[1] # patch embeddings width * height (correspond to self-attention map width or height)
+        identity_block_size = hidden_states.shape[
+            1
+        ]  # patch embeddings width * height (correspond to self-attention map width or height)
 
         # chunk
         hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
         hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
 
-        encoder_hidden_states_uncond, encoder_hidden_states_org, encoder_hidden_states_ptb =encoder_hidden_states.chunk(3)
+        (
+            encoder_hidden_states_uncond,
+            encoder_hidden_states_org,
+            encoder_hidden_states_ptb,
+        ) = encoder_hidden_states.chunk(3)
         encoder_hidden_states_org = torch.cat([encoder_hidden_states_uncond, encoder_hidden_states_org])
 
         ################## original path ##################
@@ -1309,7 +1329,9 @@ class PAGCFGJointAttnProcessor2_0:
         key_org = key_org.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value_org = value_org.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        hidden_states_org = F.scaled_dot_product_attention(query_org, key_org, value_org, dropout_p=0.0, is_causal=False)
+        hidden_states_org = F.scaled_dot_product_attention(
+            query_org, key_org, value_org, dropout_p=0.0, is_causal=False
+        )
         hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states_org = hidden_states_org.to(query_org.dtype)
 
@@ -1329,7 +1351,9 @@ class PAGCFGJointAttnProcessor2_0:
         if input_ndim == 4:
             hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
         if context_input_ndim == 4:
-            encoder_hidden_states_org = encoder_hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            encoder_hidden_states_org = encoder_hidden_states_org.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         ################## perturbed path ##################
 
@@ -1361,7 +1385,7 @@ class PAGCFGJointAttnProcessor2_0:
         full_mask = torch.zeros((seq_len, seq_len), device=query_ptb.device, dtype=query_ptb.dtype)
 
         # set the attention value between image patches to -inf
-        full_mask[:identity_block_size, :identity_block_size] = float('-inf')
+        full_mask[:identity_block_size, :identity_block_size] = float("-inf")
 
         # set the diagonal of the attention value between image patches to 0
         full_mask[:identity_block_size, :identity_block_size].fill_diagonal_(0)
@@ -1369,7 +1393,9 @@ class PAGCFGJointAttnProcessor2_0:
         # expand the mask to match the attention weights shape
         full_mask = full_mask.unsqueeze(0).unsqueeze(0)  # Add batch and num_heads dimensions
 
-        hidden_states_ptb = F.scaled_dot_product_attention(query_ptb, key_ptb, value_ptb, attn_mask=full_mask, dropout_p=0.0, is_causal=False)
+        hidden_states_ptb = F.scaled_dot_product_attention(
+            query_ptb, key_ptb, value_ptb, attn_mask=full_mask, dropout_p=0.0, is_causal=False
+        )
         hidden_states_ptb = hidden_states_ptb.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states_ptb = hidden_states_ptb.to(query_ptb.dtype)
 
@@ -1389,7 +1415,9 @@ class PAGCFGJointAttnProcessor2_0:
         if input_ndim == 4:
             hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
         if context_input_ndim == 4:
-            encoder_hidden_states_ptb = encoder_hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            encoder_hidden_states_ptb = encoder_hidden_states_ptb.transpose(-1, -2).reshape(
+                batch_size, channel, height, width
+            )
 
         ################ concat ###############
         hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
