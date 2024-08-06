@@ -163,9 +163,10 @@ class CogVideoXSpatialNorm3D(nn.Module):
         self,
         f_channels: int,
         zq_channels: int,
+        groups: int = 32,
     ):
         super().__init__()
-        self.norm_layer = nn.GroupNorm(num_channels=f_channels, num_groups=32, eps=1e-6, affine=True)
+        self.norm_layer = nn.GroupNorm(num_channels=f_channels, num_groups=groups, eps=1e-6, affine=True)
         self.conv_y = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
         self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
 
@@ -232,10 +233,12 @@ class CogVideoXResnetBlock3D(nn.Module):
             self.norm1 = CogVideoXSpatialNorm3D(
                 f_channels=in_channels,
                 zq_channels=spatial_norm_dim,
+                groups=groups,
             )
             self.norm2 = CogVideoXSpatialNorm3D(
                 f_channels=out_channels,
                 zq_channels=spatial_norm_dim,
+                groups=groups,
             )
 
         self.conv1 = CogVideoXCausalConv3d(
@@ -537,6 +540,8 @@ class CogVideoXUpBlock3D(nn.Module):
                 ]
             )
 
+        self.gradient_checkpointing = False
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -803,7 +808,7 @@ class CogVideoXDecoder3D(nn.Module):
 
             self.up_blocks.append(up_block)
 
-        self.norm_out = CogVideoXSpatialNorm3D(reversed_block_out_channels[-1], in_channels)
+        self.norm_out = CogVideoXSpatialNorm3D(reversed_block_out_channels[-1], in_channels, groups=norm_num_groups)
         self.conv_act = nn.SiLU()
         self.conv_out = CogVideoXCausalConv3d(
             reversed_block_out_channels[-1], out_channels, kernel_size=3, pad_mode=pad_mode
@@ -852,7 +857,8 @@ class CogVideoXDecoder3D(nn.Module):
 
 class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
-    A VAE model with KL loss for encodfing images into latents and decoding latent representations into images.
+    A VAE model with KL loss for encoding images into latents and decoding latent representations into images. Used in
+    [CogVideoX](https://github.com/THUDM/CogVideo).
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -879,9 +885,6 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             If enabled it will force the VAE to run in float32 for high image resolution pipelines, such as SD-XL. VAE
             can be fine-tuned / trained to a lower range without loosing too much precision in which case
             `force_upcast` can be set to `False` - see: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix
-        mid_block_add_attention (`bool`, *optional*, default to `True`):
-            If enabled, the mid_block of the Encoder and Decoder will have attention blocks. If set to false, the
-            mid_block will only have resnet blocks
     """
 
     _supports_gradient_checkpointing = True
@@ -919,7 +922,6 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         force_upcast: float = True,
         use_quant_conv: bool = False,
         use_post_quant_conv: bool = False,
-        mid_block_add_attention: bool = True,
     ):
         super().__init__()
 

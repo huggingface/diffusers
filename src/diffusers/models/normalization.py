@@ -34,7 +34,11 @@ class AdaLayerNorm(nn.Module):
 
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.
-        num_embeddings (`int`): The size of the embeddings dictionary.
+        num_embeddings (`int`, *optional*): The size of the embeddings dictionary.
+        output_dim (`int`, *optional*):
+        norm_elementwise_affine (`bool`, defaults to `False):
+        norm_eps (`bool`, defaults to `False`):
+        chunk_dim (`int`, defaults to `0`):
     """
 
     def __init__(

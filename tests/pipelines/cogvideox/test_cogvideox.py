@@ -14,14 +14,13 @@
 
 import gc
 import inspect
-import tempfile
 import unittest
 
 import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKL, CogVideoXPipeline, CogVideoXTransformer3DModel, DDIMScheduler
+from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3DModel, DDIMScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -43,41 +42,71 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-
-    required_optional_params = PipelineTesterMixin.required_optional_params
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "generator",
+            "latents",
+            "return_dict",
+            "callback_on_step_end",
+            "callback_on_step_end_tensor_inputs",
+        ]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = CogVideoXTransformer3DModel(
-            sample_size=8,
-            num_layers=1,
-            patch_size=2,
+            # Product of num_attention_heads * attention_head_dim must be divisible by 16 for 3D positional embeddings
+            # But, since we are using tiny-random-t5 here, we need the internal dim of CogVideoXTransformer3DModel
+            # to be 32. The internal dim is product of num_attention_heads and attention_head_dim
+            num_attention_heads=4,
             attention_head_dim=8,
-            num_attention_heads=3,
-            caption_channels=32,
             in_channels=4,
-            cross_attention_dim=24,
-            out_channels=8,
-            attention_bias=True,
-            activation_fn="gelu-approximate",
-            num_embeds_ada_norm=1000,
-            norm_type="ada_norm_single",
-            norm_elementwise_affine=False,
-            norm_eps=1e-6,
+            out_channels=4,
+            time_embed_dim=2,
+            text_embed_dim=32,  # Must match with tiny-random-t5
+            num_layers=1,
+            sample_width=16,  # latent width: 2 -> final width: 16
+            sample_height=16,  # latent height: 2 -> final height: 16
+            sample_frames=9,  # latent frames: (9 - 1) / 4 + 1 = 3 -> final frames: 9
+            patch_size=2,
+            temporal_compression_ratio=4,
+            max_text_seq_length=16,
         )
-        torch.manual_seed(0)
-        vae = AutoencoderKL()
 
+        torch.manual_seed(0)
+        vae = AutoencoderKLCogVideoX(
+            in_channels=3,
+            out_channels=3,
+            down_block_types=(
+                "CogVideoXDownBlock3D",
+                "CogVideoXDownBlock3D",
+                "CogVideoXDownBlock3D",
+                "CogVideoXDownBlock3D",
+            ),
+            up_block_types=(
+                "CogVideoXUpBlock3D",
+                "CogVideoXUpBlock3D",
+                "CogVideoXUpBlock3D",
+                "CogVideoXUpBlock3D",
+            ),
+            block_out_channels=(8, 8, 8, 8),
+            latent_channels=4,
+            layers_per_block=1,
+            norm_num_groups=2,
+            temporal_compression_ratio=4,
+        )
+
+        torch.manual_seed(0)
         scheduler = DDIMScheduler()
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
-
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         components = {
-            "transformer": transformer.eval(),
-            "vae": vae.eval(),
+            "transformer": transformer,
+            "vae": vae,
             "scheduler": scheduler,
-            "text_encoder": text_encoder.eval(),
+            "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
         return components
@@ -88,16 +117,22 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
-            "negative_prompt": "low quality",
+            "prompt": "dance monkey",
+            "negative_prompt": "",
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 5.0,
-            "height": 8,
-            "width": 8,
-            "video_length": 1,
+            "guidance_scale": 6.0,
+            # Cannot reduce because convolution kernel becomes bigger than sample
+            "height": 16,
+            "width": 16,
+            # TODO(aryan): improve this
+            # Cannot make this lower due to assert condition in pipeline at the moment.
+            # The reason why 8 can't be used here is due to how context-parallel cache works where the first
+            # second of video is decoded from latent frames (0, 3) instead of [(0, 2), (2, 3)]. If 8 is used,
+            # the number of output frames that you get are 5.
+            "num_frames": 8,
+            "max_sequence_length": 16,
             "output_type": "pt",
-            "clean_caption": False,
         }
         return inputs
 
@@ -113,8 +148,8 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (1, 3, 8, 8))
-        expected_video = torch.randn(1, 3, 8, 8)
+        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
+        expected_video = torch.randn(9, 3, 16, 16)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
@@ -180,75 +215,40 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
 
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    def test_save_load_optional_components(self):
-        if not hasattr(self.pipeline_class, "_optional_components"):
+    def test_attention_slicing_forward_pass(
+        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
+    ):
+        if not self.test_attention_slicing:
             return
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        output_without_slicing = pipe(**inputs)[0]
 
-        prompt = inputs["prompt"]
-        generator = inputs["generator"]
+        pipe.enable_attention_slicing(slice_size=1)
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_slicing1 = pipe(**inputs)[0]
 
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-        ) = pipe.encode_prompt(prompt)
+        pipe.enable_attention_slicing(slice_size=2)
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_slicing2 = pipe(**inputs)[0]
 
-        # inputs with prompt converted to embeddings
-        inputs = {
-            "prompt_embeds": prompt_embeds,
-            "negative_prompt": None,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "generator": generator,
-            "num_inference_steps": 2,
-            "guidance_scale": 5.0,
-            "height": 8,
-            "width": 8,
-            "video_length": 1,
-            "mask_feature": False,
-            "output_type": "pt",
-            "clean_caption": False,
-        }
-
-        # set all optional components to None
-        for optional_component in pipe._optional_components:
-            setattr(pipe, optional_component, None)
-
-        output = pipe(**inputs)[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir, safe_serialization=False)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(torch_device)
-
-            for component in pipe_loaded.components.values():
-                if hasattr(component, "set_default_attn_processor"):
-                    component.set_default_attn_processor()
-
-            pipe_loaded.set_progress_bar_config(disable=None)
-
-        for optional_component in pipe._optional_components:
-            self.assertTrue(
-                getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
+        if test_max_difference:
+            max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
+            max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
+            self.assertLess(
+                max(max_diff1, max_diff2),
+                expected_max_diff,
+                "Attention slicing should not affect the inference results",
             )
-
-        output_loaded = pipe_loaded(**inputs)[0]
-
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1.0)
 
 
 @slow
@@ -269,21 +269,22 @@ class CogVideoXPipelineIntegrationTests(unittest.TestCase):
     def test_cogvideox(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = CogVideoXPipeline.from_pretrained("THUDM/cogvideox-2b", torch_dtype=torch.float16)
+        pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
         prompt = self.prompt
 
         videos = pipe(
             prompt=prompt,
-            height=512,
-            width=512,
+            height=480,
+            width=720,
+            num_frames=16,
             generator=generator,
             num_inference_steps=2,
-            clean_caption=False,
+            output_type="pt",
         ).frames
 
         video = videos[0]
-        expected_video = torch.randn(1, 512, 512, 3).numpy()
+        expected_video = torch.randn(1, 16, 480, 720, 3).numpy()
 
-        max_diff = numpy_cosine_similarity_distance(video.fCogVideoXn(), expected_video)
-        assert max_diff < 1e-3, f"Max diff is too high. got {video.fCogVideoXn()}"
+        max_diff = numpy_cosine_similarity_distance(video, expected_video)
+        assert max_diff < 1e-3, f"Max diff is too high. got {video}"

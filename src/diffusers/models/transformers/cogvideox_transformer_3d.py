@@ -34,7 +34,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 @maybe_allow_in_graph
 class CogVideoXBlock(nn.Module):
     r"""
-    Transformer block used in CogVideoX model. TODO: add link to CogVideoX upon release
+    Transformer block used in [CogVideoX](https://github.com/THUDM/CogVideo) model.
 
     Parameters:
         dim (`int`): The number of channels in the input and output.
@@ -144,7 +144,7 @@ class CogVideoXBlock(nn.Module):
 
 class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
     """
-    A Transformer model for video-like data in CogVideoX. TODO: add link to CogVideoX upon release
+    A Transformer model for video-like data in [CogVideoX](https://github.com/THUDM/CogVideo).
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
@@ -262,7 +262,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
             output_dim=2 * inner_dim,
             norm_elementwise_affine=norm_elementwise_affine,
             norm_eps=norm_eps,
-            use_embedding=False,
+            chunk_dim=1,
         )
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 

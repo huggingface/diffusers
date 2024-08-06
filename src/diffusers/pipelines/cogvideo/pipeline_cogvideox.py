@@ -153,7 +153,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
     """
 
-    _optional_components = ["tokenizer", "text_encoder"]
+    _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
 
     _callback_tensor_inputs = [
@@ -180,9 +180,6 @@ class CogVideoXPipeline(DiffusionPipeline):
         )
         self.vae_scale_factor_temporal = (
             self.vae.config.temporal_compression_ratio if hasattr(self, "vae") and self.vae is not None else 4
-        )
-        self.tokenizer_max_length = (
-            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 226
         )
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
@@ -213,7 +210,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer_max_length - 1 : -1])
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because `max_sequence_length` is set to "
                 f" {max_sequence_length} tokens: {removed_text}"
@@ -459,6 +456,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        max_sequence_length: int = 226,
     ) -> Union[CogVideoXPipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -524,6 +522,9 @@ class CogVideoXPipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            max_sequence_length (`int`, defaults to `226`):
+                Maximum sequence length in encoded prompt. Must be consistent with
+                `self.transformer.config.max_text_seq_length` otherwise may lead to poor results.
 
         Examples:
 
@@ -580,6 +581,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             num_videos_per_prompt=num_videos_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            max_sequence_length=max_sequence_length,
             device=device,
         )
         if do_classifier_free_guidance:
@@ -670,7 +672,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        if not output_type == "latents":
+        if not output_type == "latent":
             video = self.decode_latents(latents, num_frames // fps)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
