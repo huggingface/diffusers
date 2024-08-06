@@ -10,6 +10,7 @@ from ..utils import (
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
+    is_sentencepiece_available,
     is_torch_available,
     is_torch_npu_available,
     is_transformers_available,
@@ -145,6 +146,7 @@ else:
     _import_structure["pag"].extend(
         [
             "AnimateDiffPAGPipeline",
+            "HunyuanDiTPAGPipeline",
             "StableDiffusionPAGPipeline",
             "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
@@ -203,12 +205,6 @@ else:
     _import_structure["kandinsky3"] = [
         "Kandinsky3Img2ImgPipeline",
         "Kandinsky3Pipeline",
-    ]
-    _import_structure["kolors"] = [
-        "KolorsPipeline",
-        "KolorsImg2ImgPipeline",
-        "ChatGLMModel",
-        "ChatGLMTokenizer",
     ]
     _import_structure["latent_consistency_models"] = [
         "LatentConsistencyModelImg2ImgPipeline",
@@ -349,6 +345,22 @@ else:
         "StableDiffusionKDiffusionPipeline",
         "StableDiffusionXLKDiffusionPipeline",
     ]
+
+try:
+    if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils import (
+        dummy_torch_and_transformers_and_sentencepiece_objects,
+    )
+
+    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_sentencepiece_objects))
+else:
+    _import_structure["kolors"] = [
+        "KolorsPipeline",
+        "KolorsImg2ImgPipeline",
+    ]
+
 try:
     if not is_flax_available():
         raise OptionalDependencyNotAvailable()
@@ -506,12 +518,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
         )
-        from .kolors import (
-            ChatGLMModel,
-            ChatGLMTokenizer,
-            KolorsImg2ImgPipeline,
-            KolorsPipeline,
-        )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
@@ -532,6 +538,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .musicldm import MusicLDMPipeline
         from .pag import (
             AnimateDiffPAGPipeline,
+            HunyuanDiTPAGPipeline,
             PixArtSigmaPAGPipeline,
             StableDiffusionControlNetPAGPipeline,
             StableDiffusionPAGPipeline,
@@ -638,6 +645,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .stable_diffusion_k_diffusion import (
                 StableDiffusionKDiffusionPipeline,
                 StableDiffusionXLKDiffusionPipeline,
+            )
+
+        try:
+            if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
+                raise OptionalDependencyNotAvailable()
+        except OptionalDependencyNotAvailable:
+            from ..utils.dummy_torch_and_transformers_and_sentencepiece_objects import *
+        else:
+            from .kolors import (
+                KolorsImg2ImgPipeline,
+                KolorsPipeline,
             )
 
         try:

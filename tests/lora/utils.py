@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import os
 import tempfile
 import unittest
@@ -19,14 +20,12 @@ from itertools import product
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     FlowMatchEulerDiscreteScheduler,
     LCMScheduler,
-    SD3Transformer2DModel,
     UNet2DConditionModel,
 )
 from diffusers.utils.import_utils import is_peft_available
@@ -72,9 +71,19 @@ class PeftLoraLoaderMixinTests:
     pipeline_class = None
     scheduler_cls = None
     scheduler_kwargs = None
+    uses_flow_matching = False
+
     has_two_text_encoders = False
     has_three_text_encoders = False
+    text_encoder_cls, text_encoder_id = None, None
+    text_encoder_2_cls, text_encoder_2_id = None, None
+    text_encoder_3_cls, text_encoder_3_id = None, None
+    tokenizer_cls, tokenizer_id = None, None
+    tokenizer_2_cls, tokenizer_2_id = None, None
+    tokenizer_3_cls, tokenizer_3_id = None, None
+
     unet_kwargs = None
+    transformer_cls = None
     transformer_kwargs = None
     vae_kwargs = None
 
@@ -91,28 +100,23 @@ class PeftLoraLoaderMixinTests:
         if self.unet_kwargs is not None:
             unet = UNet2DConditionModel(**self.unet_kwargs)
         else:
-            transformer = SD3Transformer2DModel(**self.transformer_kwargs)
+            transformer = self.transformer_cls(**self.transformer_kwargs)
 
         scheduler = scheduler_cls(**self.scheduler_kwargs)
 
         torch.manual_seed(0)
         vae = AutoencoderKL(**self.vae_kwargs)
 
-        if not self.has_three_text_encoders:
-            text_encoder = CLIPTextModel.from_pretrained("peft-internal-testing/tiny-clip-text-2")
-            tokenizer = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
+        text_encoder = self.text_encoder_cls.from_pretrained(self.text_encoder_id)
+        tokenizer = self.tokenizer_cls.from_pretrained(self.tokenizer_id)
 
-        if self.has_two_text_encoders:
-            text_encoder_2 = CLIPTextModelWithProjection.from_pretrained("peft-internal-testing/tiny-clip-text-2")
-            tokenizer_2 = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
+        if self.text_encoder_2_cls is not None:
+            text_encoder_2 = self.text_encoder_2_cls.from_pretrained(self.text_encoder_2_id)
+            tokenizer_2 = self.tokenizer_2_cls.from_pretrained(self.tokenizer_2_id)
 
-        if self.has_three_text_encoders:
-            tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-            tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-            tokenizer_3 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
-            text_encoder = CLIPTextModelWithProjection.from_pretrained("hf-internal-testing/tiny-sd3-text_encoder")
-            text_encoder_2 = CLIPTextModelWithProjection.from_pretrained("hf-internal-testing/tiny-sd3-text_encoder-2")
-            text_encoder_3 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        if self.text_encoder_3_cls is not None:
+            text_encoder_3 = self.text_encoder_3_cls.from_pretrained(self.text_encoder_3_id)
+            tokenizer_3 = self.tokenizer_3_cls.from_pretrained(self.tokenizer_3_id)
 
         text_lora_config = LoraConfig(
             r=rank,
@@ -130,44 +134,38 @@ class PeftLoraLoaderMixinTests:
             use_dora=use_dora,
         )
 
-        if self.has_two_text_encoders or self.has_three_text_encoders:
-            if self.unet_kwargs is not None:
-                pipeline_components = {
-                    "unet": unet,
-                    "scheduler": scheduler,
-                    "vae": vae,
-                    "text_encoder": text_encoder,
-                    "tokenizer": tokenizer,
-                    "text_encoder_2": text_encoder_2,
-                    "tokenizer_2": tokenizer_2,
-                    "image_encoder": None,
-                    "feature_extractor": None,
-                }
-            elif self.has_three_text_encoders and self.transformer_kwargs is not None:
-                pipeline_components = {
-                    "transformer": transformer,
-                    "scheduler": scheduler,
-                    "vae": vae,
-                    "text_encoder": text_encoder,
-                    "tokenizer": tokenizer,
-                    "text_encoder_2": text_encoder_2,
-                    "tokenizer_2": tokenizer_2,
-                    "text_encoder_3": text_encoder_3,
-                    "tokenizer_3": tokenizer_3,
-                }
-        else:
-            pipeline_components = {
-                "unet": unet,
-                "scheduler": scheduler,
-                "vae": vae,
-                "text_encoder": text_encoder,
-                "tokenizer": tokenizer,
-                "safety_checker": None,
-                "feature_extractor": None,
-                "image_encoder": None,
-            }
+        pipeline_components = {
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+        }
+        # Denoiser
+        if self.unet_kwargs is not None:
+            pipeline_components.update({"unet": unet})
+        elif self.transformer_kwargs is not None:
+            pipeline_components.update({"transformer": transformer})
+
+        # Remaining text encoders.
+        if self.text_encoder_2_cls is not None:
+            pipeline_components.update({"tokenizer_2": tokenizer_2, "text_encoder_2": text_encoder_2})
+        if self.text_encoder_3_cls is not None:
+            pipeline_components.update({"tokenizer_3": tokenizer_3, "text_encoder_3": text_encoder_3})
+
+        # Remaining stuff
+        init_params = inspect.signature(self.pipeline_class.__init__).parameters
+        if "safety_checker" in init_params:
+            pipeline_components.update({"safety_checker": None})
+        if "feature_extractor" in init_params:
+            pipeline_components.update({"feature_extractor": None})
+        if "image_encoder" in init_params:
+            pipeline_components.update({"image_encoder": None})
 
         return pipeline_components, text_lora_config, denoiser_lora_config
+
+    @property
+    def output_shape(self):
+        raise NotImplementedError
 
     def get_dummy_inputs(self, with_generator=True):
         batch_size = 1
@@ -205,9 +203,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference and makes sure it works as expected
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -217,8 +213,7 @@ class PeftLoraLoaderMixinTests:
 
             _, _, inputs = self.get_dummy_inputs()
             output_no_lora = pipe(**inputs).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
     def test_simple_inference_with_text_lora(self):
         """
@@ -226,9 +221,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -238,17 +231,18 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                lora_loadable_components = self.pipeline_class._lora_loadable_modules
+                if "text_encoder_2" in lora_loadable_components:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertTrue(
@@ -261,9 +255,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -273,17 +265,18 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                lora_loadable_components = self.pipeline_class._lora_loadable_modules
+                if "text_encoder_2" in lora_loadable_components:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertTrue(
@@ -322,9 +315,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -334,26 +325,27 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             pipe.fuse_lora()
             # Fusing should still keep the LoRA layers
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             ouput_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertFalse(
@@ -366,9 +358,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -378,17 +368,18 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                lora_loadable_components = self.pipeline_class._lora_loadable_modules
+                if "text_encoder_2" in lora_loadable_components:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             pipe.unload_lora_weights()
             # unloading should remove the LoRA layers
@@ -397,10 +388,11 @@ class PeftLoraLoaderMixinTests:
             )
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                self.assertFalse(
-                    check_if_lora_correctly_set(pipe.text_encoder_2),
-                    "Lora not correctly unloaded in text encoder 2",
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    self.assertFalse(
+                        check_if_lora_correctly_set(pipe.text_encoder_2),
+                        "Lora not correctly unloaded in text encoder 2",
+                    )
 
             ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertTrue(
@@ -413,9 +405,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple usecase where users could use saving utilities for LoRA.
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -425,37 +415,46 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
                 if self.has_two_text_encoders or self.has_three_text_encoders:
-                    text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+                    if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                        text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
 
-                    self.pipeline_class.save_lora_weights(
-                        save_directory=tmpdirname,
-                        text_encoder_lora_layers=text_encoder_state_dict,
-                        text_encoder_2_lora_layers=text_encoder_2_state_dict,
-                        safe_serialization=False,
-                    )
+                        self.pipeline_class.save_lora_weights(
+                            save_directory=tmpdirname,
+                            text_encoder_lora_layers=text_encoder_state_dict,
+                            text_encoder_2_lora_layers=text_encoder_2_state_dict,
+                            safe_serialization=False,
+                        )
                 else:
                     self.pipeline_class.save_lora_weights(
                         save_directory=tmpdirname,
                         text_encoder_lora_layers=text_encoder_state_dict,
                         safe_serialization=False,
                     )
+
+                if self.has_two_text_encoders:
+                    if "text_encoder_2" not in self.pipeline_class._lora_loadable_modules:
+                        self.pipeline_class.save_lora_weights(
+                            save_directory=tmpdirname,
+                            text_encoder_lora_layers=text_encoder_state_dict,
+                            safe_serialization=False,
+                        )
 
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
                 pipe.unload_lora_weights()
@@ -466,9 +465,10 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             self.assertTrue(
                 np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
@@ -482,9 +482,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, _, _ = self.get_dummy_components(scheduler_cls)
@@ -503,8 +501,7 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
@@ -517,17 +514,18 @@ class PeftLoraLoaderMixinTests:
             }
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-                state_dict.update(
-                    {
-                        f"text_encoder_2.{module_name}": param
-                        for module_name, param in get_peft_model_state_dict(pipe.text_encoder_2).items()
-                        if "text_model.encoder.layers.4" not in module_name
-                    }
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
+                    state_dict.update(
+                        {
+                            f"text_encoder_2.{module_name}": param
+                            for module_name, param in get_peft_model_state_dict(pipe.text_encoder_2).items()
+                            if "text_model.encoder.layers.4" not in module_name
+                        }
+                    )
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertTrue(
@@ -549,9 +547,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -561,17 +557,17 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 
@@ -587,10 +583,11 @@ class PeftLoraLoaderMixinTests:
             )
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe_from_pretrained.text_encoder_2),
-                    "Lora not correctly set in text encoder 2",
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe_from_pretrained.text_encoder_2),
+                        "Lora not correctly set in text encoder 2",
+                    )
 
             images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0)).images
 
@@ -604,14 +601,10 @@ class PeftLoraLoaderMixinTests:
         Tests a simple usecase where users could use saving utilities for LoRA for Unet + text encoder
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -621,8 +614,7 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             if self.unet_kwargs is not None:
@@ -635,10 +627,11 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 
@@ -650,32 +643,23 @@ class PeftLoraLoaderMixinTests:
                 else:
                     denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
 
-                if self.has_two_text_encoders or self.has_three_text_encoders:
-                    text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+                saving_kwargs = {
+                    "save_directory": tmpdirname,
+                    "text_encoder_lora_layers": text_encoder_state_dict,
+                    "safe_serialization": False,
+                }
 
-                    if self.unet_kwargs is not None:
-                        self.pipeline_class.save_lora_weights(
-                            save_directory=tmpdirname,
-                            text_encoder_lora_layers=text_encoder_state_dict,
-                            text_encoder_2_lora_layers=text_encoder_2_state_dict,
-                            unet_lora_layers=denoiser_state_dict,
-                            safe_serialization=False,
-                        )
-                    else:
-                        self.pipeline_class.save_lora_weights(
-                            save_directory=tmpdirname,
-                            text_encoder_lora_layers=text_encoder_state_dict,
-                            text_encoder_2_lora_layers=text_encoder_2_state_dict,
-                            transformer_lora_layers=denoiser_state_dict,
-                            safe_serialization=False,
-                        )
+                if self.unet_kwargs is not None:
+                    saving_kwargs.update({"unet_lora_layers": denoiser_state_dict})
                 else:
-                    self.pipeline_class.save_lora_weights(
-                        save_directory=tmpdirname,
-                        text_encoder_lora_layers=text_encoder_state_dict,
-                        unet_lora_layers=denoiser_state_dict,
-                        safe_serialization=False,
-                    )
+                    saving_kwargs.update({"transformer_lora_layers": denoiser_state_dict})
+
+                if self.has_two_text_encoders or self.has_three_text_encoders:
+                    if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                        text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+                        saving_kwargs.update({"text_encoder_2_lora_layers": text_encoder_2_state_dict})
+
+                self.pipeline_class.save_lora_weights(**saving_kwargs)
 
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
                 pipe.unload_lora_weights()
@@ -688,9 +672,10 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             self.assertTrue(
                 np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
@@ -703,9 +688,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -715,8 +698,7 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             if self.unet_kwargs is not None:
@@ -728,10 +710,11 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertTrue(
@@ -775,9 +758,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected - with unet
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -787,8 +768,7 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             if self.unet_kwargs is not None:
@@ -801,10 +781,11 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             pipe.fuse_lora()
             # Fusing should still keep the LoRA layers
@@ -813,9 +794,10 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             ouput_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertFalse(
@@ -828,9 +810,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -840,8 +820,7 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             if self.unet_kwargs is not None:
@@ -853,10 +832,11 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             pipe.unload_lora_weights()
             # unloading should remove the LoRA layers
@@ -869,10 +849,11 @@ class PeftLoraLoaderMixinTests:
             )
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                self.assertFalse(
-                    check_if_lora_correctly_set(pipe.text_encoder_2),
-                    "Lora not correctly unloaded in text encoder 2",
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    self.assertFalse(
+                        check_if_lora_correctly_set(pipe.text_encoder_2),
+                        "Lora not correctly unloaded in text encoder 2",
+                    )
 
             ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertTrue(
@@ -886,9 +867,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -908,10 +887,11 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             pipe.fuse_lora()
 
@@ -926,9 +906,10 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Unfuse should still keep LoRA layers")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Unfuse should still keep LoRA layers"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Unfuse should still keep LoRA layers"
+                    )
 
             # Fuse and unfuse should lead to the same results
             self.assertTrue(
@@ -942,9 +923,7 @@ class PeftLoraLoaderMixinTests:
         multiple adapters and set them
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -972,11 +951,12 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             pipe.set_adapters("adapter-1")
 
@@ -1023,9 +1003,7 @@ class PeftLoraLoaderMixinTests:
             return
 
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1047,10 +1025,11 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             weights_1 = {"text_encoder": 2, "unet": {"down": 5}}
             pipe.set_adapters("adapter-1", weights_1)
@@ -1090,9 +1069,7 @@ class PeftLoraLoaderMixinTests:
             return
 
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1120,11 +1097,12 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             scales_1 = {"text_encoder": 2, "unet": {"down": 5}}
             scales_2 = {"unet": {"down": 5, "mid": 5}}
@@ -1170,7 +1148,7 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         """Tests that any valid combination of lora block scales can be used in pipe.set_adapter"""
-        if self.pipeline_class.__name__ == "StableDiffusion3Pipeline":
+        if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "FluxPipeline"]:
             return
 
         def updown_options(blocks_with_tf, layers_per_block, value):
@@ -1249,7 +1227,9 @@ class PeftLoraLoaderMixinTests:
             pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
 
         if self.has_two_text_encoders or self.has_three_text_encoders:
-            pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+            lora_loadable_components = self.pipeline_class._lora_loadable_modules
+            if "text_encoder_2" in lora_loadable_components:
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
 
         for scale_dict in all_possible_dict_opts(pipe.unet, value=1234):
             # test if lora block scales can be set with this scale_dict
@@ -1264,9 +1244,7 @@ class PeftLoraLoaderMixinTests:
         multiple adapters and set/delete them
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1294,11 +1272,13 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                lora_loadable_components = self.pipeline_class._lora_loadable_modules
+                if "text_encoder_2" in lora_loadable_components:
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             pipe.set_adapters("adapter-1")
 
@@ -1370,9 +1350,7 @@ class PeftLoraLoaderMixinTests:
         multiple adapters and set them
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1400,11 +1378,13 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                lora_loadable_components = self.pipeline_class._lora_loadable_modules
+                if "text_encoder_2" in lora_loadable_components:
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             pipe.set_adapters("adapter-1")
 
@@ -1453,9 +1433,7 @@ class PeftLoraLoaderMixinTests:
     @skip_mps
     def test_lora_fuse_nan(self):
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1501,9 +1479,7 @@ class PeftLoraLoaderMixinTests:
         are the expected results
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1539,9 +1515,7 @@ class PeftLoraLoaderMixinTests:
         are the expected results
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1607,9 +1581,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected - with unet and multi-adapter case
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1619,8 +1591,7 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
             if self.unet_kwargs is not None:
@@ -1640,11 +1611,13 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                lora_loadable_components = self.pipeline_class._lora_loadable_modules
+                if "text_encoder_2" in lora_loadable_components:
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             # set them to multi-adapter inference mode
             pipe.set_adapters(["adapter-1", "adapter-2"])
@@ -1676,9 +1649,7 @@ class PeftLoraLoaderMixinTests:
     @require_peft_version_greater(peft_version="0.9.0")
     def test_simple_inference_with_dora(self):
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(
@@ -1690,8 +1661,7 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             output_no_dora_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            shape_to_be_checked = (1, 64, 64, 3) if self.unet_kwargs is not None else (1, 32, 32, 3)
-            self.assertTrue(output_no_dora_lora.shape == shape_to_be_checked)
+            self.assertTrue(output_no_dora_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
             if self.unet_kwargs is not None:
@@ -1704,10 +1674,12 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+                lora_loadable_components = self.pipeline_class._lora_loadable_modules
+                if "text_encoder_2" in lora_loadable_components:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
 
             output_dora_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 
@@ -1723,9 +1695,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1760,7 +1730,7 @@ class PeftLoraLoaderMixinTests:
             _ = pipe(**inputs, generator=torch.manual_seed(0)).images
 
     def test_modify_padding_mode(self):
-        if self.pipeline_class.__name__ == "StableDiffusion3Pipeline":
+        if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "FluxPipeline"]:
             return
 
         def set_pad_mode(network, mode="circular"):
@@ -1769,9 +1739,7 @@ class PeftLoraLoaderMixinTests:
                     module.padding_mode = mode
 
         scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler]
-            if self.has_three_text_encoders and self.transformer_kwargs
-            else [DDIMScheduler, LCMScheduler]
+            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
         for scheduler_cls in scheduler_classes:
             components, _, _ = self.get_dummy_components(scheduler_cls)

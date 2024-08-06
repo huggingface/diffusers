@@ -16,7 +16,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ....image_processor import VaeImageProcessor
 from ....loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
@@ -66,8 +66,8 @@ class StableDiffusionModelEditingPipeline(
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
             about a model's potential harms.
-        feature_extractor ([`~transformers.CLIPFeatureExtractor`]):
-            A `CLIPFeatureExtractor` to extract features from generated images; used as inputs to the `safety_checker`.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
         with_to_k ([`bool`]):
             Whether to edit the key projection matrices along with the value projection matrices.
         with_augs ([`list`]):
@@ -86,7 +86,7 @@ class StableDiffusionModelEditingPipeline(
         unet: UNet2DConditionModel,
         scheduler: SchedulerMixin,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
         with_to_k: bool = True,
         with_augs: list = AUGS_CONST,
