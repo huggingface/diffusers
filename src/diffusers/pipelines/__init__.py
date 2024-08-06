@@ -541,7 +541,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
             PixArtSigmaPAGPipeline,
-            StableDiffusion3Pipeline,
+            StableDiffusion3PAGPipeline,
             StableDiffusionControlNetPAGPipeline,
             StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGPipeline,
