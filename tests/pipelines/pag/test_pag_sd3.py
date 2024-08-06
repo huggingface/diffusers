@@ -255,15 +255,6 @@ class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixi
         inputs["pag_scale"] = 0.0
         out_pag_disabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
 
-        # pag enabled
-        pipe_pag = self.pipeline_class(**components)
-        pipe_pag = pipe_pag.to(device)
-        pipe_pag.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["pag_scale"] = 3.0
-        out_pag_enabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
-
         assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
 
     def test_pag_applied_layers(self):
