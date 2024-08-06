@@ -837,6 +837,7 @@ class LEditsPPPipelineStableDiffusion(
 
         org_prompt = ""
 
+        # TODO: Check LEdits++ inputs + verify that invert has been run properly
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             negative_prompt,
@@ -926,6 +927,7 @@ class LEditsPPPipelineStableDiffusion(
 
         # 7. Denoising loop
         num_warmup_steps = 0
+        # TODO: Refactor out SEGA/LEdits++ functionality
         with self.progress_bar(total=len(timesteps)) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
