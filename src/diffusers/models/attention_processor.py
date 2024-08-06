@@ -1132,9 +1132,9 @@ class PAGJointAttnProcessor2_0:
             batch_size, channel, height, width = encoder_hidden_states.shape
             encoder_hidden_states = encoder_hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        identity_block_size = hidden_states.shape[
-            1
-        ]  # patch embeddings width * height (correspond to self-attention map width or height)
+        # store the length of image patch sequences to create a mask that prevents interaction between patches
+        # similar to making the self-attention map an identity matrix
+        identity_block_size = hidden_states.shape[1]
 
         # chunk
         hidden_states_org, hidden_states_ptb = hidden_states.chunk(2)
