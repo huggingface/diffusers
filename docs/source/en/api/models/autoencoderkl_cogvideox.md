@@ -11,18 +11,16 @@ specific language governing permissions and limitations under the License. -->
 
 # AutoencoderKLCogVideoX
 
-The 3D variational autoencoder (VAE) model with KL loss using CogVideoX.
+The 3D variational autoencoder (VAE) model with KL loss using [CogVideoX](https://github.com/THUDM/CogVideo).
 
-## Loading from the original format
+TODO: add paper and abstract here
 
-By default, the [`AutoencoderKLCogVideoX`] should be loaded with [`~ModelMixin.from_pretrained`], but it can also be loaded from the original format using [`FromOriginalModelMixin.from_single_file`] as follows:
+The model can be loaded with the following code snippet.
 
-```py
+```python
 from diffusers import AutoencoderKLCogVideoX
 
-url = "THUDM/CogVideoX-2b"  # can also be a local file
-model = AutoencoderKLCogVideoX.from_single_file(url)
-
+vae = AutoencoderKLCogVideoX.from_pretrained("THUDM/CogVideoX-2b", subfolder="vae", torch_dtype=torch.float16).to("cuda")
 ```
 
 ## AutoencoderKLCogVideoX
@@ -31,39 +29,3 @@ model = AutoencoderKLCogVideoX.from_single_file(url)
     - decode
     - encode
     - all
-
-## CogVideoXSafeConv3d
-
-[[autodoc]] CogVideoXSafeConv3d
-
-## CogVideoXCausalConv3d
-
-[[autodoc]] CogVideoXCausalConv3d
-
-## CogVideoXSpatialNorm3D
-
-[[autodoc]] CogVideoXSpatialNorm3D
-
-## CogVideoXResnetBlock3D
-
-[[autodoc]] CogVideoXResnetBlock3D
-
-## CogVideoXDownBlock3D
-
-[[autodoc]] CogVideoXDownBlock3D
-
-## CogVideoXMidBlock3D
-
-[[autodoc]] CogVideoXMidBlock3D
-
-## CogVideoXUpBlock3D
-
-[[autodoc]] CogVideoXUpBlock3D
-
-## CogVideoXEncoder3D
-
-[[autodoc]] CogVideoXEncoder3D
-
-## CogVideoXDecoder3D
-
-[[autodoc]] CogVideoXDecoder3D

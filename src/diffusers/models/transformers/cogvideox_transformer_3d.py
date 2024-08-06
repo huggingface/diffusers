@@ -41,30 +41,23 @@ class CogVideoXBlock(nn.Module):
         num_attention_heads (`int`): The number of heads to use for multi-head attention.
         attention_head_dim (`int`): The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        num_embeds_ada_norm (:
-            obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
         attention_bias (:
             obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
-        only_cross_attention (`bool`, *optional*):
-            Whether to use only cross-attention layers. In this case two cross attention layers are used.
-        double_self_attention (`bool`, *optional*):
-            Whether to use two self-attention layers. In this case no cross attention layers are used.
-        upcast_attention (`bool`, *optional*):
-            Whether to upcast the attention computation to float32. This is useful for mixed precision training.
-        norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
+        qk_norm (`bool`, defaults to `True`):
+            Whether or not to use normalization after query and key projections in Attention.
+        norm_elementwise_affine (`bool`, defaults to `True`):
             Whether to use learnable elementwise affine parameters for normalization.
-        norm_type (`str`, *optional*, defaults to `"layer_norm"`):
-            The normalization layer to use. Can be `"layer_norm"`, `"ada_norm"` or `"ada_norm_zero"`.
-        final_dropout (`bool` *optional*, defaults to False):
+        norm_eps (`float`, defaults to `1e-5`):
+            Epsilon value for normalization layers.
+        final_dropout (`bool` defaults to `False`):
             Whether to apply a final dropout after the last feed-forward layer.
-        attention_type (`str`, *optional*, defaults to `"default"`):
-            The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
-        positional_embeddings (`str`, *optional*, defaults to `None`):
-            The type of positional embeddings to apply to.
-        num_positional_embeddings (`int`, *optional*, defaults to `None`):
-            The maximum number of positional embeddings to apply.
+        ff_inner_dim (`int`, *optional*, defaults to `None`):
+            Custom hidden dimension of Feed-forward layer. If not provided, `4 * dim` is used.
+        ff_bias (`bool`, defaults to `True`):
+            Whether or not to use bias in Feed-forward layer.
+        attention_out_bias (`bool`, defaults to `True`):
+            Whether or not to use bias in Attention output projection layer.
     """
 
     def __init__(

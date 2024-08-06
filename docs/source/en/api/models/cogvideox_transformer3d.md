@@ -9,9 +9,19 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License. -->
 
-## CogVideoXTransformer3DModel
+# CogVideoXTransformer3DModel
 
-A Diffusion Transformer model for 3D data from [CogVideoX](https://github.com/THUDM/CogVideoX).
+A Diffusion Transformer model for 3D data from [CogVideoX](https://github.com/THUDM/CogVideo).
+
+TODO: add paper and abstract here
+
+The model can be loaded with the following code snippet.
+
+```python
+from diffusers import CogVideoXTransformer3DModel
+
+vae = CogVideoXTransformer3DModel.from_pretrained("THUDM/CogVideoX-2b", subfolder="transformer", torch_dtype=torch.float16).to("cuda")
+```
 
 ## CogVideoXTransformer3DModel
 
