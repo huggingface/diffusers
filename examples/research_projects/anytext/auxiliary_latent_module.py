@@ -1,14 +1,8 @@
-# text -> glyph render -> glyph l_g -> glyph block ->
-# +> fuse layer
-# position l_p -> position block ->
-
-import math
 from typing import Optional
 
 import cv2
 import numpy as np
 import torch
-from einops import repeat
 from PIL import ImageFont
 from torch import nn
 
@@ -146,38 +140,11 @@ class AuxiliaryLatentModule(nn.Module):
 
         glyphs = torch.cat(text_info["glyphs"], dim=1).sum(dim=1, keepdim=True)
         positions = torch.cat(text_info["positions"], dim=1).sum(dim=1, keepdim=True)
-        t_emb = self.timestep_embedding(torch.tensor([1000], device="cuda"), self.model_channels, repeat_only=False)
-        if self.use_fp16:
-            t_emb = t_emb.half()
-        emb = self.time_embed(t_emb)
-        print(glyphs.shape, emb.shape, positions.shape, context.shape)
-        enc_glyph = self.glyph_block(glyphs.cuda(), emb, context)
-        enc_pos = self.position_block(positions.cuda(), emb, context)
+        enc_glyph = self.glyph_block(glyphs.cuda())
+        enc_pos = self.position_block(positions.cuda())
         guided_hint = self.fuse_block(torch.cat([enc_glyph, enc_pos, text_info["masked_x"].cuda()], dim=1))
 
         return guided_hint
-
-    def timestep_embedding(self, timesteps, dim, max_period=10000, repeat_only=False):
-        """
-        Create sinusoidal timestep embeddings.
-        :param timesteps: a 1-D Tensor of N indices, one per batch element.
-                        These may be fractional.
-        :param dim: the dimension of the output.
-        :param max_period: controls the minimum frequency of the embeddings.
-        :return: an [N x dim] Tensor of positional embeddings.
-        """
-        if not repeat_only:
-            half = dim // 2
-            freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
-                device=timesteps.device
-            )
-            args = timesteps[:, None].float() * freqs[None]
-            embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-            if dim % 2:
-                embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-        else:
-            embedding = repeat(timesteps, "b -> b d", d=dim)
-        return embedding
 
     def encode_first_stage(self, masked_img):
         return retrieve_latents(self.vae.encode(masked_img)) * self.vae.config.scaling_factor

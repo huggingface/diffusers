@@ -28,7 +28,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class AnyTextControlNetModel(ControlNetModel):
     """
-    A PromptDiffusionControlNet model.
+    A AnyTextControlNetModel model.
 
     Args:
         in_channels (`int`, defaults to 4):

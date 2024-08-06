@@ -1,8 +1,3 @@
-# text -> glyph render -> glyph lines -> OCR -> linear ->
-# +> Token Replacement -> FrozenCLIPEmbedderT3
-# text -> tokenizer ->
-
-
 import cv2
 import numpy as np
 import torch
