@@ -848,12 +848,14 @@ class PromptDataset(Dataset):
         return example
 
 
-def tokenize_prompt(tokenizer, prompt):
+def tokenize_prompt(tokenizer, prompt, max_sequence_length=512):
     text_inputs = tokenizer(
         prompt,
         padding="max_length",
-        max_length=77,
+        max_length=max_sequence_length,
         truncation=True,
+        return_length=False,
+        return_overflowing_tokens=False,
         return_tensors="pt",
     )
     text_input_ids = text_inputs.input_ids
@@ -1367,11 +1369,11 @@ def main(args):
         # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
         # batch prompts on all training steps
         else:
-            tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt)
-            tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt)
+            tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt, max_sequence_length=77)
+            tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt, max_sequence_length=512)
             if args.with_prior_preservation:
-                class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt)
-                class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt)
+                class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt, max_sequence_length=77)
+                class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt, max_sequence_length=512)
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
@@ -1507,8 +1509,8 @@ def main(args):
                             prompts, text_encoders, tokenizers
                         )
                     else:
-                        tokens_one = tokenize_prompt(tokenizer_one, prompts)
-                        tokens_two = tokenize_prompt(tokenizer_two, prompts)
+                        tokens_one = tokenize_prompt(tokenizer_one, prompts, max_sequence_length=77)
+                        tokens_two = tokenize_prompt(tokenizer_two, prompts, max_sequence_length=512)
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
