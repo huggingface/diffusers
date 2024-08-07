@@ -446,13 +446,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
-
                 <Deprecated version="0.13.0">
-                
                 Use the `variant` parameter instead.
-                
                 </Deprecated>
-
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
             from_flax (`bool`, *optional*, defaults to `False`):
