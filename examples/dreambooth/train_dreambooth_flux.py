@@ -47,8 +47,8 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
-    FluxTransformer2DModel,
     FluxPipeline,
+    FluxTransformer2DModel,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3
@@ -58,6 +58,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
+
 
 if is_wandb_available():
     import wandb
@@ -943,12 +944,12 @@ def encode_prompt(
     dtype = text_encoders[0].dtype
 
     pooled_prompt_embeds = _encode_prompt_with_clip(
-            text_encoder=text_encoders[0],
-            tokenizer=tokenizers[0],
-            prompt=prompt,
-            device=device if device is not None else text_encoders[0].device,
-            num_images_per_prompt=num_images_per_prompt,
-        )
+        text_encoder=text_encoders[0],
+        tokenizer=tokenizers[0],
+        prompt=prompt,
+        device=device if device is not None else text_encoders[0].device,
+        num_images_per_prompt=num_images_per_prompt,
+    )
 
     prompt_embeds = _encode_prompt_with_t5(
         text_encoder=text_encoders[1],
@@ -1099,9 +1100,7 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="scheduler"
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
-    text_encoder_one, text_encoder_two = load_text_encoders(
-        text_encoder_cls_one, text_encoder_cls_two
-    )
+    text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="vae",
@@ -1190,7 +1189,7 @@ def main(args):
                         model(**load_model.config)
                         model.load_state_dict(load_model.state_dict())
                     except Exception:
-                            raise ValueError(f"Couldn't load the model of type: ({type(model)}).")
+                        raise ValueError(f"Couldn't load the model of type: ({type(model)}).")
             else:
                 raise ValueError(f"Unsupported model found: {type(model)=}")
 
@@ -1593,9 +1592,9 @@ def main(args):
 
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=int(model_input.shape[2])*8,
-                    width=int(model_input.shape[3])*8,
-                    vae_scale_factor=16, #should this be 2 ** (len(vae.config.block_out_channels))?
+                    height=int(model_input.shape[2]) * 8,
+                    width=int(model_input.shape[3]) * 8,
+                    vae_scale_factor=16,  # should this be 2 ** (len(vae.config.block_out_channels))?
                 )
 
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
@@ -1642,9 +1641,7 @@ def main(args):
                 if accelerator.sync_gradients:
                     params_to_clip = (
                         itertools.chain(
-                            transformer.parameters(),
-                            text_encoder_one.parameters(),
-                            text_encoder_two.parameters()
+                            transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()
                         )
                         if args.train_text_encoder
                         else transformer.parameters()
@@ -1697,9 +1694,7 @@ def main(args):
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
                 if not args.train_text_encoder:
-                    text_encoder_one, text_encoder_two = load_text_encoders(
-                        text_encoder_cls_one, text_encoder_cls_two
-                    )
+                    text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -1738,9 +1733,7 @@ def main(args):
                 text_encoder_2=text_encoder_two,
             )
         else:
-            pipeline = FluxPipeline.from_pretrained(
-                args.pretrained_model_name_or_path, transformer=transformer
-            )
+            pipeline = FluxPipeline.from_pretrained(args.pretrained_model_name_or_path, transformer=transformer)
 
         # save the pipeline
         pipeline.save_pretrained(args.output_dir)

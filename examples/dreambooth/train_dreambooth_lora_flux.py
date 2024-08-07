@@ -49,12 +49,11 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
-    FluxTransformer2DModel,
     FluxPipeline,
+    FluxTransformer2DModel,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
-    _set_state_dict_into_text_encoder,
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
@@ -860,7 +859,6 @@ class PromptDataset(Dataset):
         return example
 
 
-
 def _encode_prompt_with_t5(
     text_encoder,
     tokenizer,
@@ -943,12 +941,12 @@ def encode_prompt(
     dtype = text_encoders[0].dtype
 
     pooled_prompt_embeds = _encode_prompt_with_clip(
-            text_encoder=text_encoders[0],
-            tokenizer=tokenizers[0],
-            prompt=prompt,
-            device=device if device is not None else text_encoders[0].device,
-            num_images_per_prompt=num_images_per_prompt,
-        )
+        text_encoder=text_encoders[0],
+        tokenizer=tokenizers[0],
+        prompt=prompt,
+        device=device if device is not None else text_encoders[0].device,
+        num_images_per_prompt=num_images_per_prompt,
+    )
 
     prompt_embeds = _encode_prompt_with_t5(
         text_encoder=text_encoders[1],
@@ -1098,9 +1096,7 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="scheduler"
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
-    text_encoder_one, text_encoder_two = load_text_encoders(
-        text_encoder_cls_one, text_encoder_cls_two
-    )
+    text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="vae",
@@ -1146,7 +1142,6 @@ def main(args):
         target_modules=["to_k", "to_q", "to_v", "to_out.0"],
     )
     transformer.add_adapter(transformer_lora_config)
-
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -1370,7 +1365,6 @@ def main(args):
             pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, class_pooled_prompt_embeds], dim=0)
             text_ids = torch.cat([text_ids, class_text_ids], dim=0)
 
-
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -1390,8 +1384,8 @@ def main(args):
     # Prepare everything with our `accelerator`.
     # Prepare everything with our `accelerator`.
     transformer, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            transformer, optimizer, train_dataloader, lr_scheduler
-        )
+        transformer, optimizer, train_dataloader, lr_scheduler
+    )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -1479,8 +1473,8 @@ def main(args):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
                     prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
-                            prompts, text_encoders, tokenizers
-                        )
+                        prompts, text_encoders, tokenizers
+                    )
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
@@ -1544,9 +1538,9 @@ def main(args):
                 )[0]
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=int(model_input.shape[2])*8,
-                    width=int(model_input.shape[3])*8,
-                    vae_scale_factor=16, #should this be 2 ** (len(vae.config.block_out_channels))?
+                    height=int(model_input.shape[2]) * 8,
+                    width=int(model_input.shape[3]) * 8,
+                    vae_scale_factor=16,  # should this be 2 ** (len(vae.config.block_out_channels))?
                 )
 
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
@@ -1591,7 +1585,7 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = (transformer_lora_parameters)
+                    params_to_clip = transformer_lora_parameters
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
                 optimizer.step()
@@ -1638,9 +1632,7 @@ def main(args):
 
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-                text_encoder_one, text_encoder_two = load_text_encoders(
-                        text_encoder_cls_one, text_encoder_cls_two
-                    )
+                text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -1671,10 +1663,7 @@ def main(args):
         transformer = transformer.to(torch.float32)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
-        FluxPipeline.save_lora_weights(
-            save_directory=args.output_dir,
-            transformer_lora_layers=transformer_lora_layers
-        )
+        FluxPipeline.save_lora_weights(save_directory=args.output_dir, transformer_lora_layers=transformer_lora_layers)
 
         # Final inference
         # Load previous pipeline
