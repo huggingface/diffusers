@@ -1169,18 +1169,11 @@ def main(args):
 
     def load_model_hook(models, input_dir):
         transformer_ = None
-        text_encoder_one_ = None
-        text_encoder_two_ = None
-
         while len(models) > 0:
             model = models.pop()
 
             if isinstance(model, type(unwrap_model(transformer))):
                 transformer_ = model
-            elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                text_encoder_one_ = model
-            elif isinstance(model, type(unwrap_model(text_encoder_two))):
-                text_encoder_two_ = model
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
