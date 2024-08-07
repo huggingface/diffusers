@@ -37,7 +37,7 @@ Both checkpoints have slightly difference usage which we detail below.
 
 ```python
 import torch
-from diffusers import  FluxPipeline
+from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
@@ -61,7 +61,7 @@ out.save("image.png")
 
 ```python
 import torch
-from diffusers import  FluxPipeline
+from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
@@ -73,6 +73,34 @@ out = pipe(
     height=768,
     width=1360,
     num_inference_steps=50,
+).images[0]
+out.save("image.png")
+```
+
+## Running FP16 inference
+Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.
+
+FP16 inference code:
+```python
+import torch
+from diffusers import FluxPipeline
+
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16) # can replace schnell with dev
+# to run on low vram GPUs (i.e. between 4 and 32 GB VRAM)
+pipe.enable_sequential_cpu_offload()
+pipe.vae.enable_slicing()
+pipe.vae.enable_tiling()
+
+pipe.to(torch.float16) # casting here instead of in the pipeline constructor because doing so in the constructor loads all models into CPU memory at once
+
+prompt = "A cat holding a sign that says hello world"
+out = pipe(
+    prompt=prompt,
+    guidance_scale=0.,
+    height=768,
+    width=1360,
+    num_inference_steps=4,
+    max_sequence_length=256,
 ).images[0]
 out.save("image.png")
 ```
