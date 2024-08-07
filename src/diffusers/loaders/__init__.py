@@ -67,6 +67,7 @@ if is_torch_available():
             "AuraFlowLoraLoaderMixin",
             "StableDiffusionXLLoraLoaderMixin",
             "LoraLoaderMixin",
+            "FluxLoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = ["IPAdapterMixin"]
@@ -85,6 +86,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,
                 AuraFlowLoraLoaderMixin,
+                FluxLoraLoaderMixin,
                 LoraLoaderMixin,
                 SD3LoraLoaderMixin,
                 StableDiffusionLoraLoaderMixin,
