@@ -223,7 +223,7 @@
     sections:
     - local: api/models/overview
       title: Overview
-      sections:
+    - sections:
       - local: api/models/controlnet
         title: ControlNetModel
       - local: api/models/controlnet_hunyuandit
@@ -233,7 +233,7 @@
       - local: api/models/controlnet_sparsectrl
         title: SparseControlNetModel
       title: ControlNets
-      sections:
+    - sections:
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
@@ -261,7 +261,7 @@
       - local: api/models/transformer_temporal
         title: TransformerTemporalModel
       title: Transformers
-      sections:
+    - sections:
       - local: api/models/stable_cascade_unet
         title: StableCascadeUNet
       - local: api/models/unet
@@ -277,7 +277,7 @@
       - local: api/models/uvit2d
         title: UViT2DModel
       title: UNets
-      sections:
+    - sections:
       - local: api/models/autoencoderkl
         title: AutoencoderKL
       - local: api/models/autoencoderkl_cogvideox
