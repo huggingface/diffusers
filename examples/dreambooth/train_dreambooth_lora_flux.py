@@ -1542,12 +1542,11 @@ def main(args):
                     img_ids=latent_image_ids,
                     return_dict=False,
                 )[0]
-
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=model_input.shape[2],
-                    width=model_input.shape[3],
-                    vae_scale_factor=vae.config.scaling_factor,
+                    height=int(model_input.shape[2])*8,
+                    width=int(model_input.shape[3])*8,
+                    vae_scale_factor=16, #should this be 2 ** (len(vae.config.block_out_channels))?
                 )
 
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
