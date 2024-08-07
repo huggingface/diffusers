@@ -447,7 +447,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
 
-                <Deprecated>
+                <Deprecated version="">
                 
                 Use the `variant` parameter instead.
                 
