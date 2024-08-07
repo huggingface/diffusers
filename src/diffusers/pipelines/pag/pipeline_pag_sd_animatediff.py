@@ -35,6 +35,7 @@ from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..animatediff.pipeline_output import AnimateDiffPipelineOutput
 from ..free_init_utils import FreeInitMixin
+from ..free_noise_utils import AnimateDiffFreeNoiseMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pag_utils import PAGMixin
 
@@ -83,6 +84,7 @@ class AnimateDiffPAGPipeline(
     IPAdapterMixin,
     StableDiffusionLoraLoaderMixin,
     FreeInitMixin,
+    AnimateDiffFreeNoiseMixin,
     PAGMixin,
 ):
     r"""
@@ -404,15 +406,21 @@ class AnimateDiffPAGPipeline(
 
         return ip_adapter_image_embeds
 
-    # Copied from diffusers.pipelines.text_to_video_synthesis/pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
-    def decode_latents(self, latents):
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.AnimateDiffPipeline.decode_latents
+    def decode_latents(self, latents, vae_batch_size: int = 16):
         latents = 1 / self.vae.config.scaling_factor * latents
 
         batch_size, channels, num_frames, height, width = latents.shape
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
-        image = self.vae.decode(latents).sample
-        video = image[None, :].reshape((batch_size, num_frames, -1) + image.shape[2:]).permute(0, 2, 1, 3, 4)
+        video = []
+        for i in range(0, latents.shape[0], vae_batch_size):
+            batch_latents = latents[i : i + vae_batch_size]
+            batch_latents = self.vae.decode(batch_latents).sample
+            video.append(batch_latents)
+
+        video = torch.cat(video)
+        video = video[None, :].reshape((batch_size, num_frames, -1) + video.shape[2:]).permute(0, 2, 1, 3, 4)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         video = video.float()
         return video
@@ -499,10 +507,22 @@ class AnimateDiffPAGPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
-    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.AnimateDiffPipeline.prepare_latents
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
+        # If FreeNoise is enabled, generate latents as described in Equation (7) of [FreeNoise](https://arxiv.org/abs/2310.15169)
+        if self.free_noise_enabled:
+            latents = self._prepare_latents_free_noise(
+                batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents
+            )
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
         shape = (
             batch_size,
             num_channels_latents,
@@ -510,11 +530,6 @@ class AnimateDiffPAGPipeline(
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
 
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -573,6 +588,7 @@ class AnimateDiffPAGPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        vae_batch_size: int = 16,
         pag_scale: float = 3.0,
         pag_adaptive_scale: float = 0.0,
     ):
@@ -831,7 +847,7 @@ class AnimateDiffPAGPipeline(
         if output_type == "latent":
             video = latents
         else:
-            video_tensor = self.decode_latents(latents)
+            video_tensor = self.decode_latents(latents, vae_batch_size)
             video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 10. Offload all models
