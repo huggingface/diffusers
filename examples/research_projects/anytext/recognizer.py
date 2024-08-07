@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 from easydict import EasyDict as edict
 from ocr_recog.RecModel import RecModel
+from safetensors.torch import load_file
 from skimage.transform._geometric import _umeyama as get_sym_mat
 
 
@@ -105,7 +106,7 @@ def create_predictor(model_dir=None, model_lang="ch", is_onnx=False):
 
         rec_model = RecModel(rec_config)
         if model_file_path is not None:
-            rec_model.load_state_dict(torch.load(model_file_path, map_location="cpu"))
+            rec_model.load_state_dict(load_file(model_file_path))
             rec_model.eval()
         return rec_model.eval()
 

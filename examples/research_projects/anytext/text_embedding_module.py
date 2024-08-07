@@ -35,7 +35,7 @@ class TextEmbeddingModule(nn.Module):
         # TODO: Understand the reason of param.requires_grad = True
         for param in self.embedding_manager.embedding_parameters():
             param.requires_grad = True
-        rec_model_dir = "ppv3_rec.pth"
+        rec_model_dir = "ppv3_rec.safetensors"
         self.text_predictor = create_predictor(rec_model_dir).eval()
         args = {}
         args["rec_image_shape"] = "3, 48, 320"
