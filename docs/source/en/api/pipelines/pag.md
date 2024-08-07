@@ -74,6 +74,12 @@ Since RegEx is supported as a way for matching layer identifiers, it is crucial 
 	- __call__
 
 
+## StableDiffusion3PAGPipeline
+[[autodoc]] StableDiffusion3PAGPipeline
+	- all
+	- __call__
+
+
 ## PixArtSigmaPAGPipeline
 [[autodoc]] PixArtSigmaPAGPipeline
 	- all
