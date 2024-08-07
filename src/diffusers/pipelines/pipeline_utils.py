@@ -546,9 +546,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
-                **This parameter is deprecated and the `variant` parameter should be used instead.**
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
+                **This parameter is deprecated and the `variant` parameter should be used instead.** The specific model
+                version to use. It can be a branch name, a tag name, a commit id, or any identifier allowed by Git.
             custom_revision (`str`, *optional*):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
                 `revision` when loading a custom pipeline from the Hub. Defaults to the latest stable 🤗 Diffusers
