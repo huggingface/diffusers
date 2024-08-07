@@ -547,7 +547,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
 
-                <Deprecated version="">
+                <Deprecated version="0.13.0">
                 
                 Use the `variant` parameter instead.
                 
