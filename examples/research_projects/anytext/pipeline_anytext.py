@@ -1165,7 +1165,6 @@ class AnyTextPipeline(
             # )
             # height, width = image.shape[-2:]
             guided_hint = self.auxiliary_latent_module(
-                context=prompt_embeds[1],
                 text_info=text_info,
                 mode=mode,
                 draw_pos=draw_pos,

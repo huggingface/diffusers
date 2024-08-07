@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import torch
 from PIL import ImageFont
+from safetensors.torch import load_file
 from torch import nn
 
 from diffusers.utils import logging
@@ -34,18 +35,12 @@ def retrieve_latents(
 
 
 class AuxiliaryLatentModule(nn.Module):
-    def __init__(self, dims=2, glyph_channels=1, position_channels=1, model_channels=320, **kwargs):
+    def __init__(self, glyph_channels=1, position_channels=1, model_channels=320, **kwargs):
         super().__init__()
-        self.font = ImageFont.truetype("/home/cosmos/Documents/gits/AnyText/font/Arial_Unicode.ttf", 60)
+        self.font = ImageFont.truetype("Arial_Unicode.ttf", 60)
         self.use_fp16 = kwargs.get("use_fp16", False)
         self.device = kwargs.get("device", "cpu")
-        self.model_channels = model_channels
-        time_embed_dim = model_channels * 4
-        self.time_embed = nn.Sequential(
-            nn.Linear(model_channels, time_embed_dim),
-            nn.SiLU(),
-            nn.Linear(time_embed_dim, time_embed_dim),
-        )
+
         self.glyph_block = nn.Sequential(
             nn.Conv2d(glyph_channels, 8, 3, padding=1),
             nn.SiLU(),
@@ -83,7 +78,8 @@ class AuxiliaryLatentModule(nn.Module):
             nn.Conv2d(32, 64, 3, padding=1, stride=2),
             nn.SiLU(),
         )
-        self.time_embed = self.time_embed.to(device="cuda", dtype=torch.float16)
+        self.glyph_block.load_state_dict(load_file("glyph_block.safetensors"))
+        self.position_block.load_state_dict(load_file("position_block.safetensors"))
         self.glyph_block = self.glyph_block.to(device="cuda", dtype=torch.float16)
         self.position_block = self.position_block.to(device="cuda", dtype=torch.float16)
 
@@ -91,12 +87,12 @@ class AuxiliaryLatentModule(nn.Module):
         self.vae.eval()
 
         self.fuse_block = zero_module(nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1))
+        self.fuse_block.load_state_dict(load_file("fuse_block.safetensors"))
         self.fuse_block = self.fuse_block.to(device="cuda", dtype=torch.float16)
 
     @torch.no_grad()
     def forward(
         self,
-        context,
         text_info,
         mode,
         draw_pos,
