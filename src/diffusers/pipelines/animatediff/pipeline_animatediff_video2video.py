@@ -500,24 +500,24 @@ class AnimateDiffVideoToVideoPipeline(
 
         return ip_adapter_image_embeds
 
-    def encode_video(self, video, generator, vae_batch_size: int = 16) -> torch.Tensor:
+    def encode_video(self, video, generator, decode_chunk_size: int = 16) -> torch.Tensor:
         latents = []
-        for i in range(0, len(video), vae_batch_size):
-            batch_video = video[i : i + vae_batch_size]
+        for i in range(0, len(video), decode_chunk_size):
+            batch_video = video[i : i + decode_chunk_size]
             batch_video = retrieve_latents(self.vae.encode(batch_video), generator=generator)
             latents.append(batch_video)
         return torch.cat(latents)
 
     # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.AnimateDiffPipeline.decode_latents
-    def decode_latents(self, latents, vae_batch_size: int = 16):
+    def decode_latents(self, latents, decode_chunk_size: int = 16):
         latents = 1 / self.vae.config.scaling_factor * latents
 
         batch_size, channels, num_frames, height, width = latents.shape
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
         video = []
-        for i in range(0, latents.shape[0], vae_batch_size):
-            batch_latents = latents[i : i + vae_batch_size]
+        for i in range(0, latents.shape[0], decode_chunk_size):
+            batch_latents = latents[i : i + decode_chunk_size]
             batch_latents = self.vae.decode(batch_latents).sample
             video.append(batch_latents)
 
@@ -638,7 +638,7 @@ class AnimateDiffVideoToVideoPipeline(
         device,
         generator,
         latents=None,
-        vae_batch_size: int = 16,
+        decode_chunk_size: int = 16,
     ):
         if latents is None:
             num_frames = video.shape[1]
@@ -673,10 +673,11 @@ class AnimateDiffVideoToVideoPipeline(
                     )
 
                 init_latents = [
-                    self.encode_video(video[i], generator[i], vae_batch_size).unsqueeze(0) for i in range(batch_size)
+                    self.encode_video(video[i], generator[i], decode_chunk_size).unsqueeze(0)
+                    for i in range(batch_size)
                 ]
             else:
-                init_latents = [self.encode_video(vid, generator, vae_batch_size).unsqueeze(0) for vid in video]
+                init_latents = [self.encode_video(vid, generator, decode_chunk_size).unsqueeze(0) for vid in video]
 
             init_latents = torch.cat(init_latents, dim=0)
 
@@ -761,7 +762,7 @@ class AnimateDiffVideoToVideoPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        vae_batch_size: int = 16,
+        decode_chunk_size: int = 16,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -837,7 +838,7 @@ class AnimateDiffVideoToVideoPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            vae_batch_size (`int`, defaults to `16`):
+            decode_chunk_size (`int`, defaults to `16`):
                 The number of frames to decode at a time when calling `decode_latents` method.
 
         Examples:
@@ -940,7 +941,7 @@ class AnimateDiffVideoToVideoPipeline(
             device=device,
             generator=generator,
             latents=latents,
-            vae_batch_size=vae_batch_size,
+            decode_chunk_size=decode_chunk_size,
         )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -1008,7 +1009,7 @@ class AnimateDiffVideoToVideoPipeline(
         if output_type == "latent":
             video = latents
         else:
-            video_tensor = self.decode_latents(latents, vae_batch_size)
+            video_tensor = self.decode_latents(latents, decode_chunk_size)
             video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
         # 10. Offload all models
