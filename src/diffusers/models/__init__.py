@@ -29,6 +29,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
+    _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
@@ -47,8 +48,10 @@ if is_torch_available():
     _import_structure["transformers.lumina_nextdit2d"] = ["LuminaNextDiT2DModel"]
     _import_structure["transformers.pixart_transformer_2d"] = ["PixArtTransformer2DModel"]
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
+    _import_structure["transformers.stable_audio_transformer"] = ["StableAudioDiTModel"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
+    _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
@@ -75,6 +78,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AsymmetricAutoencoderKL,
             AutoencoderKL,
             AutoencoderKLTemporalDecoder,
+            AutoencoderOobleck,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
             VQModel,
@@ -90,12 +94,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AuraFlowTransformer2DModel,
             DiTTransformer2DModel,
             DualTransformer2DModel,
+            FluxTransformer2DModel,
             HunyuanDiT2DModel,
             LatteTransformer3DModel,
             LuminaNextDiT2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
             SD3Transformer2DModel,
+            StableAudioDiTModel,
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
