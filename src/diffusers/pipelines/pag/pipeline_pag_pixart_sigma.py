@@ -40,7 +40,7 @@ from ..pixart_alpha.pipeline_pixart_alpha import (
     ASPECT_RATIO_1024_BIN,
 )
 from ..pixart_alpha.pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN
-from .pag_utils import PixArtPAGMixin
+from .pag_utils import PAGMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -61,7 +61,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
         ...     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
         ...     torch_dtype=torch.float16,
-        ...     pag_applied_layers=[14],
+        ...     pag_applied_layers=["blocks.14"],
         ...     enable_pag=True,
         ... )
         >>> pipe = pipe.to("cuda")
@@ -132,7 +132,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class PixArtSigmaPAGPipeline(DiffusionPipeline, PixArtPAGMixin):
+class PixArtSigmaPAGPipeline(DiffusionPipeline, PAGMixin):
     r"""
     [PAG pipeline](https://huggingface.co/docs/diffusers/main/en/using-diffusers/pag) for text-to-image generation
     using PixArt-Sigma.
@@ -164,7 +164,7 @@ class PixArtSigmaPAGPipeline(DiffusionPipeline, PixArtPAGMixin):
         vae: AutoencoderKL,
         transformer: PixArtTransformer2DModel,
         scheduler: KarrasDiffusionSchedulers,
-        pag_applied_layers: Union[str, List[str]] = "1",  # 1st transformer block
+        pag_applied_layers: Union[str, List[str]] = "blocks.1",  # 1st transformer block
     ):
         super().__init__()
 
