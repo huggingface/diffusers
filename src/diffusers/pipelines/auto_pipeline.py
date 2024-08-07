@@ -162,8 +162,10 @@ _AUTO_INPAINT_DECODER_PIPELINES_MAPPING = OrderedDict(
 
 if is_sentencepiece_available():
     from .kolors import KolorsPipeline
+    from .pag import KolorsPAGPipeline
 
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING["kolors"] = KolorsPipeline
+    AUTO_TEXT2IMAGE_PIPELINES_MAPPING["kolors-pag"] = KolorsPAGPipeline
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING["kolors"] = KolorsPipeline
 
 SUPPORTED_TASKS_MAPPINGS = [
