@@ -1172,6 +1172,7 @@ class AnyTextPipeline(
                 num_images_per_prompt=num_images_per_prompt,
                 np_hint=np_hint,
             )
+            height, width = 512, 512
         # elif isinstance(controlnet, MultiControlNetModel):
         #     images = []
 

@@ -134,6 +134,7 @@ class EmbeddingManager(nn.Module):
             self.position_encoder = EncodeNet(position_channels, token_dim)
         if emb_type == "ocr":
             self.proj = nn.Sequential(zero_module(nn.Linear(40 * 64, token_dim)), nn.LayerNorm(token_dim))
+            self.proj = self.proj.to(dtype=torch.float16 if kwargs.get("use_fp16", False) else torch.float32)
         if emb_type == "conv":
             self.glyph_encoder = EncodeNet(glyph_channels, token_dim)
 

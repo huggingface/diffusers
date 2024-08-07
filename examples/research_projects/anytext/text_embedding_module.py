@@ -30,6 +30,7 @@ class TextEmbeddingModule(nn.Module):
             "position_channels": 1,
             "add_pos": False,
             "placeholder_string": "*",
+            "use_fp16": self.use_fp16,
         }
         self.embedding_manager = EmbeddingManager(self.frozen_CLIP_embedder_t3, **self.embedding_manager_config)
         # TODO: Understand the reason of param.requires_grad = True
@@ -41,8 +42,10 @@ class TextEmbeddingModule(nn.Module):
         args["rec_image_shape"] = "3, 48, 320"
         args["rec_batch_num"] = 6
         args["rec_char_dict_path"] = "ppocr_keys_v1.txt"
-        args["use_fp16"] = False
-        self.cn_recognizer = TextRecognizer(args, self.text_predictor)
+        args["use_fp16"] = True
+        self.cn_recognizer = TextRecognizer(
+            args, self.text_predictor.to(dtype=torch.float16 if use_fp16 else torch.float32)
+        )
         for param in self.text_predictor.parameters():
             param.requires_grad = False
         self.embedding_manager.recog = self.cn_recognizer
@@ -149,9 +152,9 @@ class TextEmbeddingModule(nn.Module):
                 glyphs = np.zeros((h * gly_scale, w * gly_scale, 1))
                 gly_line = np.zeros((80, 512, 1))
             pos = pre_pos[i]
-            text_info["glyphs"] += [self.arr2tensor(glyphs, len(prompt))]
-            text_info["gly_line"] += [self.arr2tensor(gly_line, len(prompt))]
-            text_info["positions"] += [self.arr2tensor(pos, len(prompt))]
+            text_info["glyphs"] += [self.arr2tensor(glyphs, num_images_per_prompt)]
+            text_info["gly_line"] += [self.arr2tensor(gly_line, num_images_per_prompt)]
+            text_info["positions"] += [self.arr2tensor(pos, num_images_per_prompt)]
 
         # hint = self.arr2tensor(np_hint, len(prompt))
 

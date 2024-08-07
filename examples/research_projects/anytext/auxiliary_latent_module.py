@@ -39,7 +39,7 @@ class AuxiliaryLatentModule(nn.Module):
         super().__init__()
         self.font = ImageFont.truetype("Arial_Unicode.ttf", 60)
         self.use_fp16 = kwargs.get("use_fp16", False)
-        self.device = kwargs.get("device", "cpu")
+        self.device = kwargs.get("device", "cuda")
 
         self.glyph_block = nn.Sequential(
             nn.Conv2d(glyph_channels, 8, 3, padding=1),
