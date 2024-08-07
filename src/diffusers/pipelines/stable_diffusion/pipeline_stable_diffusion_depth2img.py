@@ -20,7 +20,7 @@ import numpy as np
 import PIL.Image
 import torch
 from packaging import version
-from transformers import CLIPTextModel, CLIPTokenizer, DPTFeatureExtractor, DPTForDepthEstimation
+from transformers import CLIPTextModel, CLIPTokenizer, DPTForDepthEstimation, DPTImageProcessor
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import PipelineImageInput, VaeImageProcessor
@@ -111,7 +111,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         depth_estimator: DPTForDepthEstimation,
-        feature_extractor: DPTFeatureExtractor,
+        feature_extractor: DPTImageProcessor,
     ):
         super().__init__()
 
