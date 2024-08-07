@@ -147,6 +147,7 @@ else:
     _import_structure["pag"].extend(
         [
             "AnimateDiffPAGPipeline",
+            "KolorsPAGPipeline",
             "HunyuanDiTPAGPipeline",
             "StableDiffusion3PAGPipeline",
             "StableDiffusionPAGPipeline",
@@ -542,6 +543,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pag import (
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
+            KolorsPAGPipeline,
             PixArtSigmaPAGPipeline,
             StableDiffusion3PAGPipeline,
             StableDiffusionControlNetPAGPipeline,

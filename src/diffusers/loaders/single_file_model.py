@@ -24,6 +24,7 @@ from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
+    convert_flux_transformer_checkpoint_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
     convert_sd3_transformer_checkpoint_to_diffusers,
@@ -73,6 +74,13 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "MotionAdapter": {
         "checkpoint_mapping_fn": convert_animatediff_checkpoint_to_diffusers,
+    },
+    "SparseControlNetModel": {
+        "checkpoint_mapping_fn": convert_animatediff_checkpoint_to_diffusers,
+    },
+    "FluxTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_flux_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
     },
 }
 
