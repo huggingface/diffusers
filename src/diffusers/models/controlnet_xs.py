@@ -285,7 +285,7 @@ class ControlNetXSAdapter(ModelMixin, ConfigMixin):
         upcast_attention (`bool`, defaults to `True`):
             Whether the attention computation should always be upcasted.
         max_norm_num_groups (`int`, defaults to 32):
-            Maximum number of groups in group normal. The actual number will the the largest divisor of the respective
+            Maximum number of groups in group normal. The actual number will be the largest divisor of the respective
             channels, that is <= max_norm_num_groups.
     """
 
