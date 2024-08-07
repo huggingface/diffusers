@@ -28,6 +28,7 @@ if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
+    _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
@@ -41,6 +42,7 @@ if is_torch_available():
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
+    _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]
     _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
     _import_structure["transformers.dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["transformers.hunyuan_transformer_2d"] = ["HunyuanDiT2DModel"]
@@ -77,6 +79,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .autoencoders import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
+            AutoencoderKLCogVideoX,
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
             AutoencoderTiny,
@@ -92,6 +95,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modeling_utils import ModelMixin
         from .transformers import (
             AuraFlowTransformer2DModel,
+            CogVideoXTransformer3DModel,
             DiTTransformer2DModel,
             DualTransformer2DModel,
             FluxTransformer2DModel,
