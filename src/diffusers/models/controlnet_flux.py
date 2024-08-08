@@ -13,21 +13,20 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ..models.modeling_utils import ModelMixin
 from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from .controlnet import BaseOutput, zero_module
 from .embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings
 from .modeling_outputs import Transformer2DModelOutput
+from .transformers.transformer_flux import EmbedND, FluxSingleTransformerBlock, FluxTransformerBlock
 
-from .controlnet import BaseOutput, zero_module
-from .transformers.transformer_flux import EmbedND, FluxTransformerBlock, FluxSingleTransformerBlock
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -171,14 +170,14 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
 
     @classmethod
     def from_transformer(
-            cls, 
-            transformer, 
-            num_layers=4, 
-            num_single_layers=10, 
-            attention_head_dim: int = 128,
-            num_attention_heads: int = 24,
-            load_weights_from_transformer=True,
-        ):
+        cls,
+        transformer,
+        num_layers=4,
+        num_single_layers=10,
+        attention_head_dim: int = 128,
+        num_attention_heads: int = 24,
+        load_weights_from_transformer=True,
+    ):
         config = transformer.config
         config["num_layers"] = num_layers
         config["num_single_layers"] = num_single_layers
@@ -193,7 +192,9 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
             controlnet.context_embedder.load_state_dict(transformer.context_embedder.state_dict())
             controlnet.x_embedder.load_state_dict(transformer.x_embedder.state_dict())
             controlnet.transformer_blocks.load_state_dict(transformer.transformer_blocks.state_dict(), strict=False)
-            controlnet.single_transformer_blocks.load_state_dict(transformer.single_transformer_blocks.state_dict(), strict=False)
+            controlnet.single_transformer_blocks.load_state_dict(
+                transformer.single_transformer_blocks.state_dict(), strict=False
+            )
 
             controlnet.controlnet_x_embedder = zero_module(controlnet.controlnet_x_embedder)
 
@@ -257,7 +258,6 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
 
         # add
         hidden_states = hidden_states + self.controlnet_x_embedder(controlnet_cond)
-
 
         timestep = timestep.to(hidden_states.dtype) * 1000
         if guidance is not None:
@@ -336,7 +336,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
                 )
-            single_block_samples = single_block_samples + (hidden_states[:, encoder_hidden_states.shape[1]:],)
+            single_block_samples = single_block_samples + (hidden_states[:, encoder_hidden_states.shape[1] :],)
 
         # controlnet block
         controlnet_block_samples = ()
@@ -355,8 +355,9 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
 
         #
         controlnet_block_samples = None if len(controlnet_block_samples) == 0 else controlnet_block_samples
-        controlnet_single_block_samples = None if len(controlnet_single_block_samples) == 0 else controlnet_single_block_samples
-
+        controlnet_single_block_samples = (
+            None if len(controlnet_single_block_samples) == 0 else controlnet_single_block_samples
+        )
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
@@ -366,6 +367,6 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
             return (controlnet_block_samples, controlnet_single_block_samples)
 
         return FluxControlNetOutput(
-            controlnet_block_samples=controlnet_block_samples, 
+            controlnet_block_samples=controlnet_block_samples,
             controlnet_single_block_samples=controlnet_single_block_samples,
         )

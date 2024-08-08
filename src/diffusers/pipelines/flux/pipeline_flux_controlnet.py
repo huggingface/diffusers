@@ -24,11 +24,11 @@ from transformers import (
     T5TokenizerFast,
 )
 
-from ...image_processor import VaeImageProcessor, PipelineImageInput
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
-from ...models.transformers import FluxTransformer2DModel
 from ...models.controlnet_flux import FluxControlNetModel
+from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
@@ -68,15 +68,16 @@ EXAMPLE_DOC_STRING = """
         >>> control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")
         >>> prompt = "A girl in city, 25 years old, cool, futuristic"
         >>> image = pipe(
-                prompt, 
+                prompt,
                 control_image=control_image,
                 controlnet_conditioning_scale=0.6,
-                num_inference_steps=28, 
+                num_inference_steps=28,
                 guidance_scale=3.5,
             ).images[0]
         >>> image.save("flux.png")
         ```
 """
+
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
@@ -435,7 +436,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
-
     # Copied from diffusers.pipelines.flux.pipeline_flux._prepare_latent_image_ids
     @staticmethod
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
@@ -716,17 +716,16 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             # vae encode
             control_image = self.vae.encode(control_image).latent_dist.sample()
             control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
-            
+
             # pack
             height_control_image, width_control_image = control_image.shape[2:]
             control_image = self._pack_latents(
-                control_image, 
-                batch_size * num_images_per_prompt, 
-                num_channels_latents, 
-                height_control_image, 
+                control_image,
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height_control_image,
                 width_control_image,
             )
-
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4

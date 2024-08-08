@@ -14,8 +14,8 @@
 
 
 from typing import Any, Dict, List, Optional, Union
-import numpy as np
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -322,8 +322,8 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_block_samples = None,
-        controlnet_single_block_samples = None,
+        controlnet_block_samples=None,
+        controlnet_single_block_samples=None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
@@ -453,9 +453,10 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             if controlnet_single_block_samples is not None:
                 interval_control = len(self.single_transformer_blocks) / len(controlnet_single_block_samples)
                 interval_control = int(np.ceil(interval_control))
-                hidden_states[:, encoder_hidden_states.shape[1] :, ...] = \
-                    hidden_states[:, encoder_hidden_states.shape[1] :, ...] + \
-                    controlnet_single_block_samples[index_block // interval_control]
+                hidden_states[:, encoder_hidden_states.shape[1] :, ...] = (
+                    hidden_states[:, encoder_hidden_states.shape[1] :, ...]
+                    + controlnet_single_block_samples[index_block // interval_control]
+                )
 
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
