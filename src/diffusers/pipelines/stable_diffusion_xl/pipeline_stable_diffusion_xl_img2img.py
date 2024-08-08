@@ -1025,12 +1025,11 @@ class StableDiffusionXLImg2ImgPipeline(
             image (`torch.Tensor` or `PIL.Image.Image` or `np.ndarray` or `List[torch.Tensor]` or `List[PIL.Image.Image]` or `List[np.ndarray]`):
                 The image(s) to modify with the pipeline.
             strength (`float`, *optional*, defaults to 0.3):
-                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
-                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
-                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
-                be maximum and the denoising process will run for the full number of iterations specified in
-                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`. Note that in the case of
-                `denoising_start` being declared as an integer, the value of `strength` will be ignored.
+                Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
+                starting point and more noise is added the higher the `strength`. The number of denoising steps depends
+                on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
+                process runs for the full number of iterations specified in `num_inference_steps`. A value of 1
+                essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1057,7 +1056,7 @@ class StableDiffusionXLImg2ImgPipeline(
                 final 20% of the scheduler. The denoising_end parameter should ideally be utilized when this pipeline
                 forms a part of a "Mixture of Denoisers" multi-pipeline setup, as elaborated in [**Refine Image
                 Quality**](https://huggingface.co/docs/diffusers/using-diffusers/sdxl#refine-image-quality).
-            guidance_scale (`float`, *optional*, defaults to 7.5):
+            guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >

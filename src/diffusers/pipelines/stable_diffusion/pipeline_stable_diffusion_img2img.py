@@ -708,18 +708,35 @@ class StableDiffusionImg2ImgPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
-    def get_timesteps(self, num_inference_steps, strength, device):
+    def get_timesteps(self, num_inference_steps, strength, device, denoising_start=None):
         # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+        if denoising_start is None:
+            init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+            t_start = max(num_inference_steps - init_timestep, 0)
+        else:
+            t_start = 0
 
-        t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
         if hasattr(self.scheduler, "set_begin_index"):
             self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
+        # Strength is irrelevant if we directly request a timestep to start at;
+        # that is, strength is determined by the denoising_start instead.
+        if denoising_start is not None:
+            discrete_timestep_cutoff = int(
+                round(
+                    self.scheduler.config.num_train_timesteps
+                    - (denoising_start * self.scheduler.config.num_train_timesteps)
+                )
+            )
+            timesteps = list(filter(lambda ts: ts < discrete_timestep_cutoff, timesteps))
+            return torch.tensor(timesteps), len(timesteps)
+
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+    def prepare_latents(
+        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -778,8 +795,12 @@ class StableDiffusionImg2ImgPipeline(
         shape = init_latents.shape
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        # get latents
-        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+        if add_noise:
+            shape = init_latents.shape
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            # get latents
+            init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+
         latents = init_latents
 
         return latents
@@ -850,6 +871,8 @@ class StableDiffusionImg2ImgPipeline(
         image: PipelineImageInput = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
+        denoising_start: Optional[float] = None,
+        denoising_end: Optional[float] = None,
         timesteps: List[int] = None,
         sigmas: List[float] = None,
         guidance_scale: Optional[float] = 7.5,
@@ -892,6 +915,21 @@ class StableDiffusionImg2ImgPipeline(
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter is modulated by `strength`.
+            denoising_start (`float`, *optional*):
+                When specified, indicates the fraction (between 0.0 and 1.0) of the total denoising process to be
+                bypassed before it is initiated. Consequently, the initial part of the denoising process is skipped and
+                it is assumed that the passed `image` is a partly denoised image. Note that when this is specified,
+                strength will be ignored. The `denoising_start` parameter is particularly beneficial when this pipeline
+                is integrated into a "Mixture of Denoisers" multi-pipeline setup, as detailed in [**Refining the Image
+                Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output).
+            denoising_end (`float`, *optional*):
+                When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be
+                completed before it is intentionally prematurely terminated. As a result, the returned sample will
+                still retain a substantial amount of noise (ca. final 20% of timesteps still needed) and should be
+                denoised by a successor pipeline that has `denoising_start` set to 0.8 so that it only denoises the
+                final 20% of the scheduler. The denoising_end parameter should ideally be utilized when this pipeline
+                forms a part of a "Mixture of Denoisers" multi-pipeline setup, as elaborated in [**Refining the Image
+                Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output).
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
@@ -1036,13 +1074,23 @@ class StableDiffusionImg2ImgPipeline(
         # 4. Preprocess image
         image = self.image_processor.preprocess(image)
 
+        # 5. Prepare timesteps
+        def denoising_value_valid(dnv):
+            return type(denoising_end) == float and 0 < dnv < 1
+
         # 5. set timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        timesteps, num_inference_steps = self.get_timesteps(
+            num_inference_steps, strength, device, denoising_start=denoising_start if denoising_value_valid else None
+        )
+
+
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
+        add_noise = True if denoising_start is None else False
         # 6. Prepare latent variables
         latents = self.prepare_latents(
             image,
@@ -1052,6 +1100,7 @@ class StableDiffusionImg2ImgPipeline(
             prompt_embeds.dtype,
             device,
             generator,
+            add_noise,
         )
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -1073,7 +1122,30 @@ class StableDiffusionImg2ImgPipeline(
             ).to(device=device, dtype=latents.dtype)
 
         # 8. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+
+        # 8.1 Apply denoising_end
+        if (
+            denoising_end is not None
+            and denoising_start is not None
+            and denoising_value_valid(denoising_end)
+            and denoising_value_valid(denoising_start)
+            and denoising_start >= denoising_end
+        ):
+            raise ValueError(
+                f"`denoising_start`: {denoising_start} cannot be larger than or equal to `denoising_end`: "
+                + f" {denoising_end} when using type float."
+            )
+        elif denoising_end is not None and denoising_value_valid(denoising_end):
+            discrete_timestep_cutoff = int(
+                round(
+                    self.scheduler.config.num_train_timesteps
+                    - (denoising_end * self.scheduler.config.num_train_timesteps)
+                )
+            )
+            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
+            timesteps = timesteps[:num_inference_steps]
+
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
