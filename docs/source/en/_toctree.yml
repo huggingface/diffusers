@@ -223,68 +223,76 @@
     sections:
     - local: api/models/overview
       title: Overview
-    - local: api/models/unet
-      title: UNet1DModel
-    - local: api/models/unet2d
-      title: UNet2DModel
-    - local: api/models/unet2d-cond
-      title: UNet2DConditionModel
-    - local: api/models/unet3d-cond
-      title: UNet3DConditionModel
-    - local: api/models/unet-motion
-      title: UNetMotionModel
-    - local: api/models/uvit2d
-      title: UViT2DModel
-    - local: api/models/vq
-      title: VQModel
-    - local: api/models/autoencoderkl
-      title: AutoencoderKL
-    - local: api/models/autoencoderkl_cogvideox
-      title: AutoencoderKLCogVideoX
-    - local: api/models/asymmetricautoencoderkl
-      title: AsymmetricAutoencoderKL
-    - local: api/models/stable_cascade_unet
-      title: StableCascadeUNet
-    - local: api/models/autoencoder_tiny
-      title: Tiny AutoEncoder
-    - local: api/models/autoencoder_oobleck
-      title: Oobleck AutoEncoder
-    - local: api/models/consistency_decoder_vae
-      title: ConsistencyDecoderVAE
-    - local: api/models/transformer2d
-      title: Transformer2DModel
-    - local: api/models/pixart_transformer2d
-      title: PixArtTransformer2DModel
-    - local: api/models/dit_transformer2d
-      title: DiTTransformer2DModel
-    - local: api/models/hunyuan_transformer2d
-      title: HunyuanDiT2DModel
-    - local: api/models/aura_flow_transformer2d
-      title: AuraFlowTransformer2DModel
-    - local: api/models/flux_transformer
-      title: FluxTransformer2DModel
-    - local: api/models/latte_transformer3d
-      title: LatteTransformer3DModel
-    - local: api/models/cogvideox_transformer3d
-      title: CogVideoXTransformer3DModel
-    - local: api/models/lumina_nextdit2d
-      title: LuminaNextDiT2DModel
-    - local: api/models/transformer_temporal
-      title: TransformerTemporalModel
-    - local: api/models/sd3_transformer2d
-      title: SD3Transformer2DModel
-    - local: api/models/stable_audio_transformer
-      title: StableAudioDiTModel
-    - local: api/models/prior_transformer
-      title: PriorTransformer
-    - local: api/models/controlnet
-      title: ControlNetModel
-    - local: api/models/controlnet_hunyuandit
-      title: HunyuanDiT2DControlNetModel
-    - local: api/models/controlnet_sd3
-      title: SD3ControlNetModel
-    - local: api/models/controlnet_sparsectrl
-      title: SparseControlNetModel
+    - sections:
+      - local: api/models/controlnet
+        title: ControlNetModel
+      - local: api/models/controlnet_hunyuandit
+        title: HunyuanDiT2DControlNetModel
+      - local: api/models/controlnet_sd3
+        title: SD3ControlNetModel
+      - local: api/models/controlnet_sparsectrl
+        title: SparseControlNetModel
+      title: ControlNets
+    - sections:
+      - local: api/models/aura_flow_transformer2d
+        title: AuraFlowTransformer2DModel
+      - local: api/models/cogvideox_transformer3d
+        title: CogVideoXTransformer3DModel
+      - local: api/models/dit_transformer2d
+        title: DiTTransformer2DModel
+      - local: api/models/flux_transformer
+        title: FluxTransformer2DModel
+      - local: api/models/hunyuan_transformer2d
+        title: HunyuanDiT2DModel
+      - local: api/models/latte_transformer3d
+        title: LatteTransformer3DModel
+      - local: api/models/lumina_nextdit2d
+        title: LuminaNextDiT2DModel
+      - local: api/models/pixart_transformer2d
+        title: PixArtTransformer2DModel
+      - local: api/models/prior_transformer
+        title: PriorTransformer
+      - local: api/models/sd3_transformer2d
+        title: SD3Transformer2DModel
+      - local: api/models/stable_audio_transformer
+        title: StableAudioDiTModel
+      - local: api/models/transformer2d
+        title: Transformer2DModel
+      - local: api/models/transformer_temporal
+        title: TransformerTemporalModel
+      title: Transformers
+    - sections:
+      - local: api/models/stable_cascade_unet
+        title: StableCascadeUNet
+      - local: api/models/unet
+        title: UNet1DModel
+      - local: api/models/unet2d
+        title: UNet2DModel
+      - local: api/models/unet2d-cond
+        title: UNet2DConditionModel
+      - local: api/models/unet3d-cond
+        title: UNet3DConditionModel
+      - local: api/models/unet-motion
+        title: UNetMotionModel
+      - local: api/models/uvit2d
+        title: UViT2DModel
+      title: UNets
+    - sections:
+      - local: api/models/autoencoderkl
+        title: AutoencoderKL
+      - local: api/models/autoencoderkl_cogvideox
+        title: AutoencoderKLCogVideoX
+      - local: api/models/asymmetricautoencoderkl
+        title: AsymmetricAutoencoderKL
+      - local: api/models/consistency_decoder_vae
+        title: ConsistencyDecoderVAE
+      - local: api/models/autoencoder_oobleck
+        title: Oobleck AutoEncoder
+      - local: api/models/autoencoder_tiny
+        title: Tiny AutoEncoder
+      - local: api/models/vq
+        title: VQModel
+      title: VAEs
     title: Models
   - isExpanded: false
     sections:
