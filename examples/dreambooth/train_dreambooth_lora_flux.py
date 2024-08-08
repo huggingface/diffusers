@@ -1647,7 +1647,10 @@ def main(args):
                     model_pred,
                     height=int(model_input.shape[2]) * 8,
                     width=int(model_input.shape[3]) * 8,
-                    vae_scale_factor=2 ** (len(vae.config.block_out_channels)),  # should this be 2 ** (len(vae.config.block_out_channels))?
+                    vae_scale_factor=2
+                    ** (
+                        len(vae.config.block_out_channels)
+                    ),  # should this be 2 ** (len(vae.config.block_out_channels))?
                 )
 
                 model_pred = model_pred * (-sigmas) + noisy_model_input
@@ -1778,9 +1781,11 @@ def main(args):
         else:
             text_encoder_lora_layers = None
 
-        FluxPipeline.save_lora_weights(save_directory=args.output_dir,
-                                       transformer_lora_layers=transformer_lora_layers,
-                                       text_encoder_one_lora_layers=text_encoder_lora_layers)
+        FluxPipeline.save_lora_weights(
+            save_directory=args.output_dir,
+            transformer_lora_layers=transformer_lora_layers,
+            text_encoder_one_lora_layers=text_encoder_lora_layers,
+        )
 
         # Final inference
         # Load previous pipeline
