@@ -157,7 +157,7 @@ class StableDiffusionPAGPipelineFastTests(
         del inputs["pag_scale"]
         assert (
             "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
-        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__calss__.__name__}."
+        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
         out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
 
         # pag disabled with pag_scale=0.0
@@ -213,18 +213,18 @@ class StableDiffusionPAGPipelineFastTests(
         assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0"]
+        pag_layers = ["mid_block"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0.attentions_0"]
+        pag_layers = ["mid_block.attentions.0"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
 
         # pag_applied_layers = ["mid.block_0.attentions_1"] does not exist in the model
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0.attentions_1"]
+        pag_layers = ["mid_block.attentions.1"]
         with self.assertRaises(ValueError):
             pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
 
@@ -239,17 +239,17 @@ class StableDiffusionPAGPipelineFastTests(
         assert len(pipe.pag_attn_processors) == 2
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_0"]
+        pag_layers = ["down_blocks.0"]
         with self.assertRaises(ValueError):
             pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_1"]
+        pag_layers = ["down_blocks.1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert len(pipe.pag_attn_processors) == 2
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_1.attentions_1"]
+        pag_layers = ["down_blocks.1.attentions.1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert len(pipe.pag_attn_processors) == 1
 

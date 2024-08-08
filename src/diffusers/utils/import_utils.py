@@ -294,6 +294,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
+_sentencepiece_available = importlib.util.find_spec("sentencepiece") is not None
+try:
+    _sentencepiece_version = importlib_metadata.version("sentencepiece")
+    logger.info(f"Successfully imported sentencepiece version {_sentencepiece_version}")
+except importlib_metadata.PackageNotFoundError:
+    _sentencepiece_available = False
+
 _matplotlib_available = importlib.util.find_spec("matplotlib") is not None
 try:
     _matplotlib_version = importlib_metadata.version("matplotlib")
@@ -321,18 +328,7 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _bitsandbytes_available = False
 
-# Taken from `huggingface_hub`.
-_is_notebook = False
-try:
-    shell_class = get_ipython().__class__  # type: ignore # noqa: F821
-    for parent_class in shell_class.__mro__:  # e.g. "is subclass of"
-        if parent_class.__name__ == "ZMQInteractiveShell":
-            _is_notebook = True  # Jupyter notebook, Google colab or qtconsole
-            break
-except NameError:
-    pass  # Probably standard Python interpreter
-
-_is_google_colab = "google.colab" in sys.modules
+_is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
 
 
 def is_torch_available():
@@ -443,12 +439,12 @@ def is_bitsandbytes_available():
     return _bitsandbytes_available
 
 
-def is_notebook():
-    return _is_notebook
-
-
 def is_google_colab():
     return _is_google_colab
+
+
+def is_sentencepiece_available():
+    return _sentencepiece_available
 
 
 # docstyle-ignore
@@ -569,6 +565,12 @@ SAFETENSORS_IMPORT_ERROR = """
 """
 
 # docstyle-ignore
+SENTENCEPIECE_IMPORT_ERROR = """
+{0} requires the sentencepiece library but it was not found in your environment. You can install it with pip: `pip install sentencepiece`
+"""
+
+
+# docstyle-ignore
 BITSANDBYTES_IMPORT_ERROR = """
 {0} requires the bitsandbytes library but it was not found in your environment. You can install it with pip: `pip install bitsandbytes`
 """
@@ -596,6 +598,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("peft", (is_peft_available, PEFT_IMPORT_ERROR)),
         ("safetensors", (is_safetensors_available, SAFETENSORS_IMPORT_ERROR)),
         ("bitsandbytes", (is_bitsandbytes_available, BITSANDBYTES_IMPORT_ERROR)),
+        ("sentencepiece", (is_sentencepiece_available, SENTENCEPIECE_IMPORT_ERROR)),
     ]
 )
 

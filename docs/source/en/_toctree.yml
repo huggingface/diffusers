@@ -191,6 +191,10 @@
     title: Evaluating Diffusion Models
   title: Conceptual Guides
 - sections:
+  - local: community_projects
+    title: Projects built with Diffusers
+  title: Community Projects
+- sections:
   - isExpanded: false
     sections:
     - local: api/configuration
@@ -219,48 +223,76 @@
     sections:
     - local: api/models/overview
       title: Overview
-    - local: api/models/unet
-      title: UNet1DModel
-    - local: api/models/unet2d
-      title: UNet2DModel
-    - local: api/models/unet2d-cond
-      title: UNet2DConditionModel
-    - local: api/models/unet3d-cond
-      title: UNet3DConditionModel
-    - local: api/models/unet-motion
-      title: UNetMotionModel
-    - local: api/models/uvit2d
-      title: UViT2DModel
-    - local: api/models/vq
-      title: VQModel
-    - local: api/models/autoencoderkl
-      title: AutoencoderKL
-    - local: api/models/asymmetricautoencoderkl
-      title: AsymmetricAutoencoderKL
-    - local: api/models/autoencoder_tiny
-      title: Tiny AutoEncoder
-    - local: api/models/consistency_decoder_vae
-      title: ConsistencyDecoderVAE
-    - local: api/models/transformer2d
-      title: Transformer2DModel
-    - local: api/models/pixart_transformer2d
-      title: PixArtTransformer2DModel
-    - local: api/models/dit_transformer2d
-      title: DiTTransformer2DModel
-    - local: api/models/hunyuan_transformer2d
-      title: HunyuanDiT2DModel
-    - local: api/models/transformer_temporal
-      title: TransformerTemporalModel
-    - local: api/models/sd3_transformer2d
-      title: SD3Transformer2DModel
-    - local: api/models/prior_transformer
-      title: PriorTransformer
-    - local: api/models/controlnet
-      title: ControlNetModel
-    - local: api/models/controlnet_hunyuandit
-      title: HunyuanDiT2DControlNetModel
-    - local: api/models/controlnet_sd3
-      title: SD3ControlNetModel
+    - sections:
+      - local: api/models/controlnet
+        title: ControlNetModel
+      - local: api/models/controlnet_hunyuandit
+        title: HunyuanDiT2DControlNetModel
+      - local: api/models/controlnet_sd3
+        title: SD3ControlNetModel
+      - local: api/models/controlnet_sparsectrl
+        title: SparseControlNetModel
+      title: ControlNets
+    - sections:
+      - local: api/models/aura_flow_transformer2d
+        title: AuraFlowTransformer2DModel
+      - local: api/models/cogvideox_transformer3d
+        title: CogVideoXTransformer3DModel
+      - local: api/models/dit_transformer2d
+        title: DiTTransformer2DModel
+      - local: api/models/flux_transformer
+        title: FluxTransformer2DModel
+      - local: api/models/hunyuan_transformer2d
+        title: HunyuanDiT2DModel
+      - local: api/models/latte_transformer3d
+        title: LatteTransformer3DModel
+      - local: api/models/lumina_nextdit2d
+        title: LuminaNextDiT2DModel
+      - local: api/models/pixart_transformer2d
+        title: PixArtTransformer2DModel
+      - local: api/models/prior_transformer
+        title: PriorTransformer
+      - local: api/models/sd3_transformer2d
+        title: SD3Transformer2DModel
+      - local: api/models/stable_audio_transformer
+        title: StableAudioDiTModel
+      - local: api/models/transformer2d
+        title: Transformer2DModel
+      - local: api/models/transformer_temporal
+        title: TransformerTemporalModel
+      title: Transformers
+    - sections:
+      - local: api/models/stable_cascade_unet
+        title: StableCascadeUNet
+      - local: api/models/unet
+        title: UNet1DModel
+      - local: api/models/unet2d
+        title: UNet2DModel
+      - local: api/models/unet2d-cond
+        title: UNet2DConditionModel
+      - local: api/models/unet3d-cond
+        title: UNet3DConditionModel
+      - local: api/models/unet-motion
+        title: UNetMotionModel
+      - local: api/models/uvit2d
+        title: UViT2DModel
+      title: UNets
+    - sections:
+      - local: api/models/autoencoderkl
+        title: AutoencoderKL
+      - local: api/models/autoencoderkl_cogvideox
+        title: AutoencoderKLCogVideoX
+      - local: api/models/asymmetricautoencoderkl
+        title: AsymmetricAutoencoderKL
+      - local: api/models/consistency_decoder_vae
+        title: ConsistencyDecoderVAE
+      - local: api/models/autoencoder_oobleck
+        title: Oobleck AutoEncoder
+      - local: api/models/autoencoder_tiny
+        title: Tiny AutoEncoder
+      - local: api/models/vq
+        title: VQModel
+      title: VAEs
     title: Models
   - isExpanded: false
     sections:
@@ -276,10 +308,14 @@
       title: AudioLDM
     - local: api/pipelines/audioldm2
       title: AudioLDM 2
+    - local: api/pipelines/aura_flow
+      title: AuraFlow
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
     - local: api/pipelines/blip_diffusion
       title: BLIP-Diffusion
+    - local: api/pipelines/cogvideox
+      title: CogVideoX
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet
@@ -306,6 +342,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/flux
+      title: Flux
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
     - local: api/pipelines/i2vgenxl
@@ -318,12 +356,18 @@
       title: Kandinsky 2.2
     - local: api/pipelines/kandinsky3
       title: Kandinsky 3
+    - local: api/pipelines/kolors
+      title: Kolors
     - local: api/pipelines/latent_consistency_models
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
+    - local: api/pipelines/latte
+      title: Latte
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/lumina
+      title: Lumina-T2X
     - local: api/pipelines/marigold
       title: Marigold
     - local: api/pipelines/panorama
@@ -346,6 +390,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/stable_audio
+      title: Stable Audio
     - local: api/pipelines/stable_cascade
       title: Stable Cascade
     - sections:
@@ -409,6 +455,8 @@
       title: CMStochasticIterativeScheduler
     - local: api/schedulers/consistency_decoder
       title: ConsistencyDecoderScheduler
+    - local: api/schedulers/cosine_dpm
+      title: CosineDPMSolverMultistepScheduler
     - local: api/schedulers/ddim_inverse
       title: DDIMInverseScheduler
     - local: api/schedulers/ddim
@@ -435,6 +483,8 @@
       title: EulerDiscreteScheduler
     - local: api/schedulers/flow_match_euler_discrete
       title: FlowMatchEulerDiscreteScheduler
+    - local: api/schedulers/flow_match_heun_discrete
+      title: FlowMatchHeunDiscreteScheduler
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
