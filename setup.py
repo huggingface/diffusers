@@ -135,6 +135,7 @@ _deps = [
     "transformers>=4.41.2",
     "urllib3<=2.0.0",
     "black",
+    "tokenizers==0.20.0rc1"
 ]
 
 # this is a lookup table with items like:
