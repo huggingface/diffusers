@@ -510,13 +510,6 @@ def parse_args(input_args=None):
         help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
     )
     parser.add_argument(
-        "--precondition_outputs",
-        type=int,
-        default=1,
-        help="Flag indicating if we are preconditioning the model outputs or not as done in EDM. This affects how "
-        "model `target` is calculated.",
-    )
-    parser.add_argument(
         "--optimizer",
         type=str,
         default="AdamW",
@@ -1528,20 +1521,13 @@ def main(args):
                     vae_scale_factor=16,  # should this be 2 ** (len(vae.config.block_out_channels))?
                 )
 
-                # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
-                # Preconditioning of the model outputs.
-                if args.precondition_outputs:
-                    model_pred = model_pred * (-sigmas) + noisy_model_input
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
                 # flow matching loss
-                if args.precondition_outputs:
-                    target = model_input
-                else:
-                    target = noise - model_input
+                target = noise - model_input
 
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
