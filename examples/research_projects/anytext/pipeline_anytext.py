@@ -218,10 +218,15 @@ class AnyTextPipeline(
         feature_extractor: CLIPImageProcessor,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
+        font_path: str = "font/Arial_Unicode.ttf",
     ):
         super().__init__()
-        self.text_embedding_module = TextEmbeddingModule(use_fp16=unet.dtype == torch.float16)
-        self.auxiliary_latent_module = AuxiliaryLatentModule(vae=vae, use_fp16=unet.dtype == torch.float16)
+        self.text_embedding_module = TextEmbeddingModule(
+            use_fp16=unet.dtype == torch.float16, device=unet.device, font_path=font_path
+        )
+        self.auxiliary_latent_module = AuxiliaryLatentModule(
+            vae=vae, use_fp16=unet.dtype == torch.float16, device=unet.device, font_path=font_path
+        )
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(

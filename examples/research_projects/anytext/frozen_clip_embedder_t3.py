@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from transformers import AutoProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.modeling_attn_mask_utils import _create_4d_causal_attention_mask, _prepare_4d_attention_mask
 
 
@@ -16,14 +16,18 @@ class FrozenCLIPEmbedderT3(AbstractEncoder):
     """Uses the CLIP transformer encoder for text (from Hugging Face)"""
 
     def __init__(
-        self, version="openai/clip-vit-large-patch14", device="cuda", max_length=77, freeze=True, use_vision=False
+        self,
+        version="openai/clip-vit-large-patch14",
+        device="cpu",
+        max_length=77,
+        freeze=True,
+        use_fp16=False,
     ):
         super().__init__()
         self.tokenizer = CLIPTokenizer.from_pretrained(version)
-        self.transformer = CLIPTextModel.from_pretrained(version, torch_dtype=torch.float16).to(device)
-        if use_vision:
-            self.vit = CLIPVisionModelWithProjection.from_pretrained(version)
-            self.processor = AutoProcessor.from_pretrained(version)
+        self.transformer = CLIPTextModel.from_pretrained(
+            version, use_safetensors=True, torch_dtype=torch.float16 if use_fp16 else torch.float32
+        ).to(device)
         self.device = device
         self.max_length = max_length
         if freeze:

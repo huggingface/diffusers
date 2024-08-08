@@ -34,13 +34,18 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from ...models import (
+from diffusers.models import (
     AutoencoderKL,
     ControlNetModel,
     PriorTransformer,
     UNet2DConditionModel,
 )
-from ...schedulers import (
+from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
+from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
+from diffusers.schedulers import (
     DDIMScheduler,
     DDPMScheduler,
     DPMSolverMultistepScheduler,
@@ -51,12 +56,7 @@ from ...schedulers import (
     PNDMScheduler,
     UnCLIPScheduler,
 )
-from ...utils import is_accelerate_available, logging
-from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
-from ..paint_by_example import PaintByExampleImageEncoder
-from ..pipeline_utils import DiffusionPipeline
-from .safety_checker import StableDiffusionSafetyChecker
-from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
+from diffusers.utils import is_accelerate_available, logging
 
 
 if is_accelerate_available():

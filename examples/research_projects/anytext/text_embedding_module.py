@@ -16,36 +16,25 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class TextEmbeddingModule(nn.Module):
-    def __init__(self, use_fp16):
+    def __init__(self, font_path, use_fp16=False, device="cpu"):
         super().__init__()
         self.use_fp16 = use_fp16
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = device
         # TODO: Learn if the recommended font file is free to use
-        self.font = ImageFont.truetype("Arial_Unicode.ttf", 60)
-        self.frozen_CLIP_embedder_t3 = FrozenCLIPEmbedderT3(device=self.device)
-        self.embedding_manager_config = {
-            "valid": True,
-            "emb_type": "ocr",
-            "glyph_channels": 1,
-            "position_channels": 1,
-            "add_pos": False,
-            "placeholder_string": "*",
-            "use_fp16": self.use_fp16,
-        }
-        self.embedding_manager = EmbeddingManager(self.frozen_CLIP_embedder_t3, **self.embedding_manager_config)
+        self.font = ImageFont.truetype(font_path, 60)
+        self.frozen_CLIP_embedder_t3 = FrozenCLIPEmbedderT3(device=self.device, use_fp16=self.use_fp16)
+        self.embedding_manager = EmbeddingManager(self.frozen_CLIP_embedder_t3, use_fp16=self.use_fp16)
         # TODO: Understand the reason of param.requires_grad = True
         for param in self.embedding_manager.embedding_parameters():
             param.requires_grad = True
-        rec_model_dir = "ppv3_rec.safetensors"
-        self.text_predictor = create_predictor(rec_model_dir).eval()
+        rec_model_dir = "OCR/ppv3_rec.safetensors"
+        self.text_predictor = create_predictor(rec_model_dir, device=self.device, use_fp16=self.use_fp16)
         args = {}
         args["rec_image_shape"] = "3, 48, 320"
         args["rec_batch_num"] = 6
-        args["rec_char_dict_path"] = "ppocr_keys_v1.txt"
-        args["use_fp16"] = True
-        self.cn_recognizer = TextRecognizer(
-            args, self.text_predictor.to(dtype=torch.float16 if use_fp16 else torch.float32)
-        )
+        args["rec_char_dict_path"] = "OCR/ppocr_keys_v1.txt"
+        args["use_fp16"] = self.use_fp16
+        self.cn_recognizer = TextRecognizer(args, self.text_predictor, device=self.device, use_fp16=self.use_fp16)
         for param in self.text_predictor.parameters():
             param.requires_grad = False
         self.embedding_manager.recog = self.cn_recognizer

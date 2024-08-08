@@ -37,9 +37,9 @@ def retrieve_latents(
 class AuxiliaryLatentModule(nn.Module):
     def __init__(self, glyph_channels=1, position_channels=1, model_channels=320, **kwargs):
         super().__init__()
-        self.font = ImageFont.truetype("Arial_Unicode.ttf", 60)
+        self.font = ImageFont.truetype("font/Arial_Unicode.ttf", 60)
         self.use_fp16 = kwargs.get("use_fp16", False)
-        self.device = kwargs.get("device", "cuda")
+        self.device = kwargs.get("device", "cpu")
 
         self.glyph_block = nn.Sequential(
             nn.Conv2d(glyph_channels, 8, 3, padding=1),
@@ -78,17 +78,22 @@ class AuxiliaryLatentModule(nn.Module):
             nn.Conv2d(32, 64, 3, padding=1, stride=2),
             nn.SiLU(),
         )
-        self.glyph_block.load_state_dict(load_file("glyph_block.safetensors"))
-        self.position_block.load_state_dict(load_file("position_block.safetensors"))
-        self.glyph_block = self.glyph_block.to(device="cuda", dtype=torch.float16)
-        self.position_block = self.position_block.to(device="cuda", dtype=torch.float16)
 
         self.vae = kwargs.get("vae")
         self.vae.eval()
 
         self.fuse_block = zero_module(nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1))
-        self.fuse_block.load_state_dict(load_file("fuse_block.safetensors"))
-        self.fuse_block = self.fuse_block.to(device="cuda", dtype=torch.float16)
+
+        self.glyph_block.load_state_dict(
+            load_file("AuxiliaryLatentModule/glyph_block.safetensors", device=self.device)
+        )
+        self.glyph_block = self.glyph_block.to(dtype=torch.float16 if self.use_fp16 else torch.float32)
+        self.position_block.load_state_dict(
+            load_file("AuxiliaryLatentModule/position_block.safetensors", device=self.device)
+        )
+        self.position_block = self.position_block.to(dtype=torch.float16 if self.use_fp16 else torch.float32)
+        self.fuse_block.load_state_dict(load_file("AuxiliaryLatentModule/fuse_block.safetensors", device=self.device))
+        self.fuse_block = self.fuse_block.to(dtype=torch.float16 if self.use_fp16 else torch.float32)
 
     @torch.no_grad()
     def forward(
@@ -121,7 +126,6 @@ class AuxiliaryLatentModule(nn.Module):
             edit_image = self.resize_image(
                 edit_image, max_length=768
             )  # make w h multiple of 64, resize if w or h > max_length
-            h, w = edit_image.shape[:2]  # change h, w by input ref_img
 
         # get masked_x
         masked_img = ((edit_image.astype(np.float32) / 127.5) - 1.0) * (1 - np_hint)
@@ -129,21 +133,18 @@ class AuxiliaryLatentModule(nn.Module):
         masked_img = torch.from_numpy(masked_img.copy()).float().to(self.device)
         if self.use_fp16:
             masked_img = masked_img.half()
-        masked_x = self.encode_first_stage(masked_img[None, ...]).detach()
+        masked_x = (retrieve_latents(self.vae.encode(masked_img[None, ...])) * self.vae.config.scaling_factor).detach()
         if self.use_fp16:
             masked_x = masked_x.half()
         text_info["masked_x"] = torch.cat([masked_x for _ in range(num_images_per_prompt)], dim=0)
 
         glyphs = torch.cat(text_info["glyphs"], dim=1).sum(dim=1, keepdim=True)
         positions = torch.cat(text_info["positions"], dim=1).sum(dim=1, keepdim=True)
-        enc_glyph = self.glyph_block(glyphs.cuda())
-        enc_pos = self.position_block(positions.cuda())
-        guided_hint = self.fuse_block(torch.cat([enc_glyph, enc_pos, text_info["masked_x"].cuda()], dim=1))
+        enc_glyph = self.glyph_block(glyphs)
+        enc_pos = self.position_block(positions)
+        guided_hint = self.fuse_block(torch.cat([enc_glyph, enc_pos, text_info["masked_x"]], dim=1))
 
         return guided_hint
-
-    def encode_first_stage(self, masked_img):
-        return retrieve_latents(self.vae.encode(masked_img)) * self.vae.config.scaling_factor
 
     def check_channels(self, image):
         channels = image.shape[2] if len(image.shape) == 3 else 1

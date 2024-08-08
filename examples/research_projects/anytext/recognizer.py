@@ -78,37 +78,30 @@ def crop_image(src_img, mask):
     return result
 
 
-def create_predictor(model_dir=None, model_lang="ch", is_onnx=False):
+def create_predictor(model_dir=None, model_lang="ch", device="cpu", use_fp16=False):
     model_file_path = model_dir
     if model_file_path is not None and not os.path.exists(model_file_path):
         raise ValueError("not find model file path {}".format(model_file_path))
 
-    if is_onnx:
-        import onnxruntime as ort
-
-        sess = ort.InferenceSession(
-            model_file_path, providers=["CPUExecutionProvider"]
-        )  # 'TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider'
-        return sess
+    if model_lang == "ch":
+        n_class = 6625
+    elif model_lang == "en":
+        n_class = 97
     else:
-        if model_lang == "ch":
-            n_class = 6625
-        elif model_lang == "en":
-            n_class = 97
-        else:
-            raise ValueError(f"Unsupported OCR recog model_lang: {model_lang}")
-        rec_config = edict(
-            in_channels=3,
-            backbone=edict(type="MobileNetV1Enhance", scale=0.5, last_conv_stride=[1, 2], last_pool_type="avg"),
-            neck=edict(type="SequenceEncoder", encoder_type="svtr", dims=64, depth=2, hidden_dims=120, use_guide=True),
-            head=edict(type="CTCHead", fc_decay=0.00001, out_channels=n_class, return_feats=True),
-        )
+        raise ValueError(f"Unsupported OCR recog model_lang: {model_lang}")
+    rec_config = edict(
+        in_channels=3,
+        backbone=edict(type="MobileNetV1Enhance", scale=0.5, last_conv_stride=[1, 2], last_pool_type="avg"),
+        neck=edict(type="SequenceEncoder", encoder_type="svtr", dims=64, depth=2, hidden_dims=120, use_guide=True),
+        head=edict(type="CTCHead", fc_decay=0.00001, out_channels=n_class, return_feats=True),
+    )
 
-        rec_model = RecModel(rec_config)
-        if model_file_path is not None:
-            rec_model.load_state_dict(load_file(model_file_path))
-            rec_model.eval()
-        return rec_model.eval()
+    rec_model = RecModel(rec_config)
+    if model_file_path is not None:
+        rec_model.load_state_dict(load_file(model_file_path, device=device)).to(
+            dtype=torch.float16 if use_fp16 else torch.float32
+        )
+    return rec_model
 
 
 def _check_image_file(path):

@@ -107,25 +107,17 @@ class EmbeddingManager(nn.Module):
     def __init__(
         self,
         embedder,
-        valid=True,
-        glyph_channels=20,
         position_channels=1,
         placeholder_string="*",
         add_pos=False,
         emb_type="ocr",
-        **kwargs,
+        use_fp16=False,
     ):
         super().__init__()
-        if hasattr(embedder, "tokenizer"):  # using Stable Diffusion's CLIP encoder
-            get_token_for_string = partial(get_clip_token_for_string, embedder.tokenizer)
-            token_dim = 768
-            if hasattr(embedder, "vit"):
-                assert emb_type == "vit"
-                self.get_vision_emb = partial(get_clip_vision_emb, embedder.vit, embedder.processor)
-            self.get_recog_emb = None
-        else:  # using LDM's BERT encoder
-            get_token_for_string = partial(get_bert_token_for_string, embedder.tknz_fn)
-            token_dim = 1280
+        get_token_for_string = partial(get_clip_token_for_string, embedder.tokenizer)
+        token_dim = 768
+        self.get_recog_emb = None
+        token_dim = 1280
         self.token_dim = token_dim
         self.emb_type = emb_type
 
@@ -134,9 +126,7 @@ class EmbeddingManager(nn.Module):
             self.position_encoder = EncodeNet(position_channels, token_dim)
         if emb_type == "ocr":
             self.proj = nn.Sequential(zero_module(nn.Linear(40 * 64, token_dim)), nn.LayerNorm(token_dim))
-            self.proj = self.proj.to(dtype=torch.float16 if kwargs.get("use_fp16", False) else torch.float32)
-        if emb_type == "conv":
-            self.glyph_encoder = EncodeNet(glyph_channels, token_dim)
+            self.proj = self.proj.to(dtype=torch.float16 if use_fp16 else torch.float32)
 
         self.placeholder_token = get_token_for_string(placeholder_string)
 
