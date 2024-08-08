@@ -1269,7 +1269,7 @@ def main(args):
     if args.train_text_encoder:
         # different learning rate for text encoder and unet
         text_parameters_one_with_lr = {
-            "params": text_encoder_one.parameters(),
+            "params": text_lora_parameters_one,
             "weight_decay": args.adam_weight_decay_text_encoder,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
