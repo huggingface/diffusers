@@ -1130,7 +1130,7 @@ def main(args):
     vae.requires_grad_(False)
     if args.train_text_encoder:
         text_encoder_one.requires_grad_(True)
-        text_encoder_two.requires_grad_(True)
+        text_encoder_two.requires_grad_(False)
     else:
         text_encoder_one.requires_grad_(False)
         text_encoder_two.requires_grad_(False)
@@ -1158,7 +1158,6 @@ def main(args):
         transformer.enable_gradient_checkpointing()
         if args.train_text_encoder:
             text_encoder_one.gradient_checkpointing_enable()
-            text_encoder_two.gradient_checkpointing_enable()
 
     # now we will add new LoRA weights to the attention layers
     transformer_lora_config = LoraConfig(
@@ -1452,14 +1451,12 @@ def main(args):
         (
             transformer,
             text_encoder_one,
-            text_encoder_two,
             optimizer,
             train_dataloader,
             lr_scheduler,
         ) = accelerator.prepare(
             transformer,
             text_encoder_one,
-            text_encoder_two,
             optimizer,
             train_dataloader,
             lr_scheduler,
@@ -1691,7 +1688,7 @@ def main(args):
                 if accelerator.sync_gradients:
                     params_to_clip = (
                         itertools.chain(
-                            transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()
+                            transformer.parameters(), text_encoder_one.parameters()
                         )
                         if args.train_text_encoder
                         else transformer.parameters()

@@ -1109,7 +1109,7 @@ def main(args):
     vae.requires_grad_(False)
     if args.train_text_encoder:
         text_encoder_one.requires_grad_(True)
-        text_encoder_two.requires_grad_(True)
+        text_encoder_two.requires_grad_(False)
     else:
         text_encoder_one.requires_grad_(False)
         text_encoder_two.requires_grad_(False)
@@ -1137,7 +1137,6 @@ def main(args):
         transformer.enable_gradient_checkpointing()
         if args.train_text_encoder:
             text_encoder_one.gradient_checkpointing_enable()
-            text_encoder_two.gradient_checkpointing_enable()
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -1390,14 +1389,12 @@ def main(args):
         (
             transformer,
             text_encoder_one,
-            text_encoder_two,
             optimizer,
             train_dataloader,
             lr_scheduler,
         ) = accelerator.prepare(
             transformer,
             text_encoder_one,
-            text_encoder_two,
             optimizer,
             train_dataloader,
             lr_scheduler,
@@ -1629,7 +1626,7 @@ def main(args):
                 if accelerator.sync_gradients:
                     params_to_clip = (
                         itertools.chain(
-                            transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()
+                            transformer.parameters(), text_encoder_one.parameters()
                         )
                         if args.train_text_encoder
                         else transformer.parameters()
@@ -1683,6 +1680,11 @@ def main(args):
                 # create pipeline
                 if not args.train_text_encoder:
                     text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
+                else: # even when training the text encoder we're only training text encoder one
+                    text_encoder_two = class_two.from_pretrained(
+                        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision,
+                        variant=args.variant
+                    )
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -1713,12 +1715,10 @@ def main(args):
 
         if args.train_text_encoder:
             text_encoder_one = unwrap_model(text_encoder_one)
-            text_encoder_two = unwrap_model(text_encoder_two)
             pipeline = FluxPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 transformer=transformer,
                 text_encoder=text_encoder_one,
-                text_encoder_2=text_encoder_two,
             )
         else:
             pipeline = FluxPipeline.from_pretrained(args.pretrained_model_name_or_path, transformer=transformer)
