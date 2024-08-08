@@ -202,6 +202,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
 
 - https://github.com/microsoft/TaskMatrix
 - https://github.com/invoke-ai/InvokeAI
+- https://github.com/InstantID/InstantID
 - https://github.com/apple/ml-stable-diffusion
 - https://github.com/Sanster/lama-cleaner
 - https://github.com/IDEA-Research/Grounded-Segment-Anything
