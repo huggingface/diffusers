@@ -25,7 +25,7 @@ from transformers import (
 )
 
 from ...image_processor import VaeImageProcessor, PipelineImageInput
-from ...loaders import SD3LoraLoaderMixin
+from ...loaders import FluxLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
 from ...models.controlnet_flux import FluxControlNetModel
@@ -58,8 +58,8 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers.utils import load_image
-        >>> from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
-        >>> from diffusers.models.controlnet_flux import FluxControlNetModel
+        >>> from diffusers import FluxControlNetPipeline
+        >>> from diffusers import FluxControlNetModel
 
         >>> controlnet_model = 'InstantX/FLUX.1-dev-controlnet-canny-alpha'
         >>> controlnet = FluxControlNetModel.from_pretrained(controlnet_model, torch_dtype=torch.bfloat16)
@@ -78,6 +78,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -151,7 +152,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
+class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     r"""
     The Flux pipeline for text-to-image generation.
 
@@ -164,22 +165,18 @@ class FluxControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`CLIPTextModelWithProjection`]):
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection),
-            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant,
-            with an additional added projection layer that is initialized with a diagonal matrix with the `hidden_size`
-            as its dimension.
-        text_encoder_2 ([`CLIPTextModelWithProjection`]):
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection),
-            specifically the
-            [laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)
-            variant.
+        text_encoder ([`CLIPTextModel`]):
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        text_encoder_2 ([`T5EncoderModel`]):
+            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
+            the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        tokenizer_2 (`CLIPTokenizer`):
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer_2 (`T5TokenizerFast`):
             Second Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+            [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
@@ -344,7 +341,7 @@ class FluxControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, SD3LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, FluxLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -377,12 +374,12 @@ class FluxControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
             )
 
         if self.text_encoder is not None:
-            if isinstance(self, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
+            if isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 
         if self.text_encoder_2 is not None:
-            if isinstance(self, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
+            if isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
@@ -438,6 +435,8 @@ class FluxControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
+
+    # Copied from diffusers.pipelines.flux.pipeline_flux._prepare_latent_image_ids
     @staticmethod
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
         latent_image_ids = torch.zeros(height // 2, width // 2, 3)
@@ -453,6 +452,7 @@ class FluxControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
         return latent_image_ids.to(device=device, dtype=dtype)
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux._pack_latents
     @staticmethod
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
@@ -461,6 +461,7 @@ class FluxControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
         return latents
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux._unpack_latents
     @staticmethod
     def _unpack_latents(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
@@ -475,6 +476,7 @@ class FluxControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
         return latents
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -508,6 +510,7 @@ class FluxControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
         return latents, latent_image_ids
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
     def prepare_image(
         self,
         image,
@@ -790,8 +793,6 @@ class FluxControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )
-                # controlnet_block_samples = None if len(controlnet_block_samples) == 0 else controlnet_block_samples
-                # controlnet_single_block_samples = None if len(controlnet_single_block_samples) == 0 else controlnet_single_block_samples
 
                 noise_pred = self.transformer(
                     hidden_states=latents,

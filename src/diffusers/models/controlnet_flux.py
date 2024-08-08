@@ -199,7 +199,6 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigina
 
         return controlnet
 
-
     def forward(
         self,
         hidden_states: torch.Tensor,
