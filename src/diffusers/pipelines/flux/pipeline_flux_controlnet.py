@@ -66,11 +66,11 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = FluxControlNetPipeline.from_pretrained(base_model, controlnet=controlnet, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")
-        >>> prompt = "A girl with green long hair. she is wearing a yellow suit.  half body, background is sky and cloud. anime style"
+        >>> prompt = "A girl in city, 25 years old, cool, futuristic"
         >>> image = pipe(
                 prompt, 
                 control_image=control_image,
-                controlnet_conditioning_scale=0.7,
+                controlnet_conditioning_scale=0.6,
                 num_inference_steps=28, 
                 guidance_scale=3.5,
             ).images[0]
