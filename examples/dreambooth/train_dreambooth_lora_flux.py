@@ -1127,7 +1127,7 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
     )
 
-    transformer.requires_grad_(True)
+    transformer.requires_grad_(False)
     vae.requires_grad_(False)
     if args.train_text_encoder:
         text_encoder_one.requires_grad_(True)
