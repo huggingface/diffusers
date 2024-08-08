@@ -1368,7 +1368,6 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    # Prepare everything with our `accelerator`.
     transformer, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         transformer, optimizer, train_dataloader, lr_scheduler
     )
