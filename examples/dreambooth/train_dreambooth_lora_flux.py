@@ -1690,9 +1690,7 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     params_to_clip = (
-                        itertools.chain(
-                            transformer.parameters(), text_encoder_one.parameters()
-                        )
+                        itertools.chain(transformer.parameters(), text_encoder_one.parameters())
                         if args.train_text_encoder
                         else transformer.parameters()
                     )

@@ -1628,9 +1628,7 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     params_to_clip = (
-                        itertools.chain(
-                            transformer.parameters(), text_encoder_one.parameters()
-                        )
+                        itertools.chain(transformer.parameters(), text_encoder_one.parameters())
                         if args.train_text_encoder
                         else transformer.parameters()
                     )
@@ -1683,10 +1681,12 @@ def main(args):
                 # create pipeline
                 if not args.train_text_encoder:
                     text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
-                else: # even when training the text encoder we're only training text encoder one
+                else:  # even when training the text encoder we're only training text encoder one
                     text_encoder_two = class_two.from_pretrained(
-                        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision,
-                        variant=args.variant
+                        args.pretrained_model_name_or_path,
+                        subfolder="text_encoder_2",
+                        revision=args.revision,
+                        variant=args.variant,
                     )
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
