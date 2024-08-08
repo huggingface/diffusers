@@ -136,7 +136,7 @@ export MODEL_NAME="black-forest-labs/FLUX.1-dev"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="trained-flux-lora"
 
-accelerate launch train_dreambooth_lora_sd3.py \
+accelerate launch train_dreambooth_lora_flux.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
@@ -160,7 +160,39 @@ accelerate launch train_dreambooth_lora_sd3.py \
 - [x] add text encoder training support for dreambooth script
 - [ ] add text encoder training support for lora script
 
+Alongside the transformer, fine-tuning of the CLIP text encoder is also supported.
+To do so, just specify `--train_text_encoder` while launching training. Please keep the following points in mind:
 
+> [!NOTE]
+> FLUX.1 has 2 text encoders (CLIP L/14 and T5-v1.1-XXL).
+By enabling `--train_text_encoder`, fine-tuning of the **CLIP encoder** is performed. 
+> At the moment, T5 fine-tuning is not supported and weights remain frozen when text encoder training is enabled.
+
+To perform DreamBooth LoRA with text-encoder training, run:
+```bash
+export MODEL_NAME="black-forest-labs/FLUX.1-dev"
+export OUTPUT_DIR="trained-flux-dev-dreambooth"
+
+accelerate launch train_dreambooth_flux.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --mixed_precision="fp16" \
+  --train_text_encoder\
+  --instance_prompt="a photo of sks dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=4 \
+  --learning_rate=1e-5 \
+  --report_to="wandb" \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=500 \
+  --validation_prompt="A photo of sks dog in a bucket" \
+  --validation_epochs=25 \
+  --seed="0" \
+  --push_to_hub
+```
 
 ## Other notes
 Thanks to `bghira` for their help with reviewing & insight sharing ♥️
