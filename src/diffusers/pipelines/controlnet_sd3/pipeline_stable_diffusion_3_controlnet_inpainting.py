@@ -1,4 +1,4 @@
-# Copyright 2024 Stability AI, The HuggingFace Team and The InstantX Team. All rights reserved.
+# Copyright 2024 Stability AI, The HuggingFace Team and The AlimamaCreative Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -76,11 +76,11 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.controlnet.to(torch.float16)
         >>> pipe.to("cuda")
 
-        >>> image = load_image("https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/blob/main/images/prod.png")
-        >>> mask = load_image("https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/blob/main/images/mask.jpeg")
+        >>> image = load_image("https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/resolve/main/images/dog.png")
+        >>> mask = load_image("https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/resolve/main/images/dog_mask.png")
         >>> width = 1024
         >>> height = 1024
-        >>> prompt="a woman wearing a white jacket, black hat and black pants is standing in a field, the hat writes SD3"
+        >>> prompt="A cat is sitting next to a puppy."
         >>> generator = torch.Generator(device="cuda").manual_seed(24)
         >>> res_image = pipe(
         >>>     negative_prompt='deformed, distorted, disfigured, poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, mutated hands and fingers, disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, NSFW',
@@ -544,7 +544,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
             negative_pooled_prompt_embeds = torch.cat(
                 [negative_pooled_prompt_embed, negative_pooled_prompt_2_embed], dim=-1
             )
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
         if self.text_encoder is not None:
             if isinstance(self, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
@@ -717,22 +717,22 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
             mask = self.mask_processor.preprocess(mask, height=height, width=width)
         mask = mask.repeat_interleave(repeat_by, dim = 0)
         mask = mask.to(device=device, dtype=dtype)
-        
+
         # Get masked image
         masked_image = image.clone()
         masked_image[(mask > 0.5).repeat(1,3,1,1)] = -1
-        
+
         # Encode to latents
         image_latents = self.vae.encode(masked_image).latent_dist.sample()
         image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
         image_latents = image_latents.to(dtype)
-        
+
         mask = torch.nn.functional.interpolate(
             mask, size = (height // self.vae_scale_factor, width // self.vae_scale_factor)
         )
         mask = 1 - mask
         control_image = torch.cat([image_latents, mask], dim = 1)
-        
+
         if do_classifier_free_guidance and not guess_mode:
             control_image = torch.cat([control_image] * 2)
 
