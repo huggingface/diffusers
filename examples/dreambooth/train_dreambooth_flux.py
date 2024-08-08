@@ -138,7 +138,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     model_card.save(os.path.join(repo_folder, "README.md"))
 
 
-def load_text_encoders(class_one, class_two, class_three):
+def load_text_encoders(class_one, class_two):
     text_encoder_one = class_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
@@ -1417,7 +1417,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_name = "dreambooth-flux"
+        tracker_name = "dreambooth-flux-dev-lora"
         accelerator.init_trackers(tracker_name, config=vars(args))
 
     # Train!
@@ -1588,7 +1588,7 @@ def main(args):
                     model_pred,
                     height=int(model_input.shape[2]) * 8,
                     width=int(model_input.shape[3]) * 8,
-                    vae_scale_factor=16,  # should this be 2 ** (len(vae.config.block_out_channels))?
+                    vae_scale_factor=2 ** (len(vae.config.block_out_channels)),  # should this be 2 ** (len(vae.config.block_out_channels))?
                 )
 
                 model_pred = model_pred * (-sigmas) + noisy_model_input
