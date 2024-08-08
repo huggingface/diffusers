@@ -157,8 +157,6 @@ accelerate launch train_dreambooth_lora_flux.py \
 ```
 
 ### Text Encoder Training
-- [x] add text encoder training support for dreambooth script
-- [ ] add text encoder training support for lora script
 
 Alongside the transformer, fine-tuning of the CLIP text encoder is also supported.
 To do so, just specify `--train_text_encoder` while launching training. Please keep the following points in mind:
@@ -171,9 +169,9 @@ By enabling `--train_text_encoder`, fine-tuning of the **CLIP encoder** is perfo
 To perform DreamBooth LoRA with text-encoder training, run:
 ```bash
 export MODEL_NAME="black-forest-labs/FLUX.1-dev"
-export OUTPUT_DIR="trained-flux-dev-dreambooth"
+export OUTPUT_DIR="trained-flux-dev-dreambooth-lora"
 
-accelerate launch train_dreambooth_flux.py \
+accelerate launch train_dreambooth_lora_flux.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
