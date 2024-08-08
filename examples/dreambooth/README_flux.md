@@ -3,8 +3,17 @@
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
 
 The `train_dreambooth_flux.py` script shows how to implement the training procedure and adapt it for [FLUX.1 [dev]](https://blackforestlabs.ai/announcing-black-forest-labs/). We also provide a LoRA implementation in the `train_dreambooth_lora_flux.py` script.
+> [!NOTE] 
+> **Memory consumption**
+> 
+> Flux can be quite expensive to run on consumer hardware devices and as a result finetuning it comes with high memory requirements - 
+> a LoRA with a rank of 16 (w/ all components trained) can exceed 40GB of VRAM for training.
+> For more tips & guidance on training on a resource-constrained device please visit [`@bghira`'s guide](documentation/quickstart/FLUX.md) 
+
 
 > [!NOTE]
+> **Gated model**
+> 
 > As the model is gated, before using it with diffusers you first need to go to the [FLUX.1 [dev] Hugging Face page](https://huggingface.co/black-forest-labs/FLUX.1-dev), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
 
 ```bash
@@ -147,7 +156,9 @@ accelerate launch train_dreambooth_lora_sd3.py \
   --push_to_hub
 ```
 
-### Text Encoder Training (Coming Soon!)
+> [!TODO]
+> ### Text Encoder Training (Coming Soon!)
 
 
 ## Other notes
+Thanks to `bghira` for their help with reviewing & insight sharing ♥️
