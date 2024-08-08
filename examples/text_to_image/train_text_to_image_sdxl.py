@@ -1113,6 +1113,23 @@ def main(args):
                                                        on_trace_ready=trace_handler)
                 torch_profile.start()
         
+        # Profile a specific rank at a certain epoch number
+        if args.profile_epoch is not None and args.profile_rank is not None:
+            if args.profile == f"rpd" and args.profile_epoch == epoch and args.profile_rank == args.local_rank:
+                rpd_profile = rpdTracerControl()
+                prof = torch.autograd.profiler.emit_nvtx(record_shapes=True)
+                rpd_profile.start()
+                prof.__enter__()
+                
+            if args.profile == f"torch" and args.profile_epoch == epoch and args.profile_rank == args.local_rank:
+                def trace_handler(prof):
+                    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
+                    prof.export_chrome_trace(f"/workspace/trace_rank_{args.profile_rank}_epoch_{args.profile_epoch}.json")
+                torch_profile = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, 
+                                                                   torch.profiler.ProfilerActivity.CUDA], 
+                                                       on_trace_ready=trace_handler)
+                torch_profile.start()
+        
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Sample noise that we'll add to the latents
@@ -1284,6 +1301,15 @@ def main(args):
                 rpd_profile.stop()
                 
             if args.profile == f"torch":
+                torch_profile.stop()
+        
+        # Stop profile a specific rank at a certain epoch number
+        if args.profile_epoch is not None and args.profile_rank is not None:
+            if args.profile == f"rpd" and args.profile_epoch == epoch and args.profile_rank == args.local_rank:
+                prof.__exit__(None, None, None)
+                rpd_profile.stop()
+                
+            if args.profile == f"torch" and args.profile_epoch == epoch and args.profile_rank == args.local_rank:
                 torch_profile.stop()
         
         if accelerator.is_main_process:
