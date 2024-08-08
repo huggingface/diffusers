@@ -1682,7 +1682,7 @@ def main(args):
                 if not args.train_text_encoder:
                     text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
                 else:  # even when training the text encoder we're only training text encoder one
-                    text_encoder_two = class_two.from_pretrained(
+                    text_encoder_two = text_encoder_cls_two.from_pretrained(
                         args.pretrained_model_name_or_path,
                         subfolder="text_encoder_2",
                         revision=args.revision,
