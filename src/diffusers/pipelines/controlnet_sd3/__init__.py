@@ -23,7 +23,9 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_stable_diffusion_3_controlnet"] = ["StableDiffusion3ControlNetPipeline"]
-    _import_structure["pipeline_stable_diffusion_3_controlnet_inpainting"] = ["StableDiffusion3ControlNetInpaintingPipeline"]
+    _import_structure["pipeline_stable_diffusion_3_controlnet_inpainting"] = [
+        "StableDiffusion3ControlNetInpaintingPipeline"
+    ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:

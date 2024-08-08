@@ -233,7 +233,9 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_resize=True, do_convert_rgb=True, do_normalize=True)
+        self.image_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_resize=True, do_convert_rgb=True, do_normalize=True
+        )
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor,
             do_resize=True,
@@ -544,7 +546,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
             negative_pooled_prompt_embeds = torch.cat(
                 [negative_pooled_prompt_embed, negative_pooled_prompt_2_embed], dim=-1
             )
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+
         if self.text_encoder is not None:
             if isinstance(self, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
@@ -715,12 +717,12 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
             pass
         else:
             mask = self.mask_processor.preprocess(mask, height=height, width=width)
-        mask = mask.repeat_interleave(repeat_by, dim = 0)
+        mask = mask.repeat_interleave(repeat_by, dim=0)
         mask = mask.to(device=device, dtype=dtype)
 
         # Get masked image
         masked_image = image.clone()
-        masked_image[(mask > 0.5).repeat(1,3,1,1)] = -1
+        masked_image[(mask > 0.5).repeat(1, 3, 1, 1)] = -1
 
         # Encode to latents
         image_latents = self.vae.encode(masked_image).latent_dist.sample()
@@ -728,10 +730,10 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
         image_latents = image_latents.to(dtype)
 
         mask = torch.nn.functional.interpolate(
-            mask, size = (height // self.vae_scale_factor, width // self.vae_scale_factor)
+            mask, size=(height // self.vae_scale_factor, width // self.vae_scale_factor)
         )
         mask = 1 - mask
-        control_image = torch.cat([image_latents, mask], dim = 1)
+        control_image = torch.cat([image_latents, mask], dim=1)
 
         if do_classifier_free_guidance and not guess_mode:
             control_image = torch.cat([control_image] * 2)
