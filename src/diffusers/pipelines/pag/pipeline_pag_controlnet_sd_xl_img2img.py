@@ -1461,7 +1461,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
                 generator,
                 True,
             )
-
+        
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
@@ -1537,7 +1537,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
                     image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
                 image_embeds = image_embeds.to(device)
                 ip_adapter_image_embeds[i] = image_embeds
-
+        print(prompt_embeds.shape)
         if self.do_perturbed_attention_guidance:
             prompt_embeds = self._prepare_perturbed_attention_guidance(
                 prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
@@ -1587,7 +1587,6 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
                     if isinstance(controlnet_cond_scale, list):
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
-
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     control_model_input,
                     t,
