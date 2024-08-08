@@ -483,8 +483,9 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--weighting_scheme",
         type=str,
-        default="logit_normal",
+        default="none",
         choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "none"],
+        help=('We default to the "none" weighting scheme for uniform sampling and uniform loss')
     )
     parser.add_argument(
         "--logit_mean", type=float, default=0.0, help="mean to use when using the `'logit_normal'` weighting scheme."
