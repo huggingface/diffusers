@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
-from ...image_processor import PipelineImageInput,VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
@@ -89,6 +89,7 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -388,7 +389,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         text_ids = text_ids.repeat(num_images_per_prompt, 1, 1)
 
         return prompt_embeds, pooled_prompt_embeds, text_ids
-    
+
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
@@ -402,9 +403,9 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
         return image_latents
-    
+
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
-    def get_timesteps(self,timesteps,num_inference_steps, strength, device):
+    def get_timesteps(self, timesteps, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(num_inference_steps * strength, num_inference_steps)
 
@@ -429,7 +430,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
-        
+
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
@@ -516,9 +517,8 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         latents=None,
         image=None,
         timestep=None,
-        is_strength_max = None,
+        is_strength_max=None,
     ):
-
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -530,14 +530,14 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
                 "However, either the image or the noise timestep has not been provided."
             )
-    
+
         height = 2 * (int(height) // self.vae_scale_factor)
         width = 2 * (int(width) // self.vae_scale_factor)
-        
+
         shape = (batch_size, num_channels_latents, height, width)
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
-            # return latents.to(device=device, dtype=dtype), latent_image_ids
-        
+        # return latents.to(device=device, dtype=dtype), latent_image_ids
+
         if latents is None:
             image = image.to(device=device, dtype=dtype)
             image_latents = self._encode_vae_image(image=image, generator=generator)
@@ -602,7 +602,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
-        print(masked_image_latents.shape,mask.shape, "mask im la", "mask") 
         return mask, masked_image_latents
 
     @property
@@ -769,7 +768,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         self._interrupt = False
         is_strength_max = strength == 1.0
 
-
         # 2. Preprocess mask and image
         if padding_mask_crop is not None:
             crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
@@ -814,7 +812,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         # 4.Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-        image_seq_len = (int(height)//self.vae_scale_factor) * (int(width)//self.vae_scale_factor)
+        image_seq_len = (int(height) // self.vae_scale_factor) * (int(width) // self.vae_scale_factor)
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.base_image_seq_len,
@@ -830,7 +828,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             sigmas,
             mu=mu,
         )
-        timesteps,num_inference_steps = self.get_timesteps(timesteps,num_inference_steps,strength,device)
+        timesteps, num_inference_steps = self.get_timesteps(timesteps, num_inference_steps, strength, device)
 
         if num_inference_steps < 1:
             raise ValueError(
@@ -843,7 +841,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         num_channels_latents = self.transformer.config.in_channels // 4
         num_channels_transformer = self.transformer.config.in_channels
 
-        latents, noise,image_latents, latent_image_ids = self.prepare_latents(
+        latents, noise, image_latents, latent_image_ids = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
             height,
@@ -854,10 +852,8 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             latents,
             init_image,
             latent_timestep,
-            is_strength_max
-
+            is_strength_max,
         )
-
 
         mask_condition = self.mask_processor.preprocess(
             mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
@@ -879,8 +875,20 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             device,
             generator,
         )
-        masked_image_latents = self._pack_latents(masked_image_latents,batch_size,num_channels_latents,2 * (int(height) // self.vae_scale_factor),2 * (int(width) // self.vae_scale_factor))
-        mask = self._pack_latents(mask.repeat(1,num_channels_latents,1,1),batch_size,num_channels_latents,2 * (int(height) // self.vae_scale_factor),2 * (int(width) // self.vae_scale_factor))
+        masked_image_latents = self._pack_latents(
+            masked_image_latents,
+            batch_size,
+            num_channels_latents,
+            2 * (int(height) // self.vae_scale_factor),
+            2 * (int(width) // self.vae_scale_factor),
+        )
+        mask = self._pack_latents(
+            mask.repeat(1, num_channels_latents, 1, 1),
+            batch_size,
+            num_channels_latents,
+            2 * (int(height) // self.vae_scale_factor),
+            2 * (int(width) // self.vae_scale_factor),
+        )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         # # match the inpainting pipeline and will be updated with input + mask inpainting model later
