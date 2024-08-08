@@ -1537,7 +1537,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
                     image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
                 image_embeds = image_embeds.to(device)
                 ip_adapter_image_embeds[i] = image_embeds
-        print(prompt_embeds.shape)
+
         if self.do_perturbed_attention_guidance:
             prompt_embeds = self._prepare_perturbed_attention_guidance(
                 prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
