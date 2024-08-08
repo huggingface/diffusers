@@ -1435,9 +1435,9 @@ import requests
 import torch
 from diffusers import DiffusionPipeline
 from PIL import Image
-from transformers import CLIPFeatureExtractor, CLIPModel
+from transformers import CLIPImageProcessor, CLIPModel
 
-feature_extractor = CLIPFeatureExtractor.from_pretrained(
+feature_extractor = CLIPImageProcessor.from_pretrained(
     "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 )
 clip_model = CLIPModel.from_pretrained(
@@ -1487,17 +1487,16 @@ NOTE: The ONNX conversions and TensorRT engine build may take up to 30 minutes.
 ```python
 import torch
 from diffusers import DDIMScheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipeline
+from diffusers.pipelines import DiffusionPipeline
 
 # Use the DDIMScheduler scheduler here instead
-scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
-                                            subfolder="scheduler")
+scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1", subfolder="scheduler")
 
-pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
-                                                custom_pipeline="stable_diffusion_tensorrt_txt2img",
-                                                variant='fp16',
-                                                torch_dtype=torch.float16,
-                                                scheduler=scheduler,)
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
+    custom_pipeline="stable_diffusion_tensorrt_txt2img",
+    variant='fp16',
+    torch_dtype=torch.float16,
+    scheduler=scheduler,)
 
 # re-use cached folder to save ONNX models and TensorRT Engines
 pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", variant='fp16',)
@@ -2123,7 +2122,7 @@ import torch
 import open_clip
 from open_clip import SimpleTokenizer
 from diffusers import DiffusionPipeline
-from transformers import CLIPFeatureExtractor, CLIPModel
+from transformers import CLIPImageProcessor, CLIPModel
 
 
 def download_image(url):
@@ -2131,7 +2130,7 @@ def download_image(url):
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
 # Loading additional models
-feature_extractor = CLIPFeatureExtractor.from_pretrained(
+feature_extractor = CLIPImageProcessor.from_pretrained(
     "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 )
 clip_model = CLIPModel.from_pretrained(
@@ -2231,12 +2230,12 @@ from io import BytesIO
 from PIL import Image
 import torch
 from diffusers import PNDMScheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline
+from diffusers.pipelines import DiffusionPipeline
 
 # Use the PNDMScheduler scheduler here instead
 scheduler = PNDMScheduler.from_pretrained("stabilityai/stable-diffusion-2-inpainting", subfolder="scheduler")
 
-pipe = StableDiffusionInpaintPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
     custom_pipeline="stable_diffusion_tensorrt_inpaint",
     variant='fp16',
     torch_dtype=torch.float16,
