@@ -1521,7 +1521,6 @@ def main(args):
                     vae_scale_factor=16,  # should this be 2 ** (len(vae.config.block_out_channels))?
                 )
 
-
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
