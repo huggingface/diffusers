@@ -43,6 +43,7 @@ from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+from rpdTracerControl import rpdTracerControl
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionXLPipeline, UNet2DConditionModel
@@ -468,6 +469,9 @@ def parse_args(input_args=None):
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
+    parser.add_argument("--profile", type=str, help="Enable profiling, either with `torch` or `rpd`")
+    parser.add_argument("--profile_rank", type=int, help="Choose which GPU rank to profile when --profile is passed")
+    parser.add_argument("--profile_epoch", type=int, help="Choose which epoch to profile during training")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1057,6 +1061,58 @@ def main(args):
 
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
+        
+        # Profile all epochs for a specific rank
+        if args.profile_epoch is None and args.profile_rank is not None:
+            if args.profile == f"rpd" and args.profile_rank == args.local_rank:
+                rpd_profile = rpdTracerControl()
+                prof = torch.autograd.profiler.emit_nvtx(record_shapes=True)
+                rpd_profile.start()
+                prof.__enter__()
+            
+            if args.profile == f"torch" and args.profile_rank == args.local_rank:
+                def trace_handler(prof):
+                    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
+                    prof.export_chrome_trace("/workspace/trace_all_epochs_for_rank_" + str(args.profile_rank) + ".json")
+                torch_profile = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, 
+                                                                   torch.profiler.ProfilerActivity.CUDA], 
+                                                       on_trace_ready=trace_handler)
+                torch_profile.start()
+        
+        # Profile a specific epoch for all ranks
+        if args.profile_epoch is not None and args.profile_rank is None:
+            if args.profile == f"rpd" and args.profile_epoch == epoch:
+                rpd_profile = rpdTracerControl()
+                prof = torch.autograd.profiler.emit_nvtx(record_shapes=True)
+                rpd_profile.start()
+                prof.__enter__()
+                
+            if args.profile == f"torch" and args.profile_epoch == epoch:
+                def trace_handler(prof):
+                    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
+                    prof.export_chrome_trace("/workspace/trace_all_ranks_for_epoch_" + str(args.profile_epoch) + ".json")
+                torch_profile = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, 
+                                                                   torch.profiler.ProfilerActivity.CUDA], 
+                                                       on_trace_ready=trace_handler)
+                torch_profile.start()
+        
+        # Profile all ranks and all epochs
+        if args.profile_epoch is None and args.profile_rank is None:
+            if args.profile == f"rpd":
+                rpd_profile = rpdTracerControl()
+                prof = torch.autograd.profiler.emit_nvtx(record_shapes=True)
+                rpd_profile.start()
+                prof.__enter__()
+                
+            if args.profile == f"torch":
+                def trace_handler(prof):
+                    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
+                    prof.export_chrome_trace("/workspace/trace_all_ranks_for_all_epochs.json")
+                torch_profile = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, 
+                                                                   torch.profiler.ProfilerActivity.CUDA], 
+                                                       on_trace_ready=trace_handler)
+                torch_profile.start()
+        
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Sample noise that we'll add to the latents
@@ -1203,6 +1259,33 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
+        # Stop profile all epochs for a specific rank
+        if args.profile_epoch is None and args.profile_rank is not None:
+            if args.profile == f"rpd" and args.profile_rank == args.local_rank:
+                prof.__exit__(None, None, None)
+                rpd_profile.stop()
+            
+            if args.profile == f"torch" and args.profile_rank == args.local_rank:
+                torch_profile.stop()
+                
+        # Stop profile a specific epoch for all ranks
+        if args.profile_epoch is not None and args.profile_rank is None:
+            if args.profile == f"rpd" and args.profile_epoch == epoch:
+                prof.__exit__(None, None, None)
+                rpd_profile.stop()
+                
+            if args.profile == f"torch" and args.profile_epoch == epoch:
+                torch_profile.stop()
+        
+        # Stop profile all ranks and all epochs
+        if args.profile_epoch is None and args.profile_rank is None:
+            if args.profile == f"rpd":
+                prof.__exit__(None, None, None)
+                rpd_profile.stop()
+                
+            if args.profile == f"torch":
+                torch_profile.stop()
+        
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 logger.info(
