@@ -156,8 +156,10 @@ accelerate launch train_dreambooth_lora_sd3.py \
   --push_to_hub
 ```
 
-> [!TODO]
-> ### Text Encoder Training (Coming Soon!)
+### Text Encoder Training
+- [x] add text encoder training support for dreambooth script
+- [ ] add text encoder training support for lora script
+
 
 
 ## Other notes
