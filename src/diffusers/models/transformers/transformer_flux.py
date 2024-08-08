@@ -1,4 +1,4 @@
-# Copyright 2024 Stability AI, The HuggingFace Team and The InstantX Team. All rights reserved.
+# Copyright 2024 Black Forest Labs, The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,7 +65,6 @@ class EmbedND(nn.Module):
             [rope(ids[..., i], self.axes_dim[i], self.theta) for i in range(n_axes)],
             dim=-3,
         )
-
         return emb.unsqueeze(1)
 
 
@@ -123,8 +122,11 @@ class FluxSingleTransformerBlock(nn.Module):
         )
 
         hidden_states = torch.cat([attn_output, mlp_hidden_states], dim=2)
+        gate = gate.unsqueeze(1)
         hidden_states = gate * self.proj_out(hidden_states)
         hidden_states = residual + hidden_states
+        if hidden_states.dtype == torch.float16:
+            hidden_states = hidden_states.clip(-65504, 65504)
 
         return hidden_states
 
@@ -223,6 +225,8 @@ class FluxTransformerBlock(nn.Module):
 
         context_ff_output = self.ff_context(norm_encoder_hidden_states)
         encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+        if encoder_hidden_states.dtype == torch.float16:
+            encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
 
         return encoder_hidden_states, hidden_states
 
@@ -259,12 +263,13 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
+        axes_dims_rope: List[int] = [16, 56, 56],
     ):
         super().__init__()
         self.out_channels = in_channels
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
-        self.pos_embed = EmbedND(dim=self.inner_dim, theta=10000, axes_dim=[16, 56, 56])
+        self.pos_embed = EmbedND(dim=self.inner_dim, theta=10000, axes_dim=axes_dims_rope)
         text_time_guidance_cls = (
             CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
         )
@@ -301,6 +306,10 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        if hasattr(module, "gradient_checkpointing"):
+            module.gradient_checkpointing = value
 
     def forward(
         self,
