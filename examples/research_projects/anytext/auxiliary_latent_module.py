@@ -35,11 +35,13 @@ def retrieve_latents(
 
 
 class AuxiliaryLatentModule(nn.Module):
-    def __init__(self, glyph_channels=1, position_channels=1, model_channels=320, **kwargs):
+    def __init__(
+        self, glyph_channels=1, position_channels=1, model_channels=320, vae=None, device="cpu", use_fp16=False
+    ):
         super().__init__()
         self.font = ImageFont.truetype("font/Arial_Unicode.ttf", 60)
-        self.use_fp16 = kwargs.get("use_fp16", False)
-        self.device = kwargs.get("device", "cpu")
+        self.use_fp16 = use_fp16
+        self.device = device
 
         self.glyph_block = nn.Sequential(
             nn.Conv2d(glyph_channels, 8, 3, padding=1),
@@ -79,8 +81,7 @@ class AuxiliaryLatentModule(nn.Module):
             nn.SiLU(),
         )
 
-        self.vae = kwargs.get("vae")
-        self.vae.eval()
+        self.vae = vae.eval()
 
         self.fuse_block = zero_module(nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1))
 

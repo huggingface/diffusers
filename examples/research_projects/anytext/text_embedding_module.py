@@ -28,15 +28,15 @@ class TextEmbeddingModule(nn.Module):
         for param in self.embedding_manager.embedding_parameters():
             param.requires_grad = True
         rec_model_dir = "OCR/ppv3_rec.safetensors"
-        self.text_predictor = create_predictor(rec_model_dir, device=self.device, use_fp16=self.use_fp16)
+        self.text_predictor = create_predictor(rec_model_dir, device=self.device, use_fp16=self.use_fp16).eval()
+        for param in self.text_predictor.parameters():
+            param.requires_grad = False
         args = {}
         args["rec_image_shape"] = "3, 48, 320"
         args["rec_batch_num"] = 6
         args["rec_char_dict_path"] = "OCR/ppocr_keys_v1.txt"
         args["use_fp16"] = self.use_fp16
-        self.cn_recognizer = TextRecognizer(args, self.text_predictor, device=self.device, use_fp16=self.use_fp16)
-        for param in self.text_predictor.parameters():
-            param.requires_grad = False
+        self.cn_recognizer = TextRecognizer(args, self.text_predictor)
         self.embedding_manager.recog = self.cn_recognizer
 
     @torch.no_grad()
