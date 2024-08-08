@@ -46,6 +46,37 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         self.concept_embeds_weights = nn.Parameter(torch.ones(17), requires_grad=False)
         self.special_care_embeds_weights = nn.Parameter(torch.ones(3), requires_grad=False)
+        
+        self.adjustment = 0.0
+    
+    def update_safety_checker_Level(self, Level):
+        """
+        Args:
+            Level (`int` or `float` or one of the following [`WEAK`], [`MEDIUM`], [`NOMAL`], [`STRONG`], [`MAX`])
+        """
+        Level_dict = {
+            "WEAK": -1.0,
+            "MEDIUM": -0.5,
+            "NOMAL": 0.0,
+            "STRONG": 0.5,
+            "MAX": 1.0,
+            }
+        if Level in Level_dict:
+            Level = Level_dict[Level]
+        if isinstance(Level, (float, int)): 
+            setattr(self,"adjustment",Level)
+        else:
+            raise ValueError("`int` or `float` or one of the following ['WEAK'], ['MEDIUM'], ['NOMAL'], ['STRONG'], ['MAX']")
+        
+        if self.adjustment<0:
+            logger.warning(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+                )
 
     @torch.no_grad()
     def forward(self, clip_input, images):
@@ -63,20 +94,20 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
             # increase this value to create a stronger `nfsw` filter
             # at the cost of increasing the possibility of filtering benign images
-            adjustment = 0.0
+            #adjustment = 0.0
 
             for concept_idx in range(len(special_cos_dist[0])):
                 concept_cos = special_cos_dist[i][concept_idx]
                 concept_threshold = self.special_care_embeds_weights[concept_idx].item()
-                result_img["special_scores"][concept_idx] = round(concept_cos - concept_threshold + adjustment, 3)
+                result_img["special_scores"][concept_idx] = round(concept_cos - concept_threshold + self.adjustment, 3)
                 if result_img["special_scores"][concept_idx] > 0:
                     result_img["special_care"].append({concept_idx, result_img["special_scores"][concept_idx]})
-                    adjustment = 0.01
+                    self.adjustment = 0.01
 
             for concept_idx in range(len(cos_dist[0])):
                 concept_cos = cos_dist[i][concept_idx]
                 concept_threshold = self.concept_embeds_weights[concept_idx].item()
-                result_img["concept_scores"][concept_idx] = round(concept_cos - concept_threshold + adjustment, 3)
+                result_img["concept_scores"][concept_idx] = round(concept_cos - concept_threshold + self.adjustment, 3)
                 if result_img["concept_scores"][concept_idx] > 0:
                     result_img["bad_concepts"].append(concept_idx)
 
@@ -109,9 +140,9 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         # increase this value to create a stronger `nsfw` filter
         # at the cost of increasing the possibility of filtering benign images
-        adjustment = 0.0
+        #adjustment = 0.0
 
-        special_scores = special_cos_dist - self.special_care_embeds_weights + adjustment
+        special_scores = special_cos_dist - self.special_care_embeds_weights + self.adjustment
         # special_scores = special_scores.round(decimals=3)
         special_care = torch.any(special_scores > 0, dim=1)
         special_adjustment = special_care * 0.01

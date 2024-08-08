@@ -1986,3 +1986,26 @@ class StableDiffusionMixin:
             else:
                 self.vae.unfuse_qkv_projections()
                 self.fusing_vae = False
+    
+    def safety_checker_level(self, level):
+        """
+        Adjust the filter intensity.
+        
+        Args:
+            level (`int` or `float` or one of the following [`WEAK`], [`MEDIUM`], [`NOMAL`], [`STRONG`], [`MAX`])
+        """
+        _safety_checker = getattr(self, "safety_checker", None)
+        if _safety_checker is not None:
+            if hasattr(_safety_checker, "update_safety_checker_Level"):
+                self.safety_checker.update_safety_checker_Level(level)
+            else:
+                logger.warning("`safety_checker_level` is ignored because `update_safety_checker_Level` is not in `safety_checker`.")
+        else:
+            logger.warning("Since there is no `safety_checker`, `safety_checker_level` is ignored.")
+
+    def filter_level(self):
+        """
+        Return:
+            `int` ,`float` or None
+        """
+        return getattr(getattr(self,"safety_checker",None), "adjustment", None)
