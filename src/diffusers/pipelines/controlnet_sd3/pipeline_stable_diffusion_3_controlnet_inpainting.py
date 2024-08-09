@@ -60,8 +60,6 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.pipelines import StableDiffusion3ControlNetInpaintingPipeline
         >>> from diffusers.models.controlnet_sd3 import SD3ControlNetModel
 
-        >>> check_min_version("0.30.0.dev0")
-
         >>> controlnet = SD3ControlNetModel.from_pretrained(
         >>>     "alimama-creative/SD3-Controlnet-Inpainting",
         >>>     use_safetensors=True,
