@@ -14,6 +14,7 @@
 
 import copy
 import inspect
+import json
 import os
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
@@ -26,6 +27,7 @@ from huggingface_hub.constants import HF_HUB_OFFLINE
 
 from ..models.modeling_utils import ModelMixin, load_state_dict
 from ..utils import (
+    SAFETENSORS_FILE_EXTENSION,
     USE_PEFT_BACKEND,
     _get_model_file,
     delete_adapter_layers,
@@ -44,6 +46,7 @@ if is_transformers_available():
     from transformers import PreTrainedModel
 
 if is_peft_available():
+    from peft import LoraConfig
     from peft.tuners.tuners_utils import BaseTunerLayer
 
 if is_accelerate_available():
@@ -252,6 +255,7 @@ class LoraBaseMixin:
         from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
 
         model_file = None
+        metadata = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
             # Let's first try to load .safetensors weights
             if (use_safetensors and weight_name is None) or (
@@ -280,6 +284,8 @@ class LoraBaseMixin:
                         user_agent=user_agent,
                     )
                     state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                    with safetensors.safe_open(model_file, framework="pt", device="cpu") as f:
+                        metadata = f.metadata()
                 except (IOError, safetensors.SafetensorError) as e:
                     if not allow_pickle:
                         raise e
@@ -305,10 +311,14 @@ class LoraBaseMixin:
                     user_agent=user_agent,
                 )
                 state_dict = load_state_dict(model_file)
+                file_extension = os.path.basename(model_file).split(".")[-1]
+                if file_extension == SAFETENSORS_FILE_EXTENSION:
+                    with safetensors.safe_open(model_file, framework="pt", device="cpu") as f:
+                        metadata = f.metadata()
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
-        return state_dict
+        return state_dict, metadata
 
     @classmethod
     def _best_guess_weight_name(
@@ -717,8 +727,12 @@ class LoraBaseMixin:
         weight_name: str,
         save_function: Callable,
         safe_serialization: bool,
+        metadata=None,
     ):
         from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
+
+        if not safe_serialization and isinstance(metadata, dict) and len(metadata) > 0:
+            raise ValueError("Passing `metadata` is not possible when `safe_serialization` is False.")
 
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
@@ -727,8 +741,12 @@ class LoraBaseMixin:
         if save_function is None:
             if safe_serialization:
 
-                def save_function(weights, filename):
-                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+                def save_function(weights, filename, metadata):
+                    if metadata is None:
+                        metadata = {"format": "pt"}
+                    elif len(metadata) > 0:
+                        metadata.update({"format": "pt"})
+                    return safetensors.torch.save_file(weights, filename, metadata=metadata)
 
             else:
                 save_function = torch.save
@@ -742,7 +760,10 @@ class LoraBaseMixin:
                 weight_name = LORA_WEIGHT_NAME
 
         save_path = Path(save_directory, weight_name).as_posix()
-        save_function(state_dict, save_path)
+        if save_function != torch.save:
+            save_function(state_dict, save_path, metadata)
+        else:
+            save_function(state_dict, save_path)
         logger.info(f"Model weights saved in {save_path}")
 
     @property
@@ -750,3 +771,17 @@ class LoraBaseMixin:
         # property function that returns the lora scale which can be set at run time by the pipeline.
         # if _lora_scale has not been set, return 1
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
+
+    @staticmethod
+    def pack_metadata(config, prefix):
+        local_metadata = {}
+        if config is not None:
+            if isinstance(config, LoraConfig):
+                config = config.to_dict()
+            for key, value in config.items():
+                if isinstance(value, set):
+                    config[key] = list(value)
+
+            config_as_string = json.dumps(config, indent=2, sort_keys=True)
+            local_metadata[prefix] = config_as_string
+        return local_metadata

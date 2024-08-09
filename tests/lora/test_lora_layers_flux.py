@@ -19,7 +19,7 @@ import torch
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, torch_device
 
 
 sys.path.append(".")
@@ -28,6 +28,7 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
+@unittest.skipIf(torch_device == "mps", "Flux has a float64 operation which is not supported in MPS.")
 class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = FluxPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler()
