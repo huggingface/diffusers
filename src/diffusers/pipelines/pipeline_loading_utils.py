@@ -19,10 +19,10 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-from huggingface_hub import model_info
+from huggingface_hub import ModelCard, model_info
 from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
@@ -33,6 +33,7 @@ from ..utils import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    deprecate,
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_peft_available,
@@ -749,3 +750,157 @@ def _fetch_class_library_tuple(module):
     class_name = not_compiled_module.__class__.__name__
 
     return (library, class_name)
+
+
+def _identify_model_variants(folder: str, variant: str, config: dict) -> dict:
+    model_variants = {}
+    if variant is not None:
+        for folder in os.listdir(folder):
+            folder_path = os.path.join(folder, folder)
+            is_folder = os.path.isdir(folder_path) and folder in config
+            variant_exists = is_folder and any(p.split(".")[1].startswith(variant) for p in os.listdir(folder_path))
+            if variant_exists:
+                model_variants[folder] = variant
+    return model_variants
+
+
+def _determine_pipeline_class(
+    cls,
+    folder: str,
+    cache_dir: str,
+    config: dict,
+    custom_revision: str,
+    custom_pipeline: str,
+    load_connected_pipeline: bool,
+) -> tuple:
+    custom_class_name = None
+    if os.path.isfile(os.path.join(folder, f"{custom_pipeline}.py")):
+        custom_pipeline = os.path.join(folder, f"{custom_pipeline}.py")
+    elif isinstance(config["_class_name"], (list, tuple)) and os.path.isfile(
+        os.path.join(folder, f"{config['_class_name'][0]}.py")
+    ):
+        custom_pipeline = os.path.join(folder, f"{config['_class_name'][0]}.py")
+        custom_class_name = config["_class_name"][1]
+
+    pipeline_class = _get_pipeline_class(
+        cls,
+        config,
+        load_connected_pipeline=load_connected_pipeline,
+        custom_pipeline=custom_pipeline,
+        class_name=custom_class_name,
+        cache_dir=cache_dir,
+        revision=custom_revision,
+    )
+    return custom_pipeline, pipeline_class
+
+
+def _maybe_raise_warning_for_inpainting(pipeline_class, pretrained_model_name_or_path: str, config: dict):
+    if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
+        version.parse(config["_diffusers_version"]).base_version
+    ) <= version.parse("0.5.1"):
+        from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
+
+        pipeline_class = StableDiffusionInpaintPipelineLegacy
+
+        deprecation_message = (
+            "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
+            f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
+            " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
+            " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
+            f" checkpoint {pretrained_model_name_or_path} to the format of"
+            " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
+            " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
+        )
+        deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
+
+
+def _filter_null_components(init_dict: dict, passed_class_objs: dict) -> dict:
+    def load_module(name, value):
+        if value[0] is None:
+            return False
+        if name in passed_class_objs and passed_class_objs[name] is None:
+            return False
+        return True
+
+    init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+    return init_dict
+
+
+def _determine_current_device_map(device_map: dict, component_name: str) -> Tuple[None, dict]:
+    current_device_map = None
+    if device_map is not None and len(device_map) > 0:
+        component_device = device_map.get(component_name, None)
+        if component_device is not None:
+            current_device_map = {"": component_device}
+    return current_device_map
+
+
+def _update_init_kwargs_with_connected_pipeline(
+    init_kwargs: dict, passed_pipe_kwargs: dict, passed_class_objs: dict, folder: str, **pipeline_loading_kwargs
+) -> dict:
+    from .pipeline_utils import DiffusionPipeline
+
+    modelcard = ModelCard.load(os.path.join(folder, "README.md"))
+    connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
+    load_kwargs = {
+        "cache_dir": pipeline_loading_kwargs.get("cache_dir"),
+        "force_download": pipeline_loading_kwargs.get("force_download"),
+        "proxies": pipeline_loading_kwargs.get("proxies"),
+        "local_files_only": pipeline_loading_kwargs.get("local_files_only"),
+        "token": pipeline_loading_kwargs.get("token"),
+        "revision": pipeline_loading_kwargs.get("revision"),
+        "torch_dtype": pipeline_loading_kwargs.get("torch_dtype"),
+        "custom_pipeline": pipeline_loading_kwargs.get("custom_pipeline"),
+        "custom_revision": pipeline_loading_kwargs.get("custom_revision"),
+        "provider": pipeline_loading_kwargs.get("provider"),
+        "sess_options": pipeline_loading_kwargs.get("sess_options"),
+        "device_map": pipeline_loading_kwargs.get("device_map"),
+        "max_memory": pipeline_loading_kwargs.get("max_memory"),
+        "offload_folder": pipeline_loading_kwargs.get("offload_folder"),
+        "offload_state_dict": pipeline_loading_kwargs.get("offload_state_dict"),
+        "low_cpu_mem_usage": pipeline_loading_kwargs.get("low_cpu_mem_usage"),
+        "variant": pipeline_loading_kwargs.get("variant"),
+        "use_safetensors": pipeline_loading_kwargs.get("use_safetensors"),
+    }
+
+    def get_connected_passed_kwargs(prefix):
+        connected_passed_class_obj = {
+            k.replace(f"{prefix}_", ""): w for k, w in passed_class_objs.items() if k.split("_")[0] == prefix
+        }
+        connected_passed_pipe_kwargs = {
+            k.replace(f"{prefix}_", ""): w for k, w in passed_pipe_kwargs.items() if k.split("_")[0] == prefix
+        }
+
+        connected_passed_kwargs = {**connected_passed_class_obj, **connected_passed_pipe_kwargs}
+        return connected_passed_kwargs
+
+    connected_pipes = {
+        prefix: DiffusionPipeline.from_pretrained(repo_id, **load_kwargs.copy(), **get_connected_passed_kwargs(prefix))
+        for prefix, repo_id in connected_pipes.items()
+        if repo_id is not None
+    }
+
+    for prefix, connected_pipe in connected_pipes.items():
+        # add connected pipes to `init_kwargs` with <prefix>_<component_name>, e.g. "prior_text_encoder"
+        init_kwargs.update(
+            {"_".join([prefix, name]): component for name, component in connected_pipe.components.items()}
+        )
+
+    return init_kwargs
+
+
+def _ensure_all_expected_modules_presence(
+    init_kwargs: dict, passed_class_objs: dict, pipeline_class, expected_modules: list, optional_kwargs: dict
+) -> dict:
+    missing_modules = set(expected_modules) - set(init_kwargs.keys())
+    passed_modules = list(passed_class_objs.keys())
+    optional_modules = pipeline_class._optional_components
+    if len(missing_modules) > 0 and missing_modules <= set(passed_modules + optional_modules):
+        for module in missing_modules:
+            init_kwargs[module] = passed_class_objs.get(module, None)
+    elif len(missing_modules) > 0:
+        passed_modules = set(list(init_kwargs.keys()) + list(passed_class_objs.keys())) - optional_kwargs
+        raise ValueError(
+            f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+        )
+    return init_kwargs
