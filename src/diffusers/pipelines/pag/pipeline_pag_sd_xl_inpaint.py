@@ -837,7 +837,7 @@ class StableDiffusionXLPAGInpaintPipeline(
 
         return image_latents
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline.prepare_mask_latents
+    # Modified from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
@@ -859,7 +859,7 @@ class StableDiffusionXLPAGInpaintPipeline(
                 )
             mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
 
-        mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
+        mask = torch.cat([mask] * 3) if do_classifier_free_guidance else mask
 
         if masked_image is not None and masked_image.shape[1] == 4:
             masked_image_latents = masked_image
@@ -883,7 +883,7 @@ class StableDiffusionXLPAGInpaintPipeline(
                 )
 
             masked_image_latents = (
-                torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
+                torch.cat([masked_image_latents] * 3) if do_classifier_free_guidance else masked_image_latents
             )
 
             # aligning device to prevent device errors when concating it with the latent model input
