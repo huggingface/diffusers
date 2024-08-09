@@ -838,7 +838,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
                 The percentage of total steps at which the ControlNet stops applying.
             control_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to be inpainted (which parts of the image to
-                be masked out with `mask_image` and repainted according to `prompt`). For both numpy array and pytorch
+                be masked out with `control_mask` and repainted according to `prompt`). For both numpy array and pytorch
                 tensor, the expected value range is between `[0, 1]` If it's a tensor or a list or tensors, the
                 expected shape should be `(B, C, H, W)`. If it is a numpy array or a list of arrays, the
                 expected shape should be `(B, H, W, C)` or `(H, W, C)`.
