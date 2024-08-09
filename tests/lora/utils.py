@@ -1831,6 +1831,7 @@ class PeftLoraLoaderMixinTests:
             loaded_pipe.text_encoder.peft_config["default"].lora_alpha == lora_alpha
         ), "LoRA alpha not correctly loaded for text encoder."
         if self.has_two_text_encoders or self.has_three_text_encoders:
-            assert (
-                loaded_pipe.text_encoder_2.peft_config["default"].lora_alpha == lora_alpha
-            ), "LoRA alpha not correctly loaded for text encoder 2."
+            if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                assert (
+                    loaded_pipe.text_encoder_2.peft_config["default"].lora_alpha == lora_alpha
+                ), "LoRA alpha not correctly loaded for text encoder 2."
