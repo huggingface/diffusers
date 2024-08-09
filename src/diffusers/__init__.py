@@ -306,6 +306,7 @@ else:
             "StableCascadeDecoderPipeline",
             "StableCascadePriorPipeline",
             "StableDiffusion3ControlNetPipeline",
+            "StableDiffusion3ControlNetInpaintingPipeline",
             "StableDiffusion3Img2ImgPipeline",
             "StableDiffusion3InpaintPipeline",
             "StableDiffusion3Pipeline",
