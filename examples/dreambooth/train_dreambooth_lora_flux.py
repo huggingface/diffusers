@@ -864,7 +864,7 @@ class PromptDataset(Dataset):
         return example
 
 
-def tokenize_prompt(tokenizer, prompt, max_sequence_length=512):
+def tokenize_prompt(tokenizer, prompt, max_sequence_length):
     text_inputs = tokenizer(
         prompt,
         padding="max_length",
@@ -963,7 +963,7 @@ def encode_prompt(
     text_encoders,
     tokenizers,
     prompt: str,
-    max_sequence_length=512,
+    max_sequence_length,
     device=None,
     num_images_per_prompt: int = 1,
     text_input_ids_list=None,
@@ -1603,6 +1603,7 @@ def main(args):
                             text_encoders=[text_encoder_one, text_encoder_two],
                             tokenizers=[None, None],
                             text_input_ids_list=[tokens_one, tokens_two],
+                            max_sequence_length=args.max_sequence_length,
                             prompt=args.instance_prompt,
                         )
 
