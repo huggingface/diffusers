@@ -319,7 +319,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--max_sequence_length",
         type=int,
-        default=77,
+        default=512,
         help="Maximum sequence length to use with with the T5 text encoder",
     )
     parser.add_argument(
@@ -963,7 +963,7 @@ def encode_prompt(
     text_encoders,
     tokenizers,
     prompt: str,
-    max_sequence_length,
+    max_sequence_length=512,
     device=None,
     num_images_per_prompt: int = 1,
     text_input_ids_list=None,
@@ -1443,10 +1443,10 @@ def main(args):
         # batch prompts on all training steps
         else:
             tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt, max_sequence_length=77)
-            tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt, max_sequence_length=512)
+            tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt, max_sequence_length=args.max_sequence_length)
             if args.with_prior_preservation:
                 class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt, max_sequence_length=77)
-                class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt, max_sequence_length=512)
+                class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt, max_sequence_length=args.max_sequence_length)
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
@@ -1583,11 +1583,12 @@ def main(args):
                         )
                     else:
                         tokens_one = tokenize_prompt(tokenizer_one, prompts, max_sequence_length=77)
-                        tokens_two = tokenize_prompt(tokenizer_two, prompts, max_sequence_length=512)
+                        tokens_two = tokenize_prompt(tokenizer_two, prompts, max_sequence_length=args.max_sequence_length)
                         prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two],
                             tokenizers=[None, None],
                             text_input_ids_list=[tokens_one, tokens_two],
+                            max_sequence_length=args.max_sequence_length,
                             prompt=prompts,
                         )
                 else:
