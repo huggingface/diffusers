@@ -96,7 +96,7 @@ accelerate launch train_dreambooth_flux.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
-  --mixed_precision="fp16" \
+  --mixed_precision="bf16" \
   --instance_prompt="a photo of sks dog" \
   --resolution=1024 \
   --train_batch_size=1 \
@@ -140,7 +140,7 @@ accelerate launch train_dreambooth_lora_flux.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
-  --mixed_precision="fp16" \
+  --mixed_precision="bf16" \
   --instance_prompt="a photo of sks dog" \
   --resolution=512 \
   --train_batch_size=1 \
@@ -175,7 +175,7 @@ accelerate launch train_dreambooth_lora_flux.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
-  --mixed_precision="fp16" \
+  --mixed_precision="bf16" \
   --train_text_encoder\
   --instance_prompt="a photo of sks dog" \
   --resolution=512 \

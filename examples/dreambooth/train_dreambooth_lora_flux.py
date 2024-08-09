@@ -885,20 +885,26 @@ def _encode_prompt_with_t5(
     prompt=None,
     num_images_per_prompt=1,
     device=None,
+    text_input_ids=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
 
-    text_inputs = tokenizer(
-        prompt,
-        padding="max_length",
-        max_length=max_sequence_length,
-        truncation=True,
-        return_length=False,
-        return_overflowing_tokens=False,
-        return_tensors="pt",
-    )
-    text_input_ids = text_inputs.input_ids
+    if tokenizer is not None:
+        text_inputs = tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=max_sequence_length,
+            truncation=True,
+            return_length=False,
+            return_overflowing_tokens=False,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+    else:
+        if text_input_ids is None:
+            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
+
     prompt_embeds = text_encoder(text_input_ids.to(device))[0]
 
     dtype = text_encoder.dtype
@@ -918,22 +924,28 @@ def _encode_prompt_with_clip(
     tokenizer,
     prompt: str,
     device=None,
+    text_input_ids=None,
     num_images_per_prompt: int = 1,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
 
-    text_inputs = tokenizer(
-        prompt,
-        padding="max_length",
-        max_length=77,
-        truncation=True,
-        return_overflowing_tokens=False,
-        return_length=False,
-        return_tensors="pt",
-    )
+    if tokenizer is not None:
+        text_inputs = tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=77,
+            truncation=True,
+            return_overflowing_tokens=False,
+            return_length=False,
+            return_tensors="pt",
+        )
 
-    text_input_ids = text_inputs.input_ids
+        text_input_ids = text_inputs.input_ids
+    else:
+        if text_input_ids is None:
+            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
+
     prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=False)
 
     # Use pooled output of CLIPTextModel
@@ -954,6 +966,7 @@ def encode_prompt(
     max_sequence_length,
     device=None,
     num_images_per_prompt: int = 1,
+    text_input_ids_list=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
@@ -965,6 +978,7 @@ def encode_prompt(
         prompt=prompt,
         device=device if device is not None else text_encoders[0].device,
         num_images_per_prompt=num_images_per_prompt,
+        text_input_ids=text_input_ids_list[0] if text_input_ids_list else None,
     )
 
     prompt_embeds = _encode_prompt_with_t5(
@@ -974,6 +988,7 @@ def encode_prompt(
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
         device=device if device is not None else text_encoders[1].device,
+        text_input_ids=text_input_ids_list[1] if text_input_ids_list else None,
     )
 
     text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
@@ -1629,8 +1644,8 @@ def main(args):
                     prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two],
                         tokenizers=None,
-                        prompt=None,
                         text_input_ids_list=[tokens_one, tokens_two],
+                        prompt=args.instance_prompt,
                     )
                     model_pred = transformer(
                         hidden_states=packed_noisy_model_input,
