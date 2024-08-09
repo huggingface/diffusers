@@ -6,7 +6,7 @@ import PIL.Image
 import PIL.ImageOps
 import requests
 
-from .import_utils import BACKENDS_MAPPING, is_opencv_available
+from .import_utils import BACKENDS_MAPPING, is_imageio_available
 
 
 def load_image(
@@ -81,7 +81,8 @@ def load_video(
 
     if is_url:
         video_data = requests.get(video, stream=True).raw
-        video_path = tempfile.NamedTemporaryFile(suffix=os.path.splitext(video)[1], delete=False).name
+        suffix = os.path.splitext(video)[1] or ".mp4"
+        video_path = tempfile.NamedTemporaryFile(suffix=suffix, delete=False).name
         was_tempfile_created = True
         with open(video_path, "wb") as f:
             f.write(video_data.read())
@@ -99,19 +100,22 @@ def load_video(
             pass
 
     else:
-        if is_opencv_available():
-            import cv2
+        if is_imageio_available():
+            import imageio
         else:
-            raise ImportError(BACKENDS_MAPPING["opencv"][1].format("load_video"))
+            raise ImportError(BACKENDS_MAPPING["imageio"][1].format("load_video"))
 
-        video_capture = cv2.VideoCapture(video)
-        success, frame = video_capture.read()
-        while success:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            pil_images.append(PIL.Image.fromarray(frame))
-            success, frame = video_capture.read()
+        try:
+            imageio.plugins.ffmpeg.get_exe()
+        except AttributeError:
+            raise AttributeError(
+                "`Unable to find an ffmpeg installation on your machine. Please install via `pip install imageio-ffmpeg"
+            )
 
-        video_capture.release()
+        with imageio.get_reader(video) as reader:
+            # Read all frames
+            for frame in reader:
+                pil_images.append(PIL.Image.fromarray(frame))
 
     if was_tempfile_created:
         os.remove(video_path)
