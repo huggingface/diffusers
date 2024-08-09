@@ -1531,13 +1531,10 @@ class ImageProjectionCustomized(nn.Module):
         self.num_image_text_embeds = num_image_text_embeds
         
     def forward(self, image_embeds: torch.Tensor):
-        print(f'image_embeds={image_embeds.size()}')
         image_embeds = image_embeds.repeat(1, 2*self.num_image_text_embeds)
-        print(f'image_embeds after repeat={image_embeds.size()}')
         image_embeds = image_embeds.reshape(
             -1, self.num_image_text_embeds, self.cross_attention_dim
         )
-        print(f'image_embeds after reshape={image_embeds.size()}')
         return image_embeds
     
 class ImageProjection(nn.Module):
@@ -1558,9 +1555,10 @@ class ImageProjection(nn.Module):
 
         # image
 
+
         image_embeds = self.image_embeds(image_embeds.to(self.image_embeds.weight.dtype))
+
         image_embeds = image_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
-        print(f'image_embeds after reshape={image_embeds.size()}')
         image_embeds = self.norm(image_embeds)
         return image_embeds
 
@@ -2628,12 +2626,9 @@ class MultiIPAdapterImageProjection(nn.Module):
         for image_embed, image_projection_layer in zip(image_embeds, self.image_projection_layers):
             batch_size, num_images = image_embed.shape[0], image_embed.shape[1]
             image_embed = image_embed.reshape((batch_size * num_images,) + image_embed.shape[2:])
-            print(f'MultiIPAdapterImageProjection image_embed before={image_embed.size()}')
             image_embed = image_projection_layer(image_embed)
-            print(f'MultiIPAdapterImageProjection image_embed after={image_embed.size()}')
             image_embed = image_embed.reshape((batch_size, num_images) + image_embed.shape[1:])
-            print(f'MultiIPAdapterImageProjection image_embed reshape={image_embed.size()}')
-
+           
             projected_image_embeds.append(image_embed)
 
         return projected_image_embeds

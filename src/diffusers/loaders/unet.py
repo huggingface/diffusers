@@ -583,9 +583,6 @@ class UNet2DConditionLoadersMixin:
             clip_embeddings_dim = 1024 # fixed by CLIP model
             cross_attention_dim = 2048 # fixed by sdxl two text encoders
 
-            print(f'clip_embeddings_dim={clip_embeddings_dim}')
-            print(f'cross_attention_dim={cross_attention_dim}')
-
             with init_context():
                 image_projection = ImageProjectionCustomized(
                     cross_attention_dim=cross_attention_dim,
@@ -597,10 +594,8 @@ class UNet2DConditionLoadersMixin:
                 # IP-Adapter
                 num_image_text_embeds = 4
                 clip_embeddings_dim = state_dict["proj.weight"].shape[-1]
-                print(f'clip_embeddings_dim={clip_embeddings_dim}')
                 cross_attention_dim = state_dict["proj.weight"].shape[0] // 4
-                print(f'cross_attention_dim={cross_attention_dim}')
-
+                
                 with init_context():
                     image_projection = ImageProjection(
                         cross_attention_dim=cross_attention_dim,
@@ -863,7 +858,6 @@ class UNet2DConditionLoadersMixin:
                             # IP-Adapter Plus
                             num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
 
-                print(f'num_image_text_embeds={num_image_text_embeds}')
                 with init_context():
                     attn_procs[name] = attn_processor_class(
                         hidden_size=hidden_size,

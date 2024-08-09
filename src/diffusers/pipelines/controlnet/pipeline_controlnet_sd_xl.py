@@ -571,7 +571,6 @@ class StableDiffusionXLControlNetPipeline(
                 ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
             ):
                 output_hidden_state = not isinstance(image_proj_layer, ImageProjection) and not isinstance(image_proj_layer, ImageProjectionCustomized)
-                print(f'output_hidden_state={output_hidden_state}')
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
                     single_ip_adapter_image, device, 1, output_hidden_state
                 )
@@ -1308,9 +1307,7 @@ class StableDiffusionXLControlNetPipeline(
                 batch_size * num_images_per_prompt,
                 self.do_classifier_free_guidance,
             )
-            for image_embed in image_embeds:
-                print(f'Encode ip_adapter_image image_embed={image_embed.size()}')
-
+        
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):
             image = self.prepare_image(
