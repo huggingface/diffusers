@@ -297,9 +297,9 @@ class TextEmbeddingModule(nn.Module):
             new_string += char + " " * nSpace
         return new_string[:-nSpace]
 
-    def to(self, device):
-        self.device = device
-        self.frozen_CLIP_embedder_t3.to(device)
-        self.embedding_manager.to(device)
-        self.text_predictor.to(device)
+    def to(self, *args, **kwargs):
+        self.frozen_CLIP_embedder_t3 = self.frozen_CLIP_embedder_t3.to(*args, **kwargs)
+        self.embedding_manager = self.embedding_manager.to(*args, **kwargs)
+        self.text_predictor = self.text_predictor.to(*args, **kwargs)
+        self.device = self.frozen_CLIP_embedder_t3.device
         return self

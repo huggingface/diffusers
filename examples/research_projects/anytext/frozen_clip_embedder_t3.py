@@ -207,3 +207,8 @@ class FrozenCLIPEmbedderT3(AbstractEncoder):
             remaining_group_pad = torch.cat((id_start, remaining_group, padding, id_end), dim=1)
             tokens_list.append(remaining_group_pad)
         return tokens_list
+
+    def to(self, *args, **kwargs):
+        self.transformer = self.transformer.to(*args, **kwargs)
+        self.device = self.transformer.device
+        return self
