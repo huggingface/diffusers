@@ -1665,10 +1665,7 @@ def main(args):
                     model_pred,
                     height=int(model_input.shape[2]) * 8,
                     width=int(model_input.shape[3]) * 8,
-                    vae_scale_factor=2
-                    ** (
-                        len(vae.config.block_out_channels)
-                    ),  # should this be 2 ** (len(vae.config.block_out_channels))?
+                    vae_scale_factor=16,  # should this be 2 ** (len(vae.config.block_out_channels))?
                 )
 
                 model_pred = model_pred * (-sigmas) + noisy_model_input
