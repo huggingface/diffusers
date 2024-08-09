@@ -255,6 +255,7 @@ else:
             "CLIPImageProjection",
             "CogVideoXPipeline",
             "CycleDiffusionPipeline",
+            "FluxControlNetPipeline",
             "FluxPipeline",
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPAGPipeline",
