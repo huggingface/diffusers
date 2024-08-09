@@ -1443,10 +1443,14 @@ def main(args):
         # batch prompts on all training steps
         else:
             tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt, max_sequence_length=77)
-            tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt, max_sequence_length=args.max_sequence_length)
+            tokens_two = tokenize_prompt(
+                tokenizer_two, args.instance_prompt, max_sequence_length=args.max_sequence_length
+            )
             if args.with_prior_preservation:
                 class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt, max_sequence_length=77)
-                class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt, max_sequence_length=args.max_sequence_length)
+                class_tokens_two = tokenize_prompt(
+                    tokenizer_two, args.class_prompt, max_sequence_length=args.max_sequence_length
+                )
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
@@ -1583,7 +1587,9 @@ def main(args):
                         )
                     else:
                         tokens_one = tokenize_prompt(tokenizer_one, prompts, max_sequence_length=77)
-                        tokens_two = tokenize_prompt(tokenizer_two, prompts, max_sequence_length=args.max_sequence_length)
+                        tokens_two = tokenize_prompt(
+                            tokenizer_two, prompts, max_sequence_length=args.max_sequence_length
+                        )
                         prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two],
                             tokenizers=[None, None],
