@@ -322,7 +322,6 @@ class UNet2DConditionLoadersMixin:
 
             if config is not None and isinstance(config, dict) and len(config) > 0:
                 config = json.loads(config["unet"])
-                print(f"{config=}")
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, config=config, is_unet=True)
 
             if "use_dora" in lora_config_kwargs:

@@ -152,7 +152,7 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, config=None,
     alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
 
-    # Try to retrive config.
+    # Try to retrieve config.
     alpha_retrieved = False
     if config is not None:
         lora_alpha = config["lora_alpha"]
