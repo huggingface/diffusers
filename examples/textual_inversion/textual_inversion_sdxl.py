@@ -765,7 +765,10 @@ def main():
 
     optimizer = optimizer_class(
         # only optimize the embeddings
-        [text_encoder_1.text_model.embeddings.token_embedding.weight, text_encoder_2.text_model.embeddings.token_embedding.weight],
+        [
+            text_encoder_1.text_model.embeddings.token_embedding.weight,
+            text_encoder_2.text_model.embeddings.token_embedding.weight,
+        ],
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -914,9 +917,7 @@ def main():
                     .hidden_states[-2]
                     .to(dtype=weight_dtype)
                 )
-                encoder_output_2 = text_encoder_2(
-                    batch["input_ids_2"], output_hidden_states=True
-                )
+                encoder_output_2 = text_encoder_2(batch["input_ids_2"], output_hidden_states=True)
                 encoder_hidden_states_2 = encoder_output_2.hidden_states[-2].to(dtype=weight_dtype)
                 original_size = [
                     (batch["original_size"][0][i].item(), batch["original_size"][1][i].item())
