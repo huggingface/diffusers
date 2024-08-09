@@ -13,13 +13,13 @@ env:
 
 jobs:
   torch_pipelines_cuda_benchmark_tests:
-    env: 
+    env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_BENCHMARK }}
     name: Torch Core Pipelines CUDA Benchmarking Tests
     strategy:
       fail-fast: false
       max-parallel: 1
-    runs-on: 
+    runs-on:
       group: aws-g6-4xlarge-plus
     container:
       image: diffusers/diffusers-pytorch-compile-cuda
@@ -59,7 +59,7 @@ jobs:
         if: ${{ success() }}
         run: |
           pip install requests && python utils/notify_benchmarking_status.py --status=success
-        
+
       - name: Report failure status
         if: ${{ failure() }}
         run: |

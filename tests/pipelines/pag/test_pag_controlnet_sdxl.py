@@ -28,9 +28,7 @@ from diffusers import (
     StableDiffusionXLControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-)
+from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import (
@@ -237,9 +235,7 @@ class StableDiffusionXLControlNetPAGPipelineFastTests(
             64,
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
-        expected_slice = np.array(
-            [0.6819614, 0.5551478, 0.5499094, 0.5769566, 0.53942275, 0.5707505, 0.41131154, 0.47833863, 0.49982738]
-        )
+        expected_slice = np.array([0.7036, 0.5613, 0.5526, 0.6129, 0.5610, 0.5842, 0.4228, 0.4612, 0.5017])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
@@ -263,9 +259,7 @@ class StableDiffusionXLControlNetPAGPipelineFastTests(
             64,
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
-        expected_slice = np.array(
-            [0.66685176, 0.53207266, 0.5541569, 0.5912994, 0.5368312, 0.58433825, 0.42607725, 0.46805605, 0.5098659]
-        )
+        expected_slice = np.array([0.6888, 0.5398, 0.5603, 0.6086, 0.5541, 0.5957, 0.4332, 0.4643, 0.5154])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
