@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import os
 from collections import defaultdict
 from contextlib import nullcontext
@@ -115,6 +116,7 @@ class UNet2DConditionLoadersMixin:
                 `default_{i}` where i is the total number of adapters being loaded.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
+            config: (`dict`, *optional*)
 
         Example:
 
@@ -143,6 +145,7 @@ class UNet2DConditionLoadersMixin:
         _pipeline = kwargs.pop("_pipeline", None)
         network_alphas = kwargs.pop("network_alphas", None)
         allow_pickle = False
+        config = kwargs.pop("config", None)
 
         if use_safetensors is None:
             use_safetensors = True
@@ -208,6 +211,7 @@ class UNet2DConditionLoadersMixin:
                 unet_identifier_key=self.unet_name,
                 network_alphas=network_alphas,
                 adapter_name=adapter_name,
+                config=config,
                 _pipeline=_pipeline,
             )
         else:
@@ -268,7 +272,7 @@ class UNet2DConditionLoadersMixin:
 
         return attn_processors
 
-    def _process_lora(self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline):
+    def _process_lora(self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline, config=None):
         # This method does the following things:
         # 1. Filters the `state_dict` with keys matching  `unet_identifier_key` when using the non-legacy
         #    format. For legacy format no filtering is applied.
@@ -316,7 +320,11 @@ class UNet2DConditionLoadersMixin:
                 if "lora_B" in key:
                     rank[key] = val.shape[1]
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
+            if config is not None and isinstance(config, dict) and len(config) > 0:
+                config = json.loads(config["unet"])
+                print(f"{config=}")
+            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, config=config, is_unet=True)
+
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
                     if is_peft_version("<", "0.9.0"):

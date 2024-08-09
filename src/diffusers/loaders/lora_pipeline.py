@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import os
 from typing import Callable, Dict, List, Optional, Union
 
@@ -92,7 +93,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        state_dict, network_alphas, metadata = self.lora_state_dict(
+            pretrained_model_name_or_path_or_dict, **kwargs, return_metadata=True
+        )
 
         is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -104,6 +107,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             adapter_name=adapter_name,
             _pipeline=self,
+            config=metadata,
         )
         self.load_lora_into_text_encoder(
             state_dict,
@@ -114,6 +118,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             _pipeline=self,
+            config=metadata,
         )
 
     @classmethod
@@ -168,6 +173,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
+            return_metadata (`bool`)
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
@@ -181,6 +187,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         weight_name = kwargs.pop("weight_name", None)
         unet_config = kwargs.pop("unet_config", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_metadata = kwargs.pop("return_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -192,7 +199,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = cls._fetch_state_dict(
+        state_dict, metadata = cls._fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -224,10 +231,13 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 state_dict = _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
             state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(state_dict)
 
-        return state_dict, network_alphas
+        if return_metadata:
+            return state_dict, network_alphas, metadata
+        else:
+            return state_dict, network_alphas
 
     @classmethod
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None):
+    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, config=None, _pipeline=None):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -245,6 +255,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            config (`dict`, *optional*):
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -258,7 +269,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
             unet.load_attn_procs(
-                state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline
+                state_dict,
+                network_alphas=network_alphas,
+                adapter_name=adapter_name,
+                config=config,
+                _pipeline=_pipeline,
             )
 
     @classmethod
@@ -270,6 +285,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        config=None,
         _pipeline=None,
     ):
         """
@@ -291,6 +307,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            config (`dict`, *optional*):
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -302,6 +319,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         # their prefixes.
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
+
+        if config is not None and len(config) > 0:
+            config = json.loads(config[prefix])
 
         # Safe prefix to check with.
         if any(cls.text_encoder_name in key for key in keys):
@@ -341,7 +361,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+                lora_config_kwargs = get_peft_kwargs(
+                    rank, network_alphas, text_encoder_lora_state_dict, config=config, is_unet=False
+                )
                 if "use_dora" in lora_config_kwargs:
                     if lora_config_kwargs["use_dora"]:
                         if is_peft_version("<", "0.9.0"):
@@ -385,6 +407,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
+        unet_lora_config: dict = None,
+        text_encoder_lora_config: dict = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -401,6 +425,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
+            unet_lora_config: Dict
+            text_encoder_lora_config: Dict
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -413,19 +439,27 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
         state_dict = {}
+        metadata = {}
 
         if not (unet_lora_layers or text_encoder_lora_layers):
             raise ValueError("You must pass at least one of `unet_lora_layers` and `text_encoder_lora_layers`.")
 
         if unet_lora_layers:
             state_dict.update(cls.pack_weights(unet_lora_layers, cls.unet_name))
+            if unet_lora_config:
+                unet_metadata = cls.pack_metadata(unet_lora_config, cls.unet_name)
+                metadata.update(unet_metadata)
 
         if text_encoder_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
+            if text_encoder_lora_config:
+                te_metadata = cls.pack_metadata(text_encoder_lora_config, cls.text_encoder_name)
+                metadata.update(te_metadata)
 
         # Save the model
         cls.write_lora_layers(
             state_dict=state_dict,
+            metadata=metadata,
             save_directory=save_directory,
             is_main_process=is_main_process,
             weight_name=weight_name,
@@ -550,9 +584,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict, network_alphas = self.lora_state_dict(
+        state_dict, network_alphas, metadata = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict,
             unet_config=self.unet.config,
+            return_metadata=True,
             **kwargs,
         )
         is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
@@ -560,7 +595,12 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("Invalid LoRA checkpoint.")
 
         self.load_lora_into_unet(
-            state_dict, network_alphas=network_alphas, unet=self.unet, adapter_name=adapter_name, _pipeline=self
+            state_dict,
+            network_alphas=network_alphas,
+            unet=self.unet,
+            adapter_name=adapter_name,
+            config=metadata,
+            _pipeline=self,
         )
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
@@ -571,6 +611,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 prefix="text_encoder",
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
+                config=metadata,
                 _pipeline=self,
             )
 
@@ -583,6 +624,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 prefix="text_encoder_2",
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
+                config=metadata,
                 _pipeline=self,
             )
 
@@ -639,6 +681,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
+            return_metadata (`bool`)
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
@@ -652,6 +695,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         weight_name = kwargs.pop("weight_name", None)
         unet_config = kwargs.pop("unet_config", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_metadata = kwargs.pop("return_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -663,7 +707,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = cls._fetch_state_dict(
+        state_dict, metadata = cls._fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -695,11 +739,14 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 state_dict = _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
             state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(state_dict)
 
-        return state_dict, network_alphas
+        if return_metadata:
+            return state_dict, network_alphas, metadata
+        else:
+            return state_dict, network_alphas
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_unet
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None):
+    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, config=None, _pipeline=None):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -717,6 +764,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            config (`dict`, *optional*):
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -730,7 +778,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
             unet.load_attn_procs(
-                state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline
+                state_dict,
+                network_alphas=network_alphas,
+                adapter_name=adapter_name,
+                config=config,
+                _pipeline=_pipeline,
             )
 
     @classmethod
@@ -743,6 +795,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        config=None,
         _pipeline=None,
     ):
         """
@@ -764,6 +817,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            config (`dict`, *optional*):
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -775,6 +829,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         # their prefixes.
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
+
+        if config is not None and len(config) > 0:
+            config = json.loads(config[prefix])
 
         # Safe prefix to check with.
         if any(cls.text_encoder_name in key for key in keys):
@@ -814,7 +871,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+                lora_config_kwargs = get_peft_kwargs(
+                    rank, network_alphas, text_encoder_lora_state_dict, config=config, is_unet=False
+                )
                 if "use_dora" in lora_config_kwargs:
                     if lora_config_kwargs["use_dora"]:
                         if is_peft_version("<", "0.9.0"):
@@ -859,6 +918,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        unet_lora_config: dict = None,
+        text_encoder_lora_config: dict = None,
+        text_encoder_2_lora_config: dict = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -878,6 +940,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
+            unet_lora_config (`dict`):
+            text_encoder_lora_config (`dict`):
+            text_encoder_2_lora_config (`dict`):
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -890,6 +955,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
         state_dict = {}
+        metadata = {}
 
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
@@ -898,15 +964,25 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
         if unet_lora_layers:
             state_dict.update(cls.pack_weights(unet_lora_layers, "unet"))
+            if unet_lora_config is not None:
+                unet_metadata = cls.pack_metadata(unet_lora_config, "unet")
+                metadata.update(unet_metadata)
 
         if text_encoder_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, "text_encoder"))
+            if text_encoder_lora_config is not None:
+                te_metadata = cls.pack_metadata(text_encoder_lora_config, "text_encoder")
+                metadata.update(te_metadata)
 
         if text_encoder_2_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
+            if text_encoder_2_lora_config is not None:
+                te2_metadata = cls.pack_metadata(text_encoder_lora_config, "text_encoder_2")
+                metadata.update(te2_metadata)
 
         cls.write_lora_layers(
             state_dict=state_dict,
+            metadata=metadata,
             save_directory=save_directory,
             is_main_process=is_main_process,
             weight_name=weight_name,
@@ -1041,6 +1117,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_metadata (`bool`):
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -1054,6 +1131,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_metadata = kwargs.pop("return_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -1065,7 +1143,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = cls._fetch_state_dict(
+        state_dict, metadata = cls._fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1080,7 +1158,11 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             allow_pickle=allow_pickle,
         )
 
-        return state_dict
+        # Otherwise, this would be a breaking change.
+        if return_metadata:
+            return state_dict, metadata
+        else:
+            return state_dict
 
     def load_lora_weights(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
@@ -1114,7 +1196,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        state_dict, metadata = self.lora_state_dict(
+            pretrained_model_name_or_path_or_dict, **kwargs, return_metadata=True
+        )
 
         is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -1124,6 +1208,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            config=metadata,
             _pipeline=self,
         )
 
@@ -1136,6 +1221,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 prefix="text_encoder",
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
+                config=metadata,
                 _pipeline=self,
             )
 
@@ -1148,11 +1234,12 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 prefix="text_encoder_2",
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
+                config=metadata,
                 _pipeline=self,
             )
 
     @classmethod
-    def load_lora_into_transformer(cls, state_dict, transformer, adapter_name=None, _pipeline=None):
+    def load_lora_into_transformer(cls, state_dict, transformer, adapter_name=None, config=None, _pipeline=None):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
 
@@ -1166,6 +1253,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            config (`dict`):
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
@@ -1192,7 +1280,11 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 if "lora_B" in key:
                     rank[key] = val.shape[1]
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=None, peft_state_dict=state_dict)
+            if config is not None and isinstance(config, dict) and len(config) > 0:
+                config = json.loads(config[cls.transformer_name])
+            lora_config_kwargs = get_peft_kwargs(
+                rank, network_alpha_dict=None, config=config, peft_state_dict=state_dict
+            )
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
                     raise ValueError(
@@ -1239,6 +1331,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        config=None,
         _pipeline=None,
     ):
         """
@@ -1260,6 +1353,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            config (`dict`, *optional*):
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1271,6 +1365,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         # their prefixes.
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
+
+        if config is not None and len(config) > 0:
+            config = json.loads(config[prefix])
 
         # Safe prefix to check with.
         if any(cls.text_encoder_name in key for key in keys):
@@ -1310,7 +1407,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+                lora_config_kwargs = get_peft_kwargs(
+                    rank, network_alphas, text_encoder_lora_state_dict, config=config, is_unet=False
+                )
                 if "use_dora" in lora_config_kwargs:
                     if lora_config_kwargs["use_dora"]:
                         if is_peft_version("<", "0.9.0"):
@@ -1355,6 +1454,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_layers: Dict[str, torch.nn.Module] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        transformer_lora_config: dict = None,
+        text_encoder_lora_config: dict = None,
+        text_encoder_2_lora_config: dict = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -1374,6 +1476,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
+            transformer_lora_config (`dict`):
+            text_encoder_lora_config (`dict`):
+            text_encoder_2_lora_config (`dict`):
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1386,6 +1491,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
         state_dict = {}
+        metadata = {}
 
         if not (transformer_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
@@ -1394,16 +1500,26 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+            if transformer_lora_config is not None:
+                transformer_metadata = cls.pack_metadata(transformer_lora_config, cls.transformer_name)
+                metadata.update(transformer_metadata)
 
         if text_encoder_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, "text_encoder"))
+            if text_encoder_lora_config is not None:
+                te_config = cls.pack_metadata(text_encoder_lora_config, "text_encoder")
+                metadata.update(te_config)
 
         if text_encoder_2_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
+            if text_encoder_2_lora_config is not None:
+                te2_config = cls.pack_metadata(text_encoder_lora_config, "text_encoder_2")
+                metadata.update(te2_config)
 
         # Save the model
         cls.write_lora_layers(
             state_dict=state_dict,
+            metadata=metadata,
             save_directory=save_directory,
             is_main_process=is_main_process,
             weight_name=weight_name,
@@ -1538,6 +1654,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_metadata (`bool`):
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -1551,6 +1668,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        return_metadata = kwargs.pop("return_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -1562,7 +1680,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = cls._fetch_state_dict(
+        state_dict, metadata = cls._fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1577,7 +1695,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             allow_pickle=allow_pickle,
         )
 
-        return state_dict
+        # Otherwise, this would be a breaking change.
+        if return_metadata:
+            return state_dict, metadata
+        else:
+            return state_dict
 
     def load_lora_weights(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
@@ -1611,7 +1733,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        state_dict, metadata = self.lora_state_dict(
+            pretrained_model_name_or_path_or_dict, **kwargs, return_metadata=True
+        )
 
         is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -1621,6 +1745,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
+            config=metadata,
             _pipeline=self,
         )
 
@@ -1633,12 +1758,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 prefix="text_encoder",
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
+                config=metadata,
                 _pipeline=self,
             )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer
-    def load_lora_into_transformer(cls, state_dict, transformer, adapter_name=None, _pipeline=None):
+    def load_lora_into_transformer(cls, state_dict, transformer, adapter_name=None, config=None, _pipeline=None):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
 
@@ -1652,6 +1778,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            config (`dict`):
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
@@ -1678,7 +1805,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 if "lora_B" in key:
                     rank[key] = val.shape[1]
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=None, peft_state_dict=state_dict)
+            if config is not None and isinstance(config, dict) and len(config) > 0:
+                config = json.loads(config[cls.transformer_name])
+            lora_config_kwargs = get_peft_kwargs(
+                rank, network_alpha_dict=None, config=config, peft_state_dict=state_dict
+            )
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
                     raise ValueError(
@@ -1725,6 +1856,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        config=None,
         _pipeline=None,
     ):
         """
@@ -1746,6 +1878,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            config (`dict`, *optional*):
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1757,6 +1890,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         # their prefixes.
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
+
+        if config is not None and len(config) > 0:
+            config = json.loads(config[prefix])
 
         # Safe prefix to check with.
         if any(cls.text_encoder_name in key for key in keys):
@@ -1796,7 +1932,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+                lora_config_kwargs = get_peft_kwargs(
+                    rank, network_alphas, text_encoder_lora_state_dict, config=config, is_unet=False
+                )
                 if "use_dora" in lora_config_kwargs:
                     if lora_config_kwargs["use_dora"]:
                         if is_peft_version("<", "0.9.0"):
@@ -1841,6 +1979,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         save_directory: Union[str, os.PathLike],
         transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
+        transformer_lora_config: dict = None,
+        text_encoder_lora_config: dict = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -1857,6 +1997,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
+            transformer_lora_config: Dict
+            text_encoder_lora_config: Dict
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1869,19 +2011,27 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
         state_dict = {}
+        metadata = {}
 
         if not (transformer_lora_layers or text_encoder_lora_layers):
             raise ValueError("You must pass at least one of `transformer_lora_layers` and `text_encoder_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+            if transformer_lora_config:
+                transformer_metadata = cls.pack_metadata(transformer_lora_config, cls.transformer_name)
+                metadata.update(transformer_metadata)
 
         if text_encoder_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
+            if text_encoder_lora_config:
+                te_metadata = cls.pack_metadata(text_encoder_lora_config, cls.text_encoder_name)
+                metadata.update(te_metadata)
 
         # Save the model
         cls.write_lora_layers(
             state_dict=state_dict,
+            metadata=metadata,
             save_directory=save_directory,
             is_main_process=is_main_process,
             weight_name=weight_name,
@@ -2051,6 +2201,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         prefix=None,
         lora_scale=1.0,
         adapter_name=None,
+        config=None,
         _pipeline=None,
     ):
         """
@@ -2072,6 +2223,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            config (`dict`, *optional*):
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -2083,6 +2235,9 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         # their prefixes.
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
+
+        if config is not None and len(config) > 0:
+            config = json.loads(config[prefix])
 
         # Safe prefix to check with.
         if any(cls.text_encoder_name in key for key in keys):
@@ -2122,7 +2277,9 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+                lora_config_kwargs = get_peft_kwargs(
+                    rank, network_alphas, text_encoder_lora_state_dict, config=config, is_unet=False
+                )
                 if "use_dora" in lora_config_kwargs:
                     if lora_config_kwargs["use_dora"]:
                         if is_peft_version("<", "0.9.0"):

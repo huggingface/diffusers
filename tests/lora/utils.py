@@ -87,7 +87,7 @@ class PeftLoraLoaderMixinTests:
     transformer_kwargs = None
     vae_kwargs = None
 
-    def get_dummy_components(self, scheduler_cls=None, use_dora=False):
+    def get_dummy_components(self, scheduler_cls=None, use_dora=False, alpha=None):
         if self.unet_kwargs and self.transformer_kwargs:
             raise ValueError("Both `unet_kwargs` and `transformer_kwargs` cannot be specified.")
         if self.has_two_text_encoders and self.has_three_text_encoders:
@@ -95,6 +95,7 @@ class PeftLoraLoaderMixinTests:
 
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else scheduler_cls
         rank = 4
+        alpha = rank if alpha is None else alpha
 
         torch.manual_seed(0)
         if self.unet_kwargs is not None:
@@ -120,7 +121,7 @@ class PeftLoraLoaderMixinTests:
 
         text_lora_config = LoraConfig(
             r=rank,
-            lora_alpha=rank,
+            lora_alpha=alpha,
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
             init_lora_weights=False,
             use_dora=use_dora,
@@ -128,7 +129,7 @@ class PeftLoraLoaderMixinTests:
 
         denoiser_lora_config = LoraConfig(
             r=rank,
-            lora_alpha=rank,
+            lora_alpha=alpha,
             target_modules=["to_q", "to_k", "to_v", "to_out.0"],
             init_lora_weights=False,
             use_dora=use_dora,
@@ -1752,3 +1753,84 @@ class PeftLoraLoaderMixinTests:
 
             _, _, inputs = self.get_dummy_inputs()
             _ = pipe(**inputs).images
+
+    def test_if_lora_alpha_is_correctly_parsed(self):
+        lora_alpha = 8
+
+        scheduler_class = FlowMatchEulerDiscreteScheduler if self.uses_flow_matching else DDIMScheduler
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(
+            alpha=lora_alpha, scheduler_cls=scheduler_class
+        )
+
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        pipe.text_encoder.add_adapter(text_lora_config)
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config)
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config)
+        if self.has_two_text_encoders or self.has_three_text_encoders:
+            if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                pipe.text_encoder_2.add_adapter(text_lora_config)
+
+        # Inference works?
+        _ = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            denoiser = pipe.unet if self.unet_kwargs else pipe.transformer
+            denoiser_state_dict = get_peft_model_state_dict(denoiser)
+            denoiser_lora_config = denoiser.peft_config["default"]
+
+            text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
+            text_encoder_lora_config = pipe.text_encoder.peft_config["default"]
+
+            if self.has_two_text_encoders or self.has_three_text_encoders:
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+                    text_encoder_2_lora_config = pipe.text_encoder_2.peft_config["default"]
+
+            saving_kwargs = {
+                "save_directory": tmpdirname,
+                "text_encoder_lora_layers": text_encoder_state_dict,
+                "text_encoder_lora_config": text_encoder_lora_config,
+            }
+            if self.unet_kwargs is not None:
+                saving_kwargs.update(
+                    {"unet_lora_layers": denoiser_state_dict, "unet_lora_config": denoiser_lora_config}
+                )
+            else:
+                saving_kwargs.update(
+                    {"transformer_lora_layers": denoiser_state_dict, "transformer_lora_config": denoiser_lora_config}
+                )
+
+            if self.has_two_text_encoders or self.has_three_text_encoders:
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+                    saving_kwargs.update(
+                        {
+                            "text_encoder_2_lora_layers": text_encoder_2_state_dict,
+                            "text_encoder_2_lora_config": text_encoder_2_lora_config,
+                        }
+                    )
+
+            self.pipeline_class.save_lora_weights(**saving_kwargs)
+            loaded_pipe = self.pipeline_class(**components)
+            loaded_pipe.load_lora_weights(tmpdirname)
+
+        # Inference works?
+        _ = loaded_pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        denoiser_loaded = pipe.unet if self.unet_kwargs is not None else pipe.transformer
+        assert (
+            denoiser_loaded.peft_config["default"].lora_alpha == lora_alpha
+        ), "LoRA alpha not correctly loaded for UNet."
+        assert (
+            loaded_pipe.text_encoder.peft_config["default"].lora_alpha == lora_alpha
+        ), "LoRA alpha not correctly loaded for text encoder."
+        if self.has_two_text_encoders or self.has_three_text_encoders:
+            assert (
+                loaded_pipe.text_encoder_2.peft_config["default"].lora_alpha == lora_alpha
+            ), "LoRA alpha not correctly loaded for text encoder 2."
