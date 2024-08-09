@@ -1803,7 +1803,7 @@ def main(args):
         FluxPipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
-            text_encoder_one_lora_layers=text_encoder_lora_layers,
+            text_encoder_lora_layers=text_encoder_lora_layers,
         )
 
         # Final inference
