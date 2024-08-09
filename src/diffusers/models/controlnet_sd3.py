@@ -55,6 +55,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         pooled_projection_dim: int = 2048,
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
+        extra_conditioning_channels: int = 0,
     ):
         super().__init__()
         default_out_channels = in_channels
@@ -98,7 +99,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             height=sample_size,
             width=sample_size,
             patch_size=patch_size,
-            in_channels=in_channels,
+            in_channels=in_channels + extra_conditioning_channels,
             embed_dim=self.inner_dim,
             pos_embed_type=None,
         )
