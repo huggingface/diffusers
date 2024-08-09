@@ -35,6 +35,7 @@ class RecModel(nn.Module):
 
     def forward(self, x):
         import torch
+
         x = x.to(torch.float32)
         x = self.backbone(x)
         x = self.neck(x)
