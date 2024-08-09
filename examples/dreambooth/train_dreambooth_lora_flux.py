@@ -1577,6 +1577,7 @@ def main(args):
                 models_to_accumulate.extend([text_encoder_one])
             with accelerator.accumulate(models_to_accumulate):
                 pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
+                print("pixel_values", pixel_values.shape)
                 prompts = batch["prompts"]
 
                 # encode batch prompts when custom prompts are provided for each image -
@@ -1618,7 +1619,7 @@ def main(args):
                     accelerator.device,
                     weight_dtype,
                 )
-
+                print("height", model_input.shape[2], "width", model_input.shape[3])
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
                 bsz = model_input.shape[0]
@@ -1672,7 +1673,7 @@ def main(args):
                     model_pred,
                     height=int(model_input.shape[2]) * 8,
                     width=int(model_input.shape[3]) * 8,
-                    vae_scale_factor=16,  # should this be 2 ** (len(vae.config.block_out_channels))?
+                    vae_scale_factor=2 ** (len(vae.config.block_out_channels)),  # should this be 2 ** (len(vae.config.block_out_channels))?
                 )
 
                 model_pred = model_pred * (-sigmas) + noisy_model_input
