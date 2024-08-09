@@ -17,6 +17,7 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`StableDiffusionLoraLoaderMixin`] provides functions for loading and unloading, fusing and unfusing, enabling and disabling, and more functions for managing LoRA weights. This class can be used with any model.
 - [`StableDiffusionXLLoraLoaderMixin`] is a [Stable Diffusion (SDXL)](../../api/pipelines/stable_diffusion/stable_diffusion_xl) version of the [`StableDiffusionLoraLoaderMixin`] class for loading and saving LoRA weights. It can only be used with the SDXL model.
 - [`SD3LoraLoaderMixin`] provides similar functions for [Stable Diffusion 3](https://huggingface.co/blog/sd3).
+- [`AuraFlowLoraLoaderMixin`] provides similar functions for [AuraFlow](https://huggingface.co/fal/AuraFlow).
 - [`AmusedLoraLoaderMixin`] is for the [`AmusedPipeline`].
 - [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
 
@@ -37,6 +38,10 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 ## SD3LoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.SD3LoraLoaderMixin
+
+## AuraFlowLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.AuraFlowLoraLoaderMixin
 
 ## AmusedLoraLoaderMixin
 
