@@ -13,13 +13,6 @@ from diffusers.utils import logging
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.models.controlnet.zero_module
-def zero_module(module: nn.Module) -> nn.Module:
-    for p in module.parameters():
-        nn.init.zeros_(p)
-    return module
-
-
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -83,18 +76,20 @@ class AuxiliaryLatentModule(nn.Module):
 
         self.vae = vae.eval()
 
-        self.fuse_block = zero_module(nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1))
+        self.fuse_block = nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1)
 
         self.glyph_block.load_state_dict(
             load_file("AuxiliaryLatentModule/glyph_block.safetensors", device=self.device)
         )
-        self.glyph_block = self.glyph_block.to(dtype=torch.float16 if self.use_fp16 else torch.float32)
         self.position_block.load_state_dict(
             load_file("AuxiliaryLatentModule/position_block.safetensors", device=self.device)
         )
-        self.position_block = self.position_block.to(dtype=torch.float16 if self.use_fp16 else torch.float32)
         self.fuse_block.load_state_dict(load_file("AuxiliaryLatentModule/fuse_block.safetensors", device=self.device))
-        self.fuse_block = self.fuse_block.to(dtype=torch.float16 if self.use_fp16 else torch.float32)
+
+        if use_fp16:
+            self.glyph_block = self.glyph_block.to(dtype=torch.float16)
+            self.position_block = self.position_block.to(dtype=torch.float16)
+            self.fuse_block = self.fuse_block.to(dtype=torch.float16)
 
     @torch.no_grad()
     def forward(
@@ -181,6 +176,6 @@ class AuxiliaryLatentModule(nn.Module):
         self.device = device
         self.glyph_block = self.glyph_block.to(device)
         self.position_block = self.position_block.to(device)
-        self.vae = self.vae.to(device)
         self.fuse_block = self.fuse_block.to(device)
+        self.vae = self.vae.to(device)
         return self

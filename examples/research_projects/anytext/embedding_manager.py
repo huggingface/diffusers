@@ -5,27 +5,7 @@ from functools import partial
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-
-def conv_nd(dims, *args, **kwargs):
-    """
-    Create a 1D, 2D, or 3D convolution module.
-    """
-    if dims == 1:
-        return nn.Conv1d(*args, **kwargs)
-    elif dims == 2:
-        return nn.Conv2d(*args, **kwargs)
-    elif dims == 3:
-        return nn.Conv3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimensions: {dims}")
-
-
-# Copied from diffusers.models.controlnet.zero_module
-def zero_module(module: nn.Module) -> nn.Module:
-    for p in module.parameters():
-        nn.init.zeros_(p)
-    return module
+from safetensors.torch import load_file
 
 
 def get_clip_token_for_string(tokenizer, string):
@@ -45,24 +25,6 @@ def get_clip_token_for_string(tokenizer, string):
     return tokens[0, 1]
 
 
-def get_bert_token_for_string(tokenizer, string):
-    token = tokenizer(string)
-    assert (
-        torch.count_nonzero(token) == 3
-    ), f"String '{string}' maps to more than a single token. Please use another string"
-    token = token[0, 1]
-    return token
-
-
-def get_clip_vision_emb(encoder, processor, img):
-    _img = img.repeat(1, 3, 1, 1) * 255
-    inputs = processor(images=_img, return_tensors="pt")
-    inputs["pixel_values"] = inputs["pixel_values"].to(img.device)
-    outputs = encoder(**inputs)
-    emb = outputs.image_embeds
-    return emb
-
-
 def get_recog_emb(encoder, img_list):
     _img_list = [(img.repeat(1, 3, 1, 1) * 255)[0] for img in img_list]
     encoder.predictor.eval()
@@ -70,86 +32,40 @@ def get_recog_emb(encoder, img_list):
     return preds_neck
 
 
-def pad_H(x):
-    _, _, H, W = x.shape
-    p_top = (W - H) // 2
-    p_bot = W - H - p_top
-    return F.pad(x, (0, 0, p_top, p_bot))
-
-
-class EncodeNet(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(EncodeNet, self).__init__()
-        chan = 16
-        n_layer = 4  # downsample
-
-        self.conv1 = conv_nd(2, in_channels, chan, 3, padding=1)
-        self.conv_list = nn.ModuleList([])
-        _c = chan
-        for i in range(n_layer):
-            self.conv_list.append(conv_nd(2, _c, _c * 2, 3, padding=1, stride=2))
-            _c *= 2
-        self.conv2 = conv_nd(2, _c, out_channels, 3, padding=1)
-        self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.act = nn.SiLU()
-
-    def forward(self, x):
-        x = self.act(self.conv1(x))
-        for layer in self.conv_list:
-            x = self.act(layer(x))
-        x = self.act(self.conv2(x))
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        return x
-
-
 class EmbeddingManager(nn.Module):
     def __init__(
         self,
         embedder,
-        position_channels=1,
         placeholder_string="*",
-        add_pos=False,
-        emb_type="ocr",
         use_fp16=False,
     ):
         super().__init__()
         get_token_for_string = partial(get_clip_token_for_string, embedder.tokenizer)
         token_dim = 768
         self.get_recog_emb = None
-        token_dim = 1280
         self.token_dim = token_dim
-        self.emb_type = emb_type
 
-        self.add_pos = add_pos
-        if add_pos:
-            self.position_encoder = EncodeNet(position_channels, token_dim)
-        if emb_type == "ocr":
-            self.proj = nn.Sequential(zero_module(nn.Linear(40 * 64, token_dim)), nn.LayerNorm(token_dim))
-            self.proj = self.proj.to(dtype=torch.float16 if use_fp16 else torch.float32)
+        self.proj = nn.Linear(40 * 64, token_dim)
+        self.proj.load_state_dict(load_file("EmbeddingManager/embedding_manager.safetensors", device=self.device))
+        if use_fp16:
+            self.proj = self.proj.to(dtype=torch.float16)
 
         self.placeholder_token = get_token_for_string(placeholder_string)
 
+    @torch.no_grad()
     def encode_text(self, text_info):
-        if self.get_recog_emb is None and self.emb_type == "ocr":
+        if self.get_recog_emb is None:
             self.get_recog_emb = partial(get_recog_emb, self.recog)
 
         gline_list = []
-        pos_list = []
         for i in range(len(text_info["n_lines"])):  # sample index in a batch
             n_lines = text_info["n_lines"][i]
             for j in range(n_lines):  # line
                 gline_list += [text_info["gly_line"][j][i : i + 1]]
-                if self.add_pos:
-                    pos_list += [text_info["positions"][j][i : i + 1]]
 
         if len(gline_list) > 0:
-            if self.emb_type == "ocr":
-                recog_emb = self.get_recog_emb(gline_list)
-                enc_glyph = self.proj(recog_emb.reshape(recog_emb.shape[0], -1))
-            if self.add_pos:
-                enc_pos = self.position_encoder(torch.cat(gline_list, dim=0))
-                enc_glyph = enc_glyph + enc_pos
+            recog_emb = self.get_recog_emb(gline_list)
+            enc_glyph = self.proj(recog_emb.reshape(recog_emb.shape[0], -1))
 
         self.text_embs_all = []
         n_idx = 0
@@ -161,6 +77,7 @@ class EmbeddingManager(nn.Module):
                 n_idx += 1
             self.text_embs_all += [text_embs]
 
+    @torch.no_grad()
     def forward(
         self,
         tokenized_text,
