@@ -421,6 +421,7 @@ else:
             "OnnxStableDiffusionPipeline",
             "OnnxStableDiffusionUpscalePipeline",
             "StableDiffusionOnnxPipeline",
+            "OnnxStableDiffusion3Pipeline",
         ]
     )
 
@@ -842,6 +843,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OnnxStableDiffusionPipeline,
             OnnxStableDiffusionUpscalePipeline,
             StableDiffusionOnnxPipeline,
+            OnnxStableDiffusion3Pipeline,
         )
 
     try:
