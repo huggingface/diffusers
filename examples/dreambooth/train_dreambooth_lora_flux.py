@@ -1622,7 +1622,6 @@ def main(args):
                     accelerator.device,
                     weight_dtype,
                 )
-                print("height", model_input.shape[2], "width", model_input.shape[3])
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
                 bsz = model_input.shape[0]
@@ -1651,7 +1650,6 @@ def main(args):
                     height=2 * (int(model_input.shape[2]) // vae_scale_factor),
                     width=2 * (int(model_input.shape[3]) // vae_scale_factor),
                 )
-                print("height pack", 2 * (int(model_input.shape[2]) // vae_scale_factor),)
 
                 # handle guidance
                 if transformer.config.guidance_embeds:
@@ -1679,7 +1677,6 @@ def main(args):
                     width= int(model_input.shape[3]),
                     vae_scale_factor= vae_scale_factor,
                 )
-                print("height unpack", int(model_input.shape[2]))
 
                 model_pred = model_pred * (-sigmas) + noisy_model_input
 

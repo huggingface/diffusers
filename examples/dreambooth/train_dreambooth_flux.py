@@ -1505,10 +1505,13 @@ def main(args):
                 model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
+
+                vae_scale_factor = 2 ** (len(vae.config.block_out_channels))
+
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
-                    model_input.shape[2],
-                    model_input.shape[3],
+                    2 * (int(model_input.shape[2]) // vae_scale_factor),
+                    2 * (int(model_input.shape[3]) // vae_scale_factor),
                     accelerator.device,
                     weight_dtype,
                 )
@@ -1538,8 +1541,8 @@ def main(args):
                     noisy_model_input,
                     batch_size=model_input.shape[0],
                     num_channels_latents=model_input.shape[1],
-                    height=model_input.shape[2],
-                    width=model_input.shape[3],
+                    height=2 * (int(model_input.shape[2]) // vae_scale_factor),
+                    width=2 * (int(model_input.shape[3]) // vae_scale_factor),
                 )
 
                 # handle guidance
@@ -1583,12 +1586,9 @@ def main(args):
 
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=int(model_input.shape[2]) * 8,
-                    width=int(model_input.shape[3]) * 8,
-                    vae_scale_factor=2
-                    ** (
-                        len(vae.config.block_out_channels)
-                    ),  # should this be 2 ** (len(vae.config.block_out_channels))?
+                    height=int(model_input.shape[2]),
+                    width=int(model_input.shape[3]),
+                    vae_scale_factor=vae_scale_factor,
                 )
 
                 model_pred = model_pred * (-sigmas) + noisy_model_input
