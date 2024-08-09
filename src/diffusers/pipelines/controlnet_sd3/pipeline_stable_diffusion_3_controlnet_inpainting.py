@@ -61,38 +61,40 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.models.controlnet_sd3 import SD3ControlNetModel
 
         >>> controlnet = SD3ControlNetModel.from_pretrained(
-        >>>     "alimama-creative/SD3-Controlnet-Inpainting",
-        >>>     use_safetensors=True,
-        >>>     extra_conditioning_channels=1
-        >>> )
+        ...     "alimama-creative/SD3-Controlnet-Inpainting", use_safetensors=True, extra_conditioning_channels=1
+        ... )
         >>> pipe = StableDiffusion3ControlNetInpaintingPipeline.from_pretrained(
-        >>>     "stabilityai/stable-diffusion-3-medium-diffusers",
-        >>>     controlnet=controlnet,
-        >>>     torch_dtype=torch.float16,
-        >>> )
+        ...     "stabilityai/stable-diffusion-3-medium-diffusers",
+        ...     controlnet=controlnet,
+        ...     torch_dtype=torch.float16,
+        ... )
         >>> pipe.text_encoder.to(torch.float16)
         >>> pipe.controlnet.to(torch.float16)
         >>> pipe.to("cuda")
 
-        >>> image = load_image("https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/resolve/main/images/dog.png")
-        >>> mask = load_image("https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/resolve/main/images/dog_mask.png")
+        >>> image = load_image(
+        ...     "https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/resolve/main/images/dog.png"
+        ... )
+        >>> mask = load_image(
+        ...     "https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/resolve/main/images/dog_mask.png"
+        ... )
         >>> width = 1024
         >>> height = 1024
-        >>> prompt="A cat is sitting next to a puppy."
+        >>> prompt = "A cat is sitting next to a puppy."
         >>> generator = torch.Generator(device="cuda").manual_seed(24)
         >>> res_image = pipe(
-        >>>     negative_prompt='deformed, distorted, disfigured, poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, mutated hands and fingers, disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, NSFW',
-        >>>     prompt=prompt,
-        >>>     height=height,
-        >>>     width=width,
-        >>>     control_image = image,
-        >>>     control_mask = mask,
-        >>>     num_inference_steps=28,
-        >>>     generator=generator,
-        >>>     controlnet_conditioning_scale=0.95,
-        >>>     guidance_scale=7,
-        >>> ).images[0]
-        >>> res_image.save(f'sd3.png')
+        ...     negative_prompt="deformed, distorted, disfigured, poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, mutated hands and fingers, disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, NSFW",
+        ...     prompt=prompt,
+        ...     height=height,
+        ...     width=width,
+        ...     control_image=image,
+        ...     control_mask=mask,
+        ...     num_inference_steps=28,
+        ...     generator=generator,
+        ...     controlnet_conditioning_scale=0.95,
+        ...     guidance_scale=7,
+        ... ).images[0]
+        >>> res_image.save(f"sd3.png")
         ```
 """
 
@@ -838,16 +840,16 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
                 The percentage of total steps at which the ControlNet stops applying.
             control_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to be inpainted (which parts of the image to
-                be masked out with `control_mask` and repainted according to `prompt`). For both numpy array and pytorch
-                tensor, the expected value range is between `[0, 1]` If it's a tensor or a list or tensors, the
-                expected shape should be `(B, C, H, W)`. If it is a numpy array or a list of arrays, the
-                expected shape should be `(B, H, W, C)` or `(H, W, C)`.
+                be masked out with `control_mask` and repainted according to `prompt`). For both numpy array and
+                pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list or tensors, the
+                expected shape should be `(B, C, H, W)`. If it is a numpy array or a list of arrays, the expected shape
+                should be `(B, H, W, C)` or `(H, W, C)`.
             control_mask (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
                 are repainted while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a
                 single channel (luminance) before use. If it's a numpy array or pytorch tensor, it should contain one
-                color channel (L) instead of 3, so the expected shape for pytorch tensor would be `(B, 1, H, W)`. And for numpy array would be for `(B, H, W, 1)`, `(B, H, W)`, `(H, W,
-                1)`, or `(H, W)`.
+                color channel (L) instead of 3, so the expected shape for pytorch tensor would be `(B, 1, H, W)`. And
+                for numpy array would be for `(B, H, W, 1)`, `(B, H, W)`, `(H, W, 1)`, or `(H, W)`.
             controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
                 The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
                 to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
