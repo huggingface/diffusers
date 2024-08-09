@@ -1578,6 +1578,21 @@ def main(args):
                     else:
                         tokens_one = tokenize_prompt(tokenizer_one, prompts, max_sequence_length=77)
                         tokens_two = tokenize_prompt(tokenizer_two, prompts, max_sequence_length=512)
+                        prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
+                            text_encoders=[text_encoder_one, text_encoder_two],
+                            tokenizers=[None, None],
+                            text_input_ids_list=[tokens_one, tokens_two],
+                            prompt=prompts,
+                        )
+                else:
+                    if args.train_text_encoder:
+                        prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
+                            text_encoders=[text_encoder_one, text_encoder_two],
+                            tokenizers=[None, None],
+                            text_input_ids_list=[tokens_one, tokens_two],
+                            prompt=args.instance_prompt,
+                        )
+
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
@@ -1628,26 +1643,7 @@ def main(args):
                     guidance = None
 
                 # Predict the noise residual
-                if not args.train_text_encoder:
-                    model_pred = transformer(
-                        hidden_states=packed_noisy_model_input,
-                        # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
-                        timestep=timesteps / 1000,
-                        guidance=guidance,
-                        pooled_projections=pooled_prompt_embeds,
-                        encoder_hidden_states=prompt_embeds,
-                        txt_ids=text_ids,
-                        img_ids=latent_image_ids,
-                        return_dict=False,
-                    )[0]
-                else:
-                    prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
-                        text_encoders=[text_encoder_one, text_encoder_two],
-                        tokenizers=None,
-                        text_input_ids_list=[tokens_one, tokens_two],
-                        prompt=args.instance_prompt,
-                    )
-                    model_pred = transformer(
+                model_pred = transformer(
                         hidden_states=packed_noisy_model_input,
                         # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
                         timestep=timesteps / 1000,
