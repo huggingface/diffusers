@@ -29,10 +29,10 @@ def retrieve_latents(
 
 class AuxiliaryLatentModule(nn.Module):
     def __init__(
-        self, glyph_channels=1, position_channels=1, model_channels=320, vae=None, device="cpu", use_fp16=False
+        self, font_path, glyph_channels=1, position_channels=1, model_channels=320, vae=None, device="cpu", use_fp16=False
     ):
         super().__init__()
-        self.font = ImageFont.truetype("font/Arial_Unicode.ttf", 60)
+        self.font = ImageFont.truetype(font_path, 60)
         self.use_fp16 = use_fp16
         self.device = device
 
@@ -79,12 +79,12 @@ class AuxiliaryLatentModule(nn.Module):
         self.fuse_block = nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1)
 
         self.glyph_block.load_state_dict(
-            load_file("AuxiliaryLatentModule/glyph_block.safetensors", device=self.device)
+            load_file("glyph_block.safetensors", device=str(self.device))
         )
         self.position_block.load_state_dict(
-            load_file("AuxiliaryLatentModule/position_block.safetensors", device=self.device)
+            load_file("position_block.safetensors", device=str(self.device))
         )
-        self.fuse_block.load_state_dict(load_file("AuxiliaryLatentModule/fuse_block.safetensors", device=self.device))
+        self.fuse_block.load_state_dict(load_file("fuse_block.safetensors", device=str(self.device)))
 
         if use_fp16:
             self.glyph_block = self.glyph_block.to(dtype=torch.float16)

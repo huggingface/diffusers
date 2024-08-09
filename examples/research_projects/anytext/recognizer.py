@@ -98,9 +98,7 @@ def create_predictor(model_dir=None, model_lang="ch", device="cpu", use_fp16=Fal
 
     rec_model = RecModel(rec_config)
     if model_file_path is not None:
-        rec_model.load_state_dict(load_file(model_file_path, device=device)).to(
-            dtype=torch.float16 if use_fp16 else torch.float32
-        )
+        rec_model.load_state_dict(torch.load(model_file_path, map_location=device))
     return rec_model
 
 

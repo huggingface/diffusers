@@ -34,6 +34,8 @@ class RecModel(nn.Module):
         self.head.load_3rd_state_dict(_3rd_name, _state)
 
     def forward(self, x):
+        import torch
+        x = x.to(torch.float32)
         x = self.backbone(x)
         x = self.neck(x)
         x = self.head(x)

@@ -24,10 +24,9 @@ class TextEmbeddingModule(nn.Module):
         self.font = ImageFont.truetype(font_path, 60)
         self.frozen_CLIP_embedder_t3 = FrozenCLIPEmbedderT3(device=self.device, use_fp16=self.use_fp16)
         self.embedding_manager = EmbeddingManager(self.frozen_CLIP_embedder_t3, use_fp16=self.use_fp16)
-        # TODO: Understand the reason of param.requires_grad = True
-        for param in self.embedding_manager.embedding_parameters():
-            param.requires_grad = True
-        rec_model_dir = "OCR/ppv3_rec.safetensors"
+        # for param in self.embedding_manager.embedding_parameters():
+        #     param.requires_grad = True
+        rec_model_dir = "OCR/ppv3_rec.pth"
         self.text_predictor = create_predictor(rec_model_dir, device=self.device, use_fp16=self.use_fp16).eval()
         for param in self.text_predictor.parameters():
             param.requires_grad = False
@@ -36,8 +35,7 @@ class TextEmbeddingModule(nn.Module):
         args["rec_batch_num"] = 6
         args["rec_char_dict_path"] = "OCR/ppocr_keys_v1.txt"
         args["use_fp16"] = self.use_fp16
-        self.cn_recognizer = TextRecognizer(args, self.text_predictor)
-        self.embedding_manager.recog = self.cn_recognizer
+        self.embedding_manager.recog = TextRecognizer(args, self.text_predictor)
 
     @torch.no_grad()
     def forward(
@@ -290,3 +288,18 @@ class TextEmbeddingModule(nn.Module):
         img.paste(rotated_layer, (x_offset, y_offset), rotated_layer)
         img = np.expand_dims(np.array(img.convert("1")), axis=2).astype(np.float64)
         return img
+
+    def insert_spaces(self, string, nSpace):
+        if nSpace == 0:
+            return string
+        new_string = ""
+        for char in string:
+            new_string += char + " " * nSpace
+        return new_string[:-nSpace]
+
+    def to(self, device):
+        self.device = device
+        self.frozen_CLIP_embedder_t3.to(device)
+        self.embedding_manager.to(device)
+        self.text_predictor.to(device)
+        return self

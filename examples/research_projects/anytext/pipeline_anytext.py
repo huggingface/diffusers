@@ -208,6 +208,7 @@ class AnyTextPipeline(
 
     def __init__(
         self,
+        font_path: str,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
@@ -218,7 +219,6 @@ class AnyTextPipeline(
         feature_extractor: CLIPImageProcessor,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
-        font_path: str = "font/Arial_Unicode.ttf",
     ):
         super().__init__()
         self.text_embedding_module = TextEmbeddingModule(
@@ -257,13 +257,15 @@ class AnyTextPipeline(
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
+            # text_embedding_module=text_embedding_module,
+            # auxiliary_latent_module=auxiliary_latent_module,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
-        self.register_to_config(requires_safety_checker=requires_safety_checker)
+        self.register_to_config(requires_safety_checker=requires_safety_checker, font_path=font_path)
 
     def modify_prompt(self, prompt):
         prompt = prompt.replace("“", '"')

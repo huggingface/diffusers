@@ -46,7 +46,7 @@ class EmbeddingManager(nn.Module):
         self.token_dim = token_dim
 
         self.proj = nn.Linear(40 * 64, token_dim)
-        self.proj.load_state_dict(load_file("EmbeddingManager/embedding_manager.safetensors", device=self.device))
+        self.proj.load_state_dict(load_file("proj.safetensors", device=str(embedder.device)))
         if use_fp16:
             self.proj = self.proj.to(dtype=torch.float16)
 
@@ -65,7 +65,7 @@ class EmbeddingManager(nn.Module):
 
         if len(gline_list) > 0:
             recog_emb = self.get_recog_emb(gline_list)
-            enc_glyph = self.proj(recog_emb.reshape(recog_emb.shape[0], -1))
+            enc_glyph = self.proj(recog_emb.reshape(recog_emb.shape[0], -1).to(self.proj.weight.device))
 
         self.text_embs_all = []
         n_idx = 0
