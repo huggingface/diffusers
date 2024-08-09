@@ -1648,9 +1648,10 @@ def main(args):
                     noisy_model_input,
                     batch_size=model_input.shape[0],
                     num_channels_latents=model_input.shape[1],
-                    height=int(model_input.shape[2]),
-                    width=int(model_input.shape[3]),
+                    height=2 * (int(model_input.shape[2]) // vae_scale_factor),
+                    width=2 * (int(model_input.shape[3]) // vae_scale_factor),
                 )
+                print("height pack", 2 * (int(model_input.shape[2]) // vae_scale_factor),)
 
                 # handle guidance
                 if transformer.config.guidance_embeds:
@@ -1674,10 +1675,11 @@ def main(args):
 
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=2 * (int(model_input.shape[2]) // vae_scale_factor),
-                    width=2 * (int(model_input.shape[3]) // vae_scale_factor),
+                    height= int(model_input.shape[2]),
+                    width= int(model_input.shape[3]),
                     vae_scale_factor= vae_scale_factor,
                 )
+                print("height unpack", int(model_input.shape[2]))
 
                 model_pred = model_pred * (-sigmas) + noisy_model_input
 
