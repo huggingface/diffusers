@@ -81,7 +81,7 @@ class AuxiliaryLatentModule(nn.Module):
             nn.SiLU(),
         )
 
-        self.vae = vae.eval()
+        self.vae = vae.eval() if vae is not None else None
 
         self.fuse_block = nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1)
 

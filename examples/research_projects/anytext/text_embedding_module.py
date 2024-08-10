@@ -24,12 +24,8 @@ class TextEmbeddingModule(nn.Module):
         self.font = ImageFont.truetype(font_path, 60)
         self.frozen_CLIP_embedder_t3 = FrozenCLIPEmbedderT3(device=self.device, use_fp16=self.use_fp16)
         self.embedding_manager = EmbeddingManager(self.frozen_CLIP_embedder_t3, use_fp16=self.use_fp16)
-        # for param in self.embedding_manager.embedding_parameters():
-        #     param.requires_grad = True
         rec_model_dir = "OCR/ppv3_rec.pth"
         self.text_predictor = create_predictor(rec_model_dir, device=self.device, use_fp16=self.use_fp16).eval()
-        for param in self.text_predictor.parameters():
-            param.requires_grad = False
         args = {}
         args["rec_image_shape"] = "3, 48, 320"
         args["rec_batch_num"] = 6
