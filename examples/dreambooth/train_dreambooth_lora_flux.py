@@ -1684,8 +1684,6 @@ def main(args):
                     vae_scale_factor=vae_scale_factor,
                 )
 
-                model_pred = model_pred * (-sigmas) + noisy_model_input
-
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
