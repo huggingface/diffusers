@@ -1671,10 +1671,13 @@ def main(args):
                     return_dict=False,
                 )[0]
 
+                print("int(model_input.shape[2]) * (vae_scale_factor / 2)", int(model_input.shape[2]) * (vae_scale_factor / 2))
+                print("int(model_input.shape[2])", int(model_input.shape[2]))
+                print("model_pred", model_pred.shape)
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=int(model_input.shape[2]) * 8,
-                    width=int(model_input.shape[3]) * 8,
+                    height=int(model_input.shape[2]) * (vae_scale_factor / 2),
+                    width=int(model_input.shape[3]) * (vae_scale_factor / 2),
                     vae_scale_factor=vae_scale_factor,
                 )
 
