@@ -1579,7 +1579,6 @@ def main(args):
                 models_to_accumulate.extend([text_encoder_one])
             with accelerator.accumulate(models_to_accumulate):
                 pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
-                print("pixel_values", pixel_values.shape)
                 prompts = batch["prompts"]
 
                 # encode batch prompts when custom prompts are provided for each image -
@@ -1672,13 +1671,6 @@ def main(args):
                     img_ids=latent_image_ids,
                     return_dict=False,
                 )[0]
-
-                print(
-                    "int(model_input.shape[2] * vae_scale_factor / 2)",
-                    int(model_input.shape[2] * vae_scale_factor / 2),
-                )
-                print("int(model_input.shape[2])", int(model_input.shape[2]))
-                print("model_pred", model_pred.shape)
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
                     height=int(model_input.shape[2] * vae_scale_factor / 2),
