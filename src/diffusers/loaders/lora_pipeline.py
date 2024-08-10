@@ -117,8 +117,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             else self.text_encoder,
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
-            _pipeline=self,
             config=metadata,
+            _pipeline=self,
         )
 
     @classmethod
@@ -527,10 +527,6 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
 
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
         """
         super().unfuse_lora(components=components)
 
@@ -1054,10 +1050,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
         """
         super().unfuse_lora(components=components)
 
@@ -1458,10 +1450,11 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 # Unsafe code />
 
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.save_lora_weights with unet->transformer
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, torch.nn.Module] = None,
+        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         transformer_lora_config: dict = None,
@@ -1486,8 +1479,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
-            transformer_lora_config (`dict`, *optional*):
-                LoRA configuration used to train the `transformer_lora_layers`.
+            transformer_lora_config (`dict`, *optional*): LoRA configuration used to train the `transformer_lora_layers`.
             text_encoder_lora_config (`dict`, *optional*):
                 LoRA configuration used to train the `text_encoder_lora_layers`.
             text_encoder_2_lora_config (`dict`, *optional*):
@@ -1508,28 +1500,27 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         if not (transformer_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
-                "You must pass at least one of `transformer_lora_layers`, `text_encoder_lora_layers`, `text_encoder_2_lora_layers`."
+                "You must pass at least one of `transformer_lora_layers`, `text_encoder_lora_layers` or `text_encoder_2_lora_layers`."
             )
 
         if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+            state_dict.update(cls.pack_weights(transformer_lora_layers, "transformer"))
             if transformer_lora_config is not None:
-                transformer_metadata = cls.pack_metadata(transformer_lora_config, cls.transformer_name)
+                transformer_metadata = cls.pack_metadata(transformer_lora_config, "transformer")
                 metadata.update(transformer_metadata)
 
         if text_encoder_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, "text_encoder"))
             if text_encoder_lora_config is not None:
-                te_config = cls.pack_metadata(text_encoder_lora_config, "text_encoder")
-                metadata.update(te_config)
+                te_metadata = cls.pack_metadata(text_encoder_lora_config, "text_encoder")
+                metadata.update(te_metadata)
 
         if text_encoder_2_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
             if text_encoder_2_lora_config is not None:
-                te2_config = cls.pack_metadata(text_encoder_lora_config, "text_encoder_2")
-                metadata.update(te2_config)
+                te2_metadata = cls.pack_metadata(text_encoder_lora_config, "text_encoder_2")
+                metadata.update(te2_metadata)
 
-        # Save the model
         cls.write_lora_layers(
             state_dict=state_dict,
             metadata=metadata,
@@ -1540,6 +1531,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.fuse_lora with unet->transformer
     def fuse_lora(
         self,
         components: List[str] = ["transformer", "text_encoder", "text_encoder_2"],
@@ -1583,6 +1575,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.unfuse_lora with unet->transformer
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder", "text_encoder_2"], **kwargs):
         r"""
         Reverses the effect of
@@ -1596,10 +1589,6 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
         """
         super().unfuse_lora(components=components)
 
@@ -2100,6 +2089,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.unfuse_lora with unet->transformer
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
         r"""
         Reverses the effect of
