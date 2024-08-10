@@ -1280,11 +1280,12 @@ def main(args):
         # only upcast trainable parameters (LoRA) into fp32
         cast_training_params(models, dtype=torch.float32)
 
-    # Optimization parameters
-    transformer_parameters_with_lr = {"params": transformer.parameters(), "lr": args.learning_rate}
+    transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters()))
     if args.train_text_encoder:
         text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
 
+    # Optimization parameters
+    transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
     if args.train_text_encoder:
         # different learning rate for text encoder and unet
         text_parameters_one_with_lr = {
