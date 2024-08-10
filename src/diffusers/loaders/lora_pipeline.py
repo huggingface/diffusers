@@ -1178,7 +1178,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
+        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
         `self.text_encoder`.
 
         All kwargs are forwarded to `self.lora_state_dict`.
