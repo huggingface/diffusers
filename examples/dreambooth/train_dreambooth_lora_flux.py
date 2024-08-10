@@ -1647,8 +1647,8 @@ def main(args):
                     noisy_model_input,
                     batch_size=model_input.shape[0],
                     num_channels_latents=model_input.shape[1],
-                    height= model_input.shape[2],
-                    width= model_input.shape[3],
+                    height=model_input.shape[2],
+                    width=model_input.shape[3],
                 )
 
                 # handle guidance
