@@ -2011,7 +2011,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
-            transformer_lora_config (`dict`, *optional*): LoRA configuration used to train the `transformer_lora_layers`.
+            transformer_lora_config (`dict`, *optional*):
+                LoRA configuration used to train the `transformer_lora_layers`.
             text_encoder_lora_config (`dict`, *optional*):
                 LoRA configuration used to train the `text_encoder_lora_layers`.
             is_main_process (`bool`, *optional*, defaults to `True`):
