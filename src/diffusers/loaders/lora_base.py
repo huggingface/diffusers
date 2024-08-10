@@ -720,6 +720,20 @@ class LoraBaseMixin:
         return layers_state_dict
 
     @staticmethod
+    def pack_metadata(config, prefix):
+        local_metadata = {}
+        if config is not None:
+            if isinstance(config, LoraConfig):
+                config = config.to_dict()
+            for key, value in config.items():
+                if isinstance(value, set):
+                    config[key] = list(value)
+
+            config_as_string = json.dumps(config, indent=2, sort_keys=True)
+            local_metadata[prefix] = config_as_string
+        return local_metadata
+
+    @staticmethod
     def write_lora_layers(
         state_dict: Dict[str, torch.Tensor],
         save_directory: str,
@@ -771,17 +785,3 @@ class LoraBaseMixin:
         # property function that returns the lora scale which can be set at run time by the pipeline.
         # if _lora_scale has not been set, return 1
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
-
-    @staticmethod
-    def pack_metadata(config, prefix):
-        local_metadata = {}
-        if config is not None:
-            if isinstance(config, LoraConfig):
-                config = config.to_dict()
-            for key, value in config.items():
-                if isinstance(value, set):
-                    config[key] = list(value)
-
-            config_as_string = json.dumps(config, indent=2, sort_keys=True)
-            local_metadata[prefix] = config_as_string
-        return local_metadata

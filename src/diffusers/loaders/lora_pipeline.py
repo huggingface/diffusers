@@ -173,7 +173,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
-            return_metadata (`bool`)
+            return_metadata (`bool`):
+                If state dict metadata should be returned. Is only supported when the state dict has a safetensors
+                extension.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
@@ -255,7 +257,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            config (`dict`, *optional*):
+            config (`dict`, *optional*): LoRA configuration (`LoraConfig` dict) used during training.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -307,7 +309,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            config (`dict`, *optional*):
+            config (`dict`, *optional*): LoRA configuration (`LoraConfig` dict) used during training.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -425,8 +427,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
-            unet_lora_config: Dict
-            text_encoder_lora_config: Dict
+            unet_lora_config (`dict`, *optional*): LoRA configuration used to train the `unet_lora_layers`.
+            text_encoder_lora_config (`dict`, *optional*):
+                LoRA configuration used to train the `text_encoder_lora_layers`.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -681,7 +684,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
-            return_metadata (`bool`)
+            return_metadata (`bool`):
+                If state dict metadata should be returned. Is only supported when the state dict has a safetensors
+                extension.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
@@ -764,7 +769,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            config (`dict`, *optional*):
+            config (`dict`, *optional*): LoRA configuration (`LoraConfig` dict) used during training.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -817,7 +822,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            config (`dict`, *optional*):
+            config (`dict`, *optional*): LoRA configuration (`LoraConfig` dict) used during training.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -940,9 +945,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
-            unet_lora_config (`dict`):
-            text_encoder_lora_config (`dict`):
-            text_encoder_2_lora_config (`dict`):
+            unet_lora_config (`dict`, *optional*): LoRA configuration used to train the `unet_lora_layers`.
+            text_encoder_lora_config (`dict`, *optional*):
+                LoRA configuration used to train the `text_encoder_lora_layers`.
+            text_encoder_2_lora_config (`dict`, *optional*):
+                LoRA configuration used to train the `text_encoder_2_lora_layers`.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1118,6 +1125,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             return_metadata (`bool`):
+                If state dict metadata should be returned. Is only supported when the state dict has a safetensors
+                extension.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -1353,7 +1362,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            config (`dict`, *optional*):
+            config (`dict`, *optional*): LoRA configuration (`LoraConfig` dict) used during training.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1476,9 +1485,12 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
-            transformer_lora_config (`dict`):
-            text_encoder_lora_config (`dict`):
-            text_encoder_2_lora_config (`dict`):
+            transformer_lora_config (`dict`, *optional*):
+                LoRA configuration used to train the `transformer_lora_layers`.
+            text_encoder_lora_config (`dict`, *optional*):
+                LoRA configuration used to train the `text_encoder_lora_layers`.
+            text_encoder_2_lora_config (`dict`, *optional*):
+                LoRA configuration used to train the `text_encoder_2_lora_layers`.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1654,7 +1666,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_metadata (`bool`):
+            return_metadata (`bool`, *optional*):
+                If state dict metadata should be returned. Is only supported when the state dict has a safetensors
+                extension.
 
         """
         # Load the main state dict first which has the LoRA layers for either of
@@ -1878,7 +1892,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            config (`dict`, *optional*):
+            config (`dict`, *optional*): LoRA configuration (`LoraConfig` dict) used during training.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1997,8 +2011,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
-            transformer_lora_config: Dict
-            text_encoder_lora_config: Dict
+            transformer_lora_config (`dict`, *optional*):
+                LoRA configuration used to train the `transformer_lora_layers`.
+            text_encoder_lora_config (`dict`, *optional*):
+                LoRA configuration used to train the `text_encoder_lora_layers`.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -2223,7 +2239,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            config (`dict`, *optional*):
+            config (`dict`, *optional*): LoRA configuration (`LoraConfig` dict) used during training.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
