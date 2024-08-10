@@ -1510,8 +1510,8 @@ def main(args):
 
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
-                    2 * (int(model_input.shape[2]) // vae_scale_factor),
-                    2 * (int(model_input.shape[3]) // vae_scale_factor),
+                    model_input.shape[2],
+                    model_input.shape[3],
                     accelerator.device,
                     weight_dtype,
                 )
@@ -1541,8 +1541,8 @@ def main(args):
                     noisy_model_input,
                     batch_size=model_input.shape[0],
                     num_channels_latents=model_input.shape[1],
-                    height=2 * (int(model_input.shape[2]) // vae_scale_factor),
-                    width=2 * (int(model_input.shape[3]) // vae_scale_factor),
+                    height= model_input.shape[2],
+                    width= model_input.shape[3],
                 )
 
                 # handle guidance
