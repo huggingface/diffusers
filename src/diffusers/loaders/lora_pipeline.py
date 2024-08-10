@@ -942,7 +942,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
-            unet_lora_config (`dict`, *optional*): LoRA configuration used to train the `unet_lora_layers`.
+            unet_lora_config (`dict`, *optional*):
+                LoRA configuration used to train the `unet_lora_layers`.
             text_encoder_lora_config (`dict`, *optional*):
                 LoRA configuration used to train the `text_encoder_lora_layers`.
             text_encoder_2_lora_config (`dict`, *optional*):
