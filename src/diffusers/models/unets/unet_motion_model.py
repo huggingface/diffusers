@@ -233,6 +233,7 @@ class DownBlockMotion(nn.Module):
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_max_seq_length: int = 32,
         temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        temporal_double_self_attention: bool = True,
     ):
         super().__init__()
         resnets = []
@@ -282,6 +283,7 @@ class DownBlockMotion(nn.Module):
                     positional_embeddings="sinusoidal",
                     num_positional_embeddings=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads[i],
+                    double_self_attention=temporal_double_self_attention,
                 )
             )
 
@@ -343,6 +345,7 @@ class DownBlockMotion(nn.Module):
 
             else:
                 hidden_states = resnet(hidden_states, temb)
+
             hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
             output_states = output_states + (hidden_states,)
@@ -384,6 +387,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
         temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        temporal_double_self_attention: bool = True,
     ):
         super().__init__()
         resnets = []
@@ -465,6 +469,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                     positional_embeddings="sinusoidal",
                     num_positional_embeddings=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
+                    double_self_attention=temporal_double_self_attention,
                 )
             )
 
@@ -536,6 +541,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
+
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -761,6 +767,7 @@ class CrossAttnUpBlockMotion(nn.Module):
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
+
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -921,9 +928,9 @@ class UpBlockMotion(nn.Module):
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(resnet), hidden_states, temb
                     )
-
             else:
                 hidden_states = resnet(hidden_states, temb)
+
             hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
         if self.upsamplers is not None:
@@ -1923,7 +1930,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
@@ -1953,7 +1959,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
         for module in self.children():
             fn_recursive_feed_forward(module, chunk_size, dim)
 
-    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
     def disable_forward_chunking(self) -> None:
         def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
             if hasattr(module, "set_chunk_feed_forward"):

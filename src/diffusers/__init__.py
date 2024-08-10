@@ -79,9 +79,11 @@ else:
             "AsymmetricAutoencoderKL",
             "AuraFlowTransformer2DModel",
             "AutoencoderKL",
+            "AutoencoderKLCogVideoX",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderOobleck",
             "AutoencoderTiny",
+            "CogVideoXTransformer3DModel",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
             "ControlNetXSAdapter",
@@ -155,6 +157,8 @@ else:
         [
             "AmusedScheduler",
             "CMStochasticIterativeScheduler",
+            "CogVideoXDDIMScheduler",
+            "CogVideoXDPMScheduler",
             "DDIMInverseScheduler",
             "DDIMParallelScheduler",
             "DDIMScheduler",
@@ -248,6 +252,7 @@ else:
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
             "CLIPImageProjection",
+            "CogVideoXPipeline",
             "CycleDiffusionPipeline",
             "FluxPipeline",
             "HunyuanDiTControlNetPipeline",
@@ -280,8 +285,6 @@ else:
             "KandinskyV22Pipeline",
             "KandinskyV22PriorEmb2EmbPipeline",
             "KandinskyV22PriorPipeline",
-            "KolorsImg2ImgPipeline",
-            "KolorsPipeline",
             "LatentConsistencyModelImg2ImgPipeline",
             "LatentConsistencyModelPipeline",
             "LattePipeline",
@@ -309,6 +312,7 @@ else:
             "StableDiffusion3ControlNetPipeline",
             "StableDiffusion3Img2ImgPipeline",
             "StableDiffusion3InpaintPipeline",
+            "StableDiffusion3PAGPipeline",
             "StableDiffusion3Pipeline",
             "StableDiffusionAdapterPipeline",
             "StableDiffusionAttendAndExcitePipeline",
@@ -397,7 +401,7 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
-    _import_structure["pipelines"].extend(["KolorsImg2ImgPipeline", "KolorsPipeline"])
+    _import_structure["pipelines"].extend(["KolorsImg2ImgPipeline", "KolorsPAGPipeline", "KolorsPipeline"])
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
@@ -537,9 +541,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AsymmetricAutoencoderKL,
             AuraFlowTransformer2DModel,
             AutoencoderKL,
+            AutoencoderKLCogVideoX,
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
             AutoencoderTiny,
+            CogVideoXTransformer3DModel,
             ConsistencyDecoderVAE,
             ControlNetModel,
             ControlNetXSAdapter,
@@ -610,6 +616,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .schedulers import (
             AmusedScheduler,
             CMStochasticIterativeScheduler,
+            CogVideoXDDIMScheduler,
+            CogVideoXDPMScheduler,
             DDIMInverseScheduler,
             DDIMParallelScheduler,
             DDIMScheduler,
@@ -684,6 +692,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDMPipeline,
             AuraFlowPipeline,
             CLIPImageProjection,
+            CogVideoXPipeline,
             CycleDiffusionPipeline,
             FluxPipeline,
             HunyuanDiTControlNetPipeline,
@@ -742,6 +751,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusion3ControlNetPipeline,
             StableDiffusion3Img2ImgPipeline,
             StableDiffusion3InpaintPipeline,
+            StableDiffusion3PAGPipeline,
             StableDiffusion3Pipeline,
             StableDiffusionAdapterPipeline,
             StableDiffusionAttendAndExcitePipeline,
@@ -819,7 +829,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_and_sentencepiece_objects import *  # noqa F403
     else:
-        from .pipelines import KolorsImg2ImgPipeline, KolorsPipeline
+        from .pipelines import KolorsImg2ImgPipeline, KolorsPAGPipeline, KolorsPipeline
     try:
         if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
             raise OptionalDependencyNotAvailable()
