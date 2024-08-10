@@ -1276,7 +1276,7 @@ def main(args):
     if args.mixed_precision == "fp16":
         models = [transformer]
         if args.train_text_encoder:
-            models.extend([text_encoder_one, text_encoder_two])
+            models.extend([text_encoder_one])
         # only upcast trainable parameters (LoRA) into fp32
         cast_training_params(models, dtype=torch.float32)
 
