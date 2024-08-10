@@ -1263,7 +1263,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            config (`dict`):
+            config (`dict`): Configuration that was used to train this LoRA.
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
@@ -1793,7 +1793,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            config (`dict`):
+            config (`dict`): Configuration that was used to train this LoRA.
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
