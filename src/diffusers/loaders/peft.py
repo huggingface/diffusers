@@ -55,6 +55,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "MochiTransformer3DModel": lambda model_cls, weights: weights,
     "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,
     "SanaTransformer2DModel": lambda model_cls, weights: weights,
+    "AuraFlowTransformer2DModel": lambda model_cls, weights: weights,
 }
 
 

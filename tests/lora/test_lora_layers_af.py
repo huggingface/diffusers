@@ -15,6 +15,8 @@
 import sys
 import unittest
 
+from transformers import AutoTokenizer, T5EncoderModel
+
 from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     AuraFlowPipeline,
@@ -31,60 +33,41 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
-class AFLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = AuraFlowPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler()
     scheduler_kwargs = {}
+    uses_flow_matching = True
     transformer_kwargs = {
         "sample_size": 64,
-        "patch_size": 2,
+        "patch_size": 1,
         "in_channels": 4,
-        "num_mmdit_layers": 4,
-        "num_single_dit_layers": 32,
-        "attention_head_dim": 256,
-        "num_attention_heads": 12,
-        "joint_attention_dim": 2048,
-        "caption_projection_dim": 3072,
+        "num_mmdit_layers": 1,
+        "num_single_dit_layers": 1,
+        "attention_head_dim": 16,
+        "num_attention_heads": 2,
+        "joint_attention_dim": 32,
+        "caption_projection_dim": 32,
         "out_channels": 4,
-        "pos_embed_max_size": 1024,
+        "pos_embed_max_size": 32,
     }
+    tokenizer_cls, tokenizer_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
+    text_encoder_cls, text_encoder_id = T5EncoderModel, "hf-internal-testing/tiny-random-t5"
+
     vae_kwargs = {
-        "sample_size": 1024,
+        "sample_size": 32,
         "in_channels": 3,
         "out_channels": 3,
-        "block_out_channels": [
-    128,
-    256,
-    512,
-    512
-  ],
-        "layers_per_block": 2,
+        "block_out_channels": (4,),
+        "layers_per_block": 1,
         "latent_channels": 4,
-        "norm_num_groups": 32,
-        "use_quant_conv": True,
-        "use_post_quant_conv": True,
+        "norm_num_groups": 1,
+        "use_quant_conv": False,
+        "use_post_quant_conv": False,
         "shift_factor": None,
         "scaling_factor": 0.13025,
     }
-    has_three_text_encoders = False
 
-    @require_torch_gpu
-    def test_af_lora(self):
-        """
-        Test loading the loras that are saved with the diffusers and peft formats.
-        Related PR: https://github.com/huggingface/diffusers/pull/8584
-        """
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        lora_model_id = "Warlord-K/gorkem-auraflow-lora"
-
-        lora_filename = "pytorch_lora_weights.safetensors"
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
-        pipe.unload_lora_weights()
-
-        lora_filename = "lora_peft_format.safetensors"
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+    @property
+    def output_shape(self):
+        return (1, 64, 64, 3)
