@@ -26,10 +26,12 @@ from diffusers import (
     StableDiffusionLatentUpscalePipeline,
     UNet2DConditionModel,
 )
+from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     skip_mps,
+    torch_device,
 )
 
 from ..pipeline_params import (
@@ -197,9 +199,17 @@ class StableDiffusionLatentUpscalerPipelineFastTests(
     def test_save_load_optional_components(self):
         return super().test_save_load_optional_components()
 
-    @skip_mps
-    def test_attention_slicing_forward_pass(self):
-        return super().test_attention_slicing_forward_pass(expected_max_diff=5e-3)
+    def test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):
+        self._test_attention_slicing_forward_pass(
+            expected_max_diff=expected_max_diff, test_mean_pixel_difference=False
+        )
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=2e-4, test_mean_pixel_difference=False)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
