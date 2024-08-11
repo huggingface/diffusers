@@ -11,39 +11,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput, deprecate, is_torch_version, logging
+from ...configuration_utils import LegacyConfigMixin, register_to_config
+from ...utils import deprecate, is_torch_version, logging
 from ..attention import BasicTransformerBlock
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
-from ..modeling_utils import ModelMixin
+from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import LegacyModelMixin
 from ..normalization import AdaLayerNormSingle
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-@dataclass
-class Transformer2DModelOutput(BaseOutput):
-    """
-    The output of [`Transformer2DModel`].
-
-    Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
-            The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
-            distributions for the unnoised latent pixels.
-    """
-
-    sample: torch.FloatTensor
+class Transformer2DModelOutput(Transformer2DModelOutput):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "Importing `Transformer2DModelOutput` from `diffusers.models.transformer_2d` is deprecated and this will be removed in a future version. Please use `from diffusers.models.modeling_outputs import Transformer2DModelOutput`, instead."
+        deprecate("Transformer2DModelOutput", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
 
 
-class Transformer2DModel(ModelMixin, ConfigMixin):
+class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
     """
     A 2D Transformer model for image-like data.
 
@@ -72,6 +65,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["BasicTransformerBlock"]
 
     @register_to_config
     def __init__(
@@ -115,39 +109,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     f"When using a `patch_size` and this `norm_type` ({norm_type}), `num_embeds_ada_norm` cannot be None."
                 )
 
-        # Set some common variables used across the board.
-        self.use_linear_projection = use_linear_projection
-        self.interpolation_scale = interpolation_scale
-        self.caption_channels = caption_channels
-        self.num_attention_heads = num_attention_heads
-        self.attention_head_dim = attention_head_dim
-        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
-        self.in_channels = in_channels
-        self.out_channels = in_channels if out_channels is None else out_channels
-        self.gradient_checkpointing = False
-        if use_additional_conditions is None:
-            if norm_type == "ada_norm_single" and sample_size == 128:
-                use_additional_conditions = True
-            else:
-                use_additional_conditions = False
-        self.use_additional_conditions = use_additional_conditions
-
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
         self.is_input_continuous = (in_channels is not None) and (patch_size is None)
         self.is_input_vectorized = num_vector_embeds is not None
         self.is_input_patches = in_channels is not None and patch_size is not None
-
-        if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
-            deprecation_message = (
-                f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
-                " incorrectly set to `'layer_norm'`. Make sure to set `norm_type` to `'ada_norm'` in the config."
-                " Please make sure to update the config accordingly as leaving `norm_type` might led to incorrect"
-                " results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it"
-                " would be very nice if you could open a Pull request for the `transformer/config.json` file"
-            )
-            deprecate("norm_type!=num_embeds_ada_norm", "1.0.0", deprecation_message, standard_warn=False)
-            norm_type = "ada_norm"
 
         if self.is_input_continuous and self.is_input_vectorized:
             raise ValueError(
@@ -164,6 +130,35 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 f"Has to define `in_channels`: {in_channels}, `num_vector_embeds`: {num_vector_embeds}, or patch_size:"
                 f" {patch_size}. Make sure that `in_channels`, `num_vector_embeds` or `num_patches` is not None."
             )
+
+        if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
+            deprecation_message = (
+                f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
+                " incorrectly set to `'layer_norm'`. Make sure to set `norm_type` to `'ada_norm'` in the config."
+                " Please make sure to update the config accordingly as leaving `norm_type` might led to incorrect"
+                " results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it"
+                " would be very nice if you could open a Pull request for the `transformer/config.json` file"
+            )
+            deprecate("norm_type!=num_embeds_ada_norm", "1.0.0", deprecation_message, standard_warn=False)
+            norm_type = "ada_norm"
+
+        # Set some common variables used across the board.
+        self.use_linear_projection = use_linear_projection
+        self.interpolation_scale = interpolation_scale
+        self.caption_channels = caption_channels
+        self.num_attention_heads = num_attention_heads
+        self.attention_head_dim = attention_head_dim
+        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+        self.in_channels = in_channels
+        self.out_channels = in_channels if out_channels is None else out_channels
+        self.gradient_checkpointing = False
+
+        if use_additional_conditions is None:
+            if norm_type == "ada_norm_single" and sample_size == 128:
+                use_additional_conditions = True
+            else:
+                use_additional_conditions = False
+        self.use_additional_conditions = use_additional_conditions
 
         # 2. Initialize the right blocks.
         # These functions follow a common structure:
@@ -345,9 +340,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         The [`Transformer2DModel`] forward method.
 
         Args:
-            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
+            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.Tensor` of shape `(batch size, channel, height, width)` if continuous):
                 Input `hidden_states`.
-            encoder_hidden_states ( `torch.FloatTensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
+            encoder_hidden_states ( `torch.Tensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
             timestep ( `torch.LongTensor`, *optional*):
@@ -376,8 +371,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 tuple.
 
         Returns:
-            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
-            `tuple` where the first element is the sample tensor.
+            If `return_dict` is True, an [`~models.transformers.transformer_2d.Transformer2DModelOutput`] is returned,
+            otherwise a `tuple` where the first element is the sample tensor.
         """
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:

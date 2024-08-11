@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import random
 import unittest
 
@@ -32,13 +31,10 @@ from diffusers import (
     T2IAdapter,
     UNet2DConditionModel,
 )
-from diffusers.utils import load_image, logging
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -299,8 +295,9 @@ class StableDiffusionXLAdapterPipelineFastTests(
             expected_pipe_slice = None
             if torch_device == "cpu":
                 expected_pipe_slice = np.array(
-                    [0.5753, 0.6022, 0.4728, 0.4986, 0.5708, 0.4645, 0.5194, 0.5134, 0.4730]
+                    [0.5752, 0.6155, 0.4826, 0.5111, 0.5741, 0.4678, 0.5199, 0.5231, 0.4794]
                 )
+
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_adapter_default_case(self):
@@ -315,9 +312,7 @@ class StableDiffusionXLAdapterPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [0.5752919, 0.6022097, 0.4728038, 0.49861962, 0.57084894, 0.4644975, 0.5193715, 0.5133664, 0.4729858]
-        )
+        expected_slice = np.array([00.5752, 0.6155, 0.4826, 0.5111, 0.5741, 0.4678, 0.5199, 0.5231, 0.4794])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
     @parameterized.expand(
@@ -450,15 +445,14 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [0.5813032, 0.60995954, 0.47563356, 0.5056669, 0.57199144, 0.4631841, 0.5176794, 0.51252556, 0.47183886]
-        )
+        expected_slice = np.array([0.5617, 0.6081, 0.4807, 0.5071, 0.5665, 0.4614, 0.5165, 0.5164, 0.4786])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
     def test_ip_adapter_single(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.5813, 0.6100, 0.4756, 0.5057, 0.5720, 0.4632, 0.5177, 0.5125, 0.4718])
+            expected_pipe_slice = np.array([0.5617, 0.6081, 0.4807, 0.5071, 0.5665, 0.4614, 0.5165, 0.5164, 0.4786])
+
         return super().test_ip_adapter_single(from_multi=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_inference_batch_consistent(
@@ -578,7 +572,6 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
 
         # batchify inputs
         batched_inputs = {}
-        batch_size = batch_size
         for name, value in inputs.items():
             if name in self.batch_params:
                 # prompt is string
@@ -678,54 +671,3 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
         print(",".join(debug))
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-
-@slow
-@require_torch_gpu
-class AdapterSDXLPipelineSlowTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def test_download_ckpt_diff_format_is_same(self):
-        ckpt_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
-        )
-        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16)
-        prompt = "toy"
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
-        )
-        pipe_single_file = StableDiffusionXLAdapterPipeline.from_single_file(
-            ckpt_path,
-            adapter=adapter,
-            torch_dtype=torch.float16,
-        )
-        pipe_single_file.enable_model_cpu_offload()
-        pipe_single_file.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        images_single_file = pipe_single_file(
-            prompt, image=image, generator=generator, output_type="np", num_inference_steps=3
-        ).images
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            adapter=adapter,
-            torch_dtype=torch.float16,
-        )
-        pipe.enable_model_cpu_offload()
-        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
-
-        assert images_single_file[0].shape == (768, 512, 3)
-        assert images[0].shape == (768, 512, 3)
-
-        max_diff = numpy_cosine_similarity_distance(images[0].flatten(), images_single_file[0].flatten())
-        assert max_diff < 5e-3

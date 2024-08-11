@@ -33,6 +33,7 @@ from .import_utils import (
     is_onnx_available,
     is_opencv_available,
     is_peft_available,
+    is_timm_available,
     is_torch_available,
     is_torch_version,
     is_torchsde_available,
@@ -186,6 +187,7 @@ def parse_flag_from_env(key, default=False):
 
 _run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
 _run_nightly_tests = parse_flag_from_env("RUN_NIGHTLY", default=False)
+_run_compile_tests = parse_flag_from_env("RUN_COMPILE", default=False)
 
 
 def floats_tensor(shape, scale=1.0, rng=None, name=None):
@@ -222,6 +224,16 @@ def nightly(test_case):
 
     """
     return unittest.skipUnless(_run_nightly_tests, "test is nightly")(test_case)
+
+
+def is_torch_compile(test_case):
+    """
+    Decorator marking a test that runs compile tests in the diffusers CI.
+
+    Compile tests are skipped by default. Set the RUN_COMPILE environment variable to a truthy value to run them.
+
+    """
+    return unittest.skipUnless(_run_compile_tests, "test is torch compile")(test_case)
 
 
 def require_torch(test_case):
@@ -340,6 +352,13 @@ def require_peft_backend(test_case):
     return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
 
 
+def require_timm(test_case):
+    """
+    Decorator marking a test that requires timm. These tests are skipped when timm isn't installed.
+    """
+    return unittest.skipUnless(is_timm_available(), "test requires timm")(test_case)
+
+
 def require_peft_version_greater(peft_version):
     """
     Decorator marking a test that requires PEFT backend with a specific version, this would require some specific
@@ -380,14 +399,6 @@ def get_python_version():
     sys_info = sys.version_info
     major, minor = sys_info.major, sys_info.minor
     return major, minor
-
-
-def require_python39_or_higher(test_case):
-    def python39_available():
-        major, minor = get_python_version()
-        return major == 3 and minor >= 9
-
-    return unittest.skipUnless(python39_available(), "test requires Python 3.9 or higher")(test_case)
 
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:

@@ -435,7 +435,6 @@ def _load_empty_model(
             return_unused_kwargs=True,
             return_commit_hash=True,
             force_download=kwargs.pop("force_download", False),
-            resume_download=kwargs.pop("resume_download", False),
             proxies=kwargs.pop("proxies", None),
             local_files_only=kwargs.pop("local_files_only", False),
             token=kwargs.pop("token", None),
@@ -454,7 +453,6 @@ def _load_empty_model(
             cached_folder,
             subfolder=name,
             force_download=kwargs.pop("force_download", False),
-            resume_download=kwargs.pop("resume_download", False),
             proxies=kwargs.pop("proxies", None),
             local_files_only=kwargs.pop("local_files_only", False),
             token=kwargs.pop("token", None),
@@ -544,7 +542,6 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 torch_dtype=torch_dtype,
                 cached_folder=kwargs.get("cached_folder", None),
                 force_download=kwargs.get("force_download", None),
-                resume_download=kwargs.get("resume_download", None),
                 proxies=kwargs.get("proxies", None),
                 local_files_only=kwargs.get("local_files_only", None),
                 token=kwargs.get("token", None),
@@ -608,7 +605,9 @@ def load_sub_model(
     cached_folder: Union[str, os.PathLike],
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
+
     # retrieve class candidates
+
     class_obj, class_candidates = get_class_obj_and_candidates(
         library_name,
         class_name,

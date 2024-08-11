@@ -49,7 +49,7 @@ from diffusers.utils import check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.30.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +250,7 @@ def parse_args():
 
 
 dataset_name_mapping = {
-    "lambdalabs/pokemon-blip-captions": ("image", "text"),
+    "lambdalabs/naruto-blip-captions": ("image", "text"),
 }
 
 

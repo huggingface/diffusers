@@ -557,7 +557,7 @@ def convert_ldm_unet_checkpoint(
                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
             )
 
-            output_block_list = {k: sorted(v) for k, v in output_block_list.items()}
+            output_block_list = {k: sorted(v) for k, v in sorted(output_block_list.items())}
             if ["conv.bias", "conv.weight"] in output_block_list.values():
                 index = list(output_block_list.values()).index(["conv.bias", "conv.weight"])
                 new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.weight"] = unet_state_dict[
@@ -1370,6 +1370,8 @@ def download_from_original_stable_diffusion_ckpt(
 
     if "unet_config" in original_config["model"]["params"]:
         original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
+    elif "network_config" in original_config["model"]["params"]:
+        original_config["model"]["params"]["network_config"]["params"]["in_channels"] = num_in_channels
 
     if (
         "parameterization" in original_config["model"]["params"]

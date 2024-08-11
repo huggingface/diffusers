@@ -23,7 +23,7 @@ concurrency:
 jobs:
   run_fast_tests_apple_m1:
     name: Fast PyTorch MPS tests on MacOS
-    runs-on: [ self-hosted, apple-m1 ]
+    runs-on: macos-13-xlarge
 
     steps:
     - name: Checkout diffusers
@@ -59,7 +59,7 @@ jobs:
       shell: arch -arch arm64 bash {0}
       env:
         HF_HOME: /System/Volumes/Data/mnt/cache
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
         ${CONDA_RUN} python -m pytest -n 0 -s -v --make-reports=tests_torch_mps tests/
 

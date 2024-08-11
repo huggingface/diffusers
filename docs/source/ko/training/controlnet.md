@@ -155,20 +155,20 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
 
 #### 배치 사이즈 8로 300 스텝 이후:
 
-| |  | 
+| |  |
 |-------------------|:-------------------------:|
-| | 푸른 배경과 빨간 원  | 
+| | 푸른 배경과 빨간 원  |
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![푸른 배경과 빨간 원](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/red_circle_with_blue_background_300_steps.png) |
-| | 갈색 꽃 배경과 청록색 원 | 
+| | 갈색 꽃 배경과 청록색 원 |
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png) | ![갈색 꽃 배경과 청록색 원](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/cyan_circle_with_brown_floral_background_300_steps.png) |
 
 #### 배치 사이즈 8로 6000 스텝 이후:
 
-| |  | 
+| |  |
 |-------------------|:-------------------------:|
-| | 푸른 배경과 빨간 원  | 
+| | 푸른 배경과 빨간 원  |
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![푸른 배경과 빨간 원](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/red_circle_with_blue_background_6000_steps.png) |
-| | 갈색 꽃 배경과 청록색 원 | 
+| | 갈색 꽃 배경과 청록색 원 |
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png) | ![갈색 꽃 배경과 청록색 원](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/cyan_circle_with_brown_floral_background_6000_steps.png) |
 
 ## 16GB GPU에서 학습하기

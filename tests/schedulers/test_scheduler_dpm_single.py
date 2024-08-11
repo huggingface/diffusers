@@ -103,14 +103,31 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
             scheduler_config = self.get_scheduler_config(**config)
             scheduler = scheduler_class(**scheduler_config)
 
+        num_inference_steps = 10
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        scheduler.set_timesteps(num_inference_steps)
+
+        for i, t in enumerate(scheduler.timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step(residual, t, sample).prev_sample
+
+        return sample
+
+    def full_loop_custom_timesteps(self, **config):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config(**config)
         scheduler = scheduler_class(**scheduler_config)
 
         num_inference_steps = 10
+        scheduler.set_timesteps(num_inference_steps)
+        timesteps = scheduler.timesteps
+        # reset the timesteps using`timesteps`
+        scheduler = scheduler_class(**scheduler_config)
+        scheduler.set_timesteps(num_inference_steps=None, timesteps=timesteps)
+
         model = self.dummy_model()
         sample = self.dummy_sample_deter
-        scheduler.set_timesteps(num_inference_steps)
 
         for i, t in enumerate(scheduler.timesteps):
             residual = model(sample, t)
@@ -177,16 +194,20 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_solver_order_and_type(self):
-        for algorithm_type in ["dpmsolver", "dpmsolver++"]:
+        for algorithm_type in ["dpmsolver", "dpmsolver++", "sde-dpmsolver++"]:
             for solver_type in ["midpoint", "heun"]:
                 for order in [1, 2, 3]:
                     for prediction_type in ["epsilon", "sample"]:
-                        self.check_over_configs(
-                            solver_order=order,
-                            solver_type=solver_type,
-                            prediction_type=prediction_type,
-                            algorithm_type=algorithm_type,
-                        )
+                        if algorithm_type == "sde-dpmsolver++":
+                            if order == 3:
+                                continue
+                        else:
+                            self.check_over_configs(
+                                solver_order=order,
+                                solver_type=solver_type,
+                                prediction_type=prediction_type,
+                                algorithm_type=algorithm_type,
+                            )
                         sample = self.full_loop(
                             solver_order=order,
                             solver_type=solver_type,
@@ -307,3 +328,21 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 269.2187) < 1e-2, f" expected result sum  269.2187, but get {result_sum}"
         assert abs(result_mean.item() - 0.3505) < 1e-3, f" expected result mean 0.3505, but get {result_mean}"
+
+    def test_custom_timesteps(self):
+        for prediction_type in ["epsilon", "sample", "v_prediction"]:
+            for lower_order_final in [True, False]:
+                for final_sigmas_type in ["sigma_min", "zero"]:
+                    sample = self.full_loop(
+                        prediction_type=prediction_type,
+                        lower_order_final=lower_order_final,
+                        final_sigmas_type=final_sigmas_type,
+                    )
+                    sample_custom_timesteps = self.full_loop_custom_timesteps(
+                        prediction_type=prediction_type,
+                        lower_order_final=lower_order_final,
+                        final_sigmas_type=final_sigmas_type,
+                    )
+                    assert (
+                        torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5
+                    ), f"Scheduler outputs are not identical for prediction_type: {prediction_type}, lower_order_final: {lower_order_final} and final_sigmas_type: {final_sigmas_type}"

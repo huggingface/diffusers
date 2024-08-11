@@ -38,7 +38,6 @@ TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
 def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs):
     cache_dir = kwargs.pop("cache_dir", None)
     force_download = kwargs.pop("force_download", False)
-    resume_download = kwargs.pop("resume_download", False)
     proxies = kwargs.pop("proxies", None)
     local_files_only = kwargs.pop("local_files_only", None)
     token = kwargs.pop("token", None)
@@ -72,7 +71,6 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                         weights_name=weight_name or TEXT_INVERSION_NAME_SAFE,
                         cache_dir=cache_dir,
                         force_download=force_download,
-                        resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
                         token=token,
@@ -93,7 +91,6 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                     weights_name=weight_name or TEXT_INVERSION_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
-                    resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
                     token=token,
@@ -308,9 +305,7 @@ class TextualInversionLoaderMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -419,15 +414,20 @@ class TextualInversionLoaderMixin:
         # 7.1 Offload all hooks in case the pipeline was cpu offloaded before make sure, we offload and onload again
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
-        for _, component in self.components.items():
-            if isinstance(component, nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the textual inversion parameters will be loaded and the hooks will be applied again."
-                    )
-                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+        if self.hf_device_map is None:
+            for _, component in self.components.items():
+                if isinstance(component, nn.Module):
+                    if hasattr(component, "_hf_hook"):
+                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                        is_sequential_cpu_offload = (
+                            isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                            or hasattr(component._hf_hook, "hooks")
+                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+                        )
+                        logger.info(
+                            "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the textual inversion parameters will be loaded and the hooks will be applied again."
+                        )
+                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
         # 7.2 save expected device and dtype
         device = text_encoder.device

@@ -1,4 +1,5 @@
-# Implementation of StableDiffusionPAGPipeline
+# Implementation of StableDiffusionPipeline with PAG
+# https://ku-cvlab.github.io/Perturbed-Attention-Guidance
 
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -10,7 +11,12 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import (
+    FromSingleFileMixin,
+    IPAdapterMixin,
+    StableDiffusionLoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from diffusers.models.attention_processor import Attention, AttnProcessor2_0, FusedAttnProcessor2_0
 from diffusers.models.lora import adjust_lora_scale_text_encoder
@@ -56,13 +62,13 @@ class PAGIdentitySelfAttnProcessor:
     def __call__(
         self,
         attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
         *args,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -134,8 +140,8 @@ class PAGIdentitySelfAttnProcessor:
 
         value = attn.to_v(hidden_states_ptb)
 
-        hidden_states_ptb = torch.zeros(value.shape).to(value.get_device())
-        # hidden_states_ptb = value
+        # hidden_states_ptb = torch.zeros(value.shape).to(value.get_device())
+        hidden_states_ptb = value
 
         hidden_states_ptb = hidden_states_ptb.to(query.dtype)
 
@@ -170,13 +176,13 @@ class PAGCFGIdentitySelfAttnProcessor:
     def __call__(
         self,
         attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
         *args,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -327,7 +333,7 @@ def retrieve_timesteps(
 
 
 class StableDiffusionPAGPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
+    DiffusionPipeline, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
@@ -335,8 +341,8 @@ class StableDiffusionPAGPipeline(
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
     The pipeline also inherits the following loading methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
     Args:
@@ -492,8 +498,8 @@ class StableDiffusionPAGPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         **kwargs,
     ):
@@ -524,8 +530,8 @@ class StableDiffusionPAGPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
     ):
@@ -544,10 +550,10 @@ class StableDiffusionPAGPipeline(
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -559,7 +565,7 @@ class StableDiffusionPAGPipeline(
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -691,7 +697,7 @@ class StableDiffusionPAGPipeline(
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
+        if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
             unscale_lora_layers(self.text_encoder, lora_scale)
 
@@ -965,7 +971,7 @@ class StableDiffusionPAGPipeline(
             dtype:
                 data type of the generated embeddings
         Returns:
-            `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
+            `torch.Tensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
         """
         assert len(w.shape) == 1
         w = w * 1000.0
@@ -1045,7 +1051,7 @@ class StableDiffusionPAGPipeline(
         return self._pag_scale
 
     @property
-    def do_adversarial_guidance(self):
+    def do_perturbed_attention_guidance(self):
         return self._pag_scale > 0
 
     @property
@@ -1055,14 +1061,6 @@ class StableDiffusionPAGPipeline(
     @property
     def do_pag_adaptive_scaling(self):
         return self._pag_adaptive_scaling > 0
-
-    @property
-    def pag_drop_rate(self):
-        return self._pag_drop_rate
-
-    @property
-    def pag_applied_layers(self):
-        return self._pag_applied_layers
 
     @property
     def pag_applied_layers_index(self):
@@ -1080,18 +1078,16 @@ class StableDiffusionPAGPipeline(
         guidance_scale: float = 7.5,
         pag_scale: float = 0.0,
         pag_adaptive_scaling: float = 0.0,
-        pag_drop_rate: float = 0.5,
-        pag_applied_layers: List[str] = ["down"],  # ['down', 'mid', 'up']
         pag_applied_layers_index: List[str] = ["d4"],  # ['d4', 'd5', 'm0']
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[List[torch.FloatTensor]] = None,
+        ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -1131,18 +1127,18 @@ class StableDiffusionPAGPipeline(
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
-            ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
+            ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
                 Pre-generated image embeddings for IP-Adapter. If not
                 provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -1221,8 +1217,6 @@ class StableDiffusionPAGPipeline(
 
         self._pag_scale = pag_scale
         self._pag_adaptive_scaling = pag_adaptive_scaling
-        self._pag_drop_rate = pag_drop_rate
-        self._pag_applied_layers = pag_applied_layers
         self._pag_applied_layers_index = pag_applied_layers_index
 
         # 2. Define call parameters
@@ -1257,13 +1251,13 @@ class StableDiffusionPAGPipeline(
         # to avoid doing two forward passes
 
         # cfg
-        if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
+        if self.do_classifier_free_guidance and not self.do_perturbed_attention_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
         # pag
-        elif not self.do_classifier_free_guidance and self.do_adversarial_guidance:
+        elif not self.do_classifier_free_guidance and self.do_perturbed_attention_guidance:
             prompt_embeds = torch.cat([prompt_embeds, prompt_embeds])
         # both
-        elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
+        elif self.do_classifier_free_guidance and self.do_perturbed_attention_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
@@ -1306,7 +1300,7 @@ class StableDiffusionPAGPipeline(
             ).to(device=device, dtype=latents.dtype)
 
         # 7. Denoising loop
-        if self.do_adversarial_guidance:
+        if self.do_perturbed_attention_guidance:
             down_layers = []
             mid_layers = []
             up_layers = []
@@ -1322,6 +1316,29 @@ class StableDiffusionPAGPipeline(
                     else:
                         raise ValueError(f"Invalid layer type: {layer_type}")
 
+        # change attention layer in UNet if use PAG
+        if self.do_perturbed_attention_guidance:
+            if self.do_classifier_free_guidance:
+                replace_processor = PAGCFGIdentitySelfAttnProcessor()
+            else:
+                replace_processor = PAGIdentitySelfAttnProcessor()
+
+            drop_layers = self.pag_applied_layers_index
+            for drop_layer in drop_layers:
+                try:
+                    if drop_layer[0] == "d":
+                        down_layers[int(drop_layer[1])].processor = replace_processor
+                    elif drop_layer[0] == "m":
+                        mid_layers[int(drop_layer[1])].processor = replace_processor
+                    elif drop_layer[0] == "u":
+                        up_layers[int(drop_layer[1])].processor = replace_processor
+                    else:
+                        raise ValueError(f"Invalid layer type: {drop_layer[0]}")
+                except IndexError:
+                    raise ValueError(
+                        f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
+                    )
+
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1330,40 +1347,17 @@ class StableDiffusionPAGPipeline(
                     continue
 
                 # cfg
-                if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
+                if self.do_classifier_free_guidance and not self.do_perturbed_attention_guidance:
                     latent_model_input = torch.cat([latents] * 2)
                 # pag
-                elif not self.do_classifier_free_guidance and self.do_adversarial_guidance:
+                elif not self.do_classifier_free_guidance and self.do_perturbed_attention_guidance:
                     latent_model_input = torch.cat([latents] * 2)
                 # both
-                elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
+                elif self.do_classifier_free_guidance and self.do_perturbed_attention_guidance:
                     latent_model_input = torch.cat([latents] * 3)
                 # no
                 else:
                     latent_model_input = latents
-
-                # change attention layer in UNet if use PAG
-                if self.do_adversarial_guidance:
-                    if self.do_classifier_free_guidance:
-                        replace_processor = PAGCFGIdentitySelfAttnProcessor()
-                    else:
-                        replace_processor = PAGIdentitySelfAttnProcessor()
-
-                    drop_layers = self.pag_applied_layers_index
-                    for drop_layer in drop_layers:
-                        try:
-                            if drop_layer[0] == "d":
-                                down_layers[int(drop_layer[1])].processor = replace_processor
-                            elif drop_layer[0] == "m":
-                                mid_layers[int(drop_layer[1])].processor = replace_processor
-                            elif drop_layer[0] == "u":
-                                up_layers[int(drop_layer[1])].processor = replace_processor
-                            else:
-                                raise ValueError(f"Invalid layer type: {drop_layer[0]}")
-                        except IndexError:
-                            raise ValueError(
-                                f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
-                            )
 
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -1381,14 +1375,14 @@ class StableDiffusionPAGPipeline(
                 # perform guidance
 
                 # cfg
-                if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
+                if self.do_classifier_free_guidance and not self.do_perturbed_attention_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
 
                     delta = noise_pred_text - noise_pred_uncond
                     noise_pred = noise_pred_uncond + self.guidance_scale * delta
 
                 # pag
-                elif not self.do_classifier_free_guidance and self.do_adversarial_guidance:
+                elif not self.do_classifier_free_guidance and self.do_perturbed_attention_guidance:
                     noise_pred_original, noise_pred_perturb = noise_pred.chunk(2)
 
                     signal_scale = self.pag_scale
@@ -1400,7 +1394,7 @@ class StableDiffusionPAGPipeline(
                     noise_pred = noise_pred_original + signal_scale * (noise_pred_original - noise_pred_perturb)
 
                 # both
-                elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
+                elif self.do_classifier_free_guidance and self.do_perturbed_attention_guidance:
                     noise_pred_uncond, noise_pred_text, noise_pred_text_perturb = noise_pred.chunk(3)
 
                     signal_scale = self.pag_scale
@@ -1458,11 +1452,8 @@ class StableDiffusionPAGPipeline(
         # Offload all models
         self.maybe_free_model_hooks()
 
-        if not return_dict:
-            return (image, has_nsfw_concept)
-
         # change attention layer in UNet if use PAG
-        if self.do_adversarial_guidance:
+        if self.do_perturbed_attention_guidance:
             drop_layers = self.pag_applied_layers_index
             for drop_layer in drop_layers:
                 try:
@@ -1478,5 +1469,8 @@ class StableDiffusionPAGPipeline(
                     raise ValueError(
                         f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
                     )
+
+        if not return_dict:
+            return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

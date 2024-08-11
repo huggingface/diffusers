@@ -79,7 +79,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.30.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1358,7 +1358,7 @@ def main(args):
                 # estimates to predict the data point in the augmented PF-ODE trajectory corresponding to the next ODE
                 # solver timestep.
                 with torch.no_grad():
-                    if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
+                    if torch.backends.mps.is_available() or "playground" in args.pretrained_teacher_model:
                         autocast_ctx = nullcontext()
                     else:
                         autocast_ctx = torch.autocast(accelerator.device.type)

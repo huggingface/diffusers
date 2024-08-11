@@ -26,11 +26,11 @@ class PriorTransformerOutput(BaseOutput):
     The output of [`PriorTransformer`].
 
     Args:
-        predicted_image_embedding (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
+        predicted_image_embedding (`torch.Tensor` of shape `(batch_size, embedding_dim)`):
             The predicted CLIP image embedding conditioned on the CLIP text embedding input.
     """
 
-    predicted_image_embedding: torch.FloatTensor
+    predicted_image_embedding: torch.Tensor
 
 
 class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin):
@@ -179,7 +179,7 @@ class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Pef
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -246,8 +246,8 @@ class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Pef
         self,
         hidden_states,
         timestep: Union[torch.Tensor, float, int],
-        proj_embedding: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        proj_embedding: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.BoolTensor] = None,
         return_dict: bool = True,
     ):
@@ -255,24 +255,24 @@ class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Pef
         The [`PriorTransformer`] forward method.
 
         Args:
-            hidden_states (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
+            hidden_states (`torch.Tensor` of shape `(batch_size, embedding_dim)`):
                 The currently predicted image embeddings.
             timestep (`torch.LongTensor`):
                 Current denoising step.
-            proj_embedding (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
+            proj_embedding (`torch.Tensor` of shape `(batch_size, embedding_dim)`):
                 Projected embedding vector the denoising process is conditioned on.
-            encoder_hidden_states (`torch.FloatTensor` of shape `(batch_size, num_embeddings, embedding_dim)`):
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, num_embeddings, embedding_dim)`):
                 Hidden states of the text embeddings the denoising process is conditioned on.
             attention_mask (`torch.BoolTensor` of shape `(batch_size, num_embeddings)`):
                 Text mask for the text embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.prior_transformer.PriorTransformerOutput`] instead of a plain
-                tuple.
+                Whether or not to return a [`~models.transformers.prior_transformer.PriorTransformerOutput`] instead of
+                a plain tuple.
 
         Returns:
-            [`~models.prior_transformer.PriorTransformerOutput`] or `tuple`:
-                If return_dict is True, a [`~models.prior_transformer.PriorTransformerOutput`] is returned, otherwise a
-                tuple is returned where the first element is the sample tensor.
+            [`~models.transformers.prior_transformer.PriorTransformerOutput`] or `tuple`:
+                If return_dict is True, a [`~models.transformers.prior_transformer.PriorTransformerOutput`] is
+                returned, otherwise a tuple is returned where the first element is the sample tensor.
         """
         batch_size = hidden_states.shape[0]
 

@@ -158,7 +158,7 @@ Once you've made all your changes or you're okay with the default configuration,
 <hfoptions id="training-inference">
 <hfoption id="PyTorch">
 
-Let's train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate your own Pokémon. Set the environment variables `MODEL_NAME` and `dataset_name` to the model and the dataset (either from the Hub or a local path). If you're training on more than one GPU, add the `--multi_gpu` parameter to the `accelerate launch` command.
+Let's train on the [Naruto BLIP captions](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) dataset to generate your own Naruto characters. Set the environment variables `MODEL_NAME` and `dataset_name` to the model and the dataset (either from the Hub or a local path). If you're training on more than one GPU, add the `--multi_gpu` parameter to the `accelerate launch` command.
 
 <Tip>
 
@@ -168,7 +168,7 @@ To train on a local dataset, set the `TRAIN_DIR` and `OUTPUT_DIR` environment va
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export dataset_name="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -181,9 +181,9 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
-  --enable_xformers_memory_efficient_attention
+  --enable_xformers_memory_efficient_attention \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model" \
+  --output_dir="sd-naruto-model" \
   --push_to_hub
 ```
 
@@ -202,7 +202,7 @@ To train on a local dataset, set the `TRAIN_DIR` and `OUTPUT_DIR` environment va
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export dataset_name="lambdalabs/naruto-blip-captions"
 
 python train_text_to_image_flax.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -212,7 +212,7 @@ python train_text_to_image_flax.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
-  --output_dir="sd-pokemon-model" \
+  --output_dir="sd-naruto-model" \
   --push_to_hub
 ```
 
@@ -231,7 +231,7 @@ import torch
 pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 
 image = pipeline(prompt="yoda").images[0]
-image.save("yoda-pokemon.png")
+image.save("yoda-naruto.png")
 ```
 
 </hfoption>
@@ -246,7 +246,7 @@ from diffusers import FlaxStableDiffusionPipeline
 
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained("path/to/saved_model", dtype=jax.numpy.bfloat16)
 
-prompt = "yoda pokemon"
+prompt = "yoda naruto"
 prng_seed = jax.random.PRNGKey(0)
 num_inference_steps = 50
 
@@ -261,7 +261,7 @@ prompt_ids = shard(prompt_ids)
 
 images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-image.save("yoda-pokemon.png")
+image.save("yoda-naruto.png")
 ```
 
 </hfoption>

@@ -186,7 +186,7 @@ scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     scheduler=scheduler,
-    revision="bf16",
+    variant="bf16",
     dtype=jax.numpy.bfloat16,
 )
 params["scheduler"] = scheduler_state

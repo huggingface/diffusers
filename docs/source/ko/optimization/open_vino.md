@@ -19,7 +19,7 @@ specific language governing permissions and limitations under the License.
 
 다음 명령어로 🤗 Optimum을 설치합니다:
 
-```
+```sh
 pip install optimum["openvino"]
 ```
 

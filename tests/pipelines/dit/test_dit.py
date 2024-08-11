@@ -19,7 +19,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
+from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DiTTransformer2DModel, DPMSolverMultistepScheduler
 from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
 
@@ -46,7 +46,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = Transformer2DModel(
+        transformer = DiTTransformer2DModel(
             sample_size=16,
             num_layers=2,
             patch_size=4,

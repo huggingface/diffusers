@@ -38,8 +38,6 @@ from ...models.attention_processor import (
     Attention,
     AttnProcessor,
     AttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -409,14 +407,14 @@ class LEditsPPPipelineStableDiffusionXL(
         num_images_per_prompt: int = 1,
         negative_prompt: Optional[str] = None,
         negative_prompt_2: Optional[str] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
         enable_edit_guidance: bool = True,
         editing_prompt: Optional[str] = None,
-        editing_prompt_embeds: Optional[torch.FloatTensor] = None,
-        editing_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        editing_prompt_embeds: Optional[torch.Tensor] = None,
+        editing_pooled_prompt_embeds: Optional[torch.Tensor] = None,
     ) -> object:
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -432,11 +430,11 @@ class LEditsPPPipelineStableDiffusionXL(
             negative_prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
@@ -450,11 +448,11 @@ class LEditsPPPipelineStableDiffusionXL(
             editing_prompt (`str` or `List[str]`, *optional*):
                 Editing prompt(s) to be encoded. If not defined and 'enable_edit_guidance' is True, one has to pass
                 `editing_prompt_embeds` instead.
-            editing_prompt_embeds (`torch.FloatTensor`, *optional*):
+            editing_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated edit text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
                 If not provided and 'enable_edit_guidance' is True, editing_prompt_embeds will be generated from
                 `editing_prompt` input argument.
-            editing_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+            editing_pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated edit pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled editing_pooled_prompt_embeds will be generated from `editing_prompt`
                 input argument.
@@ -699,8 +697,6 @@ class LEditsPPPipelineStableDiffusionXL(
             (
                 AttnProcessor2_0,
                 XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need
@@ -713,7 +709,7 @@ class LEditsPPPipelineStableDiffusionXL(
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
         self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
         See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
 
@@ -726,7 +722,7 @@ class LEditsPPPipelineStableDiffusionXL(
                 Data type of the generated embeddings.
 
         Returns:
-            `torch.FloatTensor`: Embedding vectors with shape `(len(w), embedding_dim)`.
+            `torch.Tensor`: Embedding vectors with shape `(len(w), embedding_dim)`.
         """
         assert len(w.shape) == 1
         w = w * 1000.0
@@ -804,8 +800,8 @@ class LEditsPPPipelineStableDiffusionXL(
         denoising_end: Optional[float] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -824,7 +820,7 @@ class LEditsPPPipelineStableDiffusionXL(
         sem_guidance: Optional[List[torch.Tensor]] = None,
         use_cross_attn_mask: bool = False,
         use_intersect_mask: bool = False,
-        user_mask: Optional[torch.FloatTensor] = None,
+        user_mask: Optional[torch.Tensor] = None,
         attn_store_steps: Optional[List[int]] = [],
         store_averaged_over_steps: bool = True,
         clip_skip: Optional[int] = None,
@@ -851,11 +847,11 @@ class LEditsPPPipelineStableDiffusionXL(
             negative_prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
@@ -869,7 +865,7 @@ class LEditsPPPipelineStableDiffusionXL(
                 of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
@@ -1419,7 +1415,6 @@ class LEditsPPPipelineStableDiffusionXL(
         if needs_upcasting:
             image = image.float()
             self.upcast_vae()
-            image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
         x0 = self.vae.encode(image).latent_dist.mode()
         x0 = x0.to(dtype)
@@ -1450,7 +1445,7 @@ class LEditsPPPipelineStableDiffusionXL(
         Paper](https://arxiv.org/abs/2301.12247). If the scheduler is set to [`~schedulers.DDIMScheduler`] the
         inversion proposed by [edit-friendly DPDM](https://arxiv.org/abs/2304.06140) will be performed instead.
 
-         Args:
+        Args:
             image (`PipelineImageInput`):
                 Input for the image(s) that are to be edited. Multiple input images have to default to the same aspect
                 ratio.

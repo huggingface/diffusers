@@ -10,7 +10,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import Attention, AttnProcessor
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -248,7 +248,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 
 class LEditsPPPipelineStableDiffusion(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
+    DiffusionPipeline, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
 ):
     """
     Pipeline for textual image editing using LEDits++ with Stable Diffusion.
@@ -502,8 +502,8 @@ class LEditsPPPipelineStableDiffusion(
         enable_edit_guidance,
         negative_prompt=None,
         editing_prompt=None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        editing_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        editing_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
     ):
@@ -523,10 +523,10 @@ class LEditsPPPipelineStableDiffusion(
                 less than `1`).
             editing_prompt (`str` or `List[str]`, *optional*):
                 Editing prompt(s) to be encoded. If not defined, one has to pass `editing_prompt_embeds` instead.
-            editing_prompt_embeds (`torch.FloatTensor`, *optional*):
+            editing_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -538,7 +538,7 @@ class LEditsPPPipelineStableDiffusion(
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -676,7 +676,7 @@ class LEditsPPPipelineStableDiffusion(
         negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
         negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
+        if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
             unscale_lora_layers(self.text_encoder, lora_scale)
 
@@ -704,13 +704,13 @@ class LEditsPPPipelineStableDiffusion(
         return_dict: bool = True,
         editing_prompt: Optional[Union[str, List[str]]] = None,
         editing_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         reverse_editing_direction: Optional[Union[bool, List[bool]]] = False,
         edit_guidance_scale: Optional[Union[float, List[float]]] = 5,
         edit_warmup_steps: Optional[Union[int, List[int]]] = 0,
         edit_cooldown_steps: Optional[Union[int, List[int]]] = None,
         edit_threshold: Optional[Union[float, List[float]]] = 0.9,
-        user_mask: Optional[torch.FloatTensor] = None,
+        user_mask: Optional[torch.Tensor] = None,
         sem_guidance: Optional[List[torch.Tensor]] = None,
         use_cross_attn_mask: bool = False,
         use_intersect_mask: bool = True,
@@ -748,7 +748,7 @@ class LEditsPPPipelineStableDiffusion(
             editing_prompt_embeds (`torch.Tensor>`, *optional*):
                 Pre-computed embeddings to use for guiding the image generation. Guidance direction of embedding should
                 be specified via `reverse_editing_direction`.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             reverse_editing_direction (`bool` or `List[bool]`, *optional*, defaults to `False`):
@@ -765,7 +765,7 @@ class LEditsPPPipelineStableDiffusion(
                 Masking threshold of guidance. Threshold should be proportional to the image region that is modified.
                 'edit_threshold' is defined as 'λ' of equation 12 of [LEDITS++
                 Paper](https://arxiv.org/abs/2301.12247).
-            user_mask (`torch.FloatTensor`, *optional*):
+            user_mask (`torch.Tensor`, *optional*):
                 User-provided mask for even better control over the editing process. This is helpful when LEDITS++'s
                 implicit masks do not meet user preferences.
             sem_guidance (`List[torch.Tensor]`, *optional*):
@@ -1216,7 +1216,7 @@ class LEditsPPPipelineStableDiffusion(
         Paper](https://arxiv.org/abs/2301.12247). If the scheduler is set to [`~schedulers.DDIMScheduler`] the
         inversion proposed by [edit-friendly DPDM](https://arxiv.org/abs/2304.06140) will be performed instead.
 
-         Args:
+        Args:
             image (`PipelineImageInput`):
                 Input for the image(s) that are to be edited. Multiple input images have to default to the same aspect
                 ratio.

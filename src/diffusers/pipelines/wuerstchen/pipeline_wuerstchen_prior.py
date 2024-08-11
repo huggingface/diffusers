@@ -20,7 +20,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...loaders import LoraLoaderMixin
+from ...loaders import StableDiffusionLoraLoaderMixin
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import BaseOutput, deprecate, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -54,15 +54,15 @@ class WuerstchenPriorPipelineOutput(BaseOutput):
     Output class for WuerstchenPriorPipeline.
 
     Args:
-        image_embeddings (`torch.FloatTensor` or `np.ndarray`)
+        image_embeddings (`torch.Tensor` or `np.ndarray`)
             Prior image embeddings for text prompt
 
     """
 
-    image_embeddings: Union[torch.FloatTensor, np.ndarray]
+    image_embeddings: Union[torch.Tensor, np.ndarray]
 
 
-class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
+class WuerstchenPriorPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
     """
     Pipeline for generating image prior for Wuerstchen.
 
@@ -70,8 +70,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     The pipeline also inherits the following loading methods:
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
 
     Args:
         prior ([`Prior`]):
@@ -95,6 +95,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     text_encoder_name = "text_encoder"
     model_cpu_offload_seq = "text_encoder->prior"
     _callback_tensor_inputs = ["latents", "text_encoder_hidden_states", "negative_prompt_embeds"]
+    _lora_loadable_modules = ["prior", "text_encoder"]
 
     def __init__(
         self,
@@ -136,8 +137,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         do_classifier_free_guidance,
         prompt=None,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
     ):
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -288,11 +289,11 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         timesteps: List[float] = None,
         guidance_scale: float = 8.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pt",
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
@@ -324,10 +325,10 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `decoder_guidance_scale` is less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -336,7 +337,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.

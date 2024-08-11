@@ -33,12 +33,12 @@ class DDPMWuerstchenSchedulerOutput(BaseOutput):
     Output class for the scheduler's step function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
     """
 
-    prev_sample: torch.FloatTensor
+    prev_sample: torch.Tensor
 
 
 def betas_for_alpha_bar(
@@ -125,17 +125,17 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         ) ** 2 / self._init_alpha_cumprod.to(device)
         return alpha_cumprod.clamp(0.0001, 0.9999)
 
-    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`): input sample
+            sample (`torch.Tensor`): input sample
             timestep (`int`, optional): current timestep
 
         Returns:
-            `torch.FloatTensor`: scaled input sample
+            `torch.Tensor`: scaled input sample
         """
         return sample
 
@@ -163,9 +163,9 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         timestep: int,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
     ) -> Union[DDPMWuerstchenSchedulerOutput, Tuple]:
@@ -174,9 +174,9 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
+            model_output (`torch.Tensor`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 current instance of sample being created by diffusion process.
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than DDPMWuerstchenSchedulerOutput class
@@ -209,10 +209,10 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
 
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
-        timesteps: torch.FloatTensor,
-    ) -> torch.FloatTensor:
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
+        timesteps: torch.Tensor,
+    ) -> torch.Tensor:
         device = original_samples.device
         dtype = original_samples.dtype
         alpha_cumprod = self._alpha_cumprod(timesteps, device=device).view(

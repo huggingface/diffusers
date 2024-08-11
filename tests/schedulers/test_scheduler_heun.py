@@ -41,12 +41,13 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
         for prediction_type in ["epsilon", "v_prediction", "sample"]:
             self.check_over_configs(prediction_type=prediction_type)
 
-    def test_full_loop_no_noise(self):
+    def full_loop(self, **config):
         scheduler_class = self.scheduler_classes[0]
-        scheduler_config = self.get_scheduler_config()
+        scheduler_config = self.get_scheduler_config(**config)
         scheduler = scheduler_class(**scheduler_config)
 
-        scheduler.set_timesteps(self.num_inference_steps)
+        num_inference_steps = self.num_inference_steps
+        scheduler.set_timesteps(num_inference_steps)
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
@@ -60,6 +61,37 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
             output = scheduler.step(model_output, t, sample)
             sample = output.prev_sample
 
+        return sample
+
+    def full_loop_custom_timesteps(self, **config):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(**config)
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = self.num_inference_steps
+        scheduler.set_timesteps(num_inference_steps)
+        timesteps = scheduler.timesteps
+        timesteps = torch.cat([timesteps[:1], timesteps[1::2]])
+        # reset the timesteps using `timesteps`
+        scheduler = scheduler_class(**scheduler_config)
+        scheduler.set_timesteps(num_inference_steps=None, timesteps=timesteps)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        return sample
+
+    def test_full_loop_no_noise(self):
+        sample = self.full_loop()
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
@@ -72,24 +104,7 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
             assert abs(result_mean.item() - 0.0002) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
-        scheduler_class = self.scheduler_classes[0]
-        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
-        scheduler = scheduler_class(**scheduler_config)
-
-        scheduler.set_timesteps(self.num_inference_steps)
-
-        model = self.dummy_model()
-        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
-        sample = sample.to(torch_device)
-
-        for i, t in enumerate(scheduler.timesteps):
-            sample = scheduler.scale_model_input(sample, t)
-
-            model_output = model(sample, t)
-
-            output = scheduler.step(model_output, t, sample)
-            sample = output.prev_sample
-
+        sample = self.full_loop(prediction_type="v_prediction")
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
@@ -189,3 +204,18 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 75074.8906) < 1e-2, f" expected result sum 75074.8906, but get {result_sum}"
         assert abs(result_mean.item() - 97.7538) < 1e-3, f" expected result mean 97.7538, but get {result_mean}"
+
+    def test_custom_timesteps(self):
+        for prediction_type in ["epsilon", "sample", "v_prediction"]:
+            for timestep_spacing in ["linspace", "leading"]:
+                sample = self.full_loop(
+                    prediction_type=prediction_type,
+                    timestep_spacing=timestep_spacing,
+                )
+                sample_custom_timesteps = self.full_loop_custom_timesteps(
+                    prediction_type=prediction_type,
+                    timestep_spacing=timestep_spacing,
+                )
+                assert (
+                    torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5
+                ), f"Scheduler outputs are not identical for prediction_type: {prediction_type}, timestep_spacing: {timestep_spacing}"

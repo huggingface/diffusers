@@ -180,7 +180,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
@@ -194,7 +194,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         if algorithm_type not in ["data_prediction", "noise_prediction"]:
-            raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{algorithm_type} is not implemented for {self.__class__}")
 
         # setable values
         self.num_inference_steps = None
@@ -305,7 +305,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
-    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+    def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """
         "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
         prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
@@ -370,7 +370,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         return alpha_t, sigma_t
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
-    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
+    def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps) -> torch.Tensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
         # Hack to make sure that other schedulers which copy this function don't break
@@ -397,11 +397,11 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
     def convert_model_output(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         *args,
-        sample: torch.FloatTensor = None,
+        sample: torch.Tensor = None,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
         Convert the model output to the corresponding type the data_prediction/noise_prediction algorithm needs.
         Noise_prediction is designed to discretize an integral of the noise prediction model, and data_prediction is
@@ -415,13 +415,13 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         </Tip>
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from the learned diffusion model.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The converted model output.
         """
         timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
@@ -686,29 +686,29 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
     def stochastic_adams_bashforth_update(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         *args,
-        sample: torch.FloatTensor,
-        noise: torch.FloatTensor,
+        sample: torch.Tensor,
+        noise: torch.Tensor,
         order: int,
-        tau: torch.FloatTensor,
+        tau: torch.Tensor,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
         One step for the SA-Predictor.
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from the learned diffusion model at the current timestep.
             prev_timestep (`int`):
                 The previous discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             order (`int`):
                 The order of SA-Predictor at this timestep.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The sample tensor at the previous timestep.
         """
         prev_timestep = args[0] if len(args) > 0 else kwargs.pop("prev_timestep", None)
@@ -813,32 +813,32 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
     def stochastic_adams_moulton_update(
         self,
-        this_model_output: torch.FloatTensor,
+        this_model_output: torch.Tensor,
         *args,
-        last_sample: torch.FloatTensor,
-        last_noise: torch.FloatTensor,
-        this_sample: torch.FloatTensor,
+        last_sample: torch.Tensor,
+        last_noise: torch.Tensor,
+        this_sample: torch.Tensor,
         order: int,
-        tau: torch.FloatTensor,
+        tau: torch.Tensor,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
         One step for the SA-Corrector.
 
         Args:
-            this_model_output (`torch.FloatTensor`):
+            this_model_output (`torch.Tensor`):
                 The model outputs at `x_t`.
             this_timestep (`int`):
                 The current timestep `t`.
-            last_sample (`torch.FloatTensor`):
+            last_sample (`torch.Tensor`):
                 The generated sample before the last predictor `x_{t-1}`.
-            this_sample (`torch.FloatTensor`):
+            this_sample (`torch.Tensor`):
                 The generated sample after the last predictor `x_{t}`.
             order (`int`):
                 The order of SA-Corrector at this step.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The corrected sample tensor at the current timestep.
         """
 
@@ -979,9 +979,9 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         timestep: int,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
@@ -990,11 +990,11 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         the SA-Solver.
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
             timestep (`int`):
                 The current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
@@ -1079,17 +1079,17 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
-    def scale_model_input(self, sample: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
         return sample
@@ -1097,10 +1097,10 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
         timesteps: torch.IntTensor,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
         # for the subsequent add_noise calls
