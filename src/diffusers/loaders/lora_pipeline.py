@@ -1958,7 +1958,6 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     transformer_name = TRANSFORMER_NAME
 
     @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
@@ -2091,7 +2090,6 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=self,
         )
-
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer
@@ -2263,6 +2261,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict with text_encoder removed from components
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
