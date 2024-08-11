@@ -118,19 +118,12 @@ class CogVideoXCausalConv3d(nn.Module):
         self.conv_cache = None
 
     def fake_context_parallel_forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        dim = self.temporal_dim
         kernel_size = self.time_kernel_size
-        if kernel_size == 1:
-            return inputs
-
-        inputs = inputs.transpose(0, dim)
-
-        if self.conv_cache is not None:
-            inputs = torch.cat([self.conv_cache.transpose(0, dim).to(inputs.device), inputs], dim=0)
-        else:
-            inputs = torch.cat([inputs[:1]] * (kernel_size - 1) + [inputs], dim=0)
-
-        inputs = inputs.transpose(0, dim).contiguous()
+        if kernel_size > 1:
+            cached_inputs = (
+                [self.conv_cache] if self.conv_cache is not None else [inputs[:, :, :1]] * (kernel_size - 1)
+            )
+            inputs = torch.cat(cached_inputs + [inputs], dim=2)
         return inputs
 
     def _clear_fake_context_parallel_cache(self):
@@ -138,16 +131,26 @@ class CogVideoXCausalConv3d(nn.Module):
         self.conv_cache = None
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        input_parallel = self.fake_context_parallel_forward(inputs)
+        inputs = self.fake_context_parallel_forward(inputs)
 
         self._clear_fake_context_parallel_cache()
-        self.conv_cache = input_parallel[:, :, -self.time_kernel_size + 1 :].contiguous().detach().clone().cpu()
+        # Note: we could move these to the cpu for a lower maximum memory usage but its only a few
+        # hundred megabytes and so let's not do it for now
+        self.conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
 
         padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-        input_parallel = F.pad(input_parallel, padding_2d, mode="constant", value=0)
+        inputs = F.pad(inputs, padding_2d, mode="constant", value=0)
 
-        output_parallel = self.conv(input_parallel)
-        output = output_parallel
+        # Memory assessment:
+        #   - In CogVideoX-2B, there are a total of 24 CausalConv3d layers.
+        #   - The biggest intermediate dimensions are: [1, 128, 9, 480, 720].
+        #   - Assume fp16 (2 bytes per value).
+        # Memory required: 1 * 128 * 9 * 480 * 720 * 24 * 2 / 1024**3 = 17.8 GB
+        #
+        # Memory assessment when using tiling:
+        #   - Assume everything as above but now HxW is 240x360 by tiling in half
+        # Memory required: 1 * 128 * 9 * 240 * 360 * 24 * 2 / 1024**3 = 4.5 GB
+        output = self.conv(inputs)
         return output
 
 

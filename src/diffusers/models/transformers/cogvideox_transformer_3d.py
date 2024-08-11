@@ -304,7 +304,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states = hidden_states[:, : self.config.max_text_seq_length]
         hidden_states = hidden_states[:, self.config.max_text_seq_length :]
 
-        # 5. Transformer blocks
+        # 4. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
 
@@ -331,11 +331,11 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
 
         hidden_states = self.norm_final(hidden_states)
 
-        # 6. Final block
+        # 5. Final block
         hidden_states = self.norm_out(hidden_states, temb=emb)
         hidden_states = self.proj_out(hidden_states)
 
-        # 7. Unpatchify
+        # 6. Unpatchify
         p = self.config.patch_size
         output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, channels, p, p)
         output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
