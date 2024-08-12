@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 2
       - name: Install dependencies
         run: |
-          pip install -e [test]
+          pip install -e .[test]
           pip install huggingface_hub
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
