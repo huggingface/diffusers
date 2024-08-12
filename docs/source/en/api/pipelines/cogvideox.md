@@ -64,7 +64,7 @@ pipeline.transformer.to(memory_format=torch.channels_last)
 Finally, compile the components and run inference:
 
 ```python
-pipeline.transformer = torch.compile(pipeline.transformer)
+pipeline.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
 
 # CogVideoX works well with long and well-described prompts
 prompt = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance."
@@ -75,7 +75,7 @@ The [benchmark](https://gist.github.com/a-r-r-o-w/5183d75e452a368fd17448fcc810bd
 
 ```
 Without torch.compile(): Average inference time: 96.89 seconds.
-With torch.compile(): Average inference time: 84.60 seconds.
+With torch.compile(): Average inference time: 76.27 seconds.
 ```
 
 ## CogVideoXPipeline
