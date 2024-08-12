@@ -148,8 +148,8 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-        expected_video = torch.randn(9, 3, 16, 16)
+        self.assertEqual(generated_video.shape, (8, 3, 16, 16))
+        expected_video = torch.randn(8, 3, 16, 16)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 

@@ -429,7 +429,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 480,
         width: int = 720,
-        num_frames: int = 48,
+        num_frames: int = 49,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 6,
@@ -524,9 +524,9 @@ class CogVideoXPipeline(DiffusionPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
-        if num_frames > 48:
+        if num_frames > 49:
             raise ValueError(
-                "The number of frames must be less than 48 for now due to static positional embeddings. This will be updated in the future to remove this limitation."
+                "The number of frames must be less than 49 for now due to static positional embeddings. This will be updated in the future to remove this limitation."
             )
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
