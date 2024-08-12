@@ -161,6 +161,12 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, config=None,
         lora_alpha = config["lora_alpha"] if "lora_alpha" in config else lora_alpha
         alpha_retrieved = True
 
+        # We simply ignore the `alpha_pattern` and `rank_pattern` if they are found
+        # in the `config`. This is because:
+        # 1. We determine `rank_pattern` from the  `rank_dict`.
+        # 2. When `network_alpha_dict` is passed that means the underlying checkpoint
+        # is a non-diffusers checkpoint.
+        # More details: https://github.com/huggingface/diffusers/pull/9143#discussion_r1711491175
         if config.get("alpha_pattern", None) is not None:
             logger.warning("`alpha_pattern` found in the LoRA config. This will be ignored.")
 
