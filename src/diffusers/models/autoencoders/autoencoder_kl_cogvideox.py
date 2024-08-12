@@ -1055,15 +1055,9 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         frame_batch_size = self.num_latent_frames_batch_size
         dec = []
         for i in range(z.shape[2] // frame_batch_size):
-            if z.shape[2] % frame_batch_size == 0:
-                start_frame, end_frame = (frame_batch_size * i, frame_batch_size * (i + 1))
-            else:
-                if i == 0:
-                    remaining_frames = z.shape[2] % frame_batch_size
-                    start_frame, end_frame = (0, frame_batch_size + remaining_frames)
-                else:
-                    start_frame, end_frame = (frame_batch_size * i + 1, frame_batch_size * (i + 1) + 1)
-
+            remaining_frames = z.shape[2] % frame_batch_size
+            start_frame = frame_batch_size * i + (0 if i == 0 else remaining_frames)
+            end_frame = frame_batch_size * (i + 1) + remaining_frames
             z_intermediate = z[:, :, start_frame:end_frame]
             if self.post_quant_conv is not None:
                 z_intermediate = self.post_quant_conv(z_intermediate)
@@ -1159,14 +1153,9 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             for j in range(0, z.shape[4], overlap_width):
                 time = []
                 for k in range(z.shape[2] // frame_batch_size):
-                    if z.shape[2] % frame_batch_size == 0:
-                        start_frame, end_frame = (frame_batch_size * k, frame_batch_size * (k + 1))
-                    else:
-                        if k == 0:
-                            remaining_frames = z.shape[2] % frame_batch_size
-                            start_frame, end_frame = (0, frame_batch_size + remaining_frames)
-                        else:
-                            start_frame, end_frame = (frame_batch_size * k + 1, frame_batch_size * (k + 1) + 1)
+                    remaining_frames = z.shape[2] % frame_batch_size
+                    start_frame = frame_batch_size * k + (0 if k == 0 else remaining_frames)
+                    end_frame = frame_batch_size * (k + 1) + remaining_frames
                     tile = z[
                         :,
                         :,
