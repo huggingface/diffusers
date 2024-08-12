@@ -141,15 +141,6 @@ class CogVideoXCausalConv3d(nn.Module):
         padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
         inputs = F.pad(inputs, padding_2d, mode="constant", value=0)
 
-        # Memory assessment:
-        #   - In CogVideoX-2B, there are a total of 24 CausalConv3d layers.
-        #   - The biggest intermediate dimensions are: [1, 128, 9, 480, 720].
-        #   - Assume fp16 (2 bytes per value).
-        # Memory required: 1 * 128 * 9 * 480 * 720 * 24 * 2 / 1024**3 = 17.8 GB
-        #
-        # Memory assessment when using tiling:
-        #   - Assume everything as above but now HxW is 240x360 by tiling in half
-        # Memory required: 1 * 128 * 9 * 240 * 360 * 24 * 2 / 1024**3 = 4.5 GB
         output = self.conv(inputs)
         return output
 
@@ -975,7 +966,6 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def enable_tiling(
         self,
-        use_tiling: bool = True,
         tile_sample_min_height: Optional[int] = None,
         tile_sample_min_width: Optional[int] = None,
     ) -> None:
@@ -1118,6 +1108,16 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
                 returned.
         """
+        # Rough memory assessment:
+        #   - In CogVideoX-2B, there are a total of 24 CausalConv3d layers.
+        #   - The biggest intermediate dimensions are: [1, 128, 9, 480, 720].
+        #   - Assume fp16 (2 bytes per value).
+        # Memory required: 1 * 128 * 9 * 480 * 720 * 24 * 2 / 1024**3 = 17.8 GB
+        #
+        # Memory assessment when using tiling:
+        #   - Assume everything as above but now HxW is 240x360 by tiling in half
+        # Memory required: 1 * 128 * 9 * 240 * 360 * 24 * 2 / 1024**3 = 4.5 GB
+
         overlap_height = int(self.tile_latent_min_height * (1 - self.tile_overlap_factor))
         overlap_width = int(self.tile_latent_min_width * (1 - self.tile_overlap_factor))
         blend_extent_height = int(self.tile_sample_min_height * self.tile_overlap_factor)
