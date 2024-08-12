@@ -914,7 +914,8 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         norm_eps: float = 1e-6,
         norm_num_groups: int = 32,
         temporal_compression_ratio: float = 4,
-        sample_size: int = 256,
+        sample_height: int = 480,
+        sample_width: int = 720,
         scaling_factor: float = 1.15258426,
         shift_factor: Optional[float] = None,
         latents_mean: Optional[Tuple[float]] = None,
@@ -953,25 +954,56 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.use_slicing = False
         self.use_tiling = False
 
-        self.tile_sample_min_size = self.config.sample_size
-        sample_size = (
-            self.config.sample_size[0]
-            if isinstance(self.config.sample_size, (list, tuple))
-            else self.config.sample_size
-        )
-        self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
-        self.tile_overlap_factor = 0.25
+        # We make the minimum height and width of sample for tiling half that of the generally supported 
+        self.tile_sample_min_height = sample_height // 2
+        self.tile_sample_min_width = sample_width // 2
+        self.tile_latent_min_height = int(self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1)))
+        self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
+        self.tile_overlap_factor = 0.33
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CogVideoXEncoder3D, CogVideoXDecoder3D)):
             module.gradient_checkpointing = value
 
-    def clear_fake_context_parallel_cache(self):
+    def _clear_fake_context_parallel_cache(self):
         for name, module in self.named_modules():
             if isinstance(module, CogVideoXCausalConv3d):
                 logger.debug(f"Clearing fake Context Parallel cache for layer: {name}")
                 module._clear_fake_context_parallel_cache()
 
+    def enable_tiling(self, use_tiling: bool = True, tile_sample_min_height: Optional[int] = None, tile_sample_min_width: Optional[int] = None) -> None:
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.use_tiling = True
+        self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
+        self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
+        self.tile_latent_min_height = int(self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1)))
+        self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
+
+    def disable_tiling(self) -> None:
+        r"""
+        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_tiling = False
+
+    def enable_slicing(self) -> None:
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.use_slicing = True
+
+    def disable_slicing(self) -> None:
+        r"""
+        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_slicing = False
+    
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
@@ -996,8 +1028,34 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+        if self.use_tiling and (z.shape[-1] > self.tile_latent_min_width or z.shape[-2] > self.tile_latent_min_height):
+            return self.tiled_decode(z, return_dict=return_dict)
+
+        num_latent_frames = z.shape[2]
+        dec = []
+        for i in range(num_latent_frames // 2):
+            if num_latent_frames % 2 == 0:
+                start_frame, end_frame = (2 * i, 2 * i + 2)
+            else:
+                start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
+            
+            z_intermediate = z[:, :, start_frame:end_frame]
+            if self.post_quant_conv is not None:
+                z_intermediate = self.post_quant_conv(z_intermediate)
+            z_intermediate = self.decoder(z_intermediate)
+            dec.append(z_intermediate)
+
+        self._clear_fake_context_parallel_cache()
+        dec = torch.cat(dec, dim=2)
+
+        if not return_dict:
+            return (dec,)
+        
+        return DecoderOutput(sample=dec)
+
     @apply_forward_hook
-    def decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         """
         Decode a batch of images.
 
@@ -1010,14 +1068,91 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             [`~models.vae.DecoderOutput`] or `tuple`:
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
                 returned.
-
         """
-        if self.post_quant_conv is not None:
-            z = self.post_quant_conv(z)
-        dec = self.decoder(z)
+        if self.use_slicing and z.shape[0] > 1:
+            decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
+            decoded = torch.cat(decoded_slices)
+        else:
+            decoded = self._decode(z).sample
+
+        if not return_dict:
+            return (decoded,)
+        return DecoderOutput(sample=decoded)
+    
+    def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        blend_extent = min(a.shape[3], b.shape[3], blend_extent)
+        for y in range(blend_extent):
+            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, :, y, :] * (y / blend_extent)
+        return b
+
+    def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        blend_extent = min(a.shape[4], b.shape[4], blend_extent)
+        for x in range(blend_extent):
+            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, :, x] * (x / blend_extent)
+        return b
+    
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+        r"""
+        Decode a batch of images using a tiled decoder.
+
+        Args:
+            z (`torch.Tensor`): Input batch of latent vectors.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
+        overlap_height = int(self.tile_latent_min_height * (1 - self.tile_overlap_factor))
+        overlap_width = int(self.tile_latent_min_width * (1 - self.tile_overlap_factor))
+        blend_extent_height = int(self.tile_sample_min_height * self.tile_overlap_factor)
+        blend_extent_width = int(self.tile_sample_min_width * self.tile_overlap_factor)
+        row_limit_height = self.tile_sample_min_height - blend_extent_height
+        row_limit_width = self.tile_sample_min_width - blend_extent_width
+
+        # Split z into overlapping tiles and decode them separately.
+        # The tiles have an overlap to avoid seams between tiles.
+        rows = []
+        for i in range(0, z.shape[3], overlap_height):
+            row = []
+            for j in range(0, z.shape[4], overlap_width):
+                time = []
+                for k in range(z.shape[2] // 2):
+                    if z.shape[2] % 2 == 0:
+                        start_frame, end_frame = (2 * k, 2 * k + 2)
+                    else:
+                        start_frame, end_frame = (0, 3) if k == 0 else (2 * k + 1, 2 * k + 3)
+                    tile = z[:, :, start_frame:end_frame, i : i + self.tile_latent_min_height, j : j + self.tile_latent_min_width]
+                    if self.post_quant_conv is not None:
+                        tile = self.post_quant_conv(tile)
+                    tile = self.decoder(tile)
+                    time.append(tile)
+                self._clear_fake_context_parallel_cache()
+                row.append(torch.cat(time, dim=2))
+            rows.append(row)
+        
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_extent_height)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, blend_extent_width)
+                result_row.append(tile[:, :, :, :row_limit_height, :row_limit_width])
+            result_rows.append(torch.cat(result_row, dim=4))
+        
+        dec = torch.cat(result_rows, dim=3)
+
         if not return_dict:
             return (dec,)
+
         return DecoderOutput(sample=dec)
+
 
     def forward(
         self,

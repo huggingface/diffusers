@@ -332,20 +332,11 @@ class CogVideoXPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def decode_latents(self, latents: torch.Tensor, num_seconds: int):
+    def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / self.vae.config.scaling_factor * latents
 
-        frames = []
-        for i in range(num_seconds):
-            start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
-
-            current_frames = self.vae.decode(latents[:, :, start_frame:end_frame]).sample
-            frames.append(current_frames)
-
-        self.vae.clear_fake_context_parallel_cache()
-
-        frames = torch.cat(frames, dim=2)
+        frames = self.vae.decode(latents).sample
         return frames
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -534,9 +525,9 @@ class CogVideoXPipeline(DiffusionPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
-        assert (
-            num_frames <= 48 and num_frames % fps == 0 and fps == 8
-        ), f"The number of frames must be divisible by {fps=} and less than 48 frames (for now). Other values are not supported in CogVideoX."
+        # assert (
+        #     num_frames <= 48 and num_frames % fps == 0 and fps == 8
+        # ), f"The number of frames must be divisible by {fps=} and less than 48 frames (for now). Other values are not supported in CogVideoX."
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -673,7 +664,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                     progress_bar.update()
 
         if not output_type == "latent":
-            video = self.decode_latents(latents, num_frames // fps)
+            video = self.decode_latents(latents)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents
