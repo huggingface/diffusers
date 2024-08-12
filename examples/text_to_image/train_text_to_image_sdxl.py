@@ -1058,85 +1058,71 @@ def main(args):
         # Only show the progress bar once on each machine.
         disable=not accelerator.is_local_main_process,
     )
-
+    
+    # Get current rank of distributed training
+    current_rank = accelerator.process_index
+    
+    # Init profilers
+    if args.profile == f'rpd':
+        logger.info(f'INIT RPD-TRACER')
+        rpd_profile = rpdTracerControl()
+        prof = torch.autograd.profiler.emit_nvtx(record_shapes=True)
+        
+    if args.profile == f'torch':
+        logger.info(f'INIT TORCH-PROFILER')
+        trace_output_name = None
+        if args.profile_epoch is None and args.profile_rank is not None:
+            trace_output_name = f'torch_trace_all_epochs_for_rank_{args.profile_rank}.json'
+        if args.profile_epoch is not None and args.profile_rank is None:
+            trace_output_name = f'torch_trace_epoch_{args.profile_epoch}_for_all_ranks.json'
+        if args.profile_epoch is None and args.profile_rank is None:
+            trace_output_name = f'torch_trace_all_ranks_all_epochs.json'
+        def trace_handler(prof):
+            print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
+            prof.export_chrome_trace(f"/workspace/{trace_output_name}")
+        torch_profile = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, 
+                                                           torch.profiler.ProfilerActivity.CUDA], 
+                                               on_trace_ready=trace_handler)
+        
+    # Start profilers
+    if args.profile == f'torch' and args.profile_epoch is None and args.profile_rank == current_rank:
+        logger.info(f'STARTING TORCH PROFILER FOR RANK-{args.profile_rank}\'s ALL EPOCHS')
+        torch_profile.start()
+        
+    if args.profile == f'rpd' and args.profile_epoch is None and args.profile_rank == current_rank:
+        logger.info(f'STARTING RPD TRACER FOR RANK-{args.profile_rank}\'s ALL EPOCHS')
+        rpd_profile.start()
+        prof.__enter__()
+    
+    if args.profile == f'torch' and args.profile_epoch is None and args.profile_rank is None:
+        logger.info(f'STARTING TORCH PROFILER FOR ALL RANKS & ALL EPOCHS')
+        torch_profile.start()
+        
+    if args.profile == f'rpd' and args.profile_epoch is None and args.profile_rank is None:
+        logger.info(f'STARTING RPD TRACER FOR ALL RANKS & ALL EPOCHS')
+        rpd_profile.start()
+        prof.__enter__()
+    
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
         
-        # Profile all epochs for a specific rank
-        if args.profile_epoch is None and args.profile_rank is not None:
-            if args.profile == f"rpd" and args.profile_rank == args.local_rank:
-                logger.info(f'STARTING RPD TRACING FOR RANK-{args.profile_rank}\'s ALL EPOCHS')
-                rpd_profile = rpdTracerControl()
-                prof = torch.autograd.profiler.emit_nvtx(record_shapes=True)
-                rpd_profile.start()
-                prof.__enter__()
-            
-            if args.profile == f"torch" and args.profile_rank == args.local_rank:
-                logger.info(f'STARTING TORCH TRACING FOR RANK-{args.profile_rank}\'s ALL EPOCHS')
-                def trace_handler(prof):
-                    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
-                    prof.export_chrome_trace("/workspace/trace_all_epochs_for_rank_" + str(args.profile_rank) + ".json")
-                torch_profile = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, 
-                                                                   torch.profiler.ProfilerActivity.CUDA], 
-                                                       on_trace_ready=trace_handler)
-                torch_profile.start()
+        if args.profile == f'torch' and args.profile_epoch == epoch and args.profile_rank is None:
+            logger.info(f'STARTING TORCH TRACER FOR ALL RANKS\' EPOCH-{args.profile_epoch}')
+            torch_profile.start()
         
-        # Profile a specific epoch for all ranks
-        if args.profile_epoch is not None and args.profile_rank is None:
-            if args.profile == f"rpd" and args.profile_epoch == epoch:
-                logger.info(f'STARTING RPD TRACING FOR ALL RANKS\' EPOCH-{args.profile_epoch}')
-                rpd_profile = rpdTracerControl()
-                prof = torch.autograd.profiler.emit_nvtx(record_shapes=True)
-                rpd_profile.start()
-                prof.__enter__()
-                
-            if args.profile == f"torch" and args.profile_epoch == epoch:
-                logger.info(f'STARTING TORCH TRACING FOR ALL RANKS\' EPOCH-{args.profile_epoch}')
-                def trace_handler(prof):
-                    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
-                    prof.export_chrome_trace("/workspace/trace_all_ranks_for_epoch_" + str(args.profile_epoch) + ".json")
-                torch_profile = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, 
-                                                                   torch.profiler.ProfilerActivity.CUDA], 
-                                                       on_trace_ready=trace_handler)
-                torch_profile.start()
+        if args.profile == f'rpd' and args.profile_epoch == epoch and args.profile_rank is None:
+            logger.info(f'STARTING RPD TRACER FOR ALL RANKS\' EPOCH-{args.profile_epoch}')
+            rpd_profile.start()
+            prof.__enter__()
         
-        # Profile all ranks and all epochs
-        if args.profile_epoch is None and args.profile_rank is None:
-            if args.profile == f"rpd":
-                logger.info(f'STOPPING RPD TRACING FOR ALL RANKS & ALL EPOCHS')
-                rpd_profile = rpdTracerControl()
-                prof = torch.autograd.profiler.emit_nvtx(record_shapes=True)
-                rpd_profile.start()
-                prof.__enter__()
-                
-            if args.profile == f"torch":
-                def trace_handler(prof):
-                    logger.info(f'STOPPING TORCH TRACING FOR ALL RANKS & ALL EPOCHS')
-                    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
-                    prof.export_chrome_trace("/workspace/trace_all_ranks_for_all_epochs.json")
-                torch_profile = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, 
-                                                                   torch.profiler.ProfilerActivity.CUDA], 
-                                                       on_trace_ready=trace_handler)
-                torch_profile.start()
+        if args.profile == f'torch' and args.profile_epoch == epoch and args.profile_rank == current_rank:
+            logger.info(f'STARTING TORCH PROFILER FOR RANK-{args.profile_rank}\'s EPOCH-{args.profile_epoch}')
+            torch_profile.start()
         
-        # Profile a specific rank at a certain epoch number
-        if args.profile_epoch is not None and args.profile_rank is not None:
-            if args.profile == f"rpd" and args.profile_epoch == epoch and args.profile_rank == args.local_rank:
-                logger.info(f'STARTING RPD TRACING FOR RANK-{args.profile_rank}\'s EPOCH-{args.profile_epoch}')
-                rpd_profile = rpdTracerControl()
-                prof = torch.autograd.profiler.emit_nvtx(record_shapes=True)
-                rpd_profile.start()
-                prof.__enter__()
-                
-            if args.profile == f"torch" and args.profile_epoch == epoch and args.profile_rank == args.local_rank:
-                logger.info(f'STARTING TORCH TRACING FOR RANK-{args.profile_rank}\'s EPOCH-{args.profile_epoch}')
-                def trace_handler(prof):
-                    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
-                    prof.export_chrome_trace(f"/workspace/trace_rank_{args.profile_rank}_epoch_{args.profile_epoch}.json")
-                torch_profile = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, 
-                                                                   torch.profiler.ProfilerActivity.CUDA], 
-                                                       on_trace_ready=trace_handler)
-                torch_profile.start()
+        if args.profile == f'rpd' and args.profile_epoch == epoch and args.profile_rank == current_rank:
+            logger.info(f'STARTING RPD TRACER FOR RANK-{args.profile_rank}\'s EPOCH-{args.profile_epoch}')
+            rpd_profile.start()
+            prof.__enter__()
         
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
@@ -1283,50 +1269,24 @@ def main(args):
 
             if global_step >= args.max_train_steps:
                 break
-
-        # Stop profile all epochs for a specific rank
-        if args.profile_epoch is None and args.profile_rank is not None:
-            if args.profile == f"rpd" and args.profile_rank == args.local_rank:
-                logger.info(f'STOPPING RPD TRACING FOR RANK-{args.profile_rank}\'s ALL EPOCHS')
-                prof.__exit__(None, None, None)
-                rpd_profile.stop()
-            
-            if args.profile == f"torch" and args.profile_rank == args.local_rank:
-                logger.info(f'STOPPING TORCH TRACING FOR RANK-{args.profile_rank}\'s ALL EPOCHS')
-                torch_profile.stop()
-                
-        # Stop profile a specific epoch for all ranks
-        if args.profile_epoch is not None and args.profile_rank is None:
-            if args.profile == f"rpd" and args.profile_epoch == epoch:
-                logger.info(f'STOPPING RPD TRACING FOR ALL RANKS\' EPOCH-{args.profile_epoch}')
-                prof.__exit__(None, None, None)
-                rpd_profile.stop()
-                
-            if args.profile == f"torch" and args.profile_epoch == epoch:
-                logger.info(f'STOPPING TORCH TRACING FOR ALL RANKS\' EPOCH-{args.profile_epoch}')
-                torch_profile.stop()
         
-        # Stop profile all ranks and all epochs
-        if args.profile_epoch is None and args.profile_rank is None:
-            if args.profile == f"rpd":
-                logger.info(f'STOPPING RPD TRACING FOR ALL RANKS & ALL EPOCHS')
-                prof.__exit__(None, None, None)
-                rpd_profile.stop()
-                
-            if args.profile == f"torch":
-                logger.info(f'STOPPING TORCH TRACING FOR ALL RANKS & ALL EPOCHS')
-                torch_profile.stop()
+        if args.profile == f'torch' and args.profile_epoch == epoch and args.profile_rank is None:
+            logger.info(f'STOPPING TORCH TRACER FOR ALL RANKS\' EPOCH-{args.profile_epoch}')
+            torch_profile.stop()
         
-        # Stop profile a specific rank at a certain epoch number
-        if args.profile_epoch is not None and args.profile_rank is not None:
-            if args.profile == f"rpd" and args.profile_epoch == epoch and args.profile_rank == args.local_rank:
-                logger.info(f'STOPPING RPD TRACING FOR RANK-{args.profile_rank}\'s EPOCH-{args.profile_epoch}')
-                prof.__exit__(None, None, None)
-                rpd_profile.stop()
-                
-            if args.profile == f"torch" and args.profile_epoch == epoch and args.profile_rank == args.local_rank:
-                logger.info(f'STOPPING TORCH TRACING FOR RANK-{args.profile_rank}\'s EPOCH-{args.profile_epoch}')
-                torch_profile.stop()
+        if args.profile == f'rpd' and args.profile_epoch == epoch and args.profile_rank is None:
+            logger.info(f'STOPPING RPD TRACER FOR ALL RANKS\' EPOCH-{args.profile_epoch}')
+            prof.__exit__(None, None, None)
+            rpd_profile.stop()
+        
+        if args.profile == f'torch' and args.profile_epoch == epoch and args.profile_rank == current_rank:
+            logger.info(f'STOPPING TORCH PROFILER FOR RANK-{args.profile_rank}\'s EPOCH-{args.profile_epoch}')
+            torch_profile.stop()
+        
+        if args.profile == f'rpd' and args.profile_epoch == epoch and args.profile_rank == current_rank:
+            logger.info(f'STOPPING RPD TRACER FOR RANK-{args.profile_rank}\'s EPOCH-{args.profile_epoch}')
+            prof.__exit__(None, None, None)
+            rpd_profile.stop()
         
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
@@ -1391,7 +1351,26 @@ def main(args):
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
                     ema_unet.restore(unet.parameters())
-
+    
+    # Stop profilers
+    if args.profile == f'torch' and args.profile_epoch is None and args.profile_rank == current_rank:
+        logger.info(f'STOPPING TORCH PROFILER FOR RANK-{args.profile_rank}\'s ALL EPOCHS')
+        torch_profile.stop()
+        
+    if args.profile == f'rpd' and args.profile_epoch is None and args.profile_rank == current_rank:
+        logger.info(f'STOPPING RPD TRACER FOR RANK-{args.profile_rank}\'s ALL EPOCHS')
+        prof.__exit__(None, None, None)
+        rpd_profile.stop()
+        
+    if args.profile == f'torch' and args.profile_epoch is None and args.profile_rank is None:
+        logger.info(f'STOPPING TORCH PROFILER FOR ALL RANKS & ALL EPOCHS')
+        torch_profile.stop()
+        
+    if args.profile == f'rpd' and args.profile_epoch is None and args.profile_rank is None:
+        logger.info(f'STOPPING RPD TRACER FOR ALL RANKS & ALL EPOCHS')
+        prof.__exit__(None, None, None)
+        rpd_profile.stop()
+    
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unwrap_model(unet)
