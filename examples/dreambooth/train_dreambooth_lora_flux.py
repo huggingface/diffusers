@@ -1462,12 +1462,15 @@ def main(args):
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
+    vae_config_shift_factor = vae.config.shift_factor
+    vae_config_scaling_factor = vae.config.scaling_factor
+    vae_config_block_out_channels = vae.config.block_out_channels
     if args.cache_latents:
         latents_cache = []
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
                 batch["pixel_values"] = batch["pixel_values"].to(
-                    accelerator.device, non_blocking=True, dtype=torch.float32
+                    accelerator.device, non_blocking=True, dtype=weight_dtype
                 )
                 latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
 
@@ -1475,6 +1478,7 @@ def main(args):
             del vae
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                gc.collect()
 
 
     # Scheduler and math around the number of training steps.
@@ -1599,7 +1603,6 @@ def main(args):
             if args.train_text_encoder:
                 models_to_accumulate.extend([text_encoder_one])
             with accelerator.accumulate(models_to_accumulate):
-                pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                 prompts = batch["prompts"]
 
                 # encode batch prompts when custom prompts are provided for each image -
@@ -1634,11 +1637,12 @@ def main(args):
                 if args.cache_latents:
                     model_input = latents_cache[step].sample()
                 else:
+                    pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                     model_input = vae.encode(pixel_values).latent_dist.sample()
-                model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
+                model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
-                vae_scale_factor = 2 ** (len(vae.config.block_out_channels))
+                vae_scale_factor = 2 ** (len(vae_config_block_out_channels))
 
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
