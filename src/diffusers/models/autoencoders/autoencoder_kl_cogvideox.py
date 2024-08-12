@@ -945,6 +945,22 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.use_slicing = False
         self.use_tiling = False
 
+        # Can be increased to decode more latent frames at once, but comes at a reasonable memory cost and it is not
+        # recommended because the temporal parts of the VAE, here, are tricky to understand.
+        # If you decode X latent frames together, the number of output frames is (X + 2 + 4) - 2 frames => X + 4 frames
+        # Example with num_latent_frames_batch_size = 2:
+        #     - 12 latent frames: (0, 1), (2, 3), (4, 5), (6, 7), (8, 9), (10, 11) are processed together
+        #         => (12 // 2 frame slices) * ((2 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale frames) + (4 time upscale frames) - (2 causal conv downscale frames))
+        #         => 6 * 8 = 48 frames
+        #     - 13 latent frames: (0, 1, 2) (special case), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12) are processed together
+        #         => (1 frame slice) * ((3 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale frames) + (4 time upscale frames) - (2 causal conv downscale frames)) +
+        #            ((13 - 3) // 2) * ((2 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale frames) + (4 time upscale frames) - (2 causal conv downscale frames))
+        #         => 1 * 9 + 5 * 8 = 49 frames
+        # It has been implemented this way so as to not have "magic values" in the code base that would be hard to explain. Note that
+        # setting it to anything other than 2 would give poor results because the VAE hasn't been trained to be adaptive with different
+        # number of temporal frames.
+        self.num_latent_frames_batch_size = 2
+
         # We make the minimum height and width of sample for tiling half that of the generally supported
         self.tile_sample_min_height = sample_height // 2
         self.tile_sample_min_width = sample_width // 2
@@ -952,7 +968,12 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1))
         )
         self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
-        self.tile_overlap_factor = 0.33
+
+        # These are experimental overlap factors that were chosen based on experimentation and seem to work best for
+        # 720x480 (WxH) resolution. The above resolution is the strongly recommended generation resolution in CogVideoX
+        # and so the tiling implementation has only been tested on those specific resolutions.
+        self.tile_overlap_factor_height = 1 / 6
+        self.tile_overlap_factor_width = 1 / 5
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CogVideoXEncoder3D, CogVideoXDecoder3D)):
@@ -1031,13 +1052,17 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if self.use_tiling and (z.shape[-1] > self.tile_latent_min_width or z.shape[-2] > self.tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)
 
-        num_latent_frames = z.shape[2]
+        frame_batch_size = self.num_latent_frames_batch_size
         dec = []
-        for i in range(num_latent_frames // 2):
-            if num_latent_frames % 2 == 0:
-                start_frame, end_frame = (2 * i, 2 * i + 2)
+        for i in range(z.shape[2] // frame_batch_size):
+            if z.shape[2] % frame_batch_size == 0:
+                start_frame, end_frame = (frame_batch_size * i, frame_batch_size * (i + 1))
             else:
-                start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
+                if i == 0:
+                    remaining_frames = z.shape[2] % frame_batch_size
+                    start_frame, end_frame = (0, frame_batch_size + remaining_frames)
+                else:
+                    start_frame, end_frame = (frame_batch_size * i + 1, frame_batch_size * (i + 1) + 1)
 
             z_intermediate = z[:, :, start_frame:end_frame]
             if self.post_quant_conv is not None:
@@ -1118,12 +1143,13 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         #   - Assume everything as above but now HxW is 240x360 by tiling in half
         # Memory required: 1 * 128 * 9 * 240 * 360 * 24 * 2 / 1024**3 = 4.5 GB
 
-        overlap_height = int(self.tile_latent_min_height * (1 - self.tile_overlap_factor))
-        overlap_width = int(self.tile_latent_min_width * (1 - self.tile_overlap_factor))
-        blend_extent_height = int(self.tile_sample_min_height * self.tile_overlap_factor)
-        blend_extent_width = int(self.tile_sample_min_width * self.tile_overlap_factor)
+        overlap_height = int(self.tile_latent_min_height * (1 - self.tile_overlap_factor_height))
+        overlap_width = int(self.tile_latent_min_width * (1 - self.tile_overlap_factor_width))
+        blend_extent_height = int(self.tile_sample_min_height * self.tile_overlap_factor_height)
+        blend_extent_width = int(self.tile_sample_min_width * self.tile_overlap_factor_width)
         row_limit_height = self.tile_sample_min_height - blend_extent_height
         row_limit_width = self.tile_sample_min_width - blend_extent_width
+        frame_batch_size = self.num_latent_frames_batch_size
 
         # Split z into overlapping tiles and decode them separately.
         # The tiles have an overlap to avoid seams between tiles.
@@ -1132,11 +1158,15 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             row = []
             for j in range(0, z.shape[4], overlap_width):
                 time = []
-                for k in range(z.shape[2] // 2):
-                    if z.shape[2] % 2 == 0:
-                        start_frame, end_frame = (2 * k, 2 * k + 2)
+                for k in range(z.shape[2] // frame_batch_size):
+                    if z.shape[2] % frame_batch_size == 0:
+                        start_frame, end_frame = (frame_batch_size * k, frame_batch_size * (k + 1))
                     else:
-                        start_frame, end_frame = (0, 3) if k == 0 else (2 * k + 1, 2 * k + 3)
+                        if k == 0:
+                            remaining_frames = z.shape[2] % frame_batch_size
+                            start_frame, end_frame = (0, frame_batch_size + remaining_frames)
+                        else:
+                            start_frame, end_frame = (frame_batch_size * k + 1, frame_batch_size * (k + 1) + 1)
                     tile = z[
                         :,
                         :,
