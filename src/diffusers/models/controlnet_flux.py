@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ..loaders import PeftAdapterMixin
 from ..models.modeling_utils import ModelMixin
 from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from .controlnet import BaseOutput, zero_module
@@ -37,7 +37,7 @@ class FluxControlNetOutput(BaseOutput):
     controlnet_single_block_samples: Tuple[torch.Tensor]
 
 
-class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
