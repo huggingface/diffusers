@@ -21,8 +21,11 @@ from typing import Optional
 
 from packaging import version
 
+from . import logging
 from .import_utils import is_peft_available, is_torch_available
 
+
+logger = logging.get_logger(__name__)
 
 if is_torch_available():
     import torch
@@ -154,9 +157,19 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, config=None,
 
     # Try to retrieve config.
     alpha_retrieved = False
+    alpha_pattern = None
+    rank_pattern = None
     if config is not None:
         lora_alpha = config["lora_alpha"] if "lora_alpha" in config else lora_alpha
         alpha_retrieved = True
+
+        if config.get("alpha_pattern", None):
+            alpha_pattern = config["alpha_pattern"]
+            logger.warning("`alpha_pattern` found in the LoRA config. This will be ignored.")
+
+        if config.get("rank_pattern", None):
+            rank_pattern = config["alpha_pattern"]
+            logger.warning("`rank_pattern` found in the LoRA config. This will be ignored.")
 
     if len(set(rank_dict.values())) > 1:
         # get the rank occuring the most number of times
