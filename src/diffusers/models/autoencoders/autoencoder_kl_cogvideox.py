@@ -954,10 +954,12 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.use_slicing = False
         self.use_tiling = False
 
-        # We make the minimum height and width of sample for tiling half that of the generally supported 
+        # We make the minimum height and width of sample for tiling half that of the generally supported
         self.tile_sample_min_height = sample_height // 2
         self.tile_sample_min_width = sample_width // 2
-        self.tile_latent_min_height = int(self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1)))
+        self.tile_latent_min_height = int(
+            self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1))
+        )
         self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
         self.tile_overlap_factor = 0.33
 
@@ -971,7 +973,12 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 logger.debug(f"Clearing fake Context Parallel cache for layer: {name}")
                 module._clear_fake_context_parallel_cache()
 
-    def enable_tiling(self, use_tiling: bool = True, tile_sample_min_height: Optional[int] = None, tile_sample_min_width: Optional[int] = None) -> None:
+    def enable_tiling(
+        self,
+        use_tiling: bool = True,
+        tile_sample_min_height: Optional[int] = None,
+        tile_sample_min_width: Optional[int] = None,
+    ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
@@ -980,7 +987,9 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.use_tiling = True
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
-        self.tile_latent_min_height = int(self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1)))
+        self.tile_latent_min_height = int(
+            self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1))
+        )
         self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
 
     def disable_tiling(self) -> None:
@@ -1003,7 +1012,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         decoding in one step.
         """
         self.use_slicing = False
-    
+
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
@@ -1039,7 +1048,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 start_frame, end_frame = (2 * i, 2 * i + 2)
             else:
                 start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
-            
+
             z_intermediate = z[:, :, start_frame:end_frame]
             if self.post_quant_conv is not None:
                 z_intermediate = self.post_quant_conv(z_intermediate)
@@ -1051,7 +1060,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         if not return_dict:
             return (dec,)
-        
+
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
@@ -1078,19 +1087,23 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if not return_dict:
             return (decoded,)
         return DecoderOutput(sample=decoded)
-    
+
     def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[3], b.shape[3], blend_extent)
         for y in range(blend_extent):
-            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, :, y, :] * (y / blend_extent)
+            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, :, y, :] * (
+                y / blend_extent
+            )
         return b
 
     def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[4], b.shape[4], blend_extent)
         for x in range(blend_extent):
-            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, :, x] * (x / blend_extent)
+            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, :, x] * (
+                x / blend_extent
+            )
         return b
-    
+
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""
         Decode a batch of images using a tiled decoder.
@@ -1124,7 +1137,13 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                         start_frame, end_frame = (2 * k, 2 * k + 2)
                     else:
                         start_frame, end_frame = (0, 3) if k == 0 else (2 * k + 1, 2 * k + 3)
-                    tile = z[:, :, start_frame:end_frame, i : i + self.tile_latent_min_height, j : j + self.tile_latent_min_width]
+                    tile = z[
+                        :,
+                        :,
+                        start_frame:end_frame,
+                        i : i + self.tile_latent_min_height,
+                        j : j + self.tile_latent_min_width,
+                    ]
                     if self.post_quant_conv is not None:
                         tile = self.post_quant_conv(tile)
                     tile = self.decoder(tile)
@@ -1132,7 +1151,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 self._clear_fake_context_parallel_cache()
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
-        
+
         result_rows = []
         for i, row in enumerate(rows):
             result_row = []
@@ -1145,14 +1164,13 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     tile = self.blend_h(row[j - 1], tile, blend_extent_width)
                 result_row.append(tile[:, :, :, :row_limit_height, :row_limit_width])
             result_rows.append(torch.cat(result_row, dim=4))
-        
+
         dec = torch.cat(result_rows, dim=3)
 
         if not return_dict:
             return (dec,)
 
         return DecoderOutput(sample=dec)
-
 
     def forward(
         self,
