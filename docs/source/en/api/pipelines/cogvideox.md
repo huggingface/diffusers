@@ -46,17 +46,17 @@ pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b").to("cuda")
 Then change the memory layout of the pipelines `transformer` component to `torch.channels_last`:
 
 ```python
-pipeline.transformer.to(memory_format=torch.channels_last)
+pipe.transformer.to(memory_format=torch.channels_last)
 ```
 
 Finally, compile the components and run inference:
 
 ```python
-pipeline.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
+pipe.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
 
 # CogVideoX works well with long and well-described prompts
 prompt = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance."
-video = pipeline(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
+video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
 ```
 
 The [benchmark](https://gist.github.com/a-r-r-o-w/5183d75e452a368fd17448fcc810bd3f) results on an 80GB A100 machine are:
