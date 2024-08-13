@@ -39,6 +39,28 @@ class SD3ControlNetOutput(BaseOutput):
 
 
 class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+    r"""
+    A ControlNet model based on the SD3 architecture.
+
+    Parameters:
+        sample_size (`int`, defaults to `128`):
+            The width of the latent images. This is fixed during training since it is used to learn a number of
+            position embeddings.
+        patch_size (`int`, defaults to `2`): Patch size to turn the input data into small patches.
+        in_channels (`int`, defaults to `16`): The number of channels in the input.
+        num_layers (`int`, defaults to `18`): The number of layers of Transformer blocks to use.
+        attention_head_dim (`int`, defaults to `64`): The number of channels in each head.
+        num_attention_heads (`int`, defaults to `18`): The number of heads to use for multi-head attention.
+        joint_attention_dim (`int`, defaults to `4096`): Input dimension of `encoder_hidden_states` before projection.
+        caption_projection_dim (`int`, defaults to `1152`):
+            Output dimension when projecting the `encoder_hidden_states`.
+        pooled_projection_dim (`int`, defaults to `2048`): Output dimension when projecting the `pooled_projections`.
+        out_channels (`int`, *optional*, defaults to `16`): Number of output channels.
+        pos_embed_max_size (`int`, *optional*, defaults to `96`): Max size for positional embeddings.
+        extra_conditioning_channels (`int`, defaults to `0`):
+            Additional conditioning channels to use with different controlnet models.
+    """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -53,13 +75,12 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         joint_attention_dim: int = 4096,
         caption_projection_dim: int = 1152,
         pooled_projection_dim: int = 2048,
-        out_channels: int = 16,
-        pos_embed_max_size: int = 96,
+        out_channels: Optional[int] = 16,
+        pos_embed_max_size: Optional[int] = 96,
         extra_conditioning_channels: int = 0,
     ):
         super().__init__()
-        default_out_channels = in_channels
-        self.out_channels = out_channels if out_channels is not None else default_out_channels
+        self.out_channels = out_channels or in_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
         self.pos_embed = PatchEmbed(
@@ -82,7 +103,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                 JointTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
-                    attention_head_dim=self.config.attention_head_dim,
+                    attention_head_dim=attention_head_dim,
                     context_pre_only=False,
                 )
                 for i in range(num_layers)

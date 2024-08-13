@@ -57,8 +57,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers.utils import load_image, check_min_version
-        >>> from diffusers.pipelines import StableDiffusion3ControlNetInpaintingPipeline
-        >>> from diffusers.models.controlnet_sd3 import SD3ControlNetModel
+        >>> from diffusers import StableDiffusion3ControlNetInpaintingPipeline, SD3ControlNetModel
 
         >>> controlnet = SD3ControlNetModel.from_pretrained(
         ...     "alimama-creative/SD3-Controlnet-Inpainting", use_safetensors=True, extra_conditioning_channels=1
