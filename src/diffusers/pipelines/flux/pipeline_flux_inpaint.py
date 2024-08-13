@@ -891,22 +891,21 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
-        # # match the inpainting pipeline and will be updated with input + mask inpainting model later
-        # if num_channels_transformer = :
-        #     # default case for runwayml/stable-diffusion-inpainting
-        #     num_channels_mask = mask.shape[1]
-        #     num_channels_masked_image = masked_image_latents.shape[1]
-        #     if (
-        #         num_channels_latents + num_channels_mask + num_channels_masked_image
-        #         != self.transformer.config.in_channels
-        #     ):
-        #         raise ValueError(
-        #             f"Incorrect configuration settings! The config of `pipeline.transformer`: {self.transformer.config} expects"
-        #             f" {self.transformer.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-        #             f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-        #             f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
-        #             " `pipeline.transformer` or your `mask_image` or `image` input."
-        #         )
+        if num_channels_transformer == 132:
+            # default case for inpainting models
+            num_channels_mask = mask.shape[1]
+            num_channels_masked_image = masked_image_latents.shape[1]
+            if (
+                num_channels_latents + num_channels_mask + num_channels_masked_image
+                != self.transformer.config.in_channels
+            ):
+                raise ValueError(
+                    f"Incorrect configuration settings! The config of `pipeline.transformer`: {self.transformer.config} expects"
+                    f" {self.transformer.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
+                    f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
+                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    " `pipeline.transformer` or your `mask_image` or `image` input."
+                )
         if num_channels_transformer != 64:
             raise ValueError(
                 f"The transformer {self.transformer.__class__} should have 64 input channels, not {self.transformer.config.in_channels}."
@@ -920,6 +919,9 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
+
+                if num_channels_transformer == 132:
+                    latents = torch.cat([latents, mask, masked_image_latents], dim=1)
 
                 # handle guidance
                 if self.transformer.config.guidance_embeds:
