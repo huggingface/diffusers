@@ -386,7 +386,9 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=self.text_encoder.dtype)
+        dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
+        text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
+        text_ids = text_ids.repeat(num_images_per_prompt, 1, 1)
 
         return prompt_embeds, pooled_prompt_embeds, text_ids
 
