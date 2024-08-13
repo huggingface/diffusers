@@ -151,7 +151,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
+class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     r"""
     The Flux pipeline for image inpainting.
 
@@ -551,59 +551,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
         return latents, noise, image_latents, latent_image_ids
 
-    def prepare_mask_latents(
-        self,
-        mask,
-        masked_image,
-        batch_size,
-        num_images_per_prompt,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-    ):
-        # resize the mask to latents shape as we concatenate the mask to the latents
-        # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
-        # and half precision
-        mask = torch.nn.functional.interpolate(
-            mask, size=(2 * height // self.vae_scale_factor, 2 * width // self.vae_scale_factor)
-        )
-        mask = mask.to(device=device, dtype=dtype)
-
-        batch_size = batch_size * num_images_per_prompt
-
-        masked_image = masked_image.to(device=device, dtype=dtype)
-
-        if masked_image.shape[1] == 16:
-            masked_image_latents = masked_image
-        else:
-            masked_image_latents = retrieve_latents(self.vae.encode(masked_image), generator=generator)
-
-        masked_image_latents = (masked_image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
-
-        # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        if mask.shape[0] < batch_size:
-            if not batch_size % mask.shape[0] == 0:
-                raise ValueError(
-                    "The passed mask and the required batch size don't match. Masks are supposed to be duplicated to"
-                    f" a total batch size of {batch_size}, but {mask.shape[0]} masks were passed. Make sure the number"
-                    " of masks that you pass is divisible by the total requested batch size."
-                )
-            mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
-        if masked_image_latents.shape[0] < batch_size:
-            if not batch_size % masked_image_latents.shape[0] == 0:
-                raise ValueError(
-                    "The passed images and the required batch size don't match. Images are supposed to be duplicated"
-                    f" to a total batch size of {batch_size}, but {masked_image_latents.shape[0]} images were passed."
-                    " Make sure the number of images that you pass is divisible by the total requested batch size."
-                )
-            masked_image_latents = masked_image_latents.repeat(batch_size // masked_image_latents.shape[0], 1, 1, 1)
-
-        # aligning device to prevent device errors when concating it with the latent model input
-        masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
-        return mask, masked_image_latents
-
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -627,11 +574,8 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
-        mask_image: PipelineImageInput = None,
-        masked_image_latents: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        padding_mask_crop: Optional[int] = None,
         strength: float = 0.6,
         num_inference_steps: int = 28,
         timesteps: List[int] = None,
@@ -768,18 +712,8 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         self._interrupt = False
         is_strength_max = strength == 1.0
 
-        # 2. Preprocess mask and image
-        if padding_mask_crop is not None:
-            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
-            resize_mode = "fill"
-        else:
-            crops_coords = None
-            resize_mode = "default"
-
-        original_image = image
-        init_image = self.image_processor.preprocess(
-            image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
-        )
+        # 2. Preprocess image
+        init_image = self.image_processor.preprocess(image, height=height, width=width)
         init_image = init_image.to(dtype=torch.float32)
 
         # 3. Define call parameters
@@ -855,62 +789,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             is_strength_max,
         )
 
-        mask_condition = self.mask_processor.preprocess(
-            mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
-        )
-
-        if masked_image_latents is None:
-            masked_image = init_image * (mask_condition < 0.5)
-        else:
-            masked_image = masked_image_latents
-
-        mask, masked_image_latents = self.prepare_mask_latents(
-            mask_condition,
-            masked_image,
-            batch_size,
-            num_images_per_prompt,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-        )
-        masked_image_latents = self._pack_latents(
-            masked_image_latents,
-            batch_size,
-            num_channels_latents,
-            2 * (int(height) // self.vae_scale_factor),
-            2 * (int(width) // self.vae_scale_factor),
-        )
-        mask = self._pack_latents(
-            mask.repeat(1, num_channels_latents, 1, 1),
-            batch_size,
-            num_channels_latents,
-            2 * (int(height) // self.vae_scale_factor),
-            2 * (int(width) // self.vae_scale_factor),
-        )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-
-        if num_channels_transformer == 132:
-            # default case for inpainting models
-            num_channels_mask = mask.shape[1]
-            num_channels_masked_image = masked_image_latents.shape[1]
-            if (
-                num_channels_latents + num_channels_mask + num_channels_masked_image
-                != self.transformer.config.in_channels
-            ):
-                raise ValueError(
-                    f"Incorrect configuration settings! The config of `pipeline.transformer`: {self.transformer.config} expects"
-                    f" {self.transformer.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-                    f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
-                    " `pipeline.transformer` or your `mask_image` or `image` input."
-                )
-        if num_channels_transformer != 64:
-            raise ValueError(
-                f"The transformer {self.transformer.__class__} should have 64 input channels, not {self.transformer.config.in_channels}."
-            )
-
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -919,9 +798,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-
-                if num_channels_transformer == 132:
-                    latents = torch.cat([latents, mask, masked_image_latents], dim=1)
 
                 # handle guidance
                 if self.transformer.config.guidance_embeds:
@@ -946,18 +822,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
-
-                if num_channels_transformer == 64:
-                    init_latents_proper = image_latents
-                    init_mask = mask
-
-                    if i < len(timesteps) - 1:
-                        noise_timestep = timesteps[i + 1]
-                        init_latents_proper = self.scheduler.scale_noise(
-                            init_latents_proper, torch.tensor([noise_timestep]), noise
-                        )
-
-                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
